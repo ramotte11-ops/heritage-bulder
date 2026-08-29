@@ -46,6 +46,11 @@ export interface Memorial {
   editorialContext: EditorialContext;
   skin: Skin;
   language: Language;
+  /**
+   * Client-toggleable optional sections only. The Footer is never part of
+   * this list — it is a permanent structural element, always rendered,
+   * outside the client's control (see config/sections.ts).
+   */
   enabledSections: SectionId[];
   status: MemorialStatus;
   /** Public URL slug, e.g. "prenom-nom-xxxxxx". Generation is not built yet. */

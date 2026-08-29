@@ -2,12 +2,18 @@ import { EDITORIAL_CONTEXT_SECTIONS, type SectionDefinition, type SectionId } fr
 import type { EditorialContext } from "@/config/memorial";
 
 /**
- * Resolves which sections a memorial should render, in the correct order.
+ * Resolves which toggleable sections a memorial should render, in the
+ * correct order.
  *
  * Core sections are always included. Optional sections are included only if
  * their id is present in `enabledSectionIds`. The returned order always
  * follows the HERITAGE configuration in config/sections.ts, never the order
  * ids happen to appear in `enabledSectionIds`.
+ *
+ * The Footer is not part of this list and is not returned by this
+ * function — it is a permanent structural element rendered after these
+ * sections on every memorial, regardless of configuration (see
+ * config/sections.ts).
  *
  * This is a pure configuration helper — it does not render anything.
  */

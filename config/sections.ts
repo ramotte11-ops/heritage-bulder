@@ -4,6 +4,12 @@ import type { EditorialContext } from "./memorial";
  * Every section id that exists across both editorial contexts. This is an
  * identifier list only — no visual or functional content for any section
  * is built in Mission 001.
+ *
+ * The Footer is deliberately NOT part of this list. It is a permanent
+ * structural element of every memorial — always rendered, in every
+ * editorial context — not a section the client activates, disables, or
+ * reorders. See EDITORIAL_CONTEXT_SECTIONS below for where it renders.
+ * Its visual content is defined in a later mission.
  */
 export const SECTION_IDS = [
   "hero",
@@ -16,7 +22,6 @@ export const SECTION_IDS = [
   "condolences",
   "video",
   "memoryMessage",
-  "footer",
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -31,10 +36,14 @@ export interface SectionDefinition {
 }
 
 /**
- * Per editorial context: which sections exist, in which order, and which
- * ones are mandatory. The array order IS the canonical rendering order —
- * the client never chooses it (Mission 000: "l'ordre est défini par
- * configuration HERITAGE").
+ * Per editorial context: which (toggleable) sections exist, in which
+ * order, and which ones are mandatory. The array order IS the canonical
+ * rendering order — the client never chooses it (Mission 000: "l'ordre
+ * est défini par configuration HERITAGE").
+ *
+ * The Footer always renders after every section listed here — it is not
+ * one of these entries (see the SECTION_IDS comment above) and is always
+ * present regardless of which optional sections are enabled.
  */
 export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinition[]> = {
   announcement: [
@@ -47,7 +56,6 @@ export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinit
     { id: "testimonials", core: false },
     { id: "condolences", core: false },
     { id: "video", core: false },
-    { id: "footer", core: false },
   ],
   remembrance: [
     { id: "hero", core: true },
@@ -56,6 +64,5 @@ export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinit
     { id: "testimonials", core: false },
     { id: "memoryMessage", core: false },
     { id: "video", core: false },
-    { id: "footer", core: false },
   ],
 };
