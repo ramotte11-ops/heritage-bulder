@@ -16,38 +16,38 @@ create table entitlements (
   skin_id text not null check (skin_id in ('intemporel')),
   status text not null default 'available'
     check (status in ('available', 'redeemed', 'revoked')),
-  -- Both nullable until the entitlement is claimed. Set together, in the
-  -- same transaction, when a memorial is created from this entitlement.
+  -- Nullable until the entitlement is claimed. Set together with
+  -- redeemed_at, in the same transaction, when a memorial is created
+  -- from this entitlement.
   owner_id uuid references owners (id),
-  -- No foreign key here yet: memorials does not exist until the next
-  -- migration. The constraint is added by ALTER TABLE at the end of
-  -- 20260829154000_memorials.sql once both tables exist — see the note
-  -- there about this being a normal way to handle two tables that
-  -- reference each other.
-  memorial_id uuid,
   created_at timestamptz not null default now(),
   redeemed_at timestamptz,
   updated_at timestamptz not null default now(),
 
   -- A given Etsy/direct order can only be redeemed once.
   constraint entitlements_external_order_unique unique (source, external_order_id),
-  -- redeemed_at / owner_id / memorial_id are set together, never
-  -- partially — a plain row-local CHECK, no trigger needed.
+  -- redeemed_at / owner_id are set together, never partially — a plain
+  -- row-local CHECK, no trigger needed.
   constraint entitlements_redeemed_consistency check (
-    (status = 'redeemed' and owner_id is not null and memorial_id is not null and redeemed_at is not null)
+    (status = 'redeemed' and owner_id is not null and redeemed_at is not null)
     or (status <> 'redeemed')
   )
 );
 
--- 1 entitlement -> at most 1 memorial. The reverse (1 memorial -> exactly
--- 1 entitlement) is enforced on the memorials table via a unique,
--- not-null entitlement_id — see 20260829154000_memorials.sql. Keeping
--- both pointers in sync (so they always point back at each other) is the
--- responsibility of the future redemption logic — a single transaction:
--- insert the memorial, then update this row — and is deliberately not
--- enforced by a trigger in V1, to avoid building that machinery for a
--- path nothing calls yet. See supabase/README.md.
-create unique index entitlements_memorial_id_key on entitlements (memorial_id) where memorial_id is not null;
+-- Mission 002 correction: this table deliberately has NO memorial_id
+-- column. "1 Entitlement -> 0 or 1 Memorial" has exactly one source of
+-- truth: memorials.entitlement_id (NOT NULL UNIQUE — see
+-- 20260829154000_memorials.sql), which already guarantees both that
+-- every memorial has exactly one entitlement AND that no two memorials
+-- share one — so no reverse pointer is needed to enforce "at most one
+-- memorial per entitlement" either. A memorial's entitlement (or an
+-- entitlement's memorial, if any) is found by querying
+-- `memorials where entitlement_id = ...`, which is already indexed by
+-- that column's own UNIQUE constraint. An earlier version of this
+-- migration also stored entitlements.memorial_id, a second pointer back
+-- to the same relationship — removed because two pointers for one
+-- relationship is two sources of truth that can silently disagree, for
+-- no benefit V1 actually needs. See supabase/README.md.
 
 create index entitlements_owner_id_idx on entitlements (owner_id) where owner_id is not null;
 

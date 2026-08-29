@@ -57,13 +57,11 @@ create table memorials (
 
 create index memorials_owner_id_idx on memorials (owner_id);
 
--- Completes the entitlements <-> memorials relationship declared in
--- 20260829153000_entitlements.sql, now that both tables exist. This is
--- the normal way to handle two tables that reference each other: create
--- both without the second FK, then add it once both exist.
-alter table entitlements
-  add constraint entitlements_memorial_id_fkey
-  foreign key (memorial_id) references memorials (id);
+-- entitlement_id above (NOT NULL UNIQUE) is the single, canonical link
+-- between an entitlement and its memorial — see the Mission 002
+-- correction note in 20260829153000_entitlements.sql. Because
+-- entitlements is created first and carries no pointer back, there is no
+-- circular foreign key between these two tables to work around anymore.
 
 create trigger memorials_set_updated_at
   before update on memorials

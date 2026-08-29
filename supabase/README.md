@@ -15,13 +15,16 @@ see [Local testing](#local-testing).
 
 ```
 owners ──────┬─< entitlements
-             │        │ (1:1, once redeemed)
-             │        v
-             └──< memorials ──< media
+             │
+             └──< memorials >── entitlement_id (unique) ──> entitlements
+                      │      ├─< media
                       │      ├─< messages
                       │      ├─(1:1)─ memorial_drafts
                       │      └─(1:1, optional)─ memorial_published_snapshots
 ```
+
+`memorials.entitlement_id` is the *only* link between an entitlement and
+its memorial — see "Entitlement ⟷ memorial" below.
 
 | Table | Purpose | Rows |
 |---|---|---|
@@ -70,16 +73,28 @@ version history.** Republishing overwrites `content`/`published_at`. If
 full version history is ever needed, it's a new table added later — this
 schema doesn't foreclose that, it just doesn't build it now.
 
-**Entitlement ⟷ memorial is a two-way pointer, deliberately not
-trigger-enforced.** `memorials.entitlement_id` is `NOT NULL UNIQUE`
-(every memorial has exactly one entitlement); `entitlements.memorial_id`
-is nullable-but-unique (an entitlement claims at most one memorial). Both
-constraints are real and tested (see below), but nothing in the database
-guarantees the two pointers agree with each other — that's the
-responsibility of the future redemption transaction (insert the
-memorial, then update the entitlement, in one transaction). A trigger
-could enforce it too, but nothing calls this path yet, so building that
-now would be solving a problem before it exists.
+**Entitlement ⟷ memorial has exactly one source of truth:
+`memorials.entitlement_id`.** It is `NOT NULL UNIQUE` — every memorial
+has exactly one entitlement, and no two memorials can share one, which
+together are exactly "1 Entitlement → 0 or 1 Memorial." `entitlements`
+carries no `memorial_id` column at all (Mission 002 correction — an
+earlier version of this schema had one, a second pointer back to the
+same relationship, removed because two pointers for one relationship is
+two sources of truth that can silently disagree, for no benefit V1
+needs). An entitlement's memorial, if it has one, is found with
+`select * from memorials where entitlement_id = ...` — already indexed
+by that column's own `UNIQUE` constraint, so this is not a slower query,
+just a lookup in the other direction.
+
+One consequence worth naming: `entitlements.status`/`redeemed_at` are
+bookkeeping the future redemption flow is responsible for keeping
+truthful (e.g. setting `status = 'redeemed'` when it creates a
+memorial) — the database does not itself derive `status` from whether a
+matching memorial exists. That was already true before this correction
+(the two tables were never trigger-synced); removing the second pointer
+doesn't reduce any guarantee the schema previously actually enforced, it
+only removes a redundant field that wasn't kept consistent by anything
+either.
 
 **Section validity is only partly enforced by the database.**
 `memorials.enabled_sections` is checked against the *union* of optional
@@ -114,6 +129,18 @@ that matters for isolation between families is enforced in PostgreSQL,
 not in Next.js — even once a UI exists, a bug or a bypassed check in that
 UI cannot expose another family's data, because the database itself
 refuses the row.
+
+> **Product rule — not a technical limitation, a launch gate:**
+> **AUCUNE INSERTION PUBLIQUE DE MESSAGE NE DOIT ÊTRE ACTIVÉE EN
+> PRODUCTION AVANT LA MISE EN PLACE D'UNE PROTECTION ANTI-ABUS /
+> ANTI-SPAM VALIDÉE.** The `messages_insert_public` RLS policy existing
+> in this schema means the database *can* accept a public message once a
+> future mission builds the form that calls it — it authorizes the
+> *shape* of the feature, checking that the memorial is published and
+> the relevant section is enabled. It is not, on its own, product
+> approval to actually expose that form to real visitors. That approval
+> is a separate decision, made once a spam/abuse protection has been
+> designed and validated — not before.
 
 ### The `public_memorial_publication_state()` function
 
@@ -153,7 +180,8 @@ the script itself, never in `migrations/`. Run it with:
 scripts/db/test-local.sh
 ```
 
-As of Mission 002 this passes 19/19 checks (8 integrity, 11 RLS). It is
+As of the Mission 002 correction this passes 20/20 checks (9 integrity,
+11 RLS). It is
 not a substitute for testing against a real Supabase project (real
 GoTrue-issued JWTs, PostgREST) — that happens once a project exists.
 

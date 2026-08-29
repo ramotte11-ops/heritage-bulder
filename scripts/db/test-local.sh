@@ -143,10 +143,10 @@ MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_
 $DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$MEM_A', '{\"hero\": {\"name\": \"Test\"}}');" >/dev/null
 
 # Simulate a completed redemption for entitlement A (the future
-# redemption flow's job, not built in Mission 002) so the
-# entitlements<->memorials uniqueness constraints below have something
-# real to reject.
-$DB -c "update entitlements set status = 'redeemed', owner_id = '$OWNER_A', memorial_id = '$MEM_A', redeemed_at = now() where id = '$ENT_A';" >/dev/null
+# redemption flow's job, not built in Mission 002). No memorial_id to
+# set on entitlements anymore (Mission 002 correction) — the link is
+# memorials.entitlement_id alone.
+$DB -c "update entitlements set status = 'redeemed', owner_id = '$OWNER_A', redeemed_at = now() where id = '$ENT_A';" >/dev/null
 
 echo ""
 echo "== Integrity constraint checks =="
@@ -163,17 +163,23 @@ expect_error "invalid skin_id is rejected" \
 expect_error "invalid enabled_sections value is rejected" \
   "update memorials set enabled_sections = array['not-a-real-section'] where id = '$MEM_A';"
 
-expect_error "a second memorial cannot claim the same entitlement" \
+expect_error "a second memorial cannot claim the same entitlement (single source of truth: memorials.entitlement_id)" \
   "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug) values ('$OWNER_A', '$ENT_A', 'person', 'announcement', 'intemporel', 'en', 'test-memorial-a-collision');"
-
-expect_error "a second entitlement cannot claim the same memorial" \
-  "update entitlements set memorial_id = '$MEM_A' where id = '$ENT_B';"
 
 expect_error "memorial without an owner is rejected" \
   "insert into memorials (entitlement_id, memorial_type, editorial_context, skin_id, language, slug) values ('$ENT_A', 'person', 'announcement', 'intemporel', 'en', 'test-memorial-no-owner');"
 
 DRAFT_COUNT=$($DB -t -A -c "select count(*) from memorial_drafts where memorial_id in ('$MEM_A', '$MEM_B');")
 check "a draft row was auto-created for every memorial" "2" "$DRAFT_COUNT"
+
+# Mission 002 correction: entitlements no longer stores memorial_id at
+# all — memorials.entitlement_id is the only pointer. Confirm the
+# canonical lookup direction actually works.
+FOUND_MEMORIAL=$($DB -t -A -c "select id from memorials where entitlement_id = '$ENT_A';")
+check "entitlement A's memorial is found via memorials.entitlement_id (the single source of truth)" "$MEM_A" "$FOUND_MEMORIAL"
+
+FOUND_MEMORIAL_B=$($DB -t -A -c "select id from memorials where entitlement_id = '$ENT_B';")
+check "entitlement B's memorial is likewise found via memorials.entitlement_id" "$MEM_B" "$FOUND_MEMORIAL_B"
 
 echo ""
 echo "== Row Level Security checks =="

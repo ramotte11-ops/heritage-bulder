@@ -141,6 +141,16 @@ future mission, not just this one:
 - **Pet Memorial is not developed.** `memorialType` is designed to accept
   a future `"pet"` value without restructuring, but no pet-specific type,
   content or behaviour exists in this codebase.
+- **One relationship, one pointer.** `memorials.entitlement_id` is the
+  only link between an entitlement and its memorial (Mission 002
+  correction) — no table stores the same relationship from both ends. See
+  `supabase/README.md`.
+- **No public message form goes live without anti-abuse protection
+  first.** The `messages_insert_public` RLS policy (`supabase/`) makes
+  the *shape* of public message submission possible; it is not product
+  approval to expose it. A validated spam/anti-abuse protection is a
+  precondition for turning that feature on, not an afterthought — see
+  `supabase/README.md`.
 
 ## What is NOT built yet
 

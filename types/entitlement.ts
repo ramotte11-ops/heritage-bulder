@@ -7,8 +7,14 @@ import type { Skin } from "@/config/skins";
  * (supabase/migrations/20260829153000_entitlements.sql).
  *
  * This is a purchase activation record, not the owner's permanent access
- * mechanism — see Mission 000 answer G. `ownerId`/`memorialId` are only
- * set once the entitlement has been redeemed.
+ * mechanism — see Mission 000 answer G. `ownerId` is only set once the
+ * entitlement has been redeemed.
+ *
+ * There is deliberately no `memorialId` here (Mission 002 correction):
+ * `Memorial.entitlementId` is the single source of truth for this
+ * relationship. To find an entitlement's memorial (if any), query
+ * memorials by `entitlementId` — see types/memorial.ts and
+ * supabase/README.md.
  */
 export interface Entitlement {
   id: string;
@@ -17,7 +23,6 @@ export interface Entitlement {
   skinId: Skin;
   status: EntitlementStatus;
   ownerId: string | null;
-  memorialId: string | null;
   createdAt: string; // ISO 8601
   redeemedAt: string | null; // ISO 8601
   updatedAt: string; // ISO 8601
