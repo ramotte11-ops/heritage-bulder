@@ -1,0 +1,72 @@
+.list {
+  min-width: 0;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rowButton {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowButton[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.rowButtonSelected {
+  composes: rowButton;
+  border-color: var(--foreground);
+  font-weight: 600;
+}
+
+.badgeCore {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  padding: 0.25rem 0.5rem;
+}
+
+.toggleOn,
+.toggleOff {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.toggleOn {
+  border-color: var(--foreground);
+  font-weight: 600;
+}
+
+.toggleOff {
+  opacity: 0.6;
+}
