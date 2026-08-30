@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — real env files are never committed; the example file (names
+# only, no values) is explicitly un-ignored below.
 .env*
+!.env.example
 
 # vercel
 .vercel

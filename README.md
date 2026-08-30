@@ -4,9 +4,10 @@ Technical foundation for the HERITAGE HOMMAGE memorial Builder — a single,
 configurable engine that will let non-technical clients personalize,
 preview and publish an online memorial.
 
-This repository currently contains **Mission 001: technical foundations
-only**. There is no Builder, no authentication, no database, no photo
-storage, and no visual design yet — see [What is NOT built](#what-is-not-built-yet)
+This repository currently contains **Mission 001 (technical foundations)
+and Mission 002 (data model & Supabase foundation)**. There is no
+Builder, no real authentication, no connected Supabase project, no photo
+upload, and no visual design yet — see [What is NOT built](#what-is-not-built-yet)
 below.
 
 ## Getting started
@@ -29,7 +30,15 @@ npm run start
 ```
 
 No environment variables or external service is required to install, run,
-or build this project.
+or build this project — see `.env.example` for what a future mission will
+need once Supabase is actually connected.
+
+To validate the database schema locally (no account, no Docker, no
+network — see `supabase/README.md`):
+
+```bash
+scripts/db/test-local.sh
+```
 
 ## Stack
 
@@ -41,10 +50,13 @@ or build this project.
 - **Netlify** for hosting/deployment (already connected to this repository).
   `netlify.toml` only declares the build command and Node version — no
   Netlify-specific runtime feature is used.
+- **Supabase** (`@supabase/supabase-js`) for PostgreSQL + Auth + Storage —
+  schema and adapters exist (see `supabase/` and `lib/supabase/`), but no
+  real project is connected yet.
 
-No other dependency was added. See [Mission 001's final report] (delivered
-separately in the conversation that produced this commit) for the full
-list and rationale.
+See each mission's final report (delivered in the conversation that
+produced the corresponding commits) for the full dependency list and
+rationale.
 
 ## Repository structure
 
@@ -62,6 +74,9 @@ config/                       HERITAGE-defined product configuration
   skins.ts                    skin values
   languages.ts                language values
   sections.ts                 section ids + per-context order/socle rules
+  entitlements.ts             entitlement source/status values
+  media.ts                    media type values
+  messages.ts                 visitor message type values
 
 lib/                          Logic that operates on config/types
   sections.ts                 getOrderedSections() helper
@@ -70,12 +85,34 @@ lib/                          Logic that operates on config/types
     data-repository.ts        Generic persistence contract
     auth-provider.ts          Generic session contract
     media-storage-provider.ts Generic media URL contract
+    supabase/                 Supabase-backed implementations of the ports
+                               above — no other file talks to Supabase
+      memorial-repository.ts
+      auth-provider.ts
+      media-storage-provider.ts
+  supabase/                   Lazy Supabase client construction (never
+                               throws at import time — see the files)
+    env.ts
+    server-client.ts          Anon-key client (RLS applies)
+    service-role-client.ts    Service-role client — bypasses RLS, server-only
 
 types/                        Structural TypeScript interfaces
   memorial.ts                 Memorial, MemorialStatus, draft/published shape
+  owner.ts / entitlement.ts / media.ts / message.ts
 
 styles/                       Global CSS (no design system yet)
   globals.css
+
+supabase/
+  migrations/                 Versioned SQL schema — source of truth, see
+                               supabase/README.md
+  README.md                   Schema overview, RLS security matrix,
+                               portability, local testing, migration workflow
+
+scripts/db/
+  test-local.sh                Applies migrations to a throwaway local
+                               Postgres and asserts constraints + RLS —
+                               no account, no Docker, no network
 ```
 
 Folders are only created once they hold something real — there is no
@@ -104,21 +141,34 @@ future mission, not just this one:
 - **Pet Memorial is not developed.** `memorialType` is designed to accept
   a future `"pet"` value without restructuring, but no pet-specific type,
   content or behaviour exists in this codebase.
+- **One relationship, one pointer.** `memorials.entitlement_id` is the
+  only link between an entitlement and its memorial (Mission 002
+  correction) — no table stores the same relationship from both ends. See
+  `supabase/README.md`.
+- **No public message form goes live without anti-abuse protection
+  first.** The `messages_insert_public` RLS policy (`supabase/`) makes
+  the *shape* of public message submission possible; it is not product
+  approval to expose it. A validated spam/anti-abuse protection is a
+  precondition for turning that feature on, not an afterthought — see
+  `supabase/README.md`.
 
 ## What is NOT built yet
 
-Deliberately out of scope for Mission 001 (see the mission's own
+Deliberately out of scope through Mission 002 (see each mission's own
 exclusion list for the full wording):
 
-- Supabase connected to a real project, database tables, or any external
-  service configuration.
-- Authentication / magic link / login.
-- Etsy integration or webhooks.
-- A working Entitlement (purchase right).
+- A real, connected Supabase project (URL/keys). The schema and adapters
+  exist and are tested locally — see `supabase/README.md` — but nothing
+  points at an actual project yet.
+- Real authentication / a magic-link login screen (the port and its
+  Supabase implementation exist; no UI calls it).
+- Etsy integration or webhooks; a working (redeemable) Entitlement flow.
 - A functional Builder (editing UI), autosave, or live preview.
-- Real publication logic or real URL generation.
-- Photo storage/upload.
-- Visitor messages, testimonials, condolences.
+- Real publication logic or real slug/URL generation.
+- Photo upload (metadata table and URL-resolving adapter exist; no
+  upload path).
+- A visitor-facing message form or moderation UI (the schema and its
+  authorization rule exist; no form).
 - Any skin's actual visual design, HERITAGE colors/typography, or the Hero.
 - Admin, analytics, payments.
 - Pet Memorial, Heritage Mariage.
