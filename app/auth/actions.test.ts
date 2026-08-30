@@ -43,16 +43,30 @@ describe("requestMagicLink", () => {
     expect(createServerSupabaseClient).not.toHaveBeenCalled();
   });
 
-  it("returns a generic error message when Supabase reports one, never the raw message", async () => {
+  it("surfaces Supabase's own AuthError message on the page — deliberate, see actions.ts's docstring", async () => {
     const signInWithOtp = vi.fn().mockResolvedValue({
-      error: { message: "some internal Supabase implementation detail" },
+      error: { message: "Email rate limit exceeded", status: 429 },
     });
     createServerSupabaseClient.mockResolvedValue({ auth: { signInWithOtp } });
 
     const result = await requestMagicLink(INITIAL_MAGIC_LINK_STATE, formDataWith("rany@example.com"));
 
     expect(result.status).toBe("error");
-    expect(result.message).not.toContain("internal Supabase implementation detail");
+    expect(result.message).toContain("Email rate limit exceeded");
+  });
+
+  it("surfaces the safe env.ts message distinctly when Supabase isn't configured", async () => {
+    createServerSupabaseClient.mockRejectedValue(
+      new Error(
+        "Missing environment variable NEXT_PUBLIC_SUPABASE_URL. Supabase is not configured yet — see .env.example.",
+      ),
+    );
+
+    const result = await requestMagicLink(INITIAL_MAGIC_LINK_STATE, formDataWith("rany@example.com"));
+
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("Missing environment variable NEXT_PUBLIC_SUPABASE_URL");
+    expect(createServerSupabaseClient).toHaveBeenCalled();
   });
 
   it("returns success and calls signInWithOtp with the submitted email once validated", async () => {
@@ -65,14 +79,6 @@ describe("requestMagicLink", () => {
     expect(signInWithOtp).toHaveBeenCalledWith(
       expect.objectContaining({ email: "rany@example.com" }),
     );
-  });
-
-  it("does not throw and returns a generic error if Supabase isn't configured", async () => {
-    createServerSupabaseClient.mockRejectedValue(new Error("Missing environment variable"));
-
-    const result = await requestMagicLink(INITIAL_MAGIC_LINK_STATE, formDataWith("rany@example.com"));
-
-    expect(result.status).toBe("error");
   });
 });
 

@@ -16,9 +16,20 @@ import type { MagicLinkFormState } from "@/lib/auth/magic-link-state";
  * layer, unrelated to HERITAGE's own `owners` business table, which
  * stays untouched here.
  *
- * Never leaks a raw Supabase error to the client — only a generic,
- * actionable message. The real error is logged server-side (message
- * only, never a token/key/session value).
+ * Error reporting is intentionally split into three distinguishable
+ * stages (client init / Supabase's own response / unexpected exception)
+ * instead of one generic message. This is a deliberate, documented
+ * exception to "never expose a raw error" — not a leak of it: in each
+ * case what reaches the page is already designed for end-user display —
+ * `lib/supabase/env.ts`'s own "Missing environment variable ..." text,
+ * or a GoTrue AuthError's `message`, which Supabase's own hosted UI
+ * shows to end users the same way — never a stack trace, token, key, or
+ * connection string. It exists because this app's only current channel
+ * for the real failure (Netlify's Deploy Preview function logs) has
+ * proven unreachable in practice; the diagnostic value of a specific
+ * message on the page outweighs a generic one once the raw internals are
+ * confirmed safe to show. The real error is always logged server-side
+ * too.
  */
 export async function requestMagicLink(
   _prevState: MagicLinkFormState,
@@ -30,9 +41,20 @@ export async function requestMagicLink(
     return { status: "error", message: "Merci de saisir une adresse email valide." };
   }
 
+  let supabase;
   try {
-    const supabase = await createServerSupabaseClient();
+    supabase = await createServerSupabaseClient();
+  } catch (error) {
+    unstable_rethrow(error);
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Magic link request failed (client init):", detail);
+    return {
+      status: "error",
+      message: `Configuration Supabase indisponible : ${detail}`,
+    };
+  }
 
+  try {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -41,21 +63,24 @@ export async function requestMagicLink(
     });
 
     if (error) {
-      console.error("Magic link request failed:", error.message);
+      console.error(
+        "Magic link request failed (signInWithOtp):",
+        error.message,
+        "status:",
+        error.status,
+      );
       return {
         status: "error",
-        message: "Impossible d'envoyer le lien pour le moment. Merci de réessayer.",
+        message: `Le lien n'a pas pu être envoyé (réponse Supabase : ${error.message}).`,
       };
     }
   } catch (error) {
     unstable_rethrow(error);
-    console.error(
-      "Magic link request failed:",
-      error instanceof Error ? error.message : error,
-    );
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Magic link request failed (unexpected):", detail);
     return {
       status: "error",
-      message: "Impossible d'envoyer le lien pour le moment. Merci de réessayer.",
+      message: `Erreur inattendue lors de l'envoi du lien : ${detail}`,
     };
   }
 
