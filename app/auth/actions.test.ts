@@ -25,6 +25,14 @@ vi.mock("next/navigation", () => ({
   unstable_rethrow: vi.fn(),
 }));
 
+// getSiteUrl() (used inside requestMagicLink) reads next/headers directly —
+// see lib/supabase/site-url.test.ts for its own dedicated coverage. Here it
+// only needs a stable, harmless value so requestMagicLink's own tests don't
+// depend on header-resolution behaviour.
+vi.mock("next/headers", () => ({
+  headers: vi.fn().mockResolvedValue({ get: () => null }),
+}));
+
 function formDataWith(email: string): FormData {
   const data = new FormData();
   data.set("email", email);

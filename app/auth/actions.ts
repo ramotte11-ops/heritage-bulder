@@ -54,11 +54,14 @@ export async function requestMagicLink(
     };
   }
 
+  let redirectTo: string;
   try {
+    redirectTo = `${await getSiteUrl()}/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${getSiteUrl()}/auth/callback`,
+        emailRedirectTo: redirectTo,
       },
     });
 
@@ -68,6 +71,8 @@ export async function requestMagicLink(
         error.message,
         "status:",
         error.status,
+        "redirectTo:",
+        redirectTo,
       );
       return {
         status: "error",
@@ -86,7 +91,14 @@ export async function requestMagicLink(
 
   return {
     status: "success",
-    message: `Un lien de connexion vient d'être envoyé à ${email}. Consultez votre boîte mail.`,
+    // Includes the resolved redirect target on purpose: it is only ever
+    // a public base URL (never a credential), and showing it is what
+    // makes a wrong resolution (e.g. localhost on a Deploy Preview)
+    // provable from the page itself instead of requiring Netlify log
+    // access that has proven unreachable in practice. See getSiteUrl()'s
+    // docstring for why this is resolved from the request's own Host
+    // header rather than platform metadata.
+    message: `Un lien de connexion vient d'être envoyé à ${email}. Consultez votre boîte mail. (Redirection configurée vers ${redirectTo})`,
   };
 }
 

@@ -156,9 +156,11 @@ lib/                          Logic that operates on config/types
     server-client.ts          Cookie-aware (@supabase/ssr) client — Server
                                Components/Actions/Route Handlers
     service-role-client.ts    Service-role client — bypasses RLS, server-only
-    site-url.ts                 Magic Link redirect target: Netlify's
-                                 DEPLOY_PRIME_URL (correct per deploy
-                                 context automatically) if present, else
+    site-url.ts                 Magic Link redirect target: the incoming
+                                 request's own Host header first (proven
+                                 correct regardless of platform metadata
+                                 propagation), else Netlify's
+                                 DEPLOY_PRIME_URL, else
                                  NEXT_PUBLIC_SITE_URL, else localhost
                                  (+ tests)
     session.ts                   getAuthenticatedUser() — raw Supabase Auth
