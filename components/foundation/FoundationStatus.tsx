@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EDITORIAL_CONTEXTS, MEMORIAL_TYPES } from "@/config/memorial";
 import { LANGUAGES } from "@/config/languages";
 import { SKINS } from "@/config/skins";
@@ -35,6 +36,10 @@ export function FoundationStatus() {
           <dd>{LANGUAGES.join(", ")}</dd>
         </div>
       </dl>
+
+      <Link href="/builder" className={styles.builderLink}>
+        Ouvrir le Builder (démonstration) →
+      </Link>
     </main>
   );
 }

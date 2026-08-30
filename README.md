@@ -4,10 +4,11 @@ Technical foundation for the HERITAGE HOMMAGE memorial Builder — a single,
 configurable engine that will let non-technical clients personalize,
 preview and publish an online memorial.
 
-This repository currently contains **Mission 001 (technical foundations)
-and Mission 002 (data model & Supabase foundation)**. There is no
-Builder, no real authentication, no connected Supabase project, no photo
-upload, and no visual design yet — see [What is NOT built](#what-is-not-built-yet)
+This repository currently contains **Mission 001 (technical foundations),
+Mission 002 (data model & Supabase foundation), and Mission 003 (Builder
+shell — local demo only)**. There is no real authentication, no
+connected Supabase project, no real persistence, no photo upload, and no
+final visual design yet — see [What is NOT built](#what-is-not-built-yet)
 below.
 
 ## Getting started
@@ -24,6 +25,9 @@ npm run dev
 # type-check, lint
 npm run lint
 
+# unit tests
+npm run test
+
 # production build
 npm run build
 npm run start
@@ -32,6 +36,10 @@ npm run start
 No environment variables or external service is required to install, run,
 or build this project — see `.env.example` for what a future mission will
 need once Supabase is actually connected.
+
+Once running, open `/builder` for the Mission 003 Builder demo — a
+locally-driven memorial editor with two demo memorials, one per
+currently-configured editorial context.
 
 To validate the database schema locally (no account, no Docker, no
 network — see `supabase/README.md`):
@@ -53,6 +61,11 @@ scripts/db/test-local.sh
 - **Supabase** (`@supabase/supabase-js`) for PostgreSQL + Auth + Storage —
   schema and adapters exist (see `supabase/` and `lib/supabase/`), but no
   real project is connected yet.
+- **Vitest** for unit tests on framework-free logic (`lib/**/*.test.ts`) —
+  chosen over Jest for lighter/faster setup with this project's TS +
+  Turbopack stack; no React rendering/DOM dependency needed, since
+  Builder logic is deliberately kept separate from its React components
+  (see Repository structure below).
 
 See each mission's final report (delivered in the conversation that
 produced the corresponding commits) for the full dependency list and
@@ -64,10 +77,20 @@ rationale.
 app/                          Next.js App Router — routes only
   layout.tsx                  Root HTML shell, global styles import
   page.tsx                    Home route — renders FoundationStatus
+  builder/
+    page.tsx                  Demo memorial picker
+    [demoId]/page.tsx         Opens one demo memorial in the Builder shell
 
 components/                   Presentational UI, grouped by domain
   foundation/
     FoundationStatus.tsx      Technical confirmation page (Mission 001)
+  builder/                    Builder shell UI (Mission 003) — presentation
+                               only; all state transitions come from
+                               lib/builder/builder-state.ts
+    BuilderShell.tsx           Top-level: header, mode switch, layout
+    SectionList.tsx             Section nav + socle/optional + toggle
+    SectionEditor.tsx           Minimal generic edit fields
+    MemorialPreview.tsx         Read-only preview of enabled sections
 
 config/                       HERITAGE-defined product configuration
   memorial.ts                 memorialType, editorialContext values
@@ -79,7 +102,15 @@ config/                       HERITAGE-defined product configuration
   messages.ts                 visitor message type values
 
 lib/                          Logic that operates on config/types
-  sections.ts                 getOrderedSections() helper
+  sections.ts                 getOrderedSections() helper (+ sections.test.ts)
+  builder/                    Framework-free Builder logic (Mission 003) —
+                               pure functions, no React import; this is the
+                               boundary a future mission connects to
+                               DataRepository<Memorial>/memorial_drafts
+    builder-state.ts            State shape + pure transitions (+ tests)
+    demo-content.ts              Mission-003-only generic content shape
+    demo-memorials.ts            Local fixtures, never touch Supabase
+    section-labels.ts            Builder UI text only, not product i18n
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -161,10 +192,19 @@ exclusion list for the full wording):
   exist and are tested locally — see `supabase/README.md` — but nothing
   points at an actual project yet.
 - Real authentication / a magic-link login screen (the port and its
-  Supabase implementation exist; no UI calls it).
+  Supabase implementation exist; no UI calls it). The Builder demo
+  (`/builder`) has no owner session at all — anyone can open it.
 - Etsy integration or webhooks; a working (redeemable) Entitlement flow.
-- A functional Builder (editing UI), autosave, or live preview.
-- Real publication logic or real slug/URL generation.
+- Real persistence for the Builder: `/builder` (Mission 003) edits two
+  local demo memorials, in React state, for the current page session
+  only — nothing is read from or written to `memorial_drafts` or any
+  other Supabase table. No "Save" action exists, so there is nothing
+  that could misleadingly claim to have persisted anything.
+- Real publication logic or real slug/URL generation. The Builder's
+  "Prévisualisation" mode is a local preview of demo content, not a
+  public memorial page — nothing is written to
+  `memorial_published_snapshots`, and no memorial's `status` is ever
+  changed by it.
 - Photo upload (metadata table and URL-resolving adapter exist; no
   upload path).
 - A visitor-facing message form or moderation UI (the schema and its

@@ -35,3 +35,9 @@
   min-width: 10rem;
   font-weight: 600;
 }
+
+.builderLink {
+  margin-top: 1.5rem;
+  font-weight: 600;
+  text-decoration: underline;
+}

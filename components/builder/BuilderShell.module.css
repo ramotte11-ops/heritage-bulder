@@ -1,0 +1,87 @@
+.shell {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.identity {
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.title {
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.context {
+  opacity: 0.75;
+  font-size: 0.875rem;
+}
+
+.modeSwitch {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modeButton,
+.modeActive {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.modeActive {
+  border-color: var(--foreground);
+  font-weight: 600;
+}
+
+.demoNotice {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+  border-left: 3px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  padding-left: 0.625rem;
+}
+
+.editLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 40rem) {
+  .header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .modeSwitch {
+    flex-shrink: 0;
+  }
+
+  .editLayout {
+    grid-template-columns: 16rem 1fr;
+    align-items: start;
+  }
+}
