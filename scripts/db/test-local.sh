@@ -134,8 +134,8 @@ OWNER_B=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_ran
 AUTH_UID_A=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_A';")
 AUTH_UID_B=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_B';")
 
-ENT_A=$($DB -t -A -c "insert into entitlements (source, skin_id) values ('etsy', 'intemporel') returning id;")
-ENT_B=$($DB -t -A -c "insert into entitlements (source, skin_id) values ('etsy', 'intemporel') returning id;")
+ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'occidental') returning id;")
+ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'occidental') returning id;")
 
 MEM_A=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug, status) values ('$OWNER_A', '$ENT_A', 'person', 'announcement', 'intemporel', 'en', 'test-memorial-a-1x2y3z', 'published') returning id;")
 MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug, status) values ('$OWNER_B', '$ENT_B', 'person', 'remembrance', 'intemporel', 'en', 'test-memorial-b-4a5b6c', 'draft') returning id;")
@@ -159,6 +159,12 @@ expect_error "invalid status value is rejected" \
 
 expect_error "invalid skin_id is rejected" \
   "update memorials set skin_id = 'not-a-real-skin' where id = '$MEM_A';"
+
+expect_error "invalid offer_id is rejected" \
+  "insert into entitlements (source, offer_id) values ('etsy', 'not-a-real-offer');"
+
+expect_error "entitlements.skin_id no longer exists (Mission 006: skin lives on memorials only)" \
+  "select skin_id from entitlements limit 1;"
 
 expect_error "invalid enabled_sections value is rejected" \
   "update memorials set enabled_sections = array['not-a-real-section'] where id = '$MEM_A';"
