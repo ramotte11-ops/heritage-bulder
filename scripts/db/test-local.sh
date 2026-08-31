@@ -223,6 +223,16 @@ as_owner "$AUTH_UID_A" "update memorial_drafts set content = '{\"hero\": {\"titl
 DRAFT_CONTENT_B=$($DB -t -A -c "select content from memorial_drafts where memorial_id = '$MEM_B';")
 check "owner A's attempt to autosave owner B's draft silently affects 0 rows" "{}" "$DRAFT_CONTENT_B"
 
+# Mission 008: prove the read path (getDraftContent) at the RLS level,
+# symmetrically to Mission 007's write-path proof above — RLS already
+# granted this (memorial_drafts_select_own), no migration needed, but
+# nothing had read draft *content* as the scoped owner role before now.
+READ_OWN=$(as_owner "$AUTH_UID_A" "select content->'hero'->>'title' from memorial_drafts where memorial_id = '$MEM_A';")
+check "owner A can read their own memorial's draft content" "Autosaved" "$READ_OWN"
+
+READ_OTHERS=$(as_owner "$AUTH_UID_A" "select count(*) from memorial_drafts where memorial_id = '$MEM_B';")
+check "owner A cannot read owner B's draft at all (0 rows, not an error)" "0" "$READ_OTHERS"
+
 RESULT=$(as_anon "select count(*) from memorial_published_snapshots;")
 check "anonymous visitor sees the 1 published snapshot (memorial A)" "1" "$RESULT"
 

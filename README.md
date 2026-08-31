@@ -11,11 +11,13 @@ Link, session only, no product entitlement), Mission 005 (memorial
 lifecycle state machine — pure logic only, not wired into the Builder or
 Supabase yet), Mission 006 (Offer → MemorialType/AllowedSkins →
 Memorial.skin model — pure logic + schema change only, no real
-activation flow yet), and Mission 007 (autosave foundation — a real
+activation flow yet), Mission 007 (autosave foundation — a real
 draft-content write path and a pure save-status state machine, neither
-wired into the Builder yet)**. There is no connected Supabase project
-for the Builder itself yet, no real Builder persistence, no photo
-upload, and no final visual design —
+wired into the Builder yet), and Mission 008 (draft persistence — the
+matching read path, completing a symmetric read+write contract for a
+memorial's draft content, still not wired into the Builder)**. There is
+no connected Supabase project for the Builder itself yet, no real
+Builder persistence, no photo upload, and no final visual design —
 see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
@@ -202,21 +204,25 @@ lib/                          Logic that operates on config/types
     data-repository.ts        Generic persistence contract
     auth-provider.ts          Generic session contract
     media-storage-provider.ts Generic media URL contract
-    draft-repository.ts       Mission 007 — saveDraftContent(memorialId,
-                               content): whole-content, last-write-wins;
+    draft-repository.ts       Mission 007/008 — getDraftContent(memorialId)
+                               + saveDraftContent(memorialId, content):
                                the one piece DataRepository<Memorial>'s
                                own update() explicitly declined to cover
                                (see its comment) — never sees
-                               MemorialType/Skin/Offer
+                               MemorialType/Skin/Offer. Read returns
+                               `null` for "not found or not yours"
+                               (deliberately indistinguishable); write
+                               stays whole-content, last-write-wins,
+                               and rejects instead of silently no-op'ing
     supabase/                 Supabase-backed implementations of the ports
                                above — no other file talks to Supabase
       memorial-repository.ts
       auth-provider.ts
       media-storage-provider.ts
       draft-repository.ts       Relies entirely on memorial_drafts_
-                                 update_own's existing RLS — no ownership
-                                 check duplicated here, no migration
-                                 needed (+ tests, mocked client)
+                                 select_own/update_own's existing RLS —
+                                 no ownership check duplicated here, no
+                                 migration needed (+ tests, mocked client)
   supabase/                   Lazy Supabase client construction (never
                                throws at import time — see the files)
     env.ts
@@ -321,7 +327,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 007 (see each mission's own
+Deliberately out of scope through Mission 008 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -347,6 +353,12 @@ exclusion list for the full wording):
   future UI-wiring mission is meant to use), and no optimistic
   concurrency control exists (last-write-wins — see
   `supabase/README.md`).
+- Builder session resumption (Mission 009) — Mission 008 built and
+  tested the matching *read* half of `lib/adapters/draft-repository.ts`
+  (`getDraftContent()`), completing a symmetric read+write contract for
+  a memorial's draft content. Nothing calls it: no Server Action, no
+  Builder wiring, no "resume where you left off" behaviour exists yet —
+  see this mission's report.
 
 - A real, connected Supabase project (URL/keys) *for the Builder*. The
   schema and adapters exist and are tested locally — see

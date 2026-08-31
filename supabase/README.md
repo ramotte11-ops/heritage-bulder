@@ -122,13 +122,16 @@ never duplicated onto `entitlements` — it is always derived from
 `entitlements.memorial_id` in the correction above: one relationship,
 one source of truth.
 
-**Autosave writes rely entirely on `memorial_drafts_update_own` — no new
-policy, no migration (Mission 007).** `lib/adapters/supabase/draft-repository.ts`
-overwrites `memorial_drafts.content` wholesale (last-write-wins) using
-this table's existing RLS policy; it performs no ownership check of its
-own, and none is needed — a wrong-owner write already affects zero rows
-at the database level, exactly like `memorials`' own update policy (see
-"Row Level Security" below). Known, accepted V1 limitation: no
+**Draft read + write rely entirely on the existing
+`memorial_drafts_select_own`/`memorial_drafts_update_own` policies — no
+new policy, no migration (Mission 007/008).**
+`lib/adapters/supabase/draft-repository.ts` reads and overwrites
+`memorial_drafts.content` wholesale (last-write-wins) using these
+tables' existing RLS; it performs no ownership check of its own, and
+none is needed — a wrong-owner write already affects zero rows, and a
+wrong-owner *read* returns zero rows too (surfaced as `null`, not an
+error — Mission 008 deliberately keeps "doesn't exist" and "not yours"
+indistinguishable to the caller). Known, accepted V1 limitation: no
 optimistic concurrency control (no version/etag column) — acceptable
 because nothing in this codebase yet lets two editors touch the same
 memorial's draft at once; revisit if that changes.
@@ -217,7 +220,7 @@ the script itself, never in `migrations/`. Run it with:
 scripts/db/test-local.sh
 ```
 
-As of Mission 007 this passes 24/24 checks (11 integrity, 13 RLS). It is
+As of Mission 008 this passes 26/26 checks (11 integrity, 15 RLS). It is
 not a substitute for testing against a real Supabase project (real
 GoTrue-issued JWTs, PostgREST) — that happens once a project exists.
 
