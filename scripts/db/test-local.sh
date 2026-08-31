@@ -212,6 +212,17 @@ check "owner A's update to owner B's memorial silently affects 0 rows" "en" "$UP
 RESULT=$(as_owner "$AUTH_UID_A" "select count(*) from memorial_drafts;")
 check "owner A sees exactly their own 1 draft (not owner B's)" "1" "$RESULT"
 
+# Mission 007: prove the autosave foundation's actual write path — RLS
+# already granted this (memorial_drafts_update_own), no migration
+# needed, but nothing had exercised it as an UPDATE before this mission.
+as_owner "$AUTH_UID_A" "update memorial_drafts set content = '{\"hero\": {\"title\": \"Autosaved\"}}' where memorial_id = '$MEM_A';" >/dev/null
+DRAFT_CONTENT=$($DB -t -A -c "select content->'hero'->>'title' from memorial_drafts where memorial_id = '$MEM_A';")
+check "owner A can autosave their own memorial's draft content" "Autosaved" "$DRAFT_CONTENT"
+
+as_owner "$AUTH_UID_A" "update memorial_drafts set content = '{\"hero\": {\"title\": \"Hijacked\"}}' where memorial_id = '$MEM_B';" >/dev/null
+DRAFT_CONTENT_B=$($DB -t -A -c "select content from memorial_drafts where memorial_id = '$MEM_B';")
+check "owner A's attempt to autosave owner B's draft silently affects 0 rows" "{}" "$DRAFT_CONTENT_B"
+
 RESULT=$(as_anon "select count(*) from memorial_published_snapshots;")
 check "anonymous visitor sees the 1 published snapshot (memorial A)" "1" "$RESULT"
 
