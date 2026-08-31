@@ -9,10 +9,13 @@ Mission 002 (data model & Supabase foundation), Mission 003 (Builder
 shell — local demo only), Mission 004 (owner authentication — Magic
 Link, session only, no product entitlement), Mission 005 (memorial
 lifecycle state machine — pure logic only, not wired into the Builder or
-Supabase yet), and Mission 006 (Offer → MemorialType/AllowedSkins →
+Supabase yet), Mission 006 (Offer → MemorialType/AllowedSkins →
 Memorial.skin model — pure logic + schema change only, no real
-activation flow yet)**. There is no connected Supabase project yet, no
-real Builder persistence, no photo upload, and no final visual design —
+activation flow yet), and Mission 007 (autosave foundation — a real
+draft-content write path and a pure save-status state machine, neither
+wired into the Builder yet)**. There is no connected Supabase project
+for the Builder itself yet, no real Builder persistence, no photo
+upload, and no final visual design —
 see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
@@ -152,6 +155,13 @@ lib/                          Logic that operates on config/types
     demo-content.ts              Mission-003-only generic content shape
     demo-memorials.ts            Local fixtures, never touch Supabase
     section-labels.ts            Builder UI text only, not product i18n
+    autosave-state.ts            Mission 007 — pure save-status state
+                                 machine (idle/pending/saving/saved/
+                                 error) + AUTOSAVE_DEBOUNCE_MS; knows
+                                 nothing about MemorialType/Skin/Offer;
+                                 not wired into any component yet — the
+                                 boundary a future progressive-editing UI
+                                 binds to (+ tests)
   memorial/                   Memorial lifecycle logic (Mission 005) —
                                pure, no I/O, no Supabase; not wired into
                                the Builder or any adapter yet — the clean
@@ -192,11 +202,21 @@ lib/                          Logic that operates on config/types
     data-repository.ts        Generic persistence contract
     auth-provider.ts          Generic session contract
     media-storage-provider.ts Generic media URL contract
+    draft-repository.ts       Mission 007 — saveDraftContent(memorialId,
+                               content): whole-content, last-write-wins;
+                               the one piece DataRepository<Memorial>'s
+                               own update() explicitly declined to cover
+                               (see its comment) — never sees
+                               MemorialType/Skin/Offer
     supabase/                 Supabase-backed implementations of the ports
                                above — no other file talks to Supabase
       memorial-repository.ts
       auth-provider.ts
       media-storage-provider.ts
+      draft-repository.ts       Relies entirely on memorial_drafts_
+                                 update_own's existing RLS — no ownership
+                                 check duplicated here, no migration
+                                 needed (+ tests, mocked client)
   supabase/                   Lazy Supabase client construction (never
                                throws at import time — see the files)
     env.ts
@@ -301,7 +321,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 006 (see each mission's own
+Deliberately out of scope through Mission 007 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -317,20 +337,32 @@ exclusion list for the full wording):
   a multi-skin offer (at purchase, at activation, or elsewhere) is
   explicitly left open — see `config/offers.ts` and this mission's
   report.
+- The progressive "one question at a time" editing experience, or any
+  Builder UI/design change — Mission 007 built and tested the autosave
+  *foundation* only (`lib/builder/autosave-state.ts`,
+  `lib/adapters/draft-repository.ts` + its Supabase implementation).
+  Nothing in `components/builder/*` or `app/builder/*` calls either —
+  the Builder is still Mission 003's local-demo-only shell. No debounce
+  scheduler exists yet (only the `AUTOSAVE_DEBOUNCE_MS` constant a
+  future UI-wiring mission is meant to use), and no optimistic
+  concurrency control exists (last-write-wins — see
+  `supabase/README.md`).
 
-- A real, connected Supabase project (URL/keys). The schema and adapters
-  exist and are tested locally — see `supabase/README.md` — but nothing
-  points at an actual project yet. `/login` and `/owner` (Mission 004)
-  degrade gracefully without one: the pages still load/redirect
-  correctly, only the actual email send requires a real project.
+- A real, connected Supabase project (URL/keys) *for the Builder*. The
+  schema and adapters exist and are tested locally — see
+  `supabase/README.md` — but the Builder itself still edits only local
+  demo fixtures; Mission 004's `/login`/`/owner` are already connected
+  to a real project independently.
 - Any link between an authenticated session and HERITAGE's own `owners`
   business table — see the architecture rule above.
 - Etsy integration or webhooks; a working (redeemable) Entitlement flow.
-- Real persistence for the Builder: `/builder` (Mission 003) edits two
-  local demo memorials, in React state, for the current page session
-  only — nothing is read from or written to `memorial_drafts` or any
-  other Supabase table. No "Save" action exists, so there is nothing
-  that could misleadingly claim to have persisted anything.
+- Real persistence for the Builder *UI*: `/builder` (Mission 003) still
+  edits two local demo memorials, in React state, for the current page
+  session only — the write path to `memorial_drafts` now exists and is
+  tested (Mission 007), but nothing in `/builder` calls it yet. No
+  "Save" action or autosave trigger is wired into any component, so
+  there is nothing in the UI that could misleadingly claim to have
+  persisted anything.
 - Real publication logic or real slug/URL generation. The Builder's
   "Prévisualisation" mode is a local preview of demo content, not a
   public memorial page — nothing is written to
