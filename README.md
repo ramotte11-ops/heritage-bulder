@@ -6,11 +6,12 @@ preview and publish an online memorial.
 
 This repository currently contains **Mission 001 (technical foundations),
 Mission 002 (data model & Supabase foundation), Mission 003 (Builder
-shell — local demo only), and Mission 004 (owner authentication — Magic
-Link, session only, no product entitlement)**. There is no connected
-Supabase project yet, no real Builder persistence, no photo upload, and
-no final visual design — see [What is NOT built](#what-is-not-built-yet)
-below.
+shell — local demo only), Mission 004 (owner authentication — Magic
+Link, session only, no product entitlement), and Mission 005 (memorial
+lifecycle state machine — pure logic only, not wired into the Builder or
+Supabase yet)**. There is no connected Supabase project yet, no real
+Builder persistence, no photo upload, and no final visual design — see
+[What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
 
@@ -140,6 +141,21 @@ lib/                          Logic that operates on config/types
     demo-content.ts              Mission-003-only generic content shape
     demo-memorials.ts            Local fixtures, never touch Supabase
     section-labels.ts            Builder UI text only, not product i18n
+  memorial/                   Memorial lifecycle logic (Mission 005) —
+                               pure, no I/O, no Supabase; not wired into
+                               the Builder or any adapter yet — the clean
+                               boundary a future publish/save Server
+                               Action is meant to call
+    status-transitions.ts       MEMORIAL_STATUS_TRANSITIONS (the 9
+                                 validated transitions; archived is a
+                                 deliberate terminal state — no
+                                 restore/un-archive in this mission),
+                                 canTransitionMemorialStatus(),
+                                 transitionMemorial() — never throws,
+                                 and distinguishes first publication from
+                                 republication via first_published_at
+                                 instead of a "republished" status
+                                 (+ tests: exhaustive 25-pair matrix)
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -234,11 +250,24 @@ future mission, not just this one:
   `owners` row on login; the mission that builds Entitlement redemption
   decides how/when a session becomes an Owner. See
   `lib/supabase/session.ts`.
+- **A terminal state is acceptable when it's intentional.** Mission 005's
+  memorial lifecycle does not require every status to have a way back —
+  `archived` has no outgoing transition in V1. A future restore needs an
+  explicit rule for which state to resume into (a memorial archived
+  before ever publishing differs from one archived mid-edit), which
+  Mission 005 deliberately did not decide — see
+  `lib/memorial/status-transitions.ts`.
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 004 (see each mission's own
+Deliberately out of scope through Mission 005 (see each mission's own
 exclusion list for the full wording):
+
+- Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
+  a Server Action, or a Supabase adapter — Mission 005 built and tested
+  the state machine itself only. No `memorials.status` is ever changed
+  by anything in this codebase yet, and no restore/un-archive path
+  exists (see the architecture rule above).
 
 - A real, connected Supabase project (URL/keys). The schema and adapters
   exist and are tested locally — see `supabase/README.md` — but nothing
