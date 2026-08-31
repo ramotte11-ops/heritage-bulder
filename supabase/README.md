@@ -136,6 +136,15 @@ optimistic concurrency control (no version/etag column) — acceptable
 because nothing in this codebase yet lets two editors touch the same
 memorial's draft at once; revisit if that changes.
 
+**Builder session resumption relies entirely on `memorials_select_own`/
+`memorial_drafts_select_own` — no new policy, no migration
+(Mission 009).** `lib/builder/resume-session.ts` orchestrates
+`DataRepository<Memorial>.findById()` and
+`DraftRepository.getDraftContent()`, both already RLS-scoped; it
+performs no ownership check of its own and takes no `ownerId` parameter
+at all — a wrong-owner or unauthenticated `memorialId` already resolves
+to the same "not found" signal these two policies already produce.
+
 **Section validity is only partly enforced by the database.**
 `memorials.enabled_sections` is checked against the *union* of optional
 section ids across both editorial contexts — not against the subset

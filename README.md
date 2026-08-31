@@ -13,11 +13,15 @@ Supabase yet), Mission 006 (Offer → MemorialType/AllowedSkins →
 Memorial.skin model — pure logic + schema change only, no real
 activation flow yet), Mission 007 (autosave foundation — a real
 draft-content write path and a pure save-status state machine, neither
-wired into the Builder yet), and Mission 008 (draft persistence — the
+wired into the Builder yet), Mission 008 (draft persistence — the
 matching read path, completing a symmetric read+write contract for a
-memorial's draft content, still not wired into the Builder)**. There is
-no connected Supabase project for the Builder itself yet, no real
-Builder persistence, no photo upload, and no final visual design —
+memorial's draft content, still not wired into the Builder), and
+Mission 009 (Builder session resumption — orchestrates the existing
+memorial/draft repositories into one testable "can this session resume
+this project" answer, given an explicit `memorialId`; still not wired
+into the Builder)**. There is no connected Supabase project for the
+Builder itself yet, no real Builder persistence, no photo upload, and no
+final visual design —
 see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
@@ -164,6 +168,19 @@ lib/                          Logic that operates on config/types
                                  not wired into any component yet — the
                                  boundary a future progressive-editing UI
                                  binds to (+ tests)
+    resume-session.ts            Mission 009 — resumeBuilderSession(deps,
+                                 memorialId): orchestrates
+                                 DataRepository<Memorial>.findById +
+                                 DraftRepository.getDraftContent into one
+                                 resumable/notFoundOrForbidden/
+                                 draftAnomaly/error answer. Only
+                                 `memorialId` is accepted — never an
+                                 ownerId, never a "first memorial"
+                                 fallback (its dependency Picks expose no
+                                 listing method to fall back to); RLS
+                                 alone decides authorization, never
+                                 re-implemented here. Not wired into any
+                                 component/Server Action yet (+ tests)
   memorial/                   Memorial lifecycle logic (Mission 005) —
                                pure, no I/O, no Supabase; not wired into
                                the Builder or any adapter yet — the clean
@@ -327,7 +344,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 008 (see each mission's own
+Deliberately out of scope through Mission 009 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -353,12 +370,16 @@ exclusion list for the full wording):
   future UI-wiring mission is meant to use), and no optimistic
   concurrency control exists (last-write-wins — see
   `supabase/README.md`).
-- Builder session resumption (Mission 009) — Mission 008 built and
-  tested the matching *read* half of `lib/adapters/draft-repository.ts`
-  (`getDraftContent()`), completing a symmetric read+write contract for
-  a memorial's draft content. Nothing calls it: no Server Action, no
-  Builder wiring, no "resume where you left off" behaviour exists yet —
-  see this mission's report.
+- Any real "resume your project" UX — Mission 009 built and tested
+  `lib/builder/resume-session.ts` (`resumeBuilderSession()`), the
+  orchestration layer that decides whether a given `memorialId` is
+  resumable, not-found-or-forbidden, has an anomalous draft, or hit a
+  repository error. Nothing calls it: no Server Action, no route, no
+  Builder wiring, no "resume where you left off" screen exists yet. No
+  mechanism for a caller to discover *which* `memorialId` to resume
+  (an owner-projects list, a URL, ...) exists either — this mission
+  deliberately takes `memorialId` as a given, explicit input, never
+  derived from "the owner's first memorial."
 
 - A real, connected Supabase project (URL/keys) *for the Builder*. The
   schema and adapters exist and are tested locally — see
