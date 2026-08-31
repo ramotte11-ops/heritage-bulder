@@ -1,0 +1,23 @@
+.main {
+  max-width: 24rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+}
+
+.title {
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  margin-top: 0.5rem;
+  opacity: 0.75;
+  font-size: 0.9375rem;
+}
+
+.callbackError {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--foreground) 70%, #dc2626);
+  border-left: 3px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  padding-left: 0.625rem;
+}
