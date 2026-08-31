@@ -7,11 +7,13 @@ preview and publish an online memorial.
 This repository currently contains **Mission 001 (technical foundations),
 Mission 002 (data model & Supabase foundation), Mission 003 (Builder
 shell — local demo only), Mission 004 (owner authentication — Magic
-Link, session only, no product entitlement), and Mission 005 (memorial
+Link, session only, no product entitlement), Mission 005 (memorial
 lifecycle state machine — pure logic only, not wired into the Builder or
-Supabase yet)**. There is no connected Supabase project yet, no real
-Builder persistence, no photo upload, and no final visual design — see
-[What is NOT built](#what-is-not-built-yet) below.
+Supabase yet), and Mission 006 (Offer → MemorialType/AllowedSkins →
+Memorial.skin model — pure logic + schema change only, no real
+activation flow yet)**. There is no connected Supabase project yet, no
+real Builder persistence, no photo upload, and no final visual design —
+see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
 
@@ -118,10 +120,19 @@ components/                   Presentational UI, grouped by domain
 
 config/                       HERITAGE-defined product configuration
   memorial.ts                 memorialType, editorialContext values
-  skins.ts                    skin values
-  languages.ts                language values
+  skins.ts                    skin values — 5 as of Mission 006 (one per
+                               cultural offer); an offer may grant more
+                               than one without ever changing this file's
+                               shape, only its value list
+  languages.ts                language values — independent of skin
   sections.ts                 section ids + per-context order/socle rules
   entitlements.ts             entitlement source/status values
+  offers.ts                   OfferId -> { memorialType, allowedSkins }
+                               (Mission 006) — what a customer actually
+                               buys; never a database table, same as the
+                               other files here. See its own docstring
+                               for the full Offer/Entitlement/Memorial
+                               separation.
   media.ts                    media type values
   messages.ts                 visitor message type values
 
@@ -156,6 +167,26 @@ lib/                          Logic that operates on config/types
                                  republication via first_published_at
                                  instead of a "republished" status
                                  (+ tests: exhaustive 25-pair matrix)
+  entitlement/                 Entitlement/Offer logic (Mission 006) —
+                               pure, no I/O, no Supabase; not wired into
+                               any Server Action, adapter, or the Builder
+                               yet — the clean boundary a future
+                               activation flow is meant to call
+    offer-skin.ts                getMemorialTypeForOffer(),
+                                 getAllowedSkins(),
+                                 isSkinAllowedForOffer() — pure lookups
+                                 over config/offers.ts (+ tests)
+    activate-entitlement.ts      planEntitlementActivation() — never
+                                 throws; rejects a non-`available`
+                                 entitlement or a skin outside the
+                                 offer's allowedSkins with
+                                 { ok: false, reason } instead of an
+                                 exception; the skin is always an
+                                 explicit parameter, never resolved
+                                 internally — this mission does not
+                                 decide *when* a skin gets chosen, only
+                                 that nothing can inject one the
+                                 purchased offer doesn't allow (+ tests)
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -238,6 +269,16 @@ future mission, not just this one:
   only link between an entitlement and its memorial (Mission 002
   correction) — no table stores the same relationship from both ends. See
   `supabase/README.md`.
+- **A purchasable "Offer" is configuration, never a database table or a
+  sales-channel name.** `config/offers.ts` (Mission 006) determines a
+  `memorialType` and a *set* of allowed skins per offer — never a single
+  skin baked into the schema, and never named or shaped after Etsy
+  specifically (`EntitlementSource` is the only place a channel is
+  represented, and it's already extensible). `entitlements.offer_id` is
+  the only place a purchase records what was bought; the skin actually
+  used lives exclusively on `memorials.skin_id`, validated against
+  `OFFERS[offer_id].allowedSkins` in application code
+  (`lib/entitlement/`), never in SQL. See `supabase/README.md`.
 - **No public message form goes live without anti-abuse protection
   first.** The `messages_insert_public` RLS policy (`supabase/`) makes
   the *shape* of public message submission possible; it is not product
@@ -260,7 +301,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 005 (see each mission's own
+Deliberately out of scope through Mission 006 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -268,6 +309,14 @@ exclusion list for the full wording):
   the state machine itself only. No `memorials.status` is ever changed
   by anything in this codebase yet, and no restore/un-archive path
   exists (see the architecture rule above).
+- Any real activation flow — Mission 006 built and tested
+  `lib/entitlement/` (Offer lookups + `planEntitlementActivation()`)
+  only. Nothing calls it: no Server Action creates an `owners` row, an
+  `entitlements` row, or a `memorials` row from a purchase. No Etsy
+  webhook/API, no PDF, no commercial UI. *When* a skin gets selected for
+  a multi-skin offer (at purchase, at activation, or elsewhere) is
+  explicitly left open — see `config/offers.ts` and this mission's
+  report.
 
 - A real, connected Supabase project (URL/keys). The schema and adapters
   exist and are tested locally — see `supabase/README.md` — but nothing

@@ -29,7 +29,7 @@ its memorial — see "Entitlement ⟷ memorial" below.
 | Table | Purpose | Rows |
 |---|---|---|
 | `owners` | The person who manages one or more memorials. | One per person (by email). |
-| `entitlements` | The right to create exactly one memorial, from one purchase. | One per purchase. |
+| `entitlements` | The right to create exactly one memorial, from one purchase — records `offer_id`, never a skin (Mission 006). | One per purchase. |
 | `memorials` | The core entity: identity, configuration, status, slug. | One per memorial. |
 | `memorial_drafts` | The content currently being edited. Never public. | Exactly one per memorial (auto-created). |
 | `memorial_published_snapshots` | The current live content. What visitors read. | At most one per memorial (present only once published). |
@@ -95,6 +95,32 @@ matching memorial exists. That was already true before this correction
 doesn't reduce any guarantee the schema previously actually enforced, it
 only removes a redundant field that wasn't kept consistent by anything
 either.
+
+**Offer ⟷ MemorialType ⟷ AllowedSkins ⟷ SelectedSkin (Mission 006).**
+`Offer` is pure application configuration (`config/offers.ts`), never a
+database table — the same reasoning already applied to
+Skin/MemorialType/Language above: it is a HERITAGE product rule, not
+transactional data. `entitlements.offer_id` records which offer was
+purchased; `OFFERS[offer_id]` (config, not SQL) determines both the
+memorial type and the *set* of skins that offer grants access to
+(`allowedSkins` — an array from V1 on, since a culture is expected to
+grow beyond one skin without ever needing a schema change for that
+alone). `entitlements` deliberately carries **no skin column of its
+own** — an earlier version of this schema had `entitlements.skin_id`,
+removed in `20260831160000_entitlement_offer_model.sql` because it
+assumed a skin was always resolved by the time the entitlement exists,
+which HERITAGE does not want to lock in (a future offer may let the
+skin be chosen after purchase, e.g. at activation). The skin actually
+used lives exclusively on `memorials.skin_id`; the rule
+`memorial.skin_id ∈ OFFERS[entitlement.offer_id].allowedSkins` is
+enforced in application code (`lib/entitlement/offer-skin.ts`,
+`lib/entitlement/activate-entitlement.ts`), never as a cross-column SQL
+CHECK — consistent with "Business logic lives in HERITAGE's own code,
+not in Supabase" (see Portability below). `memorial_type` is likewise
+never duplicated onto `entitlements` — it is always derived from
+`offer_id` via config, exactly the same reasoning that removed
+`entitlements.memorial_id` in the correction above: one relationship,
+one source of truth.
 
 **Section validity is only partly enforced by the database.**
 `memorials.enabled_sections` is checked against the *union* of optional
@@ -180,8 +206,7 @@ the script itself, never in `migrations/`. Run it with:
 scripts/db/test-local.sh
 ```
 
-As of the Mission 002 correction this passes 20/20 checks (9 integrity,
-11 RLS). It is
+As of Mission 006 this passes 22/22 checks (11 integrity, 11 RLS). It is
 not a substitute for testing against a real Supabase project (real
 GoTrue-issued JWTs, PostgREST) — that happens once a project exists.
 
@@ -210,6 +235,33 @@ Adding a new migration: create a new file named
 down-migrations in V1 — reasonable for a schema this size, revisit if
 that ever becomes painful), and add it to `scripts/db/test-local.sh`'s
 coverage if it changes a constraint or policy worth asserting.
+
+### Before applying `20260831160000_entitlement_offer_model.sql` to a real project
+
+This migration drops `entitlements.skin_id` — destructive if any real
+row already holds a value there. It has been validated only against
+`scripts/db/test-local.sh`'s throwaway local cluster, never against a
+real Supabase project. Before applying it remotely, run this read-only
+query against the real project and confirm the result with a human
+before proceeding:
+
+```sql
+select count(*) as total_rows,
+       count(*) filter (where skin_id is not null) as rows_with_a_skin
+from entitlements;
+```
+
+- **`total_rows = 0`**: nothing to preserve, the migration applies
+  as-is.
+- **`total_rows > 0` and `rows_with_a_skin = 0`**: existing rows have no
+  skin set — the migration still applies as-is, but confirm what
+  `offer_id` each of those rows should get (the migration cannot infer
+  this; `alter column offer_id set not null` will refuse to run until
+  every row has one).
+- **`rows_with_a_skin > 0`**: real purchase data would be discarded.
+  STOP — do not run this migration as-is. Decide the backfill (which
+  `offer_id` each existing `skin_id` value maps to) with that data in
+  hand before adapting the migration.
 
 ## Portability
 
