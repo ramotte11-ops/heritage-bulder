@@ -96,6 +96,31 @@ function getNoopState(): AutosaveState {
 
 function noopRetry(): void {}
 
+/**
+ * The DOM-facing core of the Mission 010 `beforeunload` guard, pulled out
+ * as a plain, exported, closure-free function purely so it has a direct
+ * unit test (see use-autosave.test.ts) without pulling jsdom or any DOM
+ * rendering into this codebase (still `environment: "node"` — see
+ * vitest.config.mts). Not a new abstraction over the browser API: it's
+ * the exact same two calls the inline listener used before, unchanged in
+ * behaviour, just given a name and a type narrow enough that a plain
+ * fake object satisfies it in a test.
+ *
+ * `preventDefault()` is the standards-track signal, sufficient on its
+ * own in modern evergreen browsers. `returnValue` is set only as a
+ * legacy fallback for older engines that still require it before they'll
+ * show the prompt — this project's own DOM types mark
+ * `BeforeUnloadEvent.returnValue` `@deprecated` (lib.dom.d.ts). It's set
+ * to a plain `true`, never a string: no browser has rendered a custom
+ * `beforeunload` message in years (they all show their own fixed, native
+ * text), so a string here would misleadingly read as "the confirmation
+ * text" when it is not one. No custom message is ever authored.
+ */
+export function applyBeforeUnloadGuard(event: Pick<BeforeUnloadEvent, "preventDefault" | "returnValue">): void {
+  event.preventDefault();
+  event.returnValue = true;
+}
+
 export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosaveResult {
   // Decided once, from the first render's persist — see this file's
   // docstring: real callers pass a stable "is autosave enabled at all"
@@ -133,16 +158,10 @@ export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosa
   useEffect(() => {
     if (!hasUnsavedChanges(state)) return;
 
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      // Browsers show their own native text regardless of this value's
-      // content; only its truthiness matters for triggering the prompt
-      // at all (a long-standing cross-browser requirement — see MDN).
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    // applyBeforeUnloadGuard is a stable, module-level function — safe to
+    // add/remove by direct reference, no wrapper closure needed.
+    window.addEventListener("beforeunload", applyBeforeUnloadGuard);
+    return () => window.removeEventListener("beforeunload", applyBeforeUnloadGuard);
   }, [state]);
 
   // Best-effort recovery: regaining connectivity is a reasonable moment
