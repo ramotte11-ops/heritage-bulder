@@ -482,6 +482,57 @@ OWNER_C_MEMORIALS=$($DB -t -A -c "select count(*) from memorials where owner_id 
 check "one owner legitimately holds several memorials (1 purchase = 1 right = 1 memorial, not 1 owner = 1 memorial)" "4" "$OWNER_C_MEMORIALS"
 
 echo ""
+echo "== Mission 011B: owner resolution guarantees (schema level) =="
+
+# lib/entitlement/resolve-owner.ts relies entirely on `owners`' existing
+# unique indexes for its Case B concurrency safety: it attempts the
+# insert and treats a unique violation as "somebody or something got
+# there first", then re-reads. Those checks assume the indexes really do
+# refuse. Proven here against the real schema rather than assumed.
+
+B_AUTH=$($DB -t -A -c "select gen_random_uuid();")
+$DB -c "insert into owners (auth_user_id, email) values ('$B_AUTH', 'race@example.test');" >/dev/null
+
+expect_error "a second owner for the same auth_user_id is rejected (Case B concurrency guard)" \
+  "insert into owners (auth_user_id, email) values ('$B_AUTH', 'other-address@example.test');"
+
+expect_error "a second owner at the same email is rejected" \
+  "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'race@example.test');"
+
+# resolve-owner.ts lowercases before writing and looks up case-
+# insensitively precisely because of this index. If it used a plain
+# equality lookup it would miss the row this insert collides with.
+expect_error "an email differing only in case is rejected (owners_email_key is lower(email))" \
+  "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'RACE@Example.TEST');"
+
+# Case C is only safe because an unlinked owner can exist at all: the row
+# a future direct-sale/admin flow could create, which redemption must
+# never take over on an email match.
+$DB -c "insert into owners (email) values ('unlinked@example.test');" >/dev/null
+UNLINKED=$($DB -t -A -c "select coalesce(auth_user_id::text, 'null') from owners where email = 'unlinked@example.test';")
+check "an owner can exist with no auth_user_id at all (the Case C row)" "null" "$UNLINKED"
+
+expect_error "an authenticated user cannot insert over that unlinked owner's email (Case C stays a conflict)" \
+  "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'unlinked@example.test');"
+
+# Several unlinked owners may coexist: the auth_user_id unique index is
+# partial (where auth_user_id is not null), so NULL never collides.
+$DB -c "insert into owners (email) values ('unlinked-two@example.test');" >/dev/null
+UNLINKED_COUNT=$($DB -t -A -c "select count(*) from owners where auth_user_id is null;")
+check "several owners may sit at auth_user_id NULL (the index is partial)" "2" "$UNLINKED_COUNT"
+
+# The redemption RPC is reached with an owner id the server resolved.
+# Confirm end to end that a freshly created owner can redeem, so the
+# 011B path (resolve owner -> redeem) is proven against the real schema.
+B_OWNER=$($DB -t -A -c "select id from owners where auth_user_id = '$B_AUTH';")
+B_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct', 'juif') returning id;")
+B_OUTCOME=$(svc "select outcome from redeem_entitlement('$B_ENT', '$B_OWNER', 'person', 'juif');")
+check "a newly created owner can redeem an entitlement (011B path, real schema)" "redeemed" "$B_OUTCOME"
+
+B_MEM_SHAPE=$($DB -t -A -c "select memorial_type || ',' || skin_id || ',' || (owner_id = '$B_OWNER') from memorials where entitlement_id = '$B_ENT';")
+check "the memorial carries the Offer-derived type and skin, owned by the resolved owner" "person,juif,true" "$B_MEM_SHAPE"
+
+echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
