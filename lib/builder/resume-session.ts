@@ -1,6 +1,6 @@
 import type { DataRepository } from "@/lib/adapters/data-repository";
 import type { DraftRepository } from "@/lib/adapters/draft-repository";
-import type { Memorial } from "@/types/memorial";
+import type { StoredMemorial } from "@/types/memorial";
 
 /**
  * Mission 009 — orchestrates the existing repositories
@@ -18,7 +18,7 @@ import type { Memorial } from "@/types/memorial";
  *
  * `memorialId` is the ONLY project identifier this takes — never an
  * `ownerId`, never "the caller's memorials." This is not just a
- * convention: `Pick<DataRepository<Memorial>, "findById">` and
+ * convention: `Pick<DataRepository<StoredMemorial>, "findById">` and
  * `Pick<DraftRepository, "getDraftContent">` are the entire dependency
  * surface, and neither exposes any kind of listing method — there is no
  * "find the owner's first memorial" call this function could even make.
@@ -39,7 +39,7 @@ import type { Memorial } from "@/types/memorial";
  * (Mission 004, upstream of this function), not re-derived here.
  */
 export interface ResumeBuilderSessionDeps {
-  memorialRepository: Pick<DataRepository<Memorial>, "findById">;
+  memorialRepository: Pick<DataRepository<StoredMemorial>, "findById">;
   draftRepository: Pick<DraftRepository, "getDraftContent">;
 }
 
@@ -53,7 +53,7 @@ export type ResumeBuilderSessionResult =
        * lib/builder/builder-state.ts's `createInitialBuilderState`,
        * though nothing wires that up in this mission. */
       status: "resumable";
-      memorial: Memorial;
+      memorial: StoredMemorial;
     }
   | {
       /** `memorialId` doesn't correspond to a memorial the caller can
@@ -78,7 +78,7 @@ export type ResumeBuilderSessionResult =
        * separate `getDraftContent()` call is the one that comes back
        * null. */
       status: "draftAnomaly";
-      memorial: Memorial;
+      memorial: StoredMemorial;
     }
   | {
       /** A genuine repository failure (Supabase/network/etc.), not an
@@ -94,7 +94,7 @@ export async function resumeBuilderSession(
   deps: ResumeBuilderSessionDeps,
   memorialId: string,
 ): Promise<ResumeBuilderSessionResult> {
-  let memorial: Memorial | null;
+  let memorial: StoredMemorial | null;
   try {
     memorial = await deps.memorialRepository.findById(memorialId);
   } catch (error) {
@@ -105,7 +105,7 @@ export async function resumeBuilderSession(
     return { status: "notFoundOrForbidden" };
   }
 
-  let draft: Memorial["draft"] | null;
+  let draft: StoredMemorial["draft"] | null;
   try {
     draft = await deps.draftRepository.getDraftContent(memorialId);
   } catch (error) {

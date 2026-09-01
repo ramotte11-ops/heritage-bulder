@@ -207,6 +207,81 @@ and returns only the two columns those policies need. This is a standard
 PostgreSQL pattern for "table B's policy needs to check table A without
 granting table A directly," not a Supabase-specific trick.
 
+### The `redeem_entitlement()` function
+
+`@supabase/supabase-js` exposes no transaction API: every
+`.from().insert()` / `.update()` is its own PostgREST request, hence its
+own transaction. A redemption is two writes plus the
+`memorials_create_draft` trigger, and no ordering of independent
+transactions avoids a window where one landed and the other did not — an
+entitlement consumed with no memorial, or a memorial whose entitlement is
+still `available`. One function call is one statement, therefore one
+transaction, therefore all-or-nothing.
+
+What it is: an **integrity envelope** — lock, verify, consume, create,
+commit or roll back entirely. It receives `memorial_type` and `skin_id`
+already decided and validated by the TypeScript domain
+(`config/offers.ts`, `lib/entitlement/offer-skin.ts`) and knows nothing
+about offers, skins, cultures, sales channels or UI. HERITAGE product
+logic does not live in the database.
+
+**`SECURITY INVOKER`, not `SECURITY DEFINER`** — deliberately the
+opposite choice from `public_memorial_publication_state()` above, for the
+opposite reason. That function *must* be DEFINER: it is evaluated inside
+RLS policies as `anon`/`authenticated`, roles that must never read
+`memorials`. `redeem_entitlement()` is called by the server-side service
+role, which already carries `BYPASSRLS` and full DML grants, so it needs
+no ambient privilege of its own — and keeping it INVOKER means it has
+none, so it can never become a privilege-escalation vector. If `EXECUTE`
+were ever granted here by mistake, the body would run with that caller's
+own rights, RLS would apply, and the insert into `memorials` would be
+refused (no client role has an INSERT policy). `EXECUTE` is revoked from
+`PUBLIC` and granted only to `service_role`; the harness asserts that
+`anon` and `authenticated` cannot call it.
+
+Behaviour, all proved in `scripts/db/test-local.sh` against a real
+cluster:
+
+| Entitlement state | Result |
+| --- | --- |
+| `available` | Consumed; exactly one memorial created; returns `redeemed`. |
+| `redeemed`, same owner | No second memorial; returns the existing `memorial_id` with `already_redeemed` (a lost response followed by a retry is a network event, not a corruption). |
+| `redeemed`, different owner | Refused (`entitlement_owned_by_another_owner`). |
+| `revoked` | Refused (`entitlement_not_available:revoked`); nothing created, nothing mutated. |
+| `redeemed` with no memorial | Refused (`entitlement_redeemed_without_memorial`) — a real integrity anomaly, surfaced loudly, never "repaired" by minting a second memorial. |
+| unknown id | Refused (`entitlement_not_found`). |
+
+Concurrency is handled by `SELECT ... FOR UPDATE` on the entitlement row.
+A second redemption of the same entitlement blocks there; under READ
+COMMITTED (PostgreSQL's default, and Supabase's) it then re-reads the row
+as the winner committed it, sees `redeemed`, and takes the idempotent or
+refusal branch. Two winners are impossible.
+
+### Progressive memorial columns
+
+`memorials.editorial_context`, `memorials.language` and `memorials.slug`
+are nullable (Mission 011A). A memorial row exists from the instant an
+entitlement is redeemed — before the family has chosen its editorial
+context or language, and long before a public slug can be generated
+(that needs the deceased's name). NULL here is the explicit initial
+state, not an accident; `status` stays `draft`, which already means
+exactly this, so no new lifecycle value was invented for it.
+
+The `CHECK` constraints are kept: in PostgreSQL a CHECK passes when its
+expression is NULL, so `language in ('en','fr','es')` still rejects
+`'zz'` while allowing NULL. `slug` stays `UNIQUE`, and PostgreSQL's
+default unique index is **NULLS DISTINCT** — every NULL is distinct from
+every other, so any number of memorials may sit at `slug IS NULL`
+simultaneously while two identical non-null slugs are still rejected.
+Verified against the target engine (PostgreSQL 16.13:
+`pg_index.indnullsnotdistinct = false`) and asserted in the harness.
+`NULLS NOT DISTINCT` is deliberately not used.
+
+The TypeScript side mirrors this honestly: `StoredMemorial`
+(`types/memorial.ts`) is what persistence returns, `Memorial` is the
+configured memorial the Builder consumes, and `isConfiguredMemorial()`
+is the only way across — no non-null assertions, no casts.
+
 ## Local testing
 
 `scripts/db/test-local.sh` spins up a throwaway, vanilla PostgreSQL
@@ -285,6 +360,92 @@ from entitlements;
   STOP — do not run this migration as-is. Decide the backfill (which
   `offer_id` each existing `skin_id` value maps to) with that data in
   hand before adapting the migration.
+
+### Before applying `20260901120000_redeem_entitlement.sql` to a real project
+
+This migration is **additive and non-destructive**: it relaxes three
+`NOT NULL` constraints (which can never fail on existing data) and
+creates one function. It drops no column, changes no policy, and adds no
+table. It has been validated only against `scripts/db/test-local.sh`'s
+throwaway local cluster, never against a real Supabase project.
+
+Run this **read-only** query against the real project first and confirm
+the result with a human before proceeding. It reads catalogue metadata
+and row counts only — it writes nothing and locks nothing:
+
+```sql
+-- 1. Current nullability of the three columns being relaxed.
+select column_name, is_nullable, data_type
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'memorials'
+  and column_name in ('editorial_context', 'language', 'slug')
+order by column_name;
+
+-- 2. Rows affected by the relaxation (informational: relaxing NOT NULL
+--    never rewrites or invalidates a row, so any count is safe).
+select count(*) as memorials_total,
+       count(*) filter (where editorial_context is null) as context_null,
+       count(*) filter (where language is null)          as language_null,
+       count(*) filter (where slug is null)              as slug_null
+from memorials;
+
+-- 3. The constraints and index this migration relies on must already
+--    exist and must NOT be dropped by it.
+select conname, contype
+from pg_constraint
+where conrelid = 'public.memorials'::regclass
+  and conname in ('memorials_entitlement_id_key',
+                  'memorials_memorial_type_check',
+                  'memorials_skin_id_check',
+                  'memorials_language_check',
+                  'memorials_editorial_context_check')
+order by conname;
+
+select indexrelid::regclass as index_name,
+       indisunique,
+       indnullsnotdistinct
+from pg_index
+where indrelid = 'public.memorials'::regclass
+  and indisunique;
+
+-- 4. The function must not already exist under a different signature,
+--    and service_role must exist to receive the grant.
+select p.proname, pg_get_function_identity_arguments(p.oid) as args,
+       p.prosecdef as is_security_definer
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'redeem_entitlement';
+
+select rolname, rolbypassrls from pg_roles where rolname = 'service_role';
+```
+
+Expected before applying:
+
+- **(1)** all three columns report `is_nullable = NO`. If any already
+  reports `YES`, part of this migration was applied before — stop and
+  reconcile rather than re-running blindly.
+- **(2)** any counts are acceptable; all three NULL counts will be `0`
+  on a project that has never redeemed anything. This query exists to
+  record the "before" state, not to gate the migration.
+- **(3)** `memorials_entitlement_id_key` (the UNIQUE the whole
+  "1 entitlement = 1 memorial" guarantee rests on) must be present, and
+  the unique index on `slug` must report `indnullsnotdistinct = false`.
+  If it reports `true`, STOP: multiple NULL slugs would collide and
+  redemption would fail on the second memorial. The CHECK constraint
+  names listed were confirmed against a cluster built from these
+  migrations alone; a real project that recreated one could carry a
+  different name. That is informational only — this migration references
+  none of them by name.
+- **(4)** `redeem_entitlement` must return **no rows** (it does not exist
+  yet), and `service_role` must exist with `rolbypassrls = t`. After
+  applying, the same query must report
+  `args = p_entitlement_id uuid, p_owner_id uuid, p_memorial_type text, p_skin_id text`
+  and `is_security_definer = f`. If the
+  function already exists, compare its signature and `prosecdef` before
+  re-creating it — `create or replace` would silently change behaviour.
+
+Nothing in this migration has been applied to any real Supabase project.
 
 ## Portability
 
