@@ -594,6 +594,48 @@ check "RLS still scopes authenticated to its own rows (entitlements_select_own i
 SVC_HASH=$(svc "select activation_key_hash from entitlements where id = '$K_ENT';")
 check "service_role CAN read the hash (the redemption engine needs it)" "$K_HASH" "$SVC_HASH"
 
+# --- defence in depth: no client role may WRITE a commercial right ----
+# Today RLS already refuses these (no policy grants them), but that means
+# one accidental `create policy` would open the table. After the REVOKE
+# ALL these fail on privileges instead, so a policy alone grants nothing.
+for role in anon authenticated; do
+  for privilege in INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+    HAS=$($DB -t -A -c "select has_table_privilege('$role','public.entitlements','$privilege');")
+    check "$role has no $privilege privilege on entitlements" "f" "$HAS"
+  done
+done
+
+HASH_WRITABLE=$($DB -t -A -c "select has_column_privilege('authenticated','public.entitlements','activation_key_hash','UPDATE');")
+check "authenticated cannot even be granted a write to activation_key_hash by a policy alone" "f" "$HASH_WRITABLE"
+
+expect_error "authenticated CANNOT insert an entitlement (permission, not just RLS)" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; insert into entitlements (source, offer_id) values ('direct','juif');"
+
+expect_error "authenticated CANNOT update its own entitlement" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; update entitlements set status = 'available' where id = '$K_ENT_MINE';"
+
+expect_error "authenticated CANNOT write activation_key_hash" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; update entitlements set activation_key_hash = null where id = '$K_ENT_MINE';"
+
+expect_error "authenticated CANNOT delete an entitlement" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; delete from entitlements where id = '$K_ENT_MINE';"
+
+expect_error "anon CANNOT insert an entitlement" \
+  "set role anon; insert into entitlements (source, offer_id) values ('direct','juif');"
+
+# --- PUBLIC must hold nothing, directly or by column grant ------------
+PUBLIC_TABLE=$($DB -t -A -c "select coalesce((select true from aclexplode((select relacl from pg_class where oid='public.entitlements'::regclass)) a where a.grantee = 0 limit 1), false);")
+check "PUBLIC has no table privilege on entitlements" "f" "$PUBLIC_TABLE"
+
+PUBLIC_COLUMNS=$($DB -t -A -c "select count(*) from pg_attribute att join lateral aclexplode(att.attacl) a on true where att.attrelid = 'public.entitlements'::regclass and a.grantee = 0;")
+check "PUBLIC has no column privilege on entitlements either" "0" "$PUBLIC_COLUMNS"
+
+# --- service_role keeps everything the engine needs -------------------
+for privilege in SELECT INSERT UPDATE DELETE; do
+  HAS=$($DB -t -A -c "select has_table_privilege('service_role','public.entitlements','$privilege');")
+  check "service_role keeps $privilege on entitlements" "t" "$HAS"
+done
+
 # The column allowlist means any column added later is invisible until
 # somebody deliberately grants it — secure by default, not by vigilance.
 $DB -c "alter table entitlements add column future_column text;" >/dev/null

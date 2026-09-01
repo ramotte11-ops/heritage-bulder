@@ -78,8 +78,31 @@ comment on column entitlements.activation_key_hash is
 -- Consequence to know: `select *` on entitlements now fails for client
 -- roles (PostgREST's default), so a future owner-facing read must name
 -- its columns. Nothing reads this table as anon/authenticated today.
+--
+-- REVOKE ALL, not just SELECT — defence in depth for the writes too.
+-- Supabase's default privileges hand anon and authenticated INSERT,
+-- UPDATE and DELETE on every public-schema table, entitlements
+-- included. Measured on a cluster built from these migrations:
+-- has_column_privilege('authenticated', 'entitlements',
+-- 'activation_key_hash', 'UPDATE') was TRUE, and a client INSERT failed
+-- with "row-level security policy" rather than "permission denied" —
+-- i.e. the ONLY thing standing between a browser and rewriting a
+-- commercial right was the absence of a policy.
+--
+-- That is one accidental `create policy` away from being a hole. An
+-- entitlement is a purchase record: no browser has any business
+-- inserting, updating or deleting one, ever. After this, adding a
+-- policy by mistake grants nothing on its own — an explicit GRANT would
+-- also be required, which is a far more deliberate act.
+--
+-- PUBLIC is named explicitly. It holds nothing today (verified: no
+-- grantee-0 entry in relacl and no column grants), and this migration
+-- must not quietly depend on that staying true.
+--
+-- service_role is deliberately absent from the revoke: it is the
+-- redemption engine and needs its access intact.
 
-revoke select on entitlements from anon, authenticated;
+revoke all privileges on entitlements from public, anon, authenticated;
 
 grant select (
   id, source, external_order_id, offer_id, status,

@@ -314,13 +314,27 @@ and a column revoke cannot subtract from it. So the migration revokes
 the table from `anon`/`authenticated` and grants the legitimate columns
 back explicitly. No policy is created, dropped or modified.
 
+The revoke is `REVOKE ALL PRIVILEGES`, not just SELECT, and it names
+`PUBLIC` explicitly. Supabase's default privileges hand `anon` and
+`authenticated` INSERT/UPDATE/DELETE on every public-schema table, and
+measurement on a cluster built from these migrations confirmed the
+consequence:
+`has_column_privilege('authenticated','entitlements','activation_key_hash','UPDATE')`
+was **true**, and a client INSERT failed with *"row-level security
+policy"* rather than *"permission denied"* — meaning the only thing
+between a browser and rewriting a purchase record was the absence of a
+policy. After the revoke those same statements fail on privileges, so
+one accidental `create policy` grants nothing on its own. `service_role`
+is deliberately untouched.
+
 Two consequences worth knowing: `select *` on `entitlements` now fails
 for client roles (PostgREST's default), so a future owner-facing read
 must name its columns; and the column list is now an allowlist, so any
 column added later is invisible to client roles until someone
-deliberately grants it. `scripts/db/test-local.sh` asserts all of this,
-including that a blanket `GRANT ... ON ALL TABLES` can never quietly
-undo it.
+deliberately grants it. `scripts/db/test-local.sh` asserts all of this —
+every privilege for every role, PUBLIC's table and column ACLs, the
+write refusals, and that a blanket `GRANT ... ON ALL TABLES` can never
+quietly undo it.
 
 ### The `redeem_entitlement_with_activation_key()` function
 
