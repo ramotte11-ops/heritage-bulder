@@ -19,13 +19,17 @@ memorial's draft content, still not wired into the Builder), and
 Mission 009 (Builder session resumption — orchestrates the existing
 memorial/draft repositories into one testable "can this session resume
 this project" answer, given an explicit `memorialId`; still not wired
-into the Builder), and Mission 009B (autosave runtime — the real
+into the Builder), Mission 009B (autosave runtime — the real
 debounce/concurrency controller connecting Mission 007's state machine
-to an injected persistence callback; still not wired into
-`components/builder/*`, since the visible Builder has no legitimate
-`memorialId` yet)**. There is no connected Supabase project for the
-Builder itself yet, no real Builder persistence, no photo upload, and no
-final visual design —
+to an injected persistence callback, genuinely wired into
+`BuilderShell.tsx` via an optional `persist` prop — real edits in
+`/builder` reach it today, though nothing yet supplies a real `persist`
+since the visible Builder has no legitimate `memorialId`), and
+Mission 010 (loss protection — a native `beforeunload` guard and an
+explicit/online-triggered retry, both built on Mission 009B's autosave
+state with no second "dirty" tracker of their own)**. There is no
+connected Supabase project for the Builder itself yet, no real Builder
+persistence, no photo upload, and no final visual design —
 see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
@@ -129,7 +133,10 @@ components/                   Presentational UI, grouped by domain
                                  lib/builder/use-autosave.ts, observing
                                  its own state.content — the demo screen
                                  (app/builder/[demoId]) never passes one,
-                                 so it stays exactly as before
+                                 so it stays exactly as before. Mission
+                                 010's beforeunload/retry protection comes
+                                 for free through that same hook call —
+                                 no change to this file was needed
     SectionList.tsx             Section nav + socle/optional + toggle
     SectionEditor.tsx           Minimal generic edit fields
     MemorialPreview.tsx         Read-only preview of enabled sections
@@ -176,10 +183,16 @@ lib/                          Logic that operates on config/types
     autosave-state.ts            Mission 007 — pure save-status state
                                  machine (idle/pending/saving/saved/
                                  error) + AUTOSAVE_DEBOUNCE_MS; knows
-                                 nothing about MemorialType/Skin/Offer;
-                                 not wired into any component yet — the
-                                 boundary a future progressive-editing UI
-                                 binds to (+ tests)
+                                 nothing about MemorialType/Skin/Offer.
+                                 Mission 010: hasUnsavedChanges(state) —
+                                 true for pending/saving/error, false for
+                                 idle/saved; the one reusable boundary
+                                 both the beforeunload guard
+                                 (use-autosave.ts) and a future in-app
+                                 Builder navigation guard (not built —
+                                 none currently exists to protect) would
+                                 call, rather than each tracking "dirty"
+                                 separately (+ tests)
     resume-session.ts            Mission 009 — resumeBuilderSession(deps,
                                  memorialId): orchestrates
                                  DataRepository<Memorial>.findById +
@@ -209,8 +222,13 @@ lib/                          Logic that operates on config/types
                                  never stacked behind a second full
                                  debounce wait. `persist` is an injected
                                  plain function — this file never imports
-                                 Supabase, never sees a memorialId
-                                 (+ exhaustive tests with fake timers)
+                                 Supabase, never sees a memorialId. Also
+                                 exposes `retry()` (Mission 010) — re-enters
+                                 the same `attemptSave()` a debounce timer
+                                 calls, so every generation/in-flight guard
+                                 applies identically; a no-op outside
+                                 `error` (+ exhaustive tests with fake
+                                 timers)
     autosave-integration.test.ts  Mission 009B — wires builder-state.ts's
                                  real transitions into the controller with
                                  a fake persist, proving the same shape of
@@ -221,7 +239,7 @@ lib/                          Logic that operates on config/types
                                  mount-skip / real-edit / no-persist
                                  sequences use-autosave.ts and
                                  BuilderShell.tsx implement
-    use-autosave.ts               Mission 009B — useAutosave({ content,
+    use-autosave.ts               Mission 009B/010 — useAutosave({ content,
                                  persist }): the thin React binding
                                  (useSyncExternalStore + setPersist called
                                  from an effect, never a ref touched
@@ -229,16 +247,37 @@ lib/                          Logic that operates on config/types
                                  BuilderState.content directly — no
                                  second, parallel content state. `persist`
                                  optional: absent -> no controller is even
-                                 created, fully inert. Skips notifying for
-                                 the value present at mount (never
-                                 "autosaves" what was just loaded). Wired
+                                 created, fully inert, no beforeunload
+                                 guard ever armed. Skips notifying for the
+                                 value present at mount (never "autosaves"
+                                 what was just loaded). Mission 010: a
+                                 native `beforeunload` listener, armed only
+                                 while hasUnsavedChanges(state) is true and
+                                 removed the moment it isn't (never
+                                 permanent) — no custom warning text, the
+                                 browser's own native prompt is used as-is;
+                                 an `online`-triggered best-effort
+                                 `retry()`; `retry` also returned directly
+                                 for a future explicit affordance. Wired
                                  into BuilderShell.tsx (below) — no
                                  dedicated test file for this hook itself,
                                  consistent with this codebase's existing
                                  convention of testing logic, never
-                                 rendering; its logical sequence is
+                                 rendering; its logical sequences are
                                  exercised in autosave-integration.test.ts
-                                 instead
+                                 and loss-protection.test.ts instead
+    loss-protection.test.ts       Mission 010 — the required Test A–J
+                                 scenarios (brief section 15), each
+                                 traceable one to one, proving
+                                 hasUnsavedChanges(controller.getState())
+                                 — exactly the boundary use-autosave.ts's
+                                 beforeunload guard reads — never
+                                 misfires: pending/saving/error all true,
+                                 idle/saved false, a stale save's success
+                                 never clears protection for a newer
+                                 unsaved version, slow-network sequencing
+                                 with controllable promises, demo (no
+                                 persist) mode never at risk
   memorial/                   Memorial lifecycle logic (Mission 005) —
                                pure, no I/O, no Supabase; not wired into
                                the Builder or any adapter yet — the clean
@@ -399,10 +438,18 @@ future mission, not just this one:
   before ever publishing differs from one archived mid-edit), which
   Mission 005 deliberately did not decide — see
   `lib/memorial/status-transitions.ts`.
+- **One boundary decides "is there a loss risk", never a second "dirty"
+  tracker.** Mission 010's `beforeunload` guard and any future in-app
+  navigation guard both call `hasUnsavedChanges(state)`
+  (`lib/builder/autosave-state.ts`), derived entirely from the same
+  `AutosaveState` Mission 007/009B already produce — never a separate
+  boolean kept in sync by hand. A stale save's success is guaranteed
+  (by the same generation mechanism Mission 009B built) to never clear
+  this for a newer, still-unsaved version.
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 009B (see each mission's own
+Deliberately out of scope through Mission 010 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -449,8 +496,21 @@ exclusion list for the full wording):
   for real needs a route/session that already has a real, authorized
   `memorialId` (e.g. Mission 009's `resumeBuilderSession`, itself not yet
   wired into a route) — building that route is not this mission's job
-  either. Also out of scope, per this mission's brief: any protection
-  against losing unsaved work on refresh/close/navigation (Mission 010).
+  either.
+- Any real in-app Builder navigation, or a guard for it — Mission 010
+  found none exists today (`grep` for `Link`/`useRouter`/`redirect` in
+  `components/builder/*` and `app/builder/**` returns nothing): the
+  Builder has no internal navigation that could lose in-memory state. No
+  navigation was invented to have something to protect;
+  `hasUnsavedChanges()` (`lib/builder/autosave-state.ts`) is the ready,
+  reusable boundary a future one would call — see the architecture rule
+  above and this mission's report.
+- Any visible loss-protection UI (a "you have unsaved changes" banner,
+  a retry button, an offline indicator) — Mission 010 built the
+  `beforeunload` guard and `retry()`/online-retry mechanics only;
+  `useAutosave`'s returned `retry` function exists for a future
+  affordance to call, but nothing renders one. The browser's own native
+  `beforeunload` dialog is the only user-visible effect of this mission.
 
 - A real, connected Supabase project (URL/keys) *for the Builder*. The
   schema and adapters exist and are tested locally — see

@@ -58,6 +58,18 @@ import type { MemorialContent } from "@/types/memorial";
  * own debounce has *not* yet elapsed is left alone: its own timer,
  * already (re)scheduled by `notifyContentChanged`, will fire on its
  * own normal schedule.
+ *
+ * ## Mission 010 — recovering from `error` without retyping
+ *
+ * `retry()` re-enters `attemptSave()` directly (the same function a
+ * debounce timer calls), so recovering from a failed save reuses every
+ * guarantee above rather than adding a second recovery path: it can
+ * never apply a stale outcome to a newer edit, exactly like a normal
+ * save. `hasUnsavedChanges()` (autosave-state.ts) is the companion
+ * piece — the pure, reusable answer to "is there currently something
+ * this controller hasn't guaranteed persisted", which
+ * lib/builder/use-autosave.ts uses to scope a `beforeunload` guard to
+ * exactly the moments a real risk exists.
  */
 export interface AutosaveControllerOptions {
   /** Persists one full content snapshot. Resolves with the new
@@ -98,6 +110,19 @@ export interface AutosaveController {
    * read from later, which the project's lint rules for refs disallow
    * touching (even indirectly) during render. */
   setPersist(persist: AutosaveControllerOptions["persist"]): void;
+  /** Mission 010 — explicitly retries the last known content after a
+   * failed save. No-op unless the current status is `error`: calling it
+   * while idle/pending/saving/saved does nothing, since there is either
+   * nothing to retry or a cycle already in flight/queued that already
+   * covers it. Always retries `latestContent` as of the call — the most
+   * recent version `notifyContentChanged` received, never a stale one:
+   * if a real edit happened since the failure, status is already
+   * `pending`, not `error`, and this correctly no-ops in favour of that
+   * edit's own normal debounce cycle instead of racing it. Re-enters
+   * `attemptSave()`, the exact function a debounce timer calls — no
+   * second, parallel save path, and every existing generation/in-flight
+   * guard applies identically regardless of what triggered it. */
+  retry(): void;
 }
 
 export function createAutosaveController(
@@ -192,6 +217,19 @@ export function createAutosaveController(
     }, debounceMs);
   }
 
+  function retry(): void {
+    if (destroyed) return;
+    if (state.status !== "error") return;
+
+    // Bypasses the debounce wait on purpose — this is an explicit "try
+    // again now" request (a future retry button, or use-autosave.ts's
+    // online-triggered retry), not a fresh edit that should sit out its
+    // own debounce window.
+    clearDebounceTimer();
+    setState(markContentChanged(state)); // error -> pending, clears lastError
+    attemptSave();
+  }
+
   function getState(): AutosaveState {
     return state;
   }
@@ -214,5 +252,5 @@ export function createAutosaveController(
     persist = next;
   }
 
-  return { notifyContentChanged, getState, subscribe, destroy, setPersist };
+  return { notifyContentChanged, getState, subscribe, destroy, setPersist, retry };
 }
