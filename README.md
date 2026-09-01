@@ -19,7 +19,11 @@ memorial's draft content, still not wired into the Builder), and
 Mission 009 (Builder session resumption — orchestrates the existing
 memorial/draft repositories into one testable "can this session resume
 this project" answer, given an explicit `memorialId`; still not wired
-into the Builder)**. There is no connected Supabase project for the
+into the Builder), and Mission 009B (autosave runtime — the real
+debounce/concurrency controller connecting Mission 007's state machine
+to an injected persistence callback; still not wired into
+`components/builder/*`, since the visible Builder has no legitimate
+`memorialId` yet)**. There is no connected Supabase project for the
 Builder itself yet, no real Builder persistence, no photo upload, and no
 final visual design —
 see [What is NOT built](#what-is-not-built-yet) below.
@@ -119,7 +123,13 @@ components/                   Presentational UI, grouped by domain
   builder/                    Builder shell UI (Mission 003) — presentation
                                only; all state transitions come from
                                lib/builder/builder-state.ts
-    BuilderShell.tsx           Top-level: header, mode switch, layout
+    BuilderShell.tsx           Top-level: header, mode switch, layout.
+                                 Accepts an optional `persist` prop
+                                 (Mission 009B) wired straight into
+                                 lib/builder/use-autosave.ts, observing
+                                 its own state.content — the demo screen
+                                 (app/builder/[demoId]) never passes one,
+                                 so it stays exactly as before
     SectionList.tsx             Section nav + socle/optional + toggle
     SectionEditor.tsx           Minimal generic edit fields
     MemorialPreview.tsx         Read-only preview of enabled sections
@@ -154,8 +164,10 @@ lib/                          Logic that operates on config/types
                                  "use server" file may only export
                                  async functions
   builder/                    Framework-free Builder logic (Mission 003) —
-                               pure functions, no React import; this is the
-                               boundary a future mission connects to
+                               pure functions, no React import (one
+                               deliberate exception: use-autosave.ts,
+                               Mission 009B's thin React binding); this is
+                               the boundary a future mission connects to
                                DataRepository<Memorial>/memorial_drafts
     builder-state.ts            State shape + pure transitions (+ tests)
     demo-content.ts              Mission-003-only generic content shape
@@ -181,6 +193,52 @@ lib/                          Logic that operates on config/types
                                  alone decides authorization, never
                                  re-implemented here. Not wired into any
                                  component/Server Action yet (+ tests)
+    autosave-controller.ts       Mission 009B — createAutosaveController():
+                                 the runtime missing between Mission 007's
+                                 pure state machine and a real save. Real
+                                 setTimeout debounce (AUTOSAVE_DEBOUNCE_MS,
+                                 reused, never redefined); reuses
+                                 markContentChanged/startSaving/
+                                 saveSucceeded/saveFailed as-is — never
+                                 reimplements the state machine. Tracks an
+                                 explicit generation counter so a save that
+                                 finishes after a newer edit can never mark
+                                 that newer content "saved"; a debounce
+                                 that fires while a save is already running
+                                 is retried the moment that save clears,
+                                 never stacked behind a second full
+                                 debounce wait. `persist` is an injected
+                                 plain function — this file never imports
+                                 Supabase, never sees a memorialId
+                                 (+ exhaustive tests with fake timers)
+    autosave-integration.test.ts  Mission 009B — wires builder-state.ts's
+                                 real transitions into the controller with
+                                 a fake persist, proving the same shape of
+                                 wiring BuilderShell.tsx actually does,
+                                 without DOM rendering (this codebase has
+                                 none — Vitest runs in the "node"
+                                 environment) — including the exact
+                                 mount-skip / real-edit / no-persist
+                                 sequences use-autosave.ts and
+                                 BuilderShell.tsx implement
+    use-autosave.ts               Mission 009B — useAutosave({ content,
+                                 persist }): the thin React binding
+                                 (useSyncExternalStore + setPersist called
+                                 from an effect, never a ref touched
+                                 during render). Observes
+                                 BuilderState.content directly — no
+                                 second, parallel content state. `persist`
+                                 optional: absent -> no controller is even
+                                 created, fully inert. Skips notifying for
+                                 the value present at mount (never
+                                 "autosaves" what was just loaded). Wired
+                                 into BuilderShell.tsx (below) — no
+                                 dedicated test file for this hook itself,
+                                 consistent with this codebase's existing
+                                 convention of testing logic, never
+                                 rendering; its logical sequence is
+                                 exercised in autosave-integration.test.ts
+                                 instead
   memorial/                   Memorial lifecycle logic (Mission 005) —
                                pure, no I/O, no Supabase; not wired into
                                the Builder or any adapter yet — the clean
@@ -344,7 +402,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 009 (see each mission's own
+Deliberately out of scope through Mission 009B (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -361,15 +419,16 @@ exclusion list for the full wording):
   explicitly left open — see `config/offers.ts` and this mission's
   report.
 - The progressive "one question at a time" editing experience, or any
-  Builder UI/design change — Mission 007 built and tested the autosave
-  *foundation* only (`lib/builder/autosave-state.ts`,
-  `lib/adapters/draft-repository.ts` + its Supabase implementation).
-  Nothing in `components/builder/*` or `app/builder/*` calls either —
-  the Builder is still Mission 003's local-demo-only shell. No debounce
-  scheduler exists yet (only the `AUTOSAVE_DEBOUNCE_MS` constant a
-  future UI-wiring mission is meant to use), and no optimistic
-  concurrency control exists (last-write-wins — see
-  `supabase/README.md`).
+  Builder UI/design change — Mission 007 built the autosave *state
+  machine* (`lib/builder/autosave-state.ts`) and Mission 009B built the
+  *runtime* that actually debounces and calls it
+  (`lib/builder/autosave-controller.ts` + `use-autosave.ts`), genuinely
+  wired into `BuilderShell.tsx` via an optional `persist` prop that
+  observes its own `state.content` — real edits in `/builder` do reach
+  the autosave runtime today. What's still not built is everything
+  visual: no optimistic concurrency control (last-write-wins — see
+  `supabase/README.md`), no visible saving/saved indicator (UX work, not
+  built here), and no real *persistence* — see the next point.
 - Any real "resume your project" UX — Mission 009 built and tested
   `lib/builder/resume-session.ts` (`resumeBuilderSession()`), the
   orchestration layer that decides whether a given `memorialId` is
@@ -380,6 +439,18 @@ exclusion list for the full wording):
   (an owner-projects list, a URL, ...) exists either — this mission
   deliberately takes `memorialId` as a given, explicit input, never
   derived from "the owner's first memorial."
+- Real autosave *persistence* from the visible Builder — Mission 009B's
+  runtime (`createAutosaveController`/`useAutosave`) is complete and
+  fully tested against a fake `persist` callback, but nothing calls
+  `DraftRepository.saveDraftContent` from it: the demo Builder
+  (`app/builder/[demoId]`) has no legitimate `memorialId` — its fixtures
+  (`lib/builder/demo-memorials.ts`) are deliberately not UUID-shaped and
+  were never meant to be written to a real Supabase row. Wiring this in
+  for real needs a route/session that already has a real, authorized
+  `memorialId` (e.g. Mission 009's `resumeBuilderSession`, itself not yet
+  wired into a route) — building that route is not this mission's job
+  either. Also out of scope, per this mission's brief: any protection
+  against losing unsaved work on refresh/close/navigation (Mission 010).
 
 - A real, connected Supabase project (URL/keys) *for the Builder*. The
   schema and adapters exist and are tested locally — see
