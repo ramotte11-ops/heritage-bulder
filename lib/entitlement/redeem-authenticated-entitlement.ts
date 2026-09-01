@@ -1,7 +1,12 @@
-import type { EntitlementRepository } from "@/lib/adapters/entitlement-repository";
+import type {
+  EntitlementRepository,
+  RedeemEntitlementOutcome,
+} from "@/lib/adapters/entitlement-repository";
 import type { OwnerRepository } from "@/lib/adapters/owner-repository";
 import { OFFERS, type OfferId } from "@/config/offers";
 import type { Skin } from "@/config/skins";
+import type { MemorialType } from "@/config/memorial";
+import type { Entitlement } from "@/types/entitlement";
 import { getAllowedSkins, getMemorialTypeForOffer, isSkinAllowedForOffer } from "./offer-skin";
 import { resolveOwnerForIdentity, type AuthenticatedIdentity } from "./resolve-owner";
 
@@ -79,7 +84,12 @@ export type RedeemAuthenticatedEntitlementResult =
   | { status: "invalidSkin" }
   /** A redeemed entitlement with no memorial behind it (Mission 011A's
    * anomaly), or anything else that means the data is inconsistent. */
-  | { status: "integrityError" };
+  | { status: "integrityError" }
+  /** Mission 013 — the activation key presented is no longer the current
+   * one: support replaced or invalidated it while this attempt was in
+   * flight. Established under the entitlement's row lock, so nothing was
+   * consumed and no memorial exists. */
+  | { status: "activationKeySuperseded" };
 
 function isKnownOffer(offerId: string): offerId is OfferId {
   return Object.hasOwn(OFFERS, offerId);
@@ -118,21 +128,28 @@ function resolveSkin(
   return { status: "skinSelectionRequired", allowedSkins };
 }
 
-export async function redeemAuthenticatedEntitlement(
-  deps: RedeemAuthenticatedEntitlementDeps,
-  { identity, entitlementId, selectedSkin }: RedeemAuthenticatedEntitlementInput,
+/**
+ * Everything a redemption does once the owner is resolved and the right
+ * is in hand: derive type and skin from the Offer, then perform whatever
+ * redemption operation the caller supplies, and map its outcome.
+ *
+ * Extracted in Mission 013 so the activation-key path reuses the SAME
+ * owner resolution, the SAME Offer/skin rules and the SAME outcome
+ * mapping as the trusted-`entitlementId` path. Only the final database
+ * operation differs — that is the whole point of taking it as a
+ * parameter rather than branching in here.
+ */
+async function completeRedemption(
+  ownerId: string,
+  entitlement: Entitlement,
+  selectedSkin: Skin | undefined,
+  performRedeem: (input: {
+    entitlementId: string;
+    ownerId: string;
+    memorialType: MemorialType;
+    skinId: Skin;
+  }) => Promise<RedeemEntitlementOutcome>,
 ): Promise<RedeemAuthenticatedEntitlementResult> {
-  const ownerResult = await resolveOwnerForIdentity(deps.ownerRepository, identity);
-  if (ownerResult.status !== "resolved") {
-    return ownerResult;
-  }
-  const owner = ownerResult.owner;
-
-  const entitlement = await deps.entitlementRepository.findById(entitlementId);
-  if (!entitlement) {
-    return { status: "entitlementNotFound" };
-  }
-
   // The column has a CHECK, but this build is the one that has to know
   // what the offer MEANS. An offer id it doesn't recognise (an older
   // deployment against a newer database) must stop here rather than
@@ -148,10 +165,10 @@ export async function redeemAuthenticatedEntitlement(
     return skin;
   }
 
-  const outcome = await deps.entitlementRepository.redeem({
-    entitlementId,
+  const outcome = await performRedeem({
+    entitlementId: entitlement.id,
     // Server-resolved, from the session. The only owner id in play.
-    ownerId: owner.id,
+    ownerId,
     memorialType: getMemorialTypeForOffer(entitlement.offerId),
     skinId: skin.skinId,
   });
@@ -170,5 +187,43 @@ export async function redeemAuthenticatedEntitlement(
       return { status: "entitlementOwnedByAnotherOwner" };
     case "integrityAnomaly":
       return { status: "integrityError" };
+    case "activationKeySuperseded":
+      return { status: "activationKeySuperseded" };
   }
+}
+
+export async function redeemAuthenticatedEntitlement(
+  deps: RedeemAuthenticatedEntitlementDeps,
+  { identity, entitlementId, selectedSkin }: RedeemAuthenticatedEntitlementInput,
+): Promise<RedeemAuthenticatedEntitlementResult> {
+  const ownerResult = await resolveOwnerForIdentity(deps.ownerRepository, identity);
+  if (ownerResult.status !== "resolved") {
+    return ownerResult;
+  }
+
+  const entitlement = await deps.entitlementRepository.findById(entitlementId);
+  if (!entitlement) {
+    return { status: "entitlementNotFound" };
+  }
+
+  return completeRedemption(ownerResult.owner.id, entitlement, selectedSkin, (input) =>
+    deps.entitlementRepository.redeem(input),
+  );
+}
+
+/** Mission 013 — the activation-key half, kept in this module so it
+ * shares `completeRedemption` verbatim. Exported for
+ * redeem-with-activation-key.ts, which owns the key parsing and lookup. */
+export async function completeRedemptionForResolvedRight(
+  ownerId: string,
+  entitlement: Entitlement,
+  selectedSkin: Skin | undefined,
+  performRedeem: (input: {
+    entitlementId: string;
+    ownerId: string;
+    memorialType: MemorialType;
+    skinId: Skin;
+  }) => Promise<RedeemEntitlementOutcome>,
+): Promise<RedeemAuthenticatedEntitlementResult> {
+  return completeRedemption(ownerId, entitlement, selectedSkin, performRedeem);
 }

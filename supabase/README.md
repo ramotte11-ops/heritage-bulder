@@ -282,6 +282,68 @@ The TypeScript side mirrors this honestly: `StoredMemorial`
 configured memorial the Builder consumes, and `isConfiguredMemorial()`
 is the only way across — no non-null assertions, no casts.
 
+### Activation keys (Mission 013)
+
+`entitlements.activation_key_hash` stores only `sha256("HH1:<payload>")`
+in lowercase hex — never the raw key, which exists in memory exactly
+twice: when it is generated and when someone presents it. The format
+version is part of what is hashed on purpose, so the same 32 characters
+under a future `HH2` can never open the right an `HH1` key opens.
+
+SHA-256 rather than bcrypt/Argon2 is a deliberate choice, not an
+oversight: password hashing exists to slow the brute force of
+low-entropy human secrets, while a 160-bit CSPRNG key is not
+brute-forceable at any speed — and a salt would make the hash
+non-deterministic, destroying the indexed exact lookup this design
+needs. No pepper either. Hashing happens in TypeScript (`node:crypto`),
+never in pgcrypto, so the database only ever stores an opaque value it
+indexes.
+
+The hash lives on `entitlements` rather than in a side table for one
+specific reason: **replacement and activation must serialize**. An
+UPDATE of this column takes the row lock on exactly the row
+`redeem_entitlement` locks, so "the key was replaced mid-activation" is
+settled by PostgreSQL. A side table would not contend on that lock.
+
+**The hash is server-only by privilege.** `entitlements_select_own` is a
+ROW-level policy, so it would happily expose this column on an owner's
+own row. Verified against a real cluster during Mission 013's audit:
+`REVOKE SELECT (activation_key_hash)` alone does **nothing** while the
+role still holds table-wide SELECT — a table grant covers every column
+and a column revoke cannot subtract from it. So the migration revokes
+the table from `anon`/`authenticated` and grants the legitimate columns
+back explicitly. No policy is created, dropped or modified.
+
+Two consequences worth knowing: `select *` on `entitlements` now fails
+for client roles (PostgREST's default), so a future owner-facing read
+must name its columns; and the column list is now an allowlist, so any
+column added later is invisible to client roles until someone
+deliberately grants it. `scripts/db/test-local.sh` asserts all of this,
+including that a blanket `GRANT ... ON ALL TABLES` can never quietly
+undo it.
+
+### The `redeem_entitlement_with_activation_key()` function
+
+Resolving a key to an entitlement id happens before any lock, so without
+this a key support had already replaced could still redeem —
+`redeem_entitlement()` has no idea which key brought the request. This
+wrapper re-checks the key **under the same row lock** the redemption
+takes, then delegates. It holds no business logic at all: no
+available/redeemed/revoked, no ownership, no idempotence, no memorial or
+draft creation, no offer/skin rule. It answers one question — "is this
+still the current key, now that the right is locked?" — and calls
+`redeem_entitlement()` for everything else.
+
+`redeem_entitlement(uuid, uuid, text, text)` is **unchanged**: a right
+granted directly by HERITAGE has no key and still redeems through it.
+The wrapper is purely additive, `SECURITY INVOKER`, and executable by
+`service_role` alone.
+
+Refusals: `HH410 activation_key_superseded` when the current hash is
+NULL, the presented hash is NULL, or the two differ. The harness proves
+both orders — activation-then-replacement and replacement-then-activation
+— and that the wrapper genuinely blocks on the row lock.
+
 ## Local testing
 
 `scripts/db/test-local.sh` spins up a throwaway, vanilla PostgreSQL

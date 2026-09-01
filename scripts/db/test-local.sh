@@ -108,12 +108,16 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
   $DB -f "$f"
 done
 
-# Supabase's default public-schema grants apply to tables that already
-# existed too (ALTER DEFAULT PRIVILEGES above only covers tables created
-# AFTER it ran, which is every migration table here — but grant
-# explicitly as well so this script keeps working if migrations are
-# reordered).
-$DB -c "grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;" >/dev/null
+# Mission 013 removed the blanket
+#   grant select, insert, update, delete on all tables in schema public
+# that used to run here. It was redundant — ALTER DEFAULT PRIVILEGES
+# above already covers every table these migrations create — and it was
+# actively harmful: running AFTER the migrations, it silently re-granted
+# the table-wide SELECT that 20260901180000_activation_keys.sql revokes
+# to keep entitlements.activation_key_hash server-only. A blanket grant
+# must never be able to undo a deliberate restriction. The checks below
+# assert both halves: ordinary tables are still readable, and the hash is
+# not.
 
 check() {
   local desc="$1"; local expect="$2"; local actual="$3"
@@ -549,6 +553,157 @@ check "a newly created owner can redeem an entitlement (011B path, real schema)"
 
 B_MEM_SHAPE=$($DB -t -A -c "select memorial_type || ',' || skin_id || ',' || (owner_id = '$B_OWNER') from memorials where entitlement_id = '$B_ENT';")
 check "the memorial carries the Offer-derived type and skin, owned by the resolved owner" "person,juif,true" "$B_MEM_SHAPE"
+
+echo ""
+echo "== Mission 013: activation keys =="
+
+# The hash column is server-only BY PRIVILEGE. Mission 013's audit proved
+# a column-level REVOKE alone is powerless while the role holds
+# table-wide SELECT, so the migration revokes the table then grants the
+# legitimate columns back. These checks are the permanent guard: if a
+# future blanket GRANT (or an edited migration) ever hands the table back
+# to client roles, this suite goes red instead of quietly leaking.
+
+K_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'keys@example.test') returning id;")
+K_AUTH=$($DB -t -A -c "select auth_user_id from owners where id = '$K_OWNER';")
+K_HASH=$(printf 'a%.0s' $(seq 1 64))
+K_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$K_HASH') returning id;")
+# Give this owner a redeemed right too: that is the only state in which
+# entitlements_select_own matches a row at all, so it is the only state
+# where a leak could actually happen.
+K_ENT_MINE=$($DB -t -A -c "insert into entitlements (source, offer_id, status, owner_id, redeemed_at, activation_key_hash) values ('direct','juif','redeemed','$K_OWNER',now(),'$(printf 'b%.0s' $(seq 1 64))') returning id;")
+
+expect_error "authenticated CANNOT read activation_key_hash on its own entitlement" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select activation_key_hash from entitlements where id = '$K_ENT_MINE';"
+
+expect_error "authenticated CANNOT filter on activation_key_hash either" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select id from entitlements where activation_key_hash = '$K_HASH';"
+
+expect_error "authenticated CANNOT 'select *' on entitlements (PostgREST's default is blocked)" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select * from entitlements;"
+
+expect_error "anon CANNOT read entitlements at all" \
+  "set role anon; select id from entitlements;"
+
+LEGIT=$($DB -t -A -c "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select offer_id from entitlements where id = '$K_ENT_MINE';")
+check "authenticated CAN still read a legitimate column of its own entitlement" "juif" "$LEGIT"
+
+RLS_STILL=$($DB -t -A -c "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select count(*) from entitlements;")
+check "RLS still scopes authenticated to its own rows (entitlements_select_own intact)" "1" "$RLS_STILL"
+
+SVC_HASH=$(svc "select activation_key_hash from entitlements where id = '$K_ENT';")
+check "service_role CAN read the hash (the redemption engine needs it)" "$K_HASH" "$SVC_HASH"
+
+# The column allowlist means any column added later is invisible until
+# somebody deliberately grants it — secure by default, not by vigilance.
+$DB -c "alter table entitlements add column future_column text;" >/dev/null
+expect_error "a column added later is NOT automatically exposed to authenticated" \
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select future_column from entitlements;"
+$DB -c "alter table entitlements drop column future_column;" >/dev/null
+
+# --- the hash column's own integrity ---
+expect_error "a non-sha256 activation_key_hash is rejected" \
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','not-a-hash');"
+
+expect_error "an uppercase hex activation_key_hash is rejected" \
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$(printf 'A%.0s' $(seq 1 64))');"
+
+expect_error "two rights cannot share one activation key hash" \
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$K_HASH');"
+
+NULL_KEYS=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','occidental'),('direct','arabe') returning 1;" | wc -l)
+check "several rights may coexist with no activation key (partial unique index)" "2" "$NULL_KEYS"
+
+# --- the wrapper's permissions ---
+WRAPPER_SECDEF=$($DB -t -A -c "select prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_entitlement_with_activation_key';")
+check "the wrapper is SECURITY INVOKER, not DEFINER" "f" "$WRAPPER_SECDEF"
+
+WRAPPER_ACL=$($DB -t -A -c "select not exists (select 1 from aclexplode(proacl) a where a.grantee = 0) and proacl is not null from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_entitlement_with_activation_key';")
+check "PUBLIC has no EXECUTE on the wrapper" "t" "$WRAPPER_ACL"
+
+for role in anon authenticated; do
+  HAS=$($DB -t -A -c "select has_function_privilege('$role', p.oid, 'EXECUTE') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_entitlement_with_activation_key';")
+  check "$role has no EXECUTE on the wrapper" "f" "$HAS"
+done
+SVC_EXEC=$($DB -t -A -c "select has_function_privilege('service_role', p.oid, 'EXECUTE') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_entitlement_with_activation_key';")
+check "service_role has EXECUTE on the wrapper" "t" "$SVC_EXEC"
+
+ELEVENA_UNCHANGED=$($DB -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_entitlement' and pg_get_function_identity_arguments(p.oid)='p_entitlement_id uuid, p_owner_id uuid, p_memorial_type text, p_skin_id text';")
+check "Mission 011A's redeem_entitlement is untouched (keyless path preserved)" "1" "$ELEVENA_UNCHANGED"
+
+# --- concurrency / linearisation, scenarios A-F ---
+new_keyed_entitlement() {
+  $DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$1') returning id;"
+}
+HASH_A=$(printf '1%.0s' $(seq 1 64)); HASH_B=$(printf '2%.0s' $(seq 1 64))
+HASH_C=$(printf '3%.0s' $(seq 1 64)); HASH_D=$(printf '4%.0s' $(seq 1 64))
+HASH_E=$(printf '5%.0s' $(seq 1 64)); HASH_F=$(printf '6%.0s' $(seq 1 64))
+
+# A: activation wins, then replacement must fail (right no longer available)
+ENT_A=$(new_keyed_entitlement "$HASH_A")
+OUT_A=$(svc "select outcome from redeem_entitlement_with_activation_key('$ENT_A','$HASH_A','$K_OWNER','person','intemporel');")
+check "A: activation with the current key succeeds" "redeemed" "$OUT_A"
+SWAPPED_A=$($DB -t -A -c "with u as (update entitlements set activation_key_hash='$HASH_B' where id='$ENT_A' and status='available' and activation_key_hash='$HASH_A' returning 1) select count(*) from u;")
+check "A: replacing the key of an already-redeemed right matches 0 rows" "0" "$SWAPPED_A"
+
+# B: replacement wins, then the OLD key must be refused
+ENT_B=$(new_keyed_entitlement "$HASH_B")
+$DB -c "update entitlements set activation_key_hash='$HASH_C' where id='$ENT_B';" >/dev/null
+svc_expect_error "B: the superseded key is refused under the row lock" \
+  "select * from redeem_entitlement_with_activation_key('$ENT_B','$HASH_B','$K_OWNER','person','intemporel');" \
+  "activation_key_superseded"
+B_STATE=$($DB -t -A -c "select status || ',' || (select count(*) from memorials where entitlement_id='$ENT_B') from entitlements where id='$ENT_B';")
+check "B: the refusal created no memorial and left the right available" "available,0" "$B_STATE"
+OUT_B=$(svc "select outcome from redeem_entitlement_with_activation_key('$ENT_B','$HASH_C','$K_OWNER','person','intemporel');")
+check "B: the NEW key still works" "redeemed" "$OUT_B"
+
+# C: invalidation wins before activation
+ENT_C=$(new_keyed_entitlement "$HASH_D")
+$DB -c "update entitlements set activation_key_hash=null where id='$ENT_C' and status='available' and activation_key_hash='$HASH_D';" >/dev/null
+svc_expect_error "C: an invalidated key can no longer redeem" \
+  "select * from redeem_entitlement_with_activation_key('$ENT_C','$HASH_D','$K_OWNER','person','intemporel');" \
+  "activation_key_superseded"
+C_MEM=$($DB -t -A -c "select count(*) from memorials where entitlement_id='$ENT_C';")
+check "C: invalidation created no memorial, and the right itself is untouched" "0" "$C_MEM"
+C_STATUS=$($DB -t -A -c "select status from entitlements where id='$ENT_C';")
+check "C: invalidating a KEY did not revoke the RIGHT" "available" "$C_STATUS"
+
+# D: revoked right
+ENT_D=$(new_keyed_entitlement "$HASH_E")
+$DB -c "update entitlements set status='revoked' where id='$ENT_D';" >/dev/null
+svc_expect_error "D: a revoked right is refused by Mission 011A even with the current key" \
+  "select * from redeem_entitlement_with_activation_key('$ENT_D','$HASH_E','$K_OWNER','person','intemporel');" \
+  "entitlement_not_available:revoked"
+
+# E: idempotent retry by the same owner, same current key
+ENT_E=$(new_keyed_entitlement "$HASH_F")
+MEM_E=$(svc "select memorial_id from redeem_entitlement_with_activation_key('$ENT_E','$HASH_F','$K_OWNER','person','intemporel');")
+MEM_E2=$(svc "select memorial_id from redeem_entitlement_with_activation_key('$ENT_E','$HASH_F','$K_OWNER','person','intemporel');")
+check "E: retrying with the same key returns the same memorial (011A idempotence preserved)" "$MEM_E" "$MEM_E2"
+E_COUNT=$($DB -t -A -c "select count(*) from memorials where entitlement_id='$ENT_E';")
+check "E: the retry created no second memorial" "1" "$E_COUNT"
+
+# F: a different owner holding the same key
+OTHER_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'other-keys@example.test') returning id;")
+svc_expect_error "F: another owner presenting the same key is refused" \
+  "select * from redeem_entitlement_with_activation_key('$ENT_E','$HASH_F','$OTHER_OWNER','person','intemporel');" \
+  "entitlement_owned_by_another_owner"
+F_COUNT=$($DB -t -A -c "select count(*) from memorials where entitlement_id='$ENT_E';")
+check "F: still exactly one memorial for that right" "1" "$F_COUNT"
+
+# The lock is real, not inferred: hold the row and show the wrapper waits.
+ENT_LOCK=$(new_keyed_entitlement "$(printf '7%.0s' $(seq 1 64))")
+( $DB -c "begin; select activation_key_hash from entitlements where id='$ENT_LOCK' for update; select pg_sleep(3); rollback;" >/dev/null 2>&1 ) &
+LOCKER=$!
+sleep 0.5
+if $DB -c "set role service_role; set local statement_timeout='1000ms'; select * from redeem_entitlement_with_activation_key('$ENT_LOCK','$(printf '7%.0s' $(seq 1 64))','$K_OWNER','person','intemporel');" >/dev/null 2>&1; then
+  echo "  [FAIL] the key-checked redemption did NOT block on the row lock"
+  FAIL=$((FAIL + 1))
+else
+  echo "  [PASS] the key check happens under the same row lock as the redemption"
+  PASS=$((PASS + 1))
+fi
+wait $LOCKER
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="

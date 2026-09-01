@@ -73,6 +73,13 @@ function deps({
   const entitlementRepository: EntitlementRepository = {
     findById: vi.fn().mockResolvedValue(entitlementRow),
     redeem,
+    // Mission 013 additions. Present so this fixture satisfies the port;
+    // the keyless path under test must never reach any of them.
+    findByActivationKeyHash: vi.fn(),
+    findByExternalOrder: vi.fn(),
+    issueWithActivationKey: vi.fn(),
+    swapActivationKey: vi.fn(),
+    redeemWithActivationKey: vi.fn(),
   };
 
   return { ownerRepository, entitlementRepository, redeem };
@@ -88,6 +95,21 @@ describe("redeemAuthenticatedEntitlement — the happy path", () => {
     });
 
     expect(result).toEqual({ status: "redeemed", memorialId: "memorial-1" });
+  });
+
+  it("Mission 013: the keyless path stays keyless — no regression", async () => {
+    // A right granted directly by HERITAGE has no activation key at all.
+    // This path must keep using redeem(), never the key-checked wrapper.
+    const d = deps();
+
+    await redeemAuthenticatedEntitlement(d, {
+      identity: IDENTITY,
+      entitlementId: ENTITLEMENT_ID,
+    });
+
+    expect(d.redeem).toHaveBeenCalledTimes(1);
+    expect(d.entitlementRepository.redeemWithActivationKey).not.toHaveBeenCalled();
+    expect(d.entitlementRepository.findByActivationKeyHash).not.toHaveBeenCalled();
   });
 
   it("O: the owner id sent to the RPC comes from server-side resolution, never from the caller", async () => {
