@@ -449,7 +449,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 010 (see each mission's own
+Deliberately out of scope through Mission 011A (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -457,14 +457,28 @@ exclusion list for the full wording):
   the state machine itself only. No `memorials.status` is ever changed
   by anything in this codebase yet, and no restore/un-archive path
   exists (see the architecture rule above).
-- Any real activation flow — Mission 006 built and tested
-  `lib/entitlement/` (Offer lookups + `planEntitlementActivation()`)
-  only. Nothing calls it: no Server Action creates an `owners` row, an
-  `entitlements` row, or a `memorials` row from a purchase. No Etsy
-  webhook/API, no PDF, no commercial UI. *When* a skin gets selected for
-  a multi-skin offer (at purchase, at activation, or elsewhere) is
-  explicitly left open — see `config/offers.ts` and this mission's
-  report.
+- Any real activation flow *in application code*. Mission 006 built
+  `lib/entitlement/` (Offer lookups + `planEntitlementActivation()`) and
+  Mission 011A built the database primitive underneath it
+  (`redeem_entitlement()`), but **no TypeScript calls either from a
+  request path**: no Server Action, route or repository resolves an
+  authenticated user to an Owner, looks up an entitlement, or invokes
+  the RPC. That wiring — Auth -> Owner -> Entitlement -> Memorial,
+  including the Owner resolution/creation rules and the refusal to ever
+  link an Owner on an email match alone — is Mission 011B. No Etsy
+  webhook/API, no activation key format or generator, no activation
+  page, no PDF, no commercial UI. *When* a skin gets selected for a
+  multi-skin offer (at purchase, at activation, or elsewhere) is
+  explicitly left open — see `config/offers.ts`; every V1 offer grants
+  exactly one skin today, and a future multi-skin offer with no
+  selection supplied must be answered with an explicit
+  "skin selection required" outcome, never a silent `allowedSkins[0]`.
+- A real `memorials.slug`. Mission 011A made the column nullable
+  precisely so redemption would not have to invent one; generating the
+  actual public URL (which needs the deceased's name) belongs to the
+  publication flow. Likewise `editorial_context` and `language` stay
+  NULL until the family chooses them in the Builder — no UI exists for
+  either choice yet.
 - The progressive "one question at a time" editing experience, or any
   Builder UI/design change — Mission 007 built the autosave *state
   machine* (`lib/builder/autosave-state.ts`) and Mission 009B built the

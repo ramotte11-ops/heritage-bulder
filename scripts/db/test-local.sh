@@ -87,10 +87,19 @@ as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$
 create role anon nologin;
 create role authenticated nologin;
 
-grant usage on schema public to anon, authenticated;
+-- Mission 011A stand-in for Supabase's real `service_role`: the
+-- server-side privileged role the redemption RPC is called with. The two
+-- properties that matter for what is under test here are BYPASSRLS and
+-- ordinary DML grants — exactly what the real one has. Like the anon /
+-- authenticated stand-ins above, it is defined only in this script,
+-- never in supabase/migrations/, because a real Supabase project already
+-- provides it.
+create role service_role nologin bypassrls;
+
+grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
-alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
 SQL
 
 echo "== Applying migrations =="
@@ -104,7 +113,7 @@ done
 # AFTER it ran, which is every migration table here — but grant
 # explicitly as well so this script keeps working if migrations are
 # reordered).
-$DB -c "grant select, insert, update, delete on all tables in schema public to anon, authenticated;" >/dev/null
+$DB -c "grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;" >/dev/null
 
 check() {
   local desc="$1"; local expect="$2"; local actual="$3"
@@ -257,6 +266,220 @@ check "anonymous condolence is accepted once 'condolences' is enabled on a publi
 as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$MEM_B', 'condolence', 'A Visitor', 'Thinking of you.');" >/dev/null 2>"$PGDATA_DIR/last_error" || true
 COND_COUNT=$($DB -t -A -c "select count(*) from messages where memorial_id = '$MEM_B';")
 check "anonymous message is rejected on a non-published memorial" "0" "$COND_COUNT"
+
+echo ""
+echo "== Mission 011A: progressive memorial + atomic redemption =="
+
+# The redemption RPC is only ever called by the server-side privileged
+# role, never by a browser. Every call below therefore goes through
+# `set role service_role` — the superuser connection this script runs on
+# would bypass the very privilege model under test.
+svc() {
+  $DB -t -A -c "set role service_role; $*"
+}
+
+# Expects the statement to fail, AND to fail for the stated reason.
+# "it errored" alone would pass even if the function were broken.
+svc_expect_error() {
+  local desc="$1"; local sql="$2"; local needle="$3"
+  local out
+  if out=$($DB -t -A -c "set role service_role; $sql" 2>&1); then
+    echo "  [FAIL] $desc (expected an error, statement succeeded: $out)"
+    FAIL=$((FAIL + 1))
+  elif printf '%s' "$out" | grep -q "$needle"; then
+    echo "  [PASS] $desc"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] $desc (errored, but not with '$needle': $(printf '%s' "$out" | tr '\n' ' '))"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+OWNER_C=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-c@example.test') returning id;")
+OWNER_D=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-d@example.test') returning id;")
+
+new_entitlement() {
+  $DB -t -A -c "insert into entitlements (source, offer_id, status) values ('direct', 'occidental', '$1') returning id;"
+}
+
+ENT_NULLS=$(new_entitlement available)
+ENT_NULLS2=$(new_entitlement available)
+ENT_OK=$(new_entitlement available)
+ENT_REVOKED=$(new_entitlement revoked)
+ENT_ROLLBACK=$(new_entitlement available)
+ENT_CONC=$(new_entitlement available)
+ENT_LOCK=$(new_entitlement available)
+
+# --- A: the minimal memorial a redemption creates -------------------
+# editorial_context / language / slug are the family's decisions, made
+# later in the Builder. The row must be creatable without them.
+$DB -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id) values ('$OWNER_C', '$ENT_NULLS', 'person', 'intemporel');" >/dev/null
+NULL_SHAPE=$($DB -t -A -c "select (editorial_context is null) || ',' || (language is null) || ',' || (slug is null) || ',' || status from memorials where entitlement_id = '$ENT_NULLS';")
+check "A: a memorial is creatable with editorial_context/language/slug all NULL, status 'draft'" "true,true,true,draft" "$NULL_SHAPE"
+
+# The CHECK constraints must survive the NOT NULL relaxation: NULL is
+# allowed, but a bogus non-null value is still rejected.
+expect_error "A: a non-null but invalid language is still rejected (CHECK survives DROP NOT NULL)" \
+  "update memorials set language = 'zz' where entitlement_id = '$ENT_NULLS';"
+
+expect_error "A: a non-null but invalid editorial_context is still rejected" \
+  "update memorials set editorial_context = 'not-a-context' where entitlement_id = '$ENT_NULLS';"
+
+# --- B: UNIQUE slug is NULLS DISTINCT -------------------------------
+$DB -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id) values ('$OWNER_C', '$ENT_NULLS2', 'person', 'intemporel');" >/dev/null
+NULL_SLUGS=$($DB -t -A -c "select count(*) from memorials where slug is null;")
+check "B: several memorials coexist with slug NULL (PostgreSQL UNIQUE is NULLS DISTINCT)" "2" "$NULL_SLUGS"
+
+NULLS_NOT_DISTINCT=$($DB -t -A -c "select indnullsnotdistinct from pg_index where indrelid = 'memorials'::regclass and indisunique and indexrelid::regclass::text like '%slug%';")
+check "B: memorials' slug unique index is NULLS DISTINCT (not NULLS NOT DISTINCT)" "f" "$NULLS_NOT_DISTINCT"
+
+$DB -c "update memorials set slug = 'real-slug-once-generated' where entitlement_id = '$ENT_NULLS';" >/dev/null
+expect_error "B: two identical non-null slugs are still rejected" \
+  "update memorials set slug = 'real-slug-once-generated' where entitlement_id = '$ENT_NULLS2';"
+
+# --- privileges: who may call the primitive at all ------------------
+expect_error "redeem_entitlement is NOT executable by 'authenticated'" \
+  "set role authenticated; select * from redeem_entitlement('$ENT_OK', '$OWNER_C', 'person', 'intemporel');"
+
+expect_error "redeem_entitlement is NOT executable by 'anon'" \
+  "set role anon; select * from redeem_entitlement('$ENT_OK', '$OWNER_C', 'person', 'intemporel');"
+
+# --- C: a normal redemption ----------------------------------------
+REDEEM=$(svc "select outcome from redeem_entitlement('$ENT_OK', '$OWNER_C', 'person', 'intemporel');")
+check "C: redeeming an available entitlement reports 'redeemed'" "redeemed" "$REDEEM"
+
+MEM_OK=$($DB -t -A -c "select id from memorials where entitlement_id = '$ENT_OK';")
+ENT_STATE=$($DB -t -A -c "select status || ',' || (owner_id = '$OWNER_C') || ',' || (redeemed_at is not null) from entitlements where id = '$ENT_OK';")
+check "C: the entitlement is now redeemed, attached to the right owner, with redeemed_at set" "redeemed,true,true" "$ENT_STATE"
+
+MEM_COUNT=$($DB -t -A -c "select count(*) from memorials where entitlement_id = '$ENT_OK';")
+check "C: exactly one memorial exists for that entitlement" "1" "$MEM_COUNT"
+
+MEM_SHAPE=$($DB -t -A -c "select memorial_type || ',' || skin_id || ',' || (owner_id = '$OWNER_C') || ',' || (editorial_context is null) || ',' || (language is null) || ',' || (slug is null) from memorials where id = '$MEM_OK';")
+check "C: the created memorial carries type/skin/owner and leaves the family's choices NULL" "person,intemporel,true,true,true,true" "$MEM_SHAPE"
+
+# --- I: the existing draft trigger ran inside the same transaction --
+DRAFT_OK=$($DB -t -A -c "select count(*) from memorial_drafts where memorial_id = '$MEM_OK';")
+check "I: exactly one draft row was created by the existing trigger" "1" "$DRAFT_OK"
+
+# --- F: idempotence — same owner retrying a lost response -----------
+REDEEM2=$(svc "select outcome from redeem_entitlement('$ENT_OK', '$OWNER_C', 'person', 'intemporel');")
+check "F: the same owner retrying gets 'already_redeemed' instead of an error" "already_redeemed" "$REDEEM2"
+
+MEM_AGAIN=$(svc "select memorial_id from redeem_entitlement('$ENT_OK', '$OWNER_C', 'person', 'intemporel');")
+check "F: the retry returns the very same memorial_id" "$MEM_OK" "$MEM_AGAIN"
+
+MEM_COUNT=$($DB -t -A -c "select count(*) from memorials where entitlement_id = '$ENT_OK';")
+check "F: retrying never created a second memorial" "1" "$MEM_COUNT"
+
+# --- G: a different owner may never claim a consumed right ----------
+svc_expect_error "G: another owner claiming the already-redeemed entitlement is refused" \
+  "select * from redeem_entitlement('$ENT_OK', '$OWNER_D', 'person', 'intemporel');" \
+  "entitlement_owned_by_another_owner"
+
+MEM_COUNT=$($DB -t -A -c "select count(*) from memorials where entitlement_id = '$ENT_OK';")
+OWNER_STILL=$($DB -t -A -c "select (owner_id = '$OWNER_C') from entitlements where id = '$ENT_OK';")
+check "G: the refusal created no memorial and did not move the entitlement" "1,t" "$MEM_COUNT,$OWNER_STILL"
+
+# --- E: revoked ------------------------------------------------------
+svc_expect_error "E: a revoked entitlement is refused" \
+  "select * from redeem_entitlement('$ENT_REVOKED', '$OWNER_C', 'person', 'intemporel');" \
+  "entitlement_not_available:revoked"
+
+REVOKED_STATE=$($DB -t -A -c "select status || ',' || coalesce(owner_id::text, 'null') || ',' || (select count(*) from memorials where entitlement_id = '$ENT_REVOKED') from entitlements where id = '$ENT_REVOKED';")
+check "E: the revoked entitlement is untouched and has no memorial" "revoked,null,0" "$REVOKED_STATE"
+
+svc_expect_error "an unknown entitlement id is refused" \
+  "select * from redeem_entitlement('00000000-0000-0000-0000-000000000000', '$OWNER_C', 'person', 'intemporel');" \
+  "entitlement_not_found"
+
+# --- D + J: atomicity — a failure mid-transaction rolls back all of it
+# An invalid memorial_type passes the function's own checks and reaches
+# the INSERT, which the table's CHECK rejects. Because the entitlement
+# was ALREADY updated to 'redeemed' at that point, this proves a real
+# rollback of a write that had genuinely executed — not merely that a
+# later statement never ran.
+DRAFTS_BEFORE=$($DB -t -A -c "select count(*) from memorial_drafts;")
+svc_expect_error "D: a memorial INSERT failing mid-transaction aborts the whole redemption" \
+  "select * from redeem_entitlement('$ENT_ROLLBACK', '$OWNER_C', 'not-a-real-type', 'intemporel');" \
+  "memorials_memorial_type_check"
+
+ROLLBACK_STATE=$($DB -t -A -c "select status || ',' || coalesce(owner_id::text,'null') || ',' || coalesce(redeemed_at::text,'null') from entitlements where id = '$ENT_ROLLBACK';")
+check "D: after rollback the entitlement is still available, unowned, never redeemed" "available,null,null" "$ROLLBACK_STATE"
+
+ROLLBACK_MEM=$($DB -t -A -c "select count(*) from memorials where entitlement_id = '$ENT_ROLLBACK';")
+check "D: after rollback no memorial exists" "0" "$ROLLBACK_MEM"
+
+DRAFTS_AFTER=$($DB -t -A -c "select count(*) from memorial_drafts;")
+check "J: after rollback no phantom draft row survives" "$DRAFTS_BEFORE" "$DRAFTS_AFTER"
+
+# The same entitlement is still perfectly usable afterwards — the failed
+# attempt left no trace that would block a legitimate retry.
+RETRY_AFTER_ROLLBACK=$(svc "select outcome from redeem_entitlement('$ENT_ROLLBACK', '$OWNER_C', 'person', 'intemporel');")
+check "D: the entitlement is still redeemable after the failed attempt" "redeemed" "$RETRY_AFTER_ROLLBACK"
+
+# --- H1: the row lock genuinely serializes --------------------------
+# A separate session holds FOR UPDATE on the entitlement for 3s. The
+# redemption must BLOCK on it (hitting its 1s statement_timeout), not
+# read past it. This proves the FOR UPDATE in the function is doing real
+# work, deterministically — not inferred from a lucky race.
+( $DB -c "begin; select id from entitlements where id = '$ENT_LOCK' for update; select pg_sleep(3); rollback;" >/dev/null 2>&1 ) &
+LOCKER_PID=$!
+sleep 0.5
+if $DB -c "set role service_role; set local statement_timeout = '1000ms'; select * from redeem_entitlement('$ENT_LOCK', '$OWNER_C', 'person', 'intemporel');" >/dev/null 2>&1; then
+  echo "  [FAIL] H1: redemption did NOT block on a concurrently held row lock"
+  FAIL=$((FAIL + 1))
+else
+  echo "  [PASS] H1: redemption blocks on the entitlement's row lock (FOR UPDATE is real)"
+  PASS=$((PASS + 1))
+fi
+wait $LOCKER_PID
+
+LOCK_STATE=$($DB -t -A -c "select status || ',' || (select count(*) from memorials where entitlement_id = '$ENT_LOCK') from entitlements where id = '$ENT_LOCK';")
+check "H1: the blocked attempt changed nothing (entitlement still available, no memorial)" "available,0" "$LOCK_STATE"
+
+# --- H2: two genuinely concurrent redemptions -----------------------
+# Two separate OS processes, two separate PostgreSQL backends, both
+# racing for the same entitlement. The shared pg_sleep absorbs connection
+# jitter so they reach the function within milliseconds of each other —
+# this is a real race, not two sequential calls relabelled.
+CONC_DIR="$PGDATA_DIR/concurrency"
+mkdir -p "$CONC_DIR"
+for i in 1 2; do
+  CONC_OWNER=$([ "$i" = "1" ] && echo "$OWNER_C" || echo "$OWNER_D")
+  (
+    # `|| rc=$?` matters: under `set -e` the losing process would
+    # otherwise abort on psql's non-zero exit and never record its
+    # outcome, leaving the assertions below reading a missing file.
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from redeem_entitlement('$ENT_CONC', '$CONC_OWNER', 'person', 'intemporel');" \
+      >"$CONC_DIR/$i.out" 2>"$CONC_DIR/$i.err" || rc=$?
+    echo "$rc" >"$CONC_DIR/$i.rc"
+  ) &
+done
+wait
+
+CONC_WINNERS=$(cat "$CONC_DIR"/1.rc "$CONC_DIR"/2.rc | grep -c '^0$' || true)
+check "H2: of two concurrent redemptions, exactly one succeeds" "1" "$CONC_WINNERS"
+
+CONC_LOSER_REASON=$(cat "$CONC_DIR"/1.err "$CONC_DIR"/2.err | grep -c "entitlement_owned_by_another_owner" || true)
+check "H2: the loser is refused as another owner's right, not by a crash" "1" "$CONC_LOSER_REASON"
+
+CONC_MEMORIALS=$($DB -t -A -c "select count(*) from memorials where entitlement_id = '$ENT_CONC';")
+check "H2: exactly one memorial exists after the race" "1" "$CONC_MEMORIALS"
+
+CONC_COHERENT=$($DB -t -A -c "select e.status || ',' || (e.owner_id = m.owner_id) || ',' || (e.redeemed_at is not null) from entitlements e join memorials m on m.entitlement_id = e.id where e.id = '$ENT_CONC';")
+check "H2: entitlement and memorial agree on the single winning owner" "redeemed,true,true" "$CONC_COHERENT"
+
+CONC_DRAFTS=$($DB -t -A -c "select count(*) from memorial_drafts d join memorials m on m.id = d.memorial_id where m.entitlement_id = '$ENT_CONC';")
+check "H2: exactly one draft row was created by the race" "1" "$CONC_DRAFTS"
+
+# --- an owner may hold several entitlements and several memorials ----
+# Excludes the raced entitlement on purpose: which owner wins it is
+# genuinely non-deterministic, and this assertion is about the ownership
+# model, not about the race.
+OWNER_C_MEMORIALS=$($DB -t -A -c "select count(*) from memorials where owner_id = '$OWNER_C' and entitlement_id <> '$ENT_CONC';")
+check "one owner legitimately holds several memorials (1 purchase = 1 right = 1 memorial, not 1 owner = 1 memorial)" "4" "$OWNER_C_MEMORIALS"
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="

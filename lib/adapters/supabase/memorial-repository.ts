@@ -4,7 +4,7 @@ import type { EditorialContext, MemorialType } from "@/config/memorial";
 import type { Skin } from "@/config/skins";
 import type { Language } from "@/config/languages";
 import type { SectionId } from "@/config/sections";
-import type { Memorial, MemorialContent, MemorialStatus } from "@/types/memorial";
+import type { MemorialContent, MemorialStatus, StoredMemorial } from "@/types/memorial";
 
 /**
  * Row shapes as they come back from Postgres (snake_case) — kept private
@@ -17,12 +17,17 @@ interface MemorialRow {
   owner_id: string;
   entitlement_id: string;
   memorial_type: MemorialType;
-  editorial_context: EditorialContext;
+  // Mission 011A: NULL between redemption and the family's own choices —
+  // these three columns are nullable in the database on purpose (see
+  // supabase/migrations/20260901120000_redeem_entitlement.sql). Typing
+  // them as always-present here would be this layer telling the rest of
+  // the app something the row does not actually prove.
+  editorial_context: EditorialContext | null;
   skin_id: Skin;
-  language: Language;
+  language: Language | null;
   enabled_sections: SectionId[];
   status: MemorialStatus;
-  slug: string;
+  slug: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -41,7 +46,7 @@ function toMemorial(
   row: MemorialRow,
   draft: MemorialDraftRow,
   published: MemorialPublishedSnapshotRow | null,
-): Memorial {
+): StoredMemorial {
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -63,20 +68,27 @@ function toMemorial(
 }
 
 /**
- * Supabase-backed implementation of DataRepository<Memorial> — the port
- * defined in Mission 001 (lib/adapters/data-repository.ts). Application
- * code should depend on that interface, never on this class directly, so
- * a future change of provider only means writing a new class here.
+ * Supabase-backed implementation of DataRepository<StoredMemorial> — the
+ * port defined in Mission 001 (lib/adapters/data-repository.ts).
+ * Application code should depend on that interface, never on this class
+ * directly, so a future change of provider only means writing a new class
+ * here.
+ *
+ * Mission 011A: the type parameter is `StoredMemorial`, not `Memorial`.
+ * Persistence can legitimately return a memorial the family has not
+ * configured yet (the row a redemption creates), and this layer says so
+ * rather than hiding it behind a non-null type. Callers that need a
+ * configured memorial narrow with `isConfiguredMemorial()`.
  *
  * A memorial's content lives across three tables (memorials,
  * memorial_drafts, memorial_published_snapshots — see
  * supabase/README.md); this repository composes them into one `Memorial`
  * so callers never need to know that.
  */
-export class SupabaseMemorialRepository implements DataRepository<Memorial> {
+export class SupabaseMemorialRepository implements DataRepository<StoredMemorial> {
   constructor(private readonly client: SupabaseClient) {}
 
-  async findById(id: string): Promise<Memorial | null> {
+  async findById(id: string): Promise<StoredMemorial | null> {
     const { data: row, error } = await this.client
       .from("memorials")
       .select("*")
@@ -109,7 +121,7 @@ export class SupabaseMemorialRepository implements DataRepository<Memorial> {
     return toMemorial(row, draft, published);
   }
 
-  async create(entity: Memorial): Promise<Memorial> {
+  async create(entity: StoredMemorial): Promise<StoredMemorial> {
     const { data: row, error } = await this.client
       .from("memorials")
       .insert({
@@ -134,7 +146,7 @@ export class SupabaseMemorialRepository implements DataRepository<Memorial> {
     return created;
   }
 
-  async update(id: string, patch: Partial<Memorial>): Promise<Memorial> {
+  async update(id: string, patch: Partial<StoredMemorial>): Promise<StoredMemorial> {
     // Only memorials-table columns are patchable here. Draft/published
     // content live in their own tables and are not part of this generic
     // update — a future mission adds dedicated draft-content and
