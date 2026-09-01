@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Memorial } from "@/types/memorial";
+import type { Memorial, MemorialContent } from "@/types/memorial";
 import {
   createInitialBuilderState,
   getManagedSections,
@@ -13,6 +13,7 @@ import {
   type BuilderState,
 } from "@/lib/builder/builder-state";
 import type { DemoSectionContent } from "@/lib/builder/demo-content";
+import { useAutosave } from "@/lib/builder/use-autosave";
 import { SectionList } from "./SectionList";
 import { SectionEditor } from "./SectionEditor";
 import { MemorialPreview } from "./MemorialPreview";
@@ -32,13 +33,34 @@ const EDITORIAL_CONTEXT_LABELS: Record<Memorial["editorialContext"], string> = {
  *
  * All editing state is local to this component (React state) and lives
  * only for the current page session — nothing here reads from or writes
- * to Supabase. See lib/builder/builder-state.ts for the architectural
- * boundary a future mission uses to connect this to
+ * to Supabase by default. See lib/builder/builder-state.ts for the
+ * architectural boundary a future mission uses to connect this to
  * DataRepository<Memorial> / memorial_drafts.
+ *
+ * `persist` (Mission 009B) is the one optional seam this component
+ * exposes for real autosave: when a future screen has a real,
+ * authorized memorialId, it passes
+ * `(content) => draftRepository.saveDraftContent(memorialId, content)`
+ * here and every subsequent edit is autosaved for real, via
+ * lib/builder/use-autosave.ts. The Mission 003 demo screens
+ * (app/builder/[demoId]) never pass one — no fixture is ever written to
+ * Supabase, and this component's behaviour is otherwise identical
+ * either way (`useAutosave` is entirely inert without a `persist`).
  */
-export function BuilderShell({ memorial }: { memorial: Memorial }) {
+export function BuilderShell({
+  memorial,
+  persist,
+}: {
+  memorial: Memorial;
+  persist?: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+}) {
   const [state, setState] = useState<BuilderState>(() => createInitialBuilderState(memorial));
   const { selectedSectionId } = state;
+
+  // Observes state.content — the Builder's one existing source of
+  // truth — rather than tracking a second, parallel copy of it. See
+  // use-autosave.ts for why the mount value is never itself "saved".
+  useAutosave({ content: state.content, persist });
 
   const managedSections = getManagedSections(state);
   const previewSections = getPreviewSections(state);

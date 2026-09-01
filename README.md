@@ -123,7 +123,13 @@ components/                   Presentational UI, grouped by domain
   builder/                    Builder shell UI (Mission 003) — presentation
                                only; all state transitions come from
                                lib/builder/builder-state.ts
-    BuilderShell.tsx           Top-level: header, mode switch, layout
+    BuilderShell.tsx           Top-level: header, mode switch, layout.
+                                 Accepts an optional `persist` prop
+                                 (Mission 009B) wired straight into
+                                 lib/builder/use-autosave.ts, observing
+                                 its own state.content — the demo screen
+                                 (app/builder/[demoId]) never passes one,
+                                 so it stays exactly as before
     SectionList.tsx             Section nav + socle/optional + toggle
     SectionEditor.tsx           Minimal generic edit fields
     MemorialPreview.tsx         Read-only preview of enabled sections
@@ -208,19 +214,31 @@ lib/                          Logic that operates on config/types
     autosave-integration.test.ts  Mission 009B — wires builder-state.ts's
                                  real transitions into the controller with
                                  a fake persist, proving the same shape of
-                                 wiring a future component would use,
+                                 wiring BuilderShell.tsx actually does,
                                  without DOM rendering (this codebase has
                                  none — Vitest runs in the "node"
-                                 environment)
-    use-autosave.ts               Mission 009B — useAutosave(): the thin
-                                 React binding (useSyncExternalStore +
-                                 setPersist called from an effect, never a
-                                 ref touched during render). Not wired into
-                                 BuilderShell or any component — see "What
-                                 is NOT built yet". No dedicated test file,
+                                 environment) — including the exact
+                                 mount-skip / real-edit / no-persist
+                                 sequences use-autosave.ts and
+                                 BuilderShell.tsx implement
+    use-autosave.ts               Mission 009B — useAutosave({ content,
+                                 persist }): the thin React binding
+                                 (useSyncExternalStore + setPersist called
+                                 from an effect, never a ref touched
+                                 during render). Observes
+                                 BuilderState.content directly — no
+                                 second, parallel content state. `persist`
+                                 optional: absent -> no controller is even
+                                 created, fully inert. Skips notifying for
+                                 the value present at mount (never
+                                 "autosaves" what was just loaded). Wired
+                                 into BuilderShell.tsx (below) — no
+                                 dedicated test file for this hook itself,
                                  consistent with this codebase's existing
                                  convention of testing logic, never
-                                 rendering
+                                 rendering; its logical sequence is
+                                 exercised in autosave-integration.test.ts
+                                 instead
   memorial/                   Memorial lifecycle logic (Mission 005) —
                                pure, no I/O, no Supabase; not wired into
                                the Builder or any adapter yet — the clean
@@ -404,12 +422,13 @@ exclusion list for the full wording):
   Builder UI/design change — Mission 007 built the autosave *state
   machine* (`lib/builder/autosave-state.ts`) and Mission 009B built the
   *runtime* that actually debounces and calls it
-  (`lib/builder/autosave-controller.ts` + `use-autosave.ts`). Nothing in
-  `components/builder/*` or `app/builder/*` calls either — the Builder is
-  still Mission 003's local-demo-only shell. No optimistic concurrency
-  control exists (last-write-wins — see `supabase/README.md`); no
-  visible saving/saved indicator exists (that is UX work, not built
-  here).
+  (`lib/builder/autosave-controller.ts` + `use-autosave.ts`), genuinely
+  wired into `BuilderShell.tsx` via an optional `persist` prop that
+  observes its own `state.content` — real edits in `/builder` do reach
+  the autosave runtime today. What's still not built is everything
+  visual: no optimistic concurrency control (last-write-wins — see
+  `supabase/README.md`), no visible saving/saved indicator (UX work, not
+  built here), and no real *persistence* — see the next point.
 - Any real "resume your project" UX — Mission 009 built and tested
   `lib/builder/resume-session.ts` (`resumeBuilderSession()`), the
   orchestration layer that decides whether a given `memorialId` is
