@@ -20,8 +20,10 @@ export interface OwnerRepository {
   findByAuthUserId(authUserId: string): Promise<Owner | null>;
 
   /**
-   * The owner registered at this email, or null. Case-insensitive, to
-   * match `owners_email_key`'s `unique (lower(email))`.
+   * The owner registered at this email, or null. Matched as an exact,
+   * case-insensitive address — never as a pattern: `%` and `_` are legal
+   * in an email's local part, and an implementation that let them act as
+   * wildcards could return a stranger's row at an identity boundary.
    *
    * This lookup exists ONLY to explain a rejected insert — never to
    * authorize anything. Matching an email is not proof of identity, so a

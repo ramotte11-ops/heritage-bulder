@@ -521,6 +521,24 @@ $DB -c "insert into owners (email) values ('unlinked-two@example.test');" >/dev/
 UNLINKED_COUNT=$($DB -t -A -c "select count(*) from owners where auth_user_id is null;")
 check "several owners may sit at auth_user_id NULL (the index is partial)" "2" "$UNLINKED_COUNT"
 
+# Why lib/adapters/supabase/owner-repository.ts must not look owners up
+# with a pattern operator. `%` and `_` are legal in an email's local part
+# (RFC 5322 atext) AND are LIKE/ILIKE wildcards, so passing an address
+# straight to ILIKE lets one person's address match another person's row
+# — at an identity boundary. Demonstrated here against the real engine,
+# so the reason for using exact equality is recorded where every other
+# schema claim is proven.
+$DB -c "insert into owners (email) values ('fooXbar@example.test');" >/dev/null
+
+ILIKE_HITS=$($DB -t -A -c "select count(*) from owners where email ilike 'foo_bar@example.test';")
+check "ILIKE would match a STRANGER's address (this is the risk, not the fix)" "1" "$ILIKE_HITS"
+
+EXACT_HITS=$($DB -t -A -c "select count(*) from owners where lower(email) = lower('foo_bar@example.test');")
+check "exact case-insensitive equality matches nobody, as it must" "0" "$EXACT_HITS"
+
+CASE_HITS=$($DB -t -A -c "select count(*) from owners where lower(email) = lower('FOOXBAR@Example.TEST');")
+check "exact case-insensitive equality still matches the same address in any case" "1" "$CASE_HITS"
+
 # The redemption RPC is reached with an owner id the server resolved.
 # Confirm end to end that a freshly created owner can redeem, so the
 # 011B path (resolve owner -> redeem) is proven against the real schema.

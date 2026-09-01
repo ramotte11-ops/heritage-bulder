@@ -29,6 +29,15 @@ function toOwner(row: OwnerRow): Owner {
   };
 }
 
+/**
+ * The form this repository both writes and looks up. Mirrors what
+ * `owners_email_key` (`unique (lower(email))`) actually compares, so a
+ * conflict is always a real conflict and never a casing artefact.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /** PostgreSQL's unique_violation. The one refusal that is a concurrency
  * answer rather than a failure — see the port's `create` docstring. */
 const UNIQUE_VIOLATION = "23505";
@@ -52,19 +61,40 @@ export class SupabaseOwnerRepository implements OwnerRepository {
   }
 
   async findByEmail(email: string): Promise<Owner | null> {
-    // `ilike` with no wildcards is a case-insensitive equality match,
-    // which is what `owners_email_key`'s `unique (lower(email))`
-    // actually enforces. A plain `eq` would miss a row stored with
-    // different casing while the index would still reject inserting it —
-    // the lookup has to see exactly what the constraint sees.
+    // EXACT equality, never a pattern. `.ilike()` would look tempting
+    // here (the unique index is on `lower(email)`), but postgrest-js
+    // appends the value verbatim as `ilike.<value>`, so `%` and `_` —
+    // both legal in an email's local part — would become live SQL
+    // wildcards. `foo_bar@example.test` would then match a STRANGER's
+    // `fooXbar@example.test`. That is unacceptable at an identity
+    // boundary, so no pattern operator is used at all.
+    //
+    // Case-insensitivity is preserved by normalising here as well as at
+    // the call site, so what we look up is exactly what this codebase
+    // writes (`create` below stores the same normalised form). A row
+    // stored in mixed case by something outside this codebase would not
+    // be found — a deliberately safe miss, not a hole: the INSERT that
+    // follows is still refused by `owners_email_key`'s `lower(email)`,
+    // so the outcome is a refusal, never a takeover.
+    const normalized = normalizeEmail(email);
+
     const { data, error } = await this.client
       .from("owners")
       .select("*")
-      .ilike("email", email)
+      .eq("email", normalized)
       .maybeSingle<OwnerRow>();
 
     if (error) throw error;
-    return data ? toOwner(data) : null;
+    if (!data) return null;
+
+    // Defence in depth. Whatever the query layer did with the value —
+    // an operator change, a PostgREST parsing quirk on some exotic
+    // address — a row whose email is not this exact address (case
+    // aside) is never this identity's owner, and is discarded here
+    // rather than handed to the resolution logic.
+    if (normalizeEmail(data.email) !== normalized) return null;
+
+    return toOwner(data);
   }
 
   async create({
@@ -76,7 +106,7 @@ export class SupabaseOwnerRepository implements OwnerRepository {
   }): Promise<{ status: "created"; owner: Owner } | { status: "conflict" }> {
     const { data, error } = await this.client
       .from("owners")
-      .insert({ auth_user_id: authUserId, email })
+      .insert({ auth_user_id: authUserId, email: normalizeEmail(email) })
       .select("*")
       .single<OwnerRow>();
 

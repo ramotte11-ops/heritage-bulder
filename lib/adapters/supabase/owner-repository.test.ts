@@ -20,6 +20,8 @@ function fakeClient(result: { data: unknown; error: unknown }) {
   const maybeSingle = vi.fn().mockResolvedValue(result);
   const single = vi.fn().mockResolvedValue(result);
   const eq = vi.fn().mockReturnValue({ maybeSingle });
+  // Present so a regression back to a pattern operator is caught rather
+  // than crashing: the assertions below require it is never called.
   const ilike = vi.fn().mockReturnValue({ maybeSingle });
   const selectAfterInsert = vi.fn().mockReturnValue({ single });
   const select = vi.fn().mockReturnValue({ eq, ilike });
@@ -62,20 +64,67 @@ describe("SupabaseOwnerRepository.findByAuthUserId", () => {
 });
 
 describe("SupabaseOwnerRepository.findByEmail", () => {
-  it("matches case-insensitively, as owners_email_key's lower(email) does", async () => {
-    const { client, ilike } = fakeClient({ data: ROW, error: null });
+  it("uses exact equality, never a pattern operator", async () => {
+    const { client, eq, ilike } = fakeClient({ data: ROW, error: null });
 
     await new SupabaseOwnerRepository(client).findByEmail("famille@example.test");
 
-    // A plain eq would miss a row stored with different casing while the
-    // unique index would still reject inserting over it.
-    expect(ilike).toHaveBeenCalledWith("email", "famille@example.test");
+    expect(eq).toHaveBeenCalledWith("email", "famille@example.test");
+    expect(ilike).not.toHaveBeenCalled();
+  });
+
+  it("normalises casing before querying, matching lower(email)", async () => {
+    const { client, eq } = fakeClient({ data: ROW, error: null });
+
+    await new SupabaseOwnerRepository(client).findByEmail("  Famille@Example.TEST  ");
+
+    expect(eq).toHaveBeenCalledWith("email", "famille@example.test");
+  });
+
+  it("matches a row stored in a different case", async () => {
+    const { client } = fakeClient({
+      data: { ...ROW, email: "Famille@Example.test" },
+      error: null,
+    });
+
+    const owner = await new SupabaseOwnerRepository(client).findByEmail("famille@example.test");
+
+    expect(owner?.id).toBe("owner-1");
+  });
+
+  it.each([
+    ["a percent wildcard", "%@example.test"],
+    ["an underscore wildcard", "famille_@example.test"],
+    ["a PostgREST star alias", "*@example.test"],
+    ["a backslash escape", "famille\\@example.test"],
+  ])("passes %s through as a literal value, never as a pattern", async (_label, address) => {
+    const { client, eq, ilike } = fakeClient({ data: null, error: null });
+
+    await new SupabaseOwnerRepository(client).findByEmail(address);
+
+    expect(ilike).not.toHaveBeenCalled();
+    // The value reaches the query unchanged and uninterpreted — no
+    // wildcard, no escaping dance, nothing for PostgreSQL to expand.
+    expect(eq).toHaveBeenCalledWith("email", address.toLowerCase());
+  });
+
+  it("discards a row whose email is not this exact address, whatever the query returned", async () => {
+    // Defence in depth: even if the query layer somehow over-matched,
+    // a stranger's row must never be handed back as this identity's.
+    const { client } = fakeClient({
+      data: { ...ROW, id: "somebody-else", email: "fooXbar@example.test" },
+      error: null,
+    });
+
+    const owner = await new SupabaseOwnerRepository(client).findByEmail("foo_bar@example.test");
+
+    expect(owner).toBeNull();
   });
 });
 
 describe("SupabaseOwnerRepository.create", () => {
   it("returns the created owner", async () => {
-    const { client, insert } = fakeClient({ data: ROW, error: null });
+    const { client, insert, from } = fakeClient({ data: ROW, error: null });
 
     const result = await new SupabaseOwnerRepository(client).create({
       authUserId: "auth-user-1",
@@ -86,6 +135,7 @@ describe("SupabaseOwnerRepository.create", () => {
       auth_user_id: "auth-user-1",
       email: "famille@example.test",
     });
+    expect(from).toHaveBeenCalledWith("owners");
     expect(result).toEqual({ status: "created", owner: expect.objectContaining({ id: "owner-1" }) });
   });
 
@@ -103,6 +153,20 @@ describe("SupabaseOwnerRepository.create", () => {
     });
 
     expect(result).toEqual({ status: "conflict" });
+  });
+
+  it("normalises the email it writes, so reads and the lower(email) index agree", async () => {
+    const { client, insert } = fakeClient({ data: ROW, error: null });
+
+    await new SupabaseOwnerRepository(client).create({
+      authUserId: "auth-user-1",
+      email: "  Famille@Example.TEST  ",
+    });
+
+    expect(insert).toHaveBeenCalledWith({
+      auth_user_id: "auth-user-1",
+      email: "famille@example.test",
+    });
   });
 
   it("still rejects on any other error, so a real failure is never read as a lost race", async () => {
