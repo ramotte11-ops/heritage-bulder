@@ -266,6 +266,133 @@ describe("setPersist", () => {
   });
 });
 
+describe("retry — Mission 010 recovery from error", () => {
+  it("resends the last known content and moves to saved on success (Test F)", async () => {
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("error");
+
+    persist.mockResolvedValueOnce({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    controller.retry();
+
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(persist).toHaveBeenLastCalledWith(CONTENT_A); // the same, un-retyped content
+    expect(controller.getState().status).toBe("saving");
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(controller.getState()).toEqual({
+      status: "saved",
+      lastSavedAt: "2026-01-01T00:00:00.000Z",
+      lastError: null,
+    });
+  });
+
+  it("bypasses the debounce wait — the retried save starts immediately, not after another AUTOSAVE_DEBOUNCE_MS", async () => {
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    persist.mockResolvedValueOnce({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    controller.retry();
+
+    // No timer advance at all — attemptSave() has already been called synchronously.
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
+
+  it("is a no-op while idle — nothing has ever failed", () => {
+    const persist = vi.fn();
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.retry();
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe("idle");
+  });
+
+  it("is a no-op while pending or saving — a cycle is already queued/in flight", async () => {
+    const saveA = deferred<{ updatedAt: string }>();
+    const persist = vi.fn().mockReturnValueOnce(saveA.promise);
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    expect(controller.getState().status).toBe("pending");
+    controller.retry();
+    expect(persist).not.toHaveBeenCalled(); // still pending — debounce hasn't fired
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("saving");
+    controller.retry();
+    expect(persist).toHaveBeenCalledTimes(1); // unchanged — no second concurrent call
+
+    saveA.resolve({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("is a no-op once already saved — nothing to recover", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("saved");
+
+    controller.retry();
+
+    expect(persist).toHaveBeenCalledTimes(1); // unchanged
+  });
+
+  it("Test G — a newer edit arriving during a retry is never marked saved by the retry's own success", async () => {
+    const saveA = deferred<{ updatedAt: string }>();
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("error");
+
+    persist.mockReturnValueOnce(saveA.promise); // A's retry, still in flight
+    controller.retry();
+    expect(controller.getState().status).toBe("saving");
+
+    // B arrives while A's retry is in flight.
+    controller.notifyContentChanged(CONTENT_B);
+    expect(controller.getState().status).toBe("pending");
+
+    // A's retry now resolves successfully.
+    persist.mockResolvedValueOnce({ updatedAt: "2026-01-02T00:00:00.000Z" }); // B's own eventual save
+    saveA.resolve({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // B must not be considered saved because A's retry succeeded.
+    expect(controller.getState().status).toBe("pending");
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(persist).toHaveBeenLastCalledWith(CONTENT_B);
+    expect(controller.getState()).toEqual({
+      status: "saved",
+      lastSavedAt: "2026-01-02T00:00:00.000Z",
+      lastError: null,
+    });
+  });
+
+  it("does nothing after destroy", () => {
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    controller.destroy();
+
+    expect(() => controller.retry()).not.toThrow();
+    expect(persist).not.toHaveBeenCalled();
+  });
+});
+
 describe("subscribe/getState", () => {
   it("notifies subscribers on every transition and unsubscribe stops further notifications", async () => {
     const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });

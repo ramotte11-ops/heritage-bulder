@@ -2,10 +2,10 @@
  * Mission 007 — the Builder's autosave status, as a pure state machine.
  * No I/O, no React, no Supabase — this is the boundary a future
  * progressive "one question at a time" UI is meant to bind to, without
- * having to invent its own save-status tracking. Nothing here is wired
- * into components/builder/* yet; only lib/adapters/draft-repository.ts
- * (the real persistence boundary) and this module exist so far — see
- * this mission's report.
+ * having to invent its own save-status tracking. Driven at runtime by
+ * lib/builder/autosave-controller.ts (Mission 009B) and wired into
+ * components/builder/BuilderShell.tsx; `hasUnsavedChanges` below
+ * (Mission 010) is the loss-protection boundary built on top of it.
  *
  * Deliberately knows nothing about MemorialType, Skin, or Offer: it
  * tracks the status of ONE save operation, nothing about what's being
@@ -97,4 +97,31 @@ export function saveFailed(state: AutosaveState, reason: string): AutosaveState 
   }
 
   return { ...state, status: "error", lastError: reason };
+}
+
+/**
+ * Mission 010 — the single, reusable answer to "does the family risk
+ * losing something right now?", derived entirely from this state
+ * machine rather than tracked as a second, parallel piece of "dirty"
+ * state. `pending`/`saving`/`error` all mean the latest edit isn't yet
+ * guaranteed persisted; `idle`/`saved` mean nothing is currently at
+ * risk.
+ *
+ * `idle` covers two different real situations that both correctly mean
+ * "no risk": nothing has changed since the last (or no) save, and —
+ * just as importantly — autosave being entirely inert because no
+ * `persist` function was ever configured (lib/builder/use-autosave.ts
+ * never leaves `idle` in that case, since it never even creates a
+ * controller). Mission 003's demo Builder must never show a loss
+ * warning it can't back up with a real save promise — this function
+ * can't accidentally do that, because there is nothing that ever moves
+ * a persist-less session's state out of `idle`.
+ *
+ * This is the one boundary a future beforeunload guard (this mission)
+ * or a future in-app Builder navigation guard (not built — see this
+ * mission's report) both call, instead of each inventing their own
+ * notion of "unsaved".
+ */
+export function hasUnsavedChanges(state: AutosaveState): boolean {
+  return state.status === "pending" || state.status === "saving" || state.status === "error";
 }

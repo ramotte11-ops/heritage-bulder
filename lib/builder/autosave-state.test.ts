@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTOSAVE_DEBOUNCE_MS,
+  hasUnsavedChanges,
   INITIAL_AUTOSAVE_STATE,
   markContentChanged,
   saveFailed,
   saveSucceeded,
   startSaving,
   type AutosaveState,
+  type AutosaveStatus,
 } from "./autosave-state";
 
 describe("INITIAL_AUTOSAVE_STATE", () => {
@@ -169,5 +171,24 @@ describe("a realistic sequence", () => {
       lastSavedAt: "2026-01-01T00:00:00.000Z",
       lastError: "network down",
     });
+  });
+});
+
+describe("hasUnsavedChanges — Mission 010's loss-protection boundary", () => {
+  const RISKY: AutosaveStatus[] = ["pending", "saving", "error"];
+  const SAFE: AutosaveStatus[] = ["idle", "saved"];
+
+  it.each(RISKY)("is true while %s — the latest edit isn't guaranteed persisted", (status) => {
+    const state: AutosaveState = { status, lastSavedAt: null, lastError: null };
+    expect(hasUnsavedChanges(state)).toBe(true);
+  });
+
+  it.each(SAFE)("is false while %s — nothing currently at risk", (status) => {
+    const state: AutosaveState = { status, lastSavedAt: null, lastError: null };
+    expect(hasUnsavedChanges(state)).toBe(false);
+  });
+
+  it("is false for INITIAL_AUTOSAVE_STATE — never a false positive before any edit, and never one in persist-less (demo) mode either, since that mode never leaves idle", () => {
+    expect(hasUnsavedChanges(INITIAL_AUTOSAVE_STATE)).toBe(false);
   });
 });
