@@ -39,6 +39,14 @@ const SERVER_ONLY_MODULES = [
   "lib/supabase/service-role-client.ts",
   "lib/adapters/supabase/owner-repository.ts",
   "lib/adapters/supabase/entitlement-repository.ts",
+  // Mission 013: these hold the activation-key secret material — the
+  // CSPRNG, the hashing, and every primitive that issues, replaces or
+  // redeems a key. `node:crypto` is a server module and none of this has
+  // any business reaching a browser bundle.
+  "lib/entitlement/activation-key.ts",
+  "lib/entitlement/issue-entitlement.ts",
+  "lib/entitlement/activation-key-lifecycle.ts",
+  "lib/entitlement/redeem-with-activation-key.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];
@@ -195,6 +203,19 @@ describe("server-only boundary", () => {
     // server" module in between to stop at.
     const direct = transitiveImports("lib/adapters/supabase/entitlement-repository.ts");
     expect(direct.has("lib/adapters/entitlement-repository.ts")).toBe(true);
+  });
+
+  it("Mission 013: no client component can reach node:crypto through our modules", () => {
+    // A second, independent angle on the same boundary: the key material
+    // modules import node:crypto directly, so if one ever became
+    // client-reachable the bundle would break loudly — but this asserts
+    // it rather than relying on that.
+    for (const entry of clientEntrypoints()) {
+      for (const reachable of transitiveImports(entry)) {
+        const source = readFileSync(path.join(REPO_ROOT, reachable), "utf8");
+        expect(source).not.toContain('from "node:crypto"');
+      }
+    }
   });
 
   it("keeps the service-role key out of anything a client bundle could read", () => {

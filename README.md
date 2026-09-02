@@ -449,7 +449,7 @@ future mission, not just this one:
 
 ## What is NOT built yet
 
-Deliberately out of scope through Mission 011B (see each mission's own
+Deliberately out of scope through Mission 013 (see each mission's own
 exclusion list for the full wording):
 
 - Anything wiring `lib/memorial/status-transitions.ts` into the Builder,
@@ -457,6 +457,20 @@ exclusion list for the full wording):
   the state machine itself only. No `memorials.status` is ever changed
   by anything in this codebase yet, and no restore/un-archive path
   exists (see the architecture rule above).
+- **Any way to present an activation key.** Mission 013 built the key
+  itself (`lib/entitlement/activation-key.ts` — 160-bit CSPRNG, Crockford
+  base32, `HH1-` prefixed), issuing (`issue-entitlement.ts`), replacement
+  and invalidation (`activation-key-lifecycle.ts`), and the bridge from a
+  raw key to a redemption (`redeem-with-activation-key.ts`). **Nothing
+  calls any of it**: no activation page, no form, no route, no Server
+  Action, and no rate limiter — the surface that accepts a key from a
+  human must be able to throttle it, and that belongs to a later mission.
+  No Etsy, no webhook, no PDF, no QR.
+- **Support/Admin tooling for keys.** Replacement and invalidation exist
+  as server primitives only. There is no Admin UI, no Admin role, and no
+  persistent history of rotations — replacing a key overwrites the stored
+  hash, so a superseded key leaves no trace. The audit trail is Mission
+  015's, as an additive events table.
 - **Any way to reach redemption from a browser.** Mission 011B built the
   server-side engine — `redeemAuthenticatedEntitlement()`
   (`lib/entitlement/`) resolves an authenticated session to a HERITAGE
