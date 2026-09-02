@@ -447,6 +447,78 @@ future mission, not just this one:
   (by the same generation mechanism Mission 009B built) to never clear
   this for a newer, still-unsaved version.
 
+## The three application roles (Mission 014)
+
+Distinct from the PostgreSQL roles (`PUBLIC`, `anon`, `authenticated`,
+`service_role`) settled in Missions 013B/013C — see `supabase/README.md`.
+Those decide what a database connection may touch. These decide who the
+*person* is and what the *application* will let them reach.
+
+| | Visitor | Authenticated | Owner |
+| --- | --- | --- | --- |
+| Valid Supabase Auth session | no | yes | yes |
+| HERITAGE `owners` row | no | no | yes |
+| Owner capability | none | none | only their own memorials |
+| Commercial capability | none | none | only rights they redeemed |
+
+Resolved by `resolveHeritageActor()` (`lib/auth/heritage-actor.ts`), from
+the server-established session alone — `getAuthenticatedUser()` validates
+the token against the Auth server, never trusting the cookie's contents.
+No request body, query parameter or header participates.
+
+Two structural guarantees, both enforced by the *type* of the dependency
+rather than by discipline:
+
+- the owner lookup is `Pick<OwnerRepository, "findByAuthUserId">`, so
+  loading a page can never create an Owner row (creation belongs to
+  redemption alone, Mission 011B) and an actor can never be resolved from
+  a matching email;
+- `authorizeMemorialAccess()` (`lib/auth/memorial-access.ts`) takes the
+  **actor**, never an owner id, so a caller cannot pass one that arrived
+  in a payload. `memorialId` may come from a URL — it is a claim, and
+  this function is what turns it into a verified fact.
+
+"Authenticated but no Owner" is an ordinary state, not an error: nothing
+is created, nothing throws, and the actor simply has no owner capability
+yet.
+
+Since Mission 013C the client roles hold no privilege on these tables, so
+the RLS policies are inert and the application performs the ownership
+read itself, server-side, through `service_role` — one column
+(`memorials.owner_id`), compared against the session-resolved owner. The
+policies are untouched and become a real second layer the day a mission
+wires an owner-facing screen and grants the read it needs.
+
+### HERITAGE Admin
+
+A single boolean — `isHeritageAdmin()` (`lib/auth/heritage-admin.ts`) —
+read from Supabase Auth's `app_metadata.heritage_role === "admin"`.
+
+`app_metadata` is the only place that satisfies every constraint at once:
+it is **not writable by the user** (`supabase.auth.updateUser()` can only
+write `user_metadata`; writing `app_metadata` needs the Admin API or the
+dashboard), it is verified rather than asserted (read from
+`auth.getUser()`), it names no email in code, and it needs no migration
+and no secret. `user_metadata` is deliberately unreachable from that
+function — a role found there is a claim by the very person being
+checked, and a test asserts it counts for nothing.
+
+**Granting it is an out-of-band operation**, on purpose: a HERITAGE
+operator sets it on the user in the Supabase dashboard (Authentication →
+the user → *App Metadata*), or via the Admin API with the service-role
+key. Nothing in this repository grants, revokes or lists admins, and the
+flag can be withdrawn without a deployment.
+
+**Staff are not super-owners.** `authorizeMemorialAccess()` does not read
+`isHeritageAdmin` at all: being staff never opens a family's memorial. If
+a later mission needs staff access to one, it must build that as its own
+audited path. That is why "admin" is a separate axis on the actor rather
+than a third value of the same enum — an ordered enum invites "admin is
+the biggest one", which is exactly the bypass to prevent.
+
+Mission 014 built the primitive and nothing else: no Admin portal, no
+admin route, no permission list, no team/agency roles.
+
 ## What is NOT built yet
 
 Deliberately out of scope through Mission 013 (see each mission's own
@@ -467,7 +539,9 @@ exclusion list for the full wording):
   human must be able to throttle it, and that belongs to a later mission.
   No Etsy, no webhook, no PDF, no QR.
 - **Support/Admin tooling for keys.** Replacement and invalidation exist
-  as server primitives only. There is no Admin UI, no Admin role, and no
+  as server primitives only. Mission 014 added the way to RECOGNISE a
+  HERITAGE Admin (see above) and nothing an Admin can do: there is no
+  Admin UI, no admin route, no
   persistent history of rotations — replacing a key overwrites the stored
   hash, so a superseded key leaves no trace. The audit trail is Mission
   015's, as an additive events table.

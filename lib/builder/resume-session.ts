@@ -26,17 +26,27 @@ import type { StoredMemorial } from "@/types/memorial";
  * which `memorialId` the family is trying to resume — e.g. from a URL
  * segment — never this function.
  *
- * Authorization is never re-implemented here: `findById` and
- * `getDraftContent` must be constructed with a session-scoped Supabase
- * client (see lib/supabase/server-client.ts), and RLS
- * (`memorials_select_own`, `memorial_drafts_select_own`) is what
- * actually decides whether `memorialId` belongs to the caller. If there
- * is no authenticated session at all, an anon-scoped client hits the
- * exact same "zero rows" signal (there is no public SELECT policy on
- * either table) and this resolves to `notFoundOrForbidden` — the same
- * outcome as a wrong-owner attempt, on purpose. Confirming a session
- * exists in the first place stays `getAuthenticatedUser()`'s job
- * (Mission 004, upstream of this function), not re-derived here.
+ * Authorization is never re-implemented here — but WHERE it happens
+ * changed in Mission 013C, and this paragraph is the corrected version.
+ *
+ * Missions 007-009 assumed a session-scoped Supabase client plus RLS
+ * (`memorials_select_own`, `memorial_drafts_select_own`) would decide
+ * whether `memorialId` belongs to the caller, yielding "zero rows" for
+ * somebody else's memorial. Mission 013B measured that this never worked
+ * against the real project: no HERITAGE migration had granted a table
+ * privilege, so such a read failed with *permission denied* rather than
+ * returning an empty set. Mission 013C then settled the model — `anon`
+ * and `authenticated` hold no privilege on these tables while nothing
+ * reads them as a client role — so those policies are currently inert.
+ *
+ * The ownership decision therefore belongs to Mission 014's
+ * `authorizeMemorialAccess` (lib/auth/memorial-access.ts): the caller
+ * that decides which `memorialId` the family is trying to resume must
+ * authorize it there FIRST, and only then hand the verified id to this
+ * function. Confirming a session exists at all remains upstream too
+ * (`getHeritageActor()`, or `getAuthenticatedUser()` before it) — never
+ * re-derived here. Nothing in this file calls Supabase, so nothing about
+ * it changed; only the layer its callers must rely on did.
  */
 export interface ResumeBuilderSessionDeps {
   memorialRepository: Pick<DataRepository<StoredMemorial>, "findById">;
