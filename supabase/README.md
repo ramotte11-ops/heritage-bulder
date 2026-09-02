@@ -492,6 +492,38 @@ prints an explicit note instead of pretending otherwise. More generally
 it is not a substitute for testing against a real Supabase project —
 real GoTrue-issued JWTs, real PostgREST.
 
+## Préflight / postflight (`checks/`)
+
+`checks/013c_preflight.sql` and `checks/013c_postflight.sql` are
+**read-only** queries meant to be pasted into the Supabase SQL Editor by
+someone who is not a developer. Neither performs a GRANT, REVOKE, CREATE
+or UPDATE; both read catalogues only, and each returns **one** result
+set.
+
+The preflight records the "before" state — privileges per role and
+table, PUBLIC's ACLs, table owners, the `pg_default_acl` entries, each
+function's security mode and `search_path`, which of the two migrations
+are already applied, and the row counts. It is a photograph, not a gate.
+
+The postflight is run **after** applying, in this order:
+
+1. `migrations/20260901180000_activation_keys.sql`
+2. `migrations/20260901190000_privilege_model.sql`
+
+Every row carries its own verdict in a `verdict` column — `OK`, `INFO`,
+or `ECHEC`. A single `ECHEC` row means the deployed privilege model is
+not the one this repository describes. Nothing needs interpreting.
+
+It deliberately covers what the local harness cannot: `MAINTAIN` exists
+only on PostgreSQL 17+, and the local cluster runs 16. The postflight
+includes it when the server has it.
+
+Both were validated against a throwaway cluster reproducing the remote
+default-ACL signature, including negatively: each of `grant truncate`,
+`grant delete`, an over-broad client `grant select`, an extra `execute`
+grant, a `grant ... to public`, and reverting `current_owner_id()` to a
+non-pinned INVOKER was individually shown to turn rows red.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
