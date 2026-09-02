@@ -56,58 +56,32 @@ comment on column entitlements.activation_key_hash is
   'sha256(hex) of the canonical activation key ("HH1:<payload>"). Never the raw key. NULL when the right has no key. Server-only: see the privilege changes in this migration — Mission 013.';
 
 -- ---------------------------------------------------------------------
--- B. THE HASH IS SERVER-ONLY, BY PRIVILEGE
+-- B. THE HASH IS SERVER-ONLY — SEE 20260901190000_privilege_model.sql
 -- ---------------------------------------------------------------------
 --
--- entitlements_select_own is a ROW-level policy, so it would happily let
--- an authenticated owner read this column on their own row. Verified
--- during Mission 013's audit against a real cluster.
+-- An earlier version of this migration revoked SELECT on `entitlements`
+-- from anon/authenticated and granted the non-secret columns back to
+-- `authenticated`. Mission 013B's diagnostic of the real project made
+-- that wrong on both halves:
 --
--- Also verified there: `REVOKE SELECT (activation_key_hash)` ALONE DOES
--- NOTHING while the role still holds table-wide SELECT — in PostgreSQL a
--- table-level grant covers every column and a column-level revoke cannot
--- subtract from it. The table grant has to go first, then the legitimate
--- columns are granted back explicitly.
+--   * the revoke was too narrow. anon and authenticated also held
+--     TRUNCATE, TRIGGER, REFERENCES and MAINTAIN — inherited, never
+--     granted by HERITAGE — and TRUNCATE ignores row-level security
+--     entirely;
+--   * the grant was premature. Nothing reads `entitlements` as a client
+--     role, so `entitlements_select_own` has no consumer and the column
+--     allowlist protected a door nobody could reach.
 --
--- This is a restriction, never a relaxation: no policy is created,
--- dropped or modified, and entitlements_select_own is untouched. A
--- pleasant side effect is that the column list is now the allowlist —
--- any column added to this table in future is invisible to client roles
--- until someone deliberately grants it.
+-- The whole table privilege model therefore moved to
+-- 20260901190000_privilege_model.sql, which revokes everything from
+-- every application role on all seven tables and grants only what a
+-- wired path needs. `authenticated` ends up with NO privilege on
+-- `entitlements` at all, which protects activation_key_hash more
+-- strongly than a column-level revoke ever did — and keeps protecting
+-- any column added later.
 --
--- Consequence to know: `select *` on entitlements now fails for client
--- roles (PostgREST's default), so a future owner-facing read must name
--- its columns. Nothing reads this table as anon/authenticated today.
---
--- REVOKE ALL, not just SELECT — defence in depth for the writes too.
--- Supabase's default privileges hand anon and authenticated INSERT,
--- UPDATE and DELETE on every public-schema table, entitlements
--- included. Measured on a cluster built from these migrations:
--- has_column_privilege('authenticated', 'entitlements',
--- 'activation_key_hash', 'UPDATE') was TRUE, and a client INSERT failed
--- with "row-level security policy" rather than "permission denied" —
--- i.e. the ONLY thing standing between a browser and rewriting a
--- commercial right was the absence of a policy.
---
--- That is one accidental `create policy` away from being a hole. An
--- entitlement is a purchase record: no browser has any business
--- inserting, updating or deleting one, ever. After this, adding a
--- policy by mistake grants nothing on its own — an explicit GRANT would
--- also be required, which is a far more deliberate act.
---
--- PUBLIC is named explicitly. It holds nothing today (verified: no
--- grantee-0 entry in relacl and no column grants), and this migration
--- must not quietly depend on that staying true.
---
--- service_role is deliberately absent from the revoke: it is the
--- redemption engine and needs its access intact.
-
-revoke all privileges on entitlements from public, anon, authenticated;
-
-grant select (
-  id, source, external_order_id, offer_id, status,
-  owner_id, created_at, redeemed_at, updated_at
-) on entitlements to authenticated;
+-- Nothing about the hash's storage changes: still sha256 of a canonical
+-- input carrying the format version, still never the raw key.
 
 -- ---------------------------------------------------------------------
 -- C. redeem_entitlement_with_activation_key()

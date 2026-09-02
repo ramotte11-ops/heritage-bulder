@@ -230,12 +230,17 @@ opposite choice from `public_memorial_publication_state()` above, for the
 opposite reason. That function *must* be DEFINER: it is evaluated inside
 RLS policies as `anon`/`authenticated`, roles that must never read
 `memorials`. `redeem_entitlement()` is called by the server-side service
-role, which already carries `BYPASSRLS` and full DML grants, so it needs
-no ambient privilege of its own — and keeping it INVOKER means it has
-none, so it can never become a privilege-escalation vector. If `EXECUTE`
-were ever granted here by mistake, the body would run with that caller's
-own rights, RLS would apply, and the insert into `memorials` would be
-refused (no client role has an INSERT policy). `EXECUTE` is revoked from
+role, which carries `BYPASSRLS` and — since Mission 013C — the exact
+table privileges the function's body needs, granted explicitly in
+`20260901190000_privilege_model.sql`. Keeping it INVOKER means the
+function itself holds no ambient privilege, so it can never become a
+privilege-escalation vector. If `EXECUTE` were ever granted here by
+mistake, the body would run with that caller's own rights and be
+refused twice over: the client roles hold no privilege on `memorials`
+or `entitlements` at all, and no policy grants them an INSERT either.
+
+(Before Mission 013C this paragraph said `service_role` carried "full
+DML grants". It never did — see **The privilege model** below.) `EXECUTE` is revoked from
 `PUBLIC` and granted only to `service_role`; the harness asserts that
 `anon` and `authenticated` cannot call it.
 
@@ -310,31 +315,17 @@ ROW-level policy, so it would happily expose this column on an owner's
 own row. Verified against a real cluster during Mission 013's audit:
 `REVOKE SELECT (activation_key_hash)` alone does **nothing** while the
 role still holds table-wide SELECT — a table grant covers every column
-and a column revoke cannot subtract from it. So the migration revokes
-the table from `anon`/`authenticated` and grants the legitimate columns
-back explicitly. No policy is created, dropped or modified.
+and a column revoke cannot subtract from it.
 
-The revoke is `REVOKE ALL PRIVILEGES`, not just SELECT, and it names
-`PUBLIC` explicitly. Supabase's default privileges hand `anon` and
-`authenticated` INSERT/UPDATE/DELETE on every public-schema table, and
-measurement on a cluster built from these migrations confirmed the
-consequence:
-`has_column_privilege('authenticated','entitlements','activation_key_hash','UPDATE')`
-was **true**, and a client INSERT failed with *"row-level security
-policy"* rather than *"permission denied"* — meaning the only thing
-between a browser and rewriting a purchase record was the absence of a
-policy. After the revoke those same statements fail on privileges, so
-one accidental `create policy` grants nothing on its own. `service_role`
-is deliberately untouched.
-
-Two consequences worth knowing: `select *` on `entitlements` now fails
-for client roles (PostgREST's default), so a future owner-facing read
-must name its columns; and the column list is now an allowlist, so any
-column added later is invisible to client roles until someone
-deliberately grants it. `scripts/db/test-local.sh` asserts all of this —
-every privilege for every role, PUBLIC's table and column ACLs, the
-write refusals, and that a blanket `GRANT ... ON ALL TABLES` can never
-quietly undo it.
+Mission 013 first answered that with a column allowlist on
+`entitlements`: revoke the table from the client roles, grant the
+non-secret columns back to `authenticated`. Mission 013B's diagnostic of
+the real project retired that answer, and Mission 013C replaced it —
+see **The privilege model** below. `authenticated` now holds **no
+privilege on `entitlements` at all**, which protects the column more
+strongly than any allowlist: it needs no maintenance when a column is
+added, and it cannot be undone by a policy. `service_role` keeps the
+SELECT the redemption engine needs.
 
 ### The `redeem_entitlement_with_activation_key()` function
 
@@ -358,31 +349,148 @@ NULL, the presented hash is NULL, or the two differ. The harness proves
 both orders — activation-then-replacement and replacement-then-activation
 — and that the wrapper genuinely blocks on the row lock.
 
+## The privilege model
+
+Until Mission 013C, **no HERITAGE migration granted a single table
+privilege**. The schema relied on Supabase's implicit default
+privileges, and a read-only diagnostic of the real project showed what
+that actually produced.
+
+Every HERITAGE table is owned by `postgres`. `pg_default_acl` holds two
+entries for `public`/tables: one `FOR ROLE supabase_admin` granting all
+DML to `anon`/`authenticated`/`service_role`, and one `FOR ROLE postgres`
+granting only `MAINTAIN`, `REFERENCES`, `TRIGGER` and `TRUNCATE`. Tables
+created by `postgres` inherit only that second, **DML-less** set. So the
+defaults did apply — they simply exclude SELECT/INSERT/UPDATE/DELETE.
+
+Measured on a cluster reproducing that state exactly:
+
+| Call | Result |
+| --- | --- |
+| `service_role` → `redeem_entitlement(...)` | `permission denied for table entitlements` |
+| `authenticated` → `select from memorials` | `permission denied for table owners` |
+| `anon` → `select from memorial_published_snapshots` | `permission denied` |
+
+Mission 011A's redemption RPC had therefore never been able to run
+against the real project. Nothing revealed it because no code path is
+wired, the tables hold zero rows — and the local harness granted itself
+the missing privileges, so it stayed green (fixed; see **Local
+testing**).
+
+What the roles *did* inherit was worse than what they did not.
+`TRUNCATE` is **not filtered by row-level security**: measured against
+the same configuration, `anon` and `authenticated` each emptied all
+seven tables while being unable to read a single row from any of them.
+PostgREST never emits TRUNCATE and these roles are `NOLOGIN`, so it is
+not reachable through the REST API today — but that protection came from
+the shape of the API surface, not from the privilege model.
+
+`20260901190000_privilege_model.sql` states the model explicitly:
+revoke everything from `PUBLIC`, `anon`, `authenticated` and
+`service_role` on all seven tables, then grant back only what a wired
+code path provably needs.
+
+| Table | `service_role` | `anon` / `authenticated` | `PUBLIC` |
+| --- | --- | --- | --- |
+| `owners` | SELECT, INSERT | — | — |
+| `entitlements` | SELECT, INSERT, UPDATE | — | — |
+| `memorials` | SELECT, INSERT | — | — |
+| `memorial_drafts` | — | — | — |
+| `memorial_published_snapshots` | — | — | — |
+| `media` | — | — | — |
+| `messages` | — | — | — |
+
+`DELETE` is granted nowhere: no code path deletes, and a purchase record
+is not something a server flow should be able to remove by accident.
+`memorial_drafts` needs no grant at all because `create_memorial_draft()`
+became `SECURITY DEFINER` (below). The client roles get nothing because
+nothing in the codebase reads these tables as a client role yet — an RLS
+policy without a grant is inert, not broken, and the mission that wires
+an owner-facing screen opens the grant it needs as a conscious act.
+
+Two function changes go with it:
+
+- **`current_owner_id()` → `SECURITY DEFINER`**, `search_path` pinned,
+  `public.owners` schema-qualified. It is a policy helper, not business
+  logic; as INVOKER every owner-scoped policy silently required SELECT
+  on `owners`, which is why a client reading `memorials` got
+  *permission denied for table owners*. The escalation risk normally
+  attached to DEFINER is absent: the function **takes no arguments**, so
+  it cannot be pointed at another row — it resolves `auth.uid()` and
+  nothing else. `EXECUTE` is revoked from `PUBLIC` and granted to
+  `authenticated` alone: every policy whose expression uses it is
+  declared `TO authenticated`, the two policies that also target `anon`
+  call `public_memorial_publication_state()` instead, and `service_role`
+  carries `BYPASSRLS` so no policy is ever evaluated for it.
+- **`create_memorial_draft()` → `SECURITY DEFINER`**, likewise pinned
+  and qualified. "Every memorial has exactly one draft" is a schema
+  invariant, and an invariant must not depend on the privileges of
+  whoever performs the INSERT — as INVOKER it did, forcing a grant on a
+  table no application code ever writes.
+
+`set_updated_at()` stays INVOKER (it touches no table) with its
+`search_path` pinned. `public_memorial_publication_state()` and
+`redeem_entitlement()` are untouched.
+
+**Doctrine: security lives in Git, not in a hosting provider's
+defaults.** Every migration that creates a table states its privileges
+explicitly. The platform's own `ALTER DEFAULT PRIVILEGES` are
+deliberately *not* modified: they are shared with Supabase-managed
+objects, invisible to Git, and would not reproduce on a plain PostgreSQL
+instance.
+
 ## Local testing
 
 `scripts/db/test-local.sh` spins up a throwaway, vanilla PostgreSQL
 cluster (no Docker, no Supabase project, no network — just the
 `postgresql` server package), applies every migration in order, then:
 
-1. asserts the core integrity constraints reject bad data (duplicate
+1. asserts the privilege model the migrations actually define — before
+   the script itself grants anything;
+2. asserts the core integrity constraints reject bad data (duplicate
    slugs, invalid enum/check values, double-claimed entitlements, a
    memorial without an owner, ...);
-2. simulates two owners and an anonymous visitor and asserts RLS
+3. simulates two owners and an anonymous visitor and asserts RLS
    isolation between them, including the public snapshot/message
    policies.
 
-It creates a minimal stand-in for the two things a real Supabase project
-provides for free — an `auth.uid()` function and the `anon`/
-`authenticated` roles with their default privileges — but only inside
-the script itself, never in `migrations/`. Run it with:
+It creates a minimal stand-in for what a real Supabase project provides
+for free — an `auth.uid()` function, the `anon`/`authenticated`/
+`service_role`/`authenticator` roles, and the default privileges those
+roles actually inherit there — but only inside the script itself, never
+in `migrations/`.
+
+**The bootstrap is deliberately hostile.** Until Mission 013C it ran
+`alter default privileges ... grant select, insert, update, delete` and,
+after the migrations, a blanket `grant ... on all tables`. Between them
+they manufactured every privilege the migrations never granted, which is
+why this suite was green for eleven missions while the real project could
+not execute `redeem_entitlement` at all. A harness that hands itself the
+privileges under test proves nothing about them. It now reproduces the
+remote default ACL exactly (`references, trigger, truncate` and no DML)
+and grants nothing afterwards, so the migrations must supply what the
+application needs and remove what the platform handed over.
+
+A small, clearly-labelled block of **test-only grants** exists further
+down, after every privilege assertion has run. It gives the client roles
+the reads the RLS tests sit on top of, so those tests keep proving that
+the *policies* return no rows rather than collapsing into *permission
+denied*. Nothing in `migrations/` produces those grants, and the
+assertions above them say so.
 
 ```bash
 scripts/db/test-local.sh
 ```
 
-As of Mission 008 this passes 26/26 checks (11 integrity, 15 RLS). It is
-not a substitute for testing against a real Supabase project (real
-GoTrue-issued JWTs, PostgREST) — that happens once a project exists.
+As of Mission 013C this passes 312/312 checks.
+
+**One gap it cannot close.** This harness runs PostgreSQL 16, where the
+`MAINTAIN` privilege does not exist; the real project runs 17+, where it
+does. `REVOKE ALL PRIVILEGES` removes it there without naming it, but
+only a postflight against the real project can prove that. The suite
+prints an explicit note instead of pretending otherwise. More generally
+it is not a substitute for testing against a real Supabase project —
+real GoTrue-issued JWTs, real PostgREST.
 
 ## Migration workflow
 

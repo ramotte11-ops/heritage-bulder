@@ -87,19 +87,53 @@ as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$
 create role anon nologin;
 create role authenticated nologin;
 
--- Mission 011A stand-in for Supabase's real `service_role`: the
--- server-side privileged role the redemption RPC is called with. The two
--- properties that matter for what is under test here are BYPASSRLS and
--- ordinary DML grants — exactly what the real one has. Like the anon /
--- authenticated stand-ins above, it is defined only in this script,
--- never in supabase/migrations/, because a real Supabase project already
+-- Stand-in for Supabase's real `service_role`, the server-side
+-- privileged role the redemption RPCs are called with. BYPASSRLS is the
+-- property that matters and the real one has it. Defined only in this
+-- script, never in supabase/migrations/, because a real project already
 -- provides it.
 create role service_role nologin bypassrls;
+
+-- PostgREST connects as `authenticator` and SET ROLEs into one of the
+-- three above, so it is a member of all three on a real project.
+create role authenticator nologin;
+grant anon, authenticated, service_role to authenticator;
 
 grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
-alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
+
+-- Mission 013C — THE FIDELITY FIX.
+--
+-- This script used to run
+--   alter default privileges ... grant select, insert, update, delete
+--     on tables to anon, authenticated, service_role;
+-- and, after the migrations, a blanket
+--   grant select, insert, update, delete on all tables in schema public
+--     to anon, authenticated, service_role;
+--
+-- Between them they MANUFACTURED every privilege the HERITAGE
+-- migrations never granted. That is why this suite was green for eleven
+-- missions while the real project could not execute redeem_entitlement
+-- at all. A harness that hands itself the privileges under test cannot
+-- prove anything about them.
+--
+-- What replaces them reproduces what a read-only diagnostic actually
+-- found on the real Supabase project: tables are created by `postgres`,
+-- and the pg_default_acl entry that applies to objects created by
+-- `postgres` grants the application roles everything EXCEPT the four DML
+-- privileges. So they inherit REFERENCES, TRIGGER and TRUNCATE (plus
+-- MAINTAIN on PostgreSQL 17+, which does not exist here — see the
+-- version note in the Mission 013C checks) and no SELECT/INSERT/UPDATE/
+-- DELETE whatsoever.
+--
+-- Starting from that state means the migrations must grant what the
+-- application needs, and must revoke what the platform handed over. If
+-- either stops happening, this suite goes red instead of quietly
+-- passing.
+alter default privileges in schema public
+  grant references, trigger, truncate on tables
+  to anon, authenticated, service_role;
 SQL
 
 echo "== Applying migrations =="
@@ -108,16 +142,10 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
   $DB -f "$f"
 done
 
-# Mission 013 removed the blanket
-#   grant select, insert, update, delete on all tables in schema public
-# that used to run here. It was redundant — ALTER DEFAULT PRIVILEGES
-# above already covers every table these migrations create — and it was
-# actively harmful: running AFTER the migrations, it silently re-granted
-# the table-wide SELECT that 20260901180000_activation_keys.sql revokes
-# to keep entitlements.activation_key_hash server-only. A blanket grant
-# must never be able to undo a deliberate restriction. The checks below
-# assert both halves: ordinary tables are still readable, and the hash is
-# not.
+# Nothing is granted here. Everything a role can do from this point on
+# was decided by supabase/migrations/ — which is the entire point of
+# Mission 013C. The privilege assertions immediately below run before
+# any test-only grant, so they measure the migrations and nothing else.
 
 check() {
   local desc="$1"; local expect="$2"; local actual="$3"
@@ -140,6 +168,217 @@ expect_error() {
     PASS=$((PASS + 1))
   fi
 }
+
+echo ""
+echo "== Mission 013C: the privilege model the migrations actually define =="
+
+# These checks run BEFORE any other statement in this script touches a
+# privilege. They therefore measure supabase/migrations/ and nothing
+# else — which is exactly what eleven missions of green runs failed to
+# do, because the bootstrap used to grant everything itself.
+
+svc() {
+  $DB -t -A -c "set role service_role; $*"
+}
+
+svc_expect_error() {
+  local desc="$1"; local sql="$2"; local needle="$3"
+  local out
+  if out=$($DB -t -A -c "set role service_role; $sql" 2>&1); then
+    echo "  [FAIL] $desc (expected an error, statement succeeded: $out)"
+    FAIL=$((FAIL + 1))
+  elif printf '%s' "$out" | grep -q "$needle"; then
+    echo "  [PASS] $desc"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] $desc (errored, but not with '$needle': $(printf '%s' "$out" | tr '\n' ' '))"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+# --- PUBLIC holds nothing, anywhere -----------------------------------
+for t in owners entitlements memorials memorial_drafts memorial_published_snapshots media messages; do
+  HAS=$($DB -t -A -c "select coalesce((select true from aclexplode((select relacl from pg_class where oid='public.$t'::regclass)) a where a.grantee = 0 limit 1), false);")
+  check "PUBLIC has no privilege on $t" "f" "$HAS"
+done
+
+# --- the platform's inherited non-DML privileges are gone --------------
+# These are the ones nobody granted and nobody needs. TRUNCATE matters
+# most: it is not filtered by row-level security, so a role holding it
+# can empty a table it cannot even read.
+PG_MAJOR=$($DB -t -A -c "select current_setting('server_version_num')::int / 10000;")
+NON_DML="TRUNCATE REFERENCES TRIGGER"
+if [ "$PG_MAJOR" -ge 17 ]; then
+  NON_DML="$NON_DML MAINTAIN"
+else
+  echo "  [note] PostgreSQL $PG_MAJOR here: MAINTAIN does not exist yet and is not asserted."
+  echo "         The real project runs 17+, where it does. 'revoke all privileges'"
+  echo "         in 20260901190000 removes it there without naming it — but only a"
+  echo "         remote postflight can prove that. This harness cannot."
+fi
+for t in owners entitlements memorials memorial_drafts memorial_published_snapshots media messages; do
+  for role in anon authenticated service_role; do
+    for p in $NON_DML; do
+      HAS=$($DB -t -A -c "select has_table_privilege('$role','public.$t','$p');")
+      check "$role has no $p on $t" "f" "$HAS"
+    done
+  done
+done
+
+# --- service_role: exactly the measured minimum, and no more ----------
+expect_service_role() {
+  local table="$1"; local privilege="$2"; local expected="$3"
+  local has
+  has=$($DB -t -A -c "select has_table_privilege('service_role','public.$table','$privilege');")
+  check "service_role $privilege on $table" "$expected" "$has"
+}
+expect_service_role owners SELECT t
+expect_service_role owners INSERT t
+expect_service_role owners UPDATE f
+expect_service_role owners DELETE f
+expect_service_role entitlements SELECT t
+expect_service_role entitlements INSERT t
+expect_service_role entitlements UPDATE t
+expect_service_role entitlements DELETE f
+expect_service_role memorials SELECT t
+expect_service_role memorials INSERT t
+expect_service_role memorials UPDATE f
+expect_service_role memorials DELETE f
+# Not needed once create_memorial_draft() is SECURITY DEFINER — the
+# invariant no longer depends on the inserting role's privileges.
+expect_service_role memorial_drafts INSERT f
+expect_service_role memorial_drafts SELECT f
+# Tables whose features are not built: nothing is opened early.
+for t in memorial_published_snapshots media messages; do
+  for p in SELECT INSERT UPDATE DELETE; do
+    expect_service_role "$t" "$p" f
+  done
+done
+
+# --- client roles get nothing from the migrations ----------------------
+for t in owners entitlements memorials memorial_drafts memorial_published_snapshots media messages; do
+  for role in anon authenticated; do
+    for p in SELECT INSERT UPDATE DELETE; do
+      HAS=$($DB -t -A -c "select has_table_privilege('$role','public.$t','$p');")
+      check "$role has no $p on $t (no wired client reader yet)" "f" "$HAS"
+    done
+  done
+done
+
+# activation_key_hash is unreachable because the whole table is — which
+# survives any column added later, unlike a column-level revoke.
+HASH_COL=$($DB -t -A -c "select count(*) from information_schema.columns where table_schema='public' and table_name='entitlements' and column_name='activation_key_hash';")
+if [ "$HASH_COL" = "1" ]; then
+  for role in anon authenticated; do
+    for p in SELECT UPDATE; do
+      HAS=$($DB -t -A -c "select has_column_privilege('$role','public.entitlements','activation_key_hash','$p');")
+      check "$role cannot $p entitlements.activation_key_hash" "f" "$HAS"
+    done
+  done
+  SVC_HASH_READ=$($DB -t -A -c "select has_column_privilege('service_role','public.entitlements','activation_key_hash','SELECT');")
+  check "service_role can read activation_key_hash (the engine needs it)" "t" "$SVC_HASH_READ"
+fi
+
+# --- functions: security mode, search_path, and who may execute -------
+expect_function() {
+  local fn="$1"; local secdef="$2"; local path="$3"
+  local row
+  row=$($DB -t -A -c "select p.prosecdef || ',' || coalesce(array_to_string(p.proconfig, ','), '(unset)') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$fn';")
+  check "$fn is security_definer=${secdef}, ${path}" "$secdef,$path" "$row"
+}
+# prosecdef renders as true/false here because it is concatenated into
+# text, unlike has_*_privilege() above which is compared as a bare bool.
+expect_function current_owner_id true search_path=public
+expect_function create_memorial_draft true search_path=public
+expect_function set_updated_at false search_path=public
+expect_function public_memorial_publication_state true search_path=public
+expect_function redeem_entitlement false search_path=public
+
+expect_execute() {
+  local fn="$1"; local role="$2"; local expected="$3"
+  local has
+  has=$($DB -t -A -c "select has_function_privilege('$role', p.oid, 'EXECUTE') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$fn';")
+  check "$role EXECUTE on $fn" "$expected" "$has"
+}
+# Only `authenticated` calls current_owner_id(): every policy whose
+# expression uses it is declared TO authenticated. The two policies that
+# also target anon call public_memorial_publication_state() instead, and
+# service_role carries BYPASSRLS so no policy is ever evaluated for it.
+expect_execute current_owner_id authenticated t
+expect_execute current_owner_id anon f
+expect_execute current_owner_id service_role f
+# Trigger functions are invoked by the executor, never by a caller.
+for role in anon authenticated service_role; do
+  expect_execute create_memorial_draft "$role" f
+  expect_execute set_updated_at "$role" f
+done
+expect_execute redeem_entitlement service_role t
+expect_execute redeem_entitlement anon f
+expect_execute redeem_entitlement authenticated f
+expect_execute public_memorial_publication_state anon t
+expect_execute public_memorial_publication_state authenticated t
+
+for fn in current_owner_id create_memorial_draft set_updated_at redeem_entitlement; do
+  PUB=$($DB -t -A -c "select coalesce((select true from aclexplode(p.proacl) a where a.grantee = 0 limit 1), false) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$fn';")
+  check "PUBLIC has no EXECUTE on $fn" "f" "$PUB"
+done
+
+# --- the parcours actually works with exactly these privileges --------
+PM_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'privmodel@example.test') returning id;")
+PM_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','occidental') returning id;")
+PM_OUT=$(svc "select outcome from redeem_entitlement('$PM_ENT','$PM_OWNER','person','intemporel');")
+check "redeem_entitlement succeeds as service_role with ONLY the granted privileges" "redeemed" "$PM_OUT"
+
+PM_DRAFTS=$($DB -t -A -c "select count(*) from memorial_drafts d join memorials m on m.id = d.memorial_id where m.entitlement_id = '$PM_ENT';")
+check "the SECURITY DEFINER trigger created exactly one draft, with no INSERT grant" "1" "$PM_DRAFTS"
+
+PM_RETRY=$(svc "select outcome from redeem_entitlement('$PM_ENT','$PM_OWNER','person','intemporel');")
+check "the idempotent retry works too (it needs SELECT on memorials)" "already_redeemed" "$PM_RETRY"
+
+svc_expect_error "service_role still cannot DELETE an entitlement" \
+  "delete from entitlements where id = '$PM_ENT';" "permission denied"
+
+svc_expect_error "service_role still cannot TRUNCATE a table" \
+  "truncate messages;" "permission denied"
+
+$DB -c "delete from memorial_drafts where memorial_id in (select id from memorials where entitlement_id = '$PM_ENT'); delete from memorials where entitlement_id = '$PM_ENT'; delete from entitlements where id = '$PM_ENT'; delete from owners where id = '$PM_OWNER';" >/dev/null
+
+# ----------------------------------------------------------------------
+# TEST-ONLY GRANTS — never part of any migration
+# ----------------------------------------------------------------------
+# The migrations grant client roles nothing, because no wired code reads
+# these tables as anon or authenticated yet. The RLS policies are in
+# place regardless and their correctness still has to be proven, which
+# needs the privilege they sit on top of.
+#
+# These grants exist ONLY in this script. Everything above has already
+# asserted that no migration produced them, so they cannot mask a
+# regression. The mission that wires an owner-facing screen adds the
+# real grant to a migration and moves the matching assertion.
+$DB -c "grant select on table owners, memorials, memorial_drafts, memorial_published_snapshots, media, messages to authenticated;" >/dev/null
+$DB -c "grant update on table memorials, memorial_drafts, media, messages to authenticated;" >/dev/null
+$DB -c "grant insert, delete on table media to authenticated;" >/dev/null
+$DB -c "grant delete on table messages to authenticated;" >/dev/null
+$DB -c "grant select on table memorial_published_snapshots to anon;" >/dev/null
+$DB -c "grant insert on table messages to anon;" >/dev/null
+# anon SELECT on memorials/memorial_drafts is granted here for one
+# reason only: the RLS assertions further down prove that the POLICIES
+# return zero rows to a visitor. Without the underlying privilege those
+# assertions would degrade into "permission denied" — which proves the
+# privilege model (already asserted above, before any grant) and stops
+# proving the policies. Granting the privilege here keeps both proofs:
+# the migrations grant nothing, AND the policies leak nothing if a
+# future mission ever does grant it.
+$DB -c "grant select on table memorials, memorial_drafts to anon;" >/dev/null
+# Same reasoning for entitlements, with one addition: Mission 013's
+# assertions prove that activation_key_hash stays unreachable even for a
+# role that CAN read the row it belongs to. That is only a real test if
+# the role can read the row. The grant below is the column allowlist a
+# future owner-facing screen would need — deliberately NOT including
+# activation_key_hash — so those assertions keep measuring the column
+# boundary and the entitlements_select_own policy instead of collapsing
+# into "permission denied".
+$DB -c "grant select (id, source, offer_id, status, owner_id, redeemed_at, created_at, updated_at) on table entitlements to authenticated;" >/dev/null
 
 echo "== Seeding local-only test fixtures (not real data, never used by the app) =="
 OWNER_A=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-a@example.test') returning id;")
@@ -278,26 +517,7 @@ echo "== Mission 011A: progressive memorial + atomic redemption =="
 # role, never by a browser. Every call below therefore goes through
 # `set role service_role` — the superuser connection this script runs on
 # would bypass the very privilege model under test.
-svc() {
-  $DB -t -A -c "set role service_role; $*"
-}
-
-# Expects the statement to fail, AND to fail for the stated reason.
-# "it errored" alone would pass even if the function were broken.
-svc_expect_error() {
-  local desc="$1"; local sql="$2"; local needle="$3"
-  local out
-  if out=$($DB -t -A -c "set role service_role; $sql" 2>&1); then
-    echo "  [FAIL] $desc (expected an error, statement succeeded: $out)"
-    FAIL=$((FAIL + 1))
-  elif printf '%s' "$out" | grep -q "$needle"; then
-    echo "  [PASS] $desc"
-    PASS=$((PASS + 1))
-  else
-    echo "  [FAIL] $desc (errored, but not with '$needle': $(printf '%s' "$out" | tr '\n' ' '))"
-    FAIL=$((FAIL + 1))
-  fi
-}
+# svc() / svc_expect_error() are defined in the Mission 013C section above.
 
 OWNER_C=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-c@example.test') returning id;")
 OWNER_D=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-d@example.test') returning id;")
@@ -631,10 +851,17 @@ PUBLIC_COLUMNS=$($DB -t -A -c "select count(*) from pg_attribute att join latera
 check "PUBLIC has no column privilege on entitlements either" "0" "$PUBLIC_COLUMNS"
 
 # --- service_role keeps everything the engine needs -------------------
-for privilege in SELECT INSERT UPDATE DELETE; do
+# Mission 013 originally asserted DELETE here too. That was written under
+# the pre-013B assumption that service_role held blanket DML; it never
+# did, and nothing in the redemption engine deletes a commercial right.
+# Mission 013C grants the three privileges the code actually exercises
+# and asserts the fourth stays refused.
+for privilege in SELECT INSERT UPDATE; do
   HAS=$($DB -t -A -c "select has_table_privilege('service_role','public.entitlements','$privilege');")
   check "service_role keeps $privilege on entitlements" "t" "$HAS"
 done
+SVC_DELETE=$($DB -t -A -c "select has_table_privilege('service_role','public.entitlements','DELETE');")
+check "service_role is refused DELETE on entitlements (a right is revoked, never erased)" "f" "$SVC_DELETE"
 
 # The column allowlist means any column added later is invisible until
 # somebody deliberately grants it — secure by default, not by vigilance.
