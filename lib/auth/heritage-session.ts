@@ -66,25 +66,43 @@ export async function getHeritageActor(): Promise<HeritageActor> {
 /**
  * May the current request touch this memorial?
  *
- * `memorialId` is expected to come from the browser (a URL segment, a
- * form field) — that is exactly what this function is for. The actor is
- * not: it is resolved here, from the session, on every call.
+ * `memorialId` is the ONLY parameter, and that is a security decision.
  *
- * Pass an already-resolved `actor` when the caller has one (a page that
- * already rendered something for this actor), so one request does not
- * resolve the same session twice. It is still a server-resolved actor
- * either way — the parameter accepts `HeritageActor`, a value only
- * `resolveHeritageActor` produces, never an id.
+ * An earlier version of this function took an optional `actor`, so a
+ * caller that had already resolved one could avoid resolving it twice.
+ * The docstring claimed the parameter was safe because `HeritageActor`
+ * is "a value only `resolveHeritageActor` produces". **That was wrong.**
+ * TypeScript is structurally typed: any object of the right shape IS a
+ * `HeritageActor` as far as the compiler is concerned, so nothing stopped
+ * a future caller from assembling `{ audience: "owner", owner: { id:
+ * someIdFromTheRequest }, ... }` and handing it in — precisely the
+ * "trust an owner id that came from the browser" bypass this mission
+ * exists to prevent. A comment is not an enforcement mechanism.
+ *
+ * So the parameter is gone. At this boundary the actor is not something
+ * a caller may supply, influence, or cache past: it is resolved here,
+ * from the validated session, on every single call. Passing an extra
+ * argument from untyped JavaScript changes nothing — it is ignored, and
+ * a test proves a forged actor cannot reach the decision.
+ *
+ * The cost is one extra session resolution for a caller that already had
+ * an actor. That is the right trade: an authorization boundary whose
+ * correctness depends on every future caller behaving is not a boundary.
+ *
+ * Code that legitimately holds an actor and wants the pure decision can
+ * still call `authorizeMemorialAccess` directly (./memorial-access.ts) —
+ * that function keeps its `actor` parameter so it stays testable with
+ * plain objects. The difference is exactly the point: that one is a pure
+ * function, this one is the request boundary.
  */
 export async function authorizeMemorialForRequest(
   memorialId: string,
-  actor?: HeritageActor,
 ): Promise<MemorialAccessResult> {
-  const resolvedActor = actor ?? (await getHeritageActor());
+  const actor = await getHeritageActor();
 
   const memorialOwnershipRepository = new SupabaseMemorialOwnershipRepository(
     createServiceRoleSupabaseClient(),
   );
 
-  return authorizeMemorialAccess({ memorialOwnershipRepository }, resolvedActor, memorialId);
+  return authorizeMemorialAccess({ memorialOwnershipRepository }, actor, memorialId);
 }
