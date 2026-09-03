@@ -47,6 +47,14 @@ const SERVER_ONLY_MODULES = [
   "lib/entitlement/issue-entitlement.ts",
   "lib/entitlement/activation-key-lifecycle.ts",
   "lib/entitlement/redeem-with-activation-key.ts",
+  // Mission 014: the authorization layer. `heritage-session.ts`
+  // constructs the service-role client, and the ownership repository is
+  // only usable with it — `authenticated` holds no privilege on
+  // `memorials` (Mission 013C). Neither has any business in a browser
+  // bundle, and an authorization decision must never be reachable from
+  // code the user controls.
+  "lib/adapters/supabase/memorial-ownership-repository.ts",
+  "lib/auth/heritage-session.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];
