@@ -40,7 +40,12 @@ interface EntitlementRow {
  * exactly one place (findByActivationKeyHash filters on it, and even
  * there does not select it back).
  */
-const ENTITLEMENT_COLUMNS =
+// Exported since Mission 015A: the Admin support adapter reads
+// entitlements too, and the set of columns that are safe to select must
+// be defined in exactly one place. Two hand-maintained lists would
+// eventually diverge, and the way they would diverge is by one of them
+// gaining `activation_key_hash`.
+export const ENTITLEMENT_COLUMNS =
   "id, source, external_order_id, offer_id, status, owner_id, created_at, redeemed_at, updated_at";
 
 interface RedeemRow {

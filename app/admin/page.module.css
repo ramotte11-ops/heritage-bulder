@@ -1,0 +1,127 @@
+/* Mission 015A — internal staff tool. Sober and legible on purpose:
+   no premium art direction, nothing a family ever sees. */
+
+.main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.title {
+  font-size: 1.5rem;
+}
+
+.notice {
+  font-size: 0.8125rem;
+  opacity: 0.75;
+  border-left: 3px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  padding-left: 0.625rem;
+}
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.field input,
+.field select {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 35%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.field input {
+  min-width: 22rem;
+}
+
+.form button {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.card {
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 6px;
+  padding: 0.875rem 1rem;
+}
+
+.cardTitle {
+  font-size: 0.9375rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.subTitle {
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+  margin: 0.875rem 0 0.375rem;
+}
+
+.statusTag {
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 35%, transparent);
+  border-radius: 999px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr;
+  gap: 0.25rem 1rem;
+  font-size: 0.8125rem;
+}
+
+.fields dt {
+  opacity: 0.6;
+}
+
+.mono {
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+}
+
+.empty,
+.message {
+  font-size: 0.8125rem;
+  opacity: 0.75;
+}
