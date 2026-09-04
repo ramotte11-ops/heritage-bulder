@@ -38,7 +38,15 @@ export type AdminActivationKeyMutationOutcome =
    * compare-and-swap in the migration. Retrying is always safe — the
    * next attempt reads whatever is current now.
    */
-  | { status: "concurrentModification" };
+  | { status: "concurrentModification" }
+  /**
+   * An invalidation (`nextActivationKeyHash: null`) whose entitlement
+   * already has no key. There is nothing to invalidate, so nothing is
+   * written and nothing is audited — this is a refusal, not a no-op
+   * success. Never reachable from a replace call: replace always sends
+   * a non-null hash.
+   */
+  | { status: "noActivationKey" };
 
 export type AdminRevokeEntitlementOutcome =
   | { status: "revoked" }

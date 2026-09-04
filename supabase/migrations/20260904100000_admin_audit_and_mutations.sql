@@ -146,6 +146,18 @@ grant select, insert on table admin_audit_events to service_role;
 -- The raw key itself never appears here, is never a parameter, and is
 -- never written to `context`. Only hashes travel, exactly like every
 -- other Mission 013 write path.
+--
+-- One more refusal, added after review: an INVALIDATION
+-- (p_next_activation_key_hash IS NULL) whose CURRENT hash is ALSO NULL
+-- changes nothing at all — there is no key to invalidate. Without this
+-- check the compare-and-swap above still passes (NULL is not distinct
+-- from NULL), and the function would UPDATE a column from NULL to NULL,
+-- fire `entitlements_set_updated_at` for no real reason, and write a
+-- SUCCESS audit row for an action that never actually happened. Mission
+-- 015B audits successes only, and "nothing changed" is not one.
+-- Replacing FROM a NULL hash (issuing a first key to a right that never
+-- had one) is unaffected by this — it is p_next_activation_key_hash that
+-- is non-NULL there, so this branch never applies to it.
 
 create or replace function admin_mutate_activation_key(
   p_entitlement_id               uuid,
@@ -199,6 +211,15 @@ begin
     return;
   end if;
 
+  -- An invalidation that would change nothing: there is no key, so
+  -- there is nothing to invalidate. Refused as a value, before any
+  -- write and before any audit row — see this function's own comment
+  -- above for why.
+  if p_next_activation_key_hash is null and v_current_hash is null then
+    return query select 'no_activation_key'::text;
+    return;
+  end if;
+
   v_had_key := v_current_hash is not null;
   v_key_changed := v_current_hash is distinct from p_next_activation_key_hash;
 
@@ -226,7 +247,7 @@ end;
 $$;
 
 comment on function admin_mutate_activation_key(uuid, uuid, text, text) is
-  'Mission 015B (corrected after review). Replaces or invalidates the activation key of an AVAILABLE entitlement whose CURRENT hash still matches p_expected_activation_key_hash (NULL-safe compare-and-swap, under FOR UPDATE), writing its audit row in the same transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. SECURITY INVOKER, service_role only. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available | key_mismatch.';
+  'Mission 015B (corrected after review). Replaces or invalidates the activation key of an AVAILABLE entitlement whose CURRENT hash still matches p_expected_activation_key_hash (NULL-safe compare-and-swap, under FOR UPDATE), writing its audit row in the same transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. An invalidation whose current hash is already NULL changes nothing and is refused as no_activation_key, never audited as a success. SECURITY INVOKER, service_role only. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available | key_mismatch | no_activation_key.';
 
 revoke all on function admin_mutate_activation_key(uuid, uuid, text, text) from public;
 grant execute on function admin_mutate_activation_key(uuid, uuid, text, text) to service_role;

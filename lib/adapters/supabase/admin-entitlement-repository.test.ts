@@ -160,6 +160,7 @@ describe("SupabaseAdminEntitlementRepository — mutateActivationKey", () => {
     ["not_found", { status: "notFound" }],
     ["not_available", { status: "notAvailable" }],
     ["key_mismatch", { status: "concurrentModification" }],
+    ["no_activation_key", { status: "noActivationKey" }],
   ] as const)("maps RPC outcome %s to %o", async (rpcOutcome, expected) => {
     const { repo } = repository({
       rpcResponses: { admin_mutate_activation_key: { data: [{ outcome: rpcOutcome }], error: null } },

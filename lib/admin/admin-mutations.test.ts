@@ -165,6 +165,19 @@ describe("invalidateEntitlementActivationKeyAsAdmin", () => {
       ),
     ).toEqual({ status: "concurrentModification" });
   });
+
+  it("passes noActivationKey through unchanged — invalidating a right with no key is a refusal, not a no-op success", async () => {
+    const repo = repository({
+      mutateActivationKey: vi.fn(async () => ({ status: "noActivationKey" }) as const),
+    });
+
+    expect(
+      await invalidateEntitlementActivationKeyAsAdmin(
+        { adminEntitlementRepository: repo },
+        { entitlementId: ENTITLEMENT_ID, adminAuthUserId: ADMIN_AUTH_USER_ID },
+      ),
+    ).toEqual({ status: "noActivationKey" });
+  });
 });
 
 describe("revokeEntitlementAsAdmin", () => {

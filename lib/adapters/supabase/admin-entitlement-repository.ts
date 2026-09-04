@@ -40,7 +40,13 @@ interface EntitlementHashRow {
 }
 
 interface MutateActivationKeyRow {
-  outcome: "replaced" | "invalidated" | "not_found" | "not_available" | "key_mismatch";
+  outcome:
+    | "replaced"
+    | "invalidated"
+    | "not_found"
+    | "not_available"
+    | "key_mismatch"
+    | "no_activation_key";
 }
 
 interface RevokeEntitlementRow {
@@ -109,6 +115,8 @@ export class SupabaseAdminEntitlementRepository implements AdminEntitlementRepos
         return { status: "notAvailable" };
       case "key_mismatch":
         return { status: "concurrentModification" };
+      case "no_activation_key":
+        return { status: "noActivationKey" };
       default:
         // The function always returns exactly one row. No row and no
         // error means the response does not match the contract — a

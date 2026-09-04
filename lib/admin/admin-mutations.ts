@@ -45,7 +45,10 @@ export type AdminInvalidateActivationKeyResult =
   | { status: "invalidated" }
   | { status: "notFound" }
   | { status: "notAvailable" }
-  | { status: "concurrentModification" };
+  | { status: "concurrentModification" }
+  /** The right already has no key — there is nothing to invalidate.
+   * Never a no-op success: no write happened, so none is reported. */
+  | { status: "noActivationKey" };
 
 /**
  * Issues a brand new activation key for an `available` entitlement and
@@ -101,6 +104,7 @@ export async function invalidateEntitlementActivationKeyAsAdmin(
   if (outcome.status === "notFound") return { status: "notFound" };
   if (outcome.status === "notAvailable") return { status: "notAvailable" };
   if (outcome.status === "concurrentModification") return { status: "concurrentModification" };
+  if (outcome.status === "noActivationKey") return { status: "noActivationKey" };
 
   // "replaced" is not reachable here: this call always sends a null
   // hash.

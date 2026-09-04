@@ -1082,6 +1082,22 @@ check "replace succeeds even when the right never had a key" "replaced" "$NOKEY_
 NOKEY_CTX=$($DB -t -A -c "select context->>'had_activation_key' from admin_audit_events where target_id='$AC_ENT' and action='activation_key.replaced';")
 check "context correctly records had_activation_key=false" "false" "$NOKEY_CTX"
 
+# --- invalidate is REFUSED (never a no-op success) when there is no key
+# already to invalidate. Without this check, NULL-current vs NULL-expected
+# passes the compare-and-swap trivially and the RPC would UPDATE NULL to
+# NULL, fire entitlements_set_updated_at for nothing, and write a SUCCESS
+# audit row for an action that never actually happened.
+AM_ENT=$(new_entitlement available)
+AM_BEFORE_UPDATED_AT=$($DB -t -A -c "select updated_at from entitlements where id='$AM_ENT';")
+AM_OUT=$(svc "select outcome from admin_mutate_activation_key('$AM_ENT','$ADMIN_1', null, null);")
+check "invalidate on a right with no key is refused as no_activation_key" "no_activation_key" "$AM_OUT"
+AM_HASH=$($DB -t -A -c "select coalesce(activation_key_hash,'NULL') from entitlements where id='$AM_ENT';")
+check "invalidate refusal: the hash stays NULL" "NULL" "$AM_HASH"
+AM_UPDATED_AT=$($DB -t -A -c "select updated_at from entitlements where id='$AM_ENT';")
+check "invalidate refusal: updated_at is untouched (no UPDATE statement ran at all)" "$AM_BEFORE_UPDATED_AT" "$AM_UPDATED_AT"
+AM_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AM_ENT';")
+check "invalidate refusal: zero audit rows" "0" "$AM_AUDIT"
+
 # --- recovery: a lost response must never block a second rotation -------
 # Each rotation here reads the CURRENT state for itself as its expected
 # hash — exactly what SupabaseAdminEntitlementRepository.mutateActivationKey

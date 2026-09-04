@@ -155,6 +155,20 @@ describe("invalidateActivationKeyAction", () => {
         .status,
     ).toBe("refused");
   });
+
+  it("maps a noActivationKey result to a refusal, never a success", async () => {
+    runAdminActivationKeyInvalidate.mockResolvedValue({
+      status: "completed",
+      result: { status: "noActivationKey" },
+    });
+
+    const state = await invalidateActivationKeyAction(
+      { status: "idle", message: "" },
+      formWith(ENTITLEMENT_ID),
+    );
+
+    expect(state.status).toBe("refused");
+  });
 });
 
 describe("revokeEntitlementAction", () => {

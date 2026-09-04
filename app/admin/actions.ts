@@ -99,6 +99,8 @@ export async function invalidateActivationKeyAction(
       };
     case "concurrentModification":
       return CONCURRENT_MODIFICATION;
+    case "noActivationKey":
+      return { status: "refused", message: "Ce droit n'a pas de clé active à invalider." };
   }
 }
 
