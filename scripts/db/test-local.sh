@@ -1384,6 +1384,79 @@ RAW_LEAK=$($DB -t -A -c "select count(*) from admin_audit_events where context::
 check "no raw HH1- key material ever appears in the audit ledger" "0" "$RAW_LEAK"
 
 echo ""
+echo "== Mission 018: one Etsy purchase can only ever become one right =="
+
+# lib/integration/etsy/provision-purchase.ts is idempotent by
+# construction, not by inspection: it never asks "does this order exist?"
+# before writing. Its whole safety argument rests on
+# entitlements_external_order_unique (source, external_order_id) actually
+# refusing the second row — including when both attempts are in flight at
+# once, which is precisely the case a SELECT-then-INSERT cannot cover.
+# Proven here against the real engine rather than assumed by the unit
+# tests' in-memory stand-in.
+
+ET_ORDER="etsy-receipt-$(date +%s%N)"
+ET_HASH=$(random_hash)
+ET_FIRST=$($DB -t -A -c "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_ORDER','$ET_HASH') returning id;")
+check "a first Etsy provisioning inserts one right" "1" "$($DB -t -A -c "select count(*) from entitlements where source='etsy' and external_order_id='$ET_ORDER';")"
+
+expect_error "a replay of the same receipt is refused by the unique index (no second right)" \
+  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_ORDER','$(random_hash)');"
+
+expect_error "a replay is refused even when it resolves to a DIFFERENT offer" \
+  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','juif','$ET_ORDER','$(random_hash)');"
+
+# The constraint is on the PAIR, not on the order reference alone: the
+# same string arriving through a different sales channel is a different
+# order and must still be provisionable.
+$DB -c "insert into entitlements (source, offer_id, external_order_id) values ('direct','occidental','$ET_ORDER');" >/dev/null
+check "the same reference under another source is a different order (the key is the PAIR)" "1" \
+  "$($DB -t -A -c "select count(*) from entitlements where source='direct' and external_order_id='$ET_ORDER';")"
+
+# --- two genuinely concurrent deliveries of one receipt ---------------
+# Two OS processes, two backends, the same receipt. The shared pg_sleep
+# absorbs connection jitter so both reach the INSERT within milliseconds
+# of each other — a real race, not two sequential inserts relabelled.
+ET_RACE_ORDER="etsy-receipt-race-$(date +%s%N)"
+CONC_DIR_018="$PGDATA_DIR/concurrency-018"
+mkdir -p "$CONC_DIR_018"
+for i in 1 2; do
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_RACE_ORDER','$(random_hash)') returning id;" \
+      >"$CONC_DIR_018/$i.out" 2>"$CONC_DIR_018/$i.err" || rc=$?
+    echo "$rc" >"$CONC_DIR_018/$i.rc"
+  ) &
+done
+wait
+
+ET_WINNERS=$(cat "$CONC_DIR_018"/1.rc "$CONC_DIR_018"/2.rc | grep -c '^0$' || true)
+check "of two concurrent provisionings of one receipt, exactly one succeeds" "1" "$ET_WINNERS"
+
+ET_LOSER_REASON=$(cat "$CONC_DIR_018"/1.err "$CONC_DIR_018"/2.err | grep -c "entitlements_external_order_unique" || true)
+check "the loser is refused by entitlements_external_order_unique, not by a crash" "1" "$ET_LOSER_REASON"
+
+ET_RACE_ROWS=$($DB -t -A -c "select count(*) from entitlements where source='etsy' and external_order_id='$ET_RACE_ORDER';")
+check "exactly one right exists after the race" "1" "$ET_RACE_ROWS"
+
+# The unit tests assert the adapter recognises a duplicate by SQLSTATE
+# 23505, never by parsing a message. That code is what PostgreSQL really
+# raises here.
+ET_SQLSTATE=$($DB -t -A -c "do \$\$ begin insert into entitlements (source, offer_id, external_order_id) values ('etsy','occidental','$ET_RACE_ORDER'); exception when others then raise notice 'SQLSTATE=%', sqlstate; end \$\$;" 2>&1 | grep -c "SQLSTATE=23505" || true)
+check "a duplicate order raises SQLSTATE 23505 (what the adapter branches on)" "1" "$ET_SQLSTATE"
+
+# Mission 018 provisions a right and stops: no owner, no memorial, no
+# redemption. The schema must allow exactly that resting state.
+ET_RESTING=$($DB -t -A -c "select status || ',' || coalesce(owner_id::text,'null') || ',' || coalesce(redeemed_at::text,'null') from entitlements where id='$ET_FIRST';")
+check "a freshly provisioned Etsy right rests available, unowned, unredeemed" "available,null,null" "$ET_RESTING"
+
+ET_NO_MEMORIAL=$($DB -t -A -c "select count(*) from memorials where entitlement_id='$ET_FIRST';")
+check "provisioning creates no memorial (Mission 018 stops at the right)" "0" "$ET_NO_MEMORIAL"
+
+ET_RAW_LEAK=$($DB -t -A -c "select count(*) from entitlements where activation_key_hash like 'HH1-%';")
+check "no raw HH1- key material is ever stored on a right" "0" "$ET_RAW_LEAK"
+
+echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

@@ -70,6 +70,11 @@ const SERVER_ONLY_MODULES = [
   // (see "stops at a Server Action boundary" below).
   "lib/adapters/supabase/admin-entitlement-repository.ts",
   "lib/admin/admin-mutations.ts",
+  // Mission 018: Etsy provisioning composes the issuing primitive above,
+  // so it inherits both the CSPRNG and the service-role repository. It
+  // is reached from a future server-side webhook handler, never from a
+  // browser.
+  "lib/integration/etsy/provision-purchase.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];
