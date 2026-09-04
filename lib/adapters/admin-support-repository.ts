@@ -1,6 +1,5 @@
-import type { Owner } from "@/types/owner";
 import type { Entitlement } from "@/types/entitlement";
-import type { MemorialSupportSummary } from "@/types/admin-support";
+import type { MemorialSupportSummary, OwnerSupportSummary } from "@/types/admin-support";
 
 /**
  * Mission 015A — the read-only contract behind HERITAGE staff support.
@@ -35,10 +34,19 @@ import type { MemorialSupportSummary } from "@/types/admin-support";
  * is a boolean it must derive without exposing the value.
  *
  * Likewise no draft or published content, no media, no messages.
+ *
+ * ## Why the owner reads return `OwnerSupportSummary`, not `Owner`
+ *
+ * `Owner.authUserId` is Supabase Auth's own user id. Support's only use
+ * for it is the yes/no fact of whether the owner has ever signed in
+ * (Mission 011B's "unlinked owner" case) — never the identifier itself.
+ * The port returns that boolean already computed, so the real id cannot
+ * travel any further than the adapter that reads it: there is nowhere
+ * past this file for it to leak from.
  */
 export interface AdminSupportRepository {
   /** The owner with this id, or null when there is none. */
-  findOwnerById(ownerId: string): Promise<Owner | null>;
+  findOwnerById(ownerId: string): Promise<OwnerSupportSummary | null>;
 
   /**
    * The owner registered at this email, or null. Exact, case-insensitive
@@ -47,7 +55,7 @@ export interface AdminSupportRepository {
    * which is how a support search would quietly return a stranger's
    * record (the Mission 011B defect, in a new place).
    */
-  findOwnerByEmail(email: string): Promise<Owner | null>;
+  findOwnerByEmail(email: string): Promise<OwnerSupportSummary | null>;
 
   /** The entitlement with this id, or null. */
   findEntitlementById(entitlementId: string): Promise<Entitlement | null>;

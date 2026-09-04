@@ -9,7 +9,7 @@ import {
   type AdminSupportSearchResult,
   type EntitlementSupportView,
 } from "@/lib/admin/support-search";
-import type { Owner } from "@/types/owner";
+import type { OwnerSupportSummary } from "@/types/admin-support";
 import styles from "./page.module.css";
 
 /**
@@ -50,6 +50,7 @@ const INVALID_QUERY_MESSAGES = {
   malformedEmail: "Cette adresse email n'est pas valide.",
   malformedId: "Cet identifiant n'est pas un UUID valide.",
   empty: "Saisissez une valeur à rechercher.",
+  invalidKind: "Ce type de recherche n'est pas valide.",
 } as const;
 
 function formatDate(iso: string): string {
@@ -58,7 +59,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 }
 
-function OwnerCard({ owner }: { owner: Owner | null }) {
+function OwnerCard({ owner }: { owner: OwnerSupportSummary | null }) {
   if (!owner) {
     return (
       <section className={styles.card}>
@@ -79,11 +80,11 @@ function OwnerCard({ owner }: { owner: Owner | null }) {
         <dt>ID</dt>
         <dd className={styles.mono}>{owner.id}</dd>
         <dt>Compte connecté</dt>
-        {/* The auth user id itself is not shown: support needs to know
-            WHETHER the owner has ever signed in (that is Mission 011B's
-            "unlinked owner" case), not the identifier of their auth
-            account. */}
-        <dd>{owner.authUserId ? "oui" : "non — jamais connecté"}</dd>
+        {/* The auth user id itself is never transported this far: the
+            repository already reduced it to this boolean (Mission 011B's
+            "unlinked owner" case) before the record left the adapter —
+            see OwnerSupportSummary. */}
+        <dd>{owner.hasAuthAccount ? "oui" : "non — jamais connecté"}</dd>
         <dt>Créé le</dt>
         <dd>{formatDate(owner.createdAt)}</dd>
       </dl>
@@ -186,14 +187,24 @@ export default async function AdminSupportPage({
   }
 
   const { kind: rawKind, q } = await searchParams;
-
-  // An unknown `kind` falls back to the form's default rather than to a
-  // silent alternative search: staff must never be shown results for a
-  // question they did not ask.
-  const kind = parseAdminSupportQueryKind(rawKind) ?? "ownerEmail";
   const value = typeof q === "string" ? q : "";
 
-  const outcome = value.trim() !== "" ? await runAdminSupportSearch({ kind, value }) : null;
+  // The initial, un-submitted load has no `kind` at all — that is the
+  // form's own default, `ownerEmail`. Once a `kind` IS present, it must
+  // name one of the three supported modes: an unrecognised one is
+  // refused as an invalid query, never silently re-run as `ownerEmail`
+  // or any other mode nobody asked for.
+  const kind = rawKind === undefined ? "ownerEmail" : parseAdminSupportQueryKind(rawKind);
+
+  const outcome =
+    kind === null
+      ? ({
+          status: "completed",
+          result: { status: "invalidQuery", reason: "invalidKind" },
+        } as const)
+      : value.trim() !== ""
+        ? await runAdminSupportSearch({ kind, value })
+        : null;
 
   return (
     <main className={styles.main}>
@@ -208,7 +219,12 @@ export default async function AdminSupportPage({
       <form className={styles.form} method="get">
         <label className={styles.field}>
           <span>Rechercher par</span>
-          <select name="kind" defaultValue={kind}>
+          {/* Purely a display default for the widget itself: an invalid
+              `kind` in the URL still shows a valid selection here, but
+              that never feeds back into what was searched — the outcome
+              above was already fixed as `invalidQuery` before this
+              renders. */}
+          <select name="kind" defaultValue={kind ?? "ownerEmail"}>
             {(Object.keys(QUERY_LABELS) as AdminSupportQueryKind[]).map((option) => (
               <option key={option} value={option}>
                 {QUERY_LABELS[option]}

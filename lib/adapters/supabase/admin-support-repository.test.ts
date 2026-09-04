@@ -157,16 +157,47 @@ describe("SupabaseAdminSupportRepository — what it selects", () => {
 });
 
 describe("SupabaseAdminSupportRepository — mapping and relations", () => {
-  it("maps an owner row", async () => {
+  it("maps an owner row to a support summary, never the auth user id itself", async () => {
     const { repo } = repository({ owners: { data: OWNER_ROW, error: null } });
 
-    expect(await repo.findOwnerById(OWNER_ROW.id)).toEqual({
+    const owner = await repo.findOwnerById(OWNER_ROW.id);
+
+    expect(owner).toEqual({
       id: OWNER_ROW.id,
-      authUserId: "auth-a",
+      hasAuthAccount: true,
       email: "famille@example.test",
       createdAt: OWNER_ROW.created_at,
       updatedAt: OWNER_ROW.updated_at,
     });
+    expect(owner).not.toHaveProperty("authUserId");
+    expect(JSON.stringify(owner)).not.toMatch(/auth-a/);
+  });
+
+  it("reports hasAuthAccount: false for an owner who has never signed in", async () => {
+    const { repo } = repository({
+      owners: { data: { ...OWNER_ROW, auth_user_id: null }, error: null },
+    });
+
+    expect(await repo.findOwnerById(OWNER_ROW.id)).toMatchObject({ hasAuthAccount: false });
+  });
+
+  it("reduces the delegated email lookup to a support summary too", async () => {
+    // findOwnerByEmail delegates to SupabaseOwnerRepository, which
+    // returns the full Owner (authUserId included) — the minimisation
+    // has to happen on this side of that call, not the other.
+    const { repo } = repository({ owners: { data: OWNER_ROW, error: null } });
+
+    const owner = await repo.findOwnerByEmail(OWNER_ROW.email);
+
+    expect(owner).toEqual({
+      id: OWNER_ROW.id,
+      hasAuthAccount: true,
+      email: OWNER_ROW.email,
+      createdAt: OWNER_ROW.created_at,
+      updatedAt: OWNER_ROW.updated_at,
+    });
+    expect(owner).not.toHaveProperty("authUserId");
+    expect(JSON.stringify(owner)).not.toMatch(/auth-a/);
   });
 
   it("maps an entitlement row without any hash field", async () => {

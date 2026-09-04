@@ -18,6 +18,22 @@ import type { MemorialStatus } from "@/types/memorial";
  * bigger one: the columns it lists are the columns the query selects,
  * and content is not merely omitted from the view — it is never read.
  */
+export interface OwnerSupportSummary {
+  id: string;
+  email: string;
+  /**
+   * Whether this owner has ever completed the (not yet built) magic-link
+   * flow and linked a Supabase Auth account — Mission 011B's "unlinked
+   * owner" case. Support needs exactly this yes/no fact, never the
+   * identifier it is derived from: `Owner.authUserId` itself is never
+   * read past the adapter that computes this field. See
+   * `lib/adapters/supabase/admin-support-repository.ts`.
+   */
+  hasAuthAccount: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MemorialSupportSummary {
   id: string;
   ownerId: string;

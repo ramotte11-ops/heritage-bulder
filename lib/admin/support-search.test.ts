@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AdminSupportRepository } from "@/lib/adapters/admin-support-repository";
-import type { Owner } from "@/types/owner";
 import type { Entitlement } from "@/types/entitlement";
-import type { MemorialSupportSummary } from "@/types/admin-support";
+import type { MemorialSupportSummary, OwnerSupportSummary } from "@/types/admin-support";
 import {
   parseAdminSupportQueryKind,
   searchAdminSupport,
@@ -22,9 +21,9 @@ const ENT_AVAILABLE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MEMORIAL_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const UNKNOWN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
-const OWNER: Owner = {
+const OWNER: OwnerSupportSummary = {
   id: OWNER_ID,
-  authUserId: "auth-a",
+  hasAuthAccount: true,
   email: "famille@example.test",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

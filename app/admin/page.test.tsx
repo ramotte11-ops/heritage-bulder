@@ -115,8 +115,17 @@ describe("AdminSupportPage — what it asks for", () => {
   });
 
   // --- an unknown mode must not silently become a different search
-  it("falls back to the default mode for an unknown kind, never to another search", async () => {
-    await AdminSupportPage(params({ kind: "'; drop table owners; --", q: "x@example.test" }));
+  it("refuses an unknown kind as invalid, never running a search under a different mode", async () => {
+    const page = await AdminSupportPage(
+      params({ kind: "'; drop table owners; --", q: "x@example.test" }),
+    );
+
+    expect(runAdminSupportSearch).not.toHaveBeenCalled();
+    expect(page).toBeTruthy();
+  });
+
+  it("uses ownerEmail as the default only when no kind is present at all", async () => {
+    await AdminSupportPage(params({ q: "x@example.test" }));
 
     expect(runAdminSupportSearch).toHaveBeenCalledExactlyOnceWith({
       kind: "ownerEmail",

@@ -1,7 +1,6 @@
 import type { AdminSupportRepository } from "@/lib/adapters/admin-support-repository";
-import type { Owner } from "@/types/owner";
 import type { Entitlement } from "@/types/entitlement";
-import type { MemorialSupportSummary } from "@/types/admin-support";
+import type { MemorialSupportSummary, OwnerSupportSummary } from "@/types/admin-support";
 import { isValidEmail } from "@/lib/auth/validate-email";
 
 /**
@@ -62,7 +61,7 @@ export interface AdminSupportRecord {
    * has redeemed yet has no owner. Support seeing "no owner" is how they
    * know the family never activated.
    */
-  owner: Owner | null;
+  owner: OwnerSupportSummary | null;
   entitlements: EntitlementSupportView[];
 }
 
@@ -71,7 +70,10 @@ export type AdminSupportSearchResult =
   /** The query was well-formed and matched nothing. */
   | { status: "notFound" }
   /** The query itself is unusable — nothing was read. */
-  | { status: "invalidQuery"; reason: "malformedEmail" | "malformedId" | "empty" };
+  | {
+      status: "invalidQuery";
+      reason: "malformedEmail" | "malformedId" | "empty" | "invalidKind";
+    };
 
 export interface AdminSupportSearchDeps {
   adminSupportRepository: AdminSupportRepository;

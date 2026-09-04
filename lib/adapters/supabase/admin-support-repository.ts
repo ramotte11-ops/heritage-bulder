@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdminSupportRepository } from "@/lib/adapters/admin-support-repository";
 import type { Owner } from "@/types/owner";
 import type { Entitlement } from "@/types/entitlement";
-import type { MemorialSupportSummary } from "@/types/admin-support";
+import type { MemorialSupportSummary, OwnerSupportSummary } from "@/types/admin-support";
 import type { EntitlementSource, EntitlementStatus } from "@/config/entitlements";
 import type { OfferId } from "@/config/offers";
 import type { EditorialContext, MemorialType } from "@/config/memorial";
@@ -80,13 +80,32 @@ const MEMORIAL_SUMMARY_COLUMNS =
 
 const OWNER_COLUMNS = "id, auth_user_id, email, created_at, updated_at";
 
-function toOwner(row: OwnerRow): Owner {
+/**
+ * `auth_user_id` is read here (it is what `hasAuthAccount` is derived
+ * from) but stops here: the returned shape has no field carrying it, so
+ * nothing built on this class can select it, log it, or serialise it
+ * further — see the port's own docstring.
+ */
+function toOwnerSummary(row: OwnerRow): OwnerSupportSummary {
   return {
     id: row.id,
-    authUserId: row.auth_user_id,
     email: row.email,
+    hasAuthAccount: row.auth_user_id !== null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/** Same narrowing as {@link toOwnerSummary}, for an `Owner` already
+ * resolved elsewhere (`findOwnerByEmail` delegates to the shared owner
+ * repository, which returns the full domain type). */
+function toOwnerSummaryFromOwner(owner: Owner): OwnerSupportSummary {
+  return {
+    id: owner.id,
+    email: owner.email,
+    hasAuthAccount: owner.authUserId !== null,
+    createdAt: owner.createdAt,
+    updatedAt: owner.updatedAt,
   };
 }
 
@@ -135,7 +154,7 @@ export class SupabaseAdminSupportRepository implements AdminSupportRepository {
     this.owners = new SupabaseOwnerRepository(client);
   }
 
-  async findOwnerById(ownerId: string): Promise<Owner | null> {
+  async findOwnerById(ownerId: string): Promise<OwnerSupportSummary | null> {
     const { data, error } = await this.client
       .from("owners")
       .select(OWNER_COLUMNS)
@@ -147,11 +166,12 @@ export class SupabaseAdminSupportRepository implements AdminSupportRepository {
     // owner" when the truth was "the database was unreachable" is how a
     // real account gets treated as a phantom.
     if (error) throw error;
-    return data ? toOwner(data) : null;
+    return data ? toOwnerSummary(data) : null;
   }
 
-  findOwnerByEmail(email: string): Promise<Owner | null> {
-    return this.owners.findByEmail(email);
+  async findOwnerByEmail(email: string): Promise<OwnerSupportSummary | null> {
+    const owner = await this.owners.findByEmail(email);
+    return owner ? toOwnerSummaryFromOwner(owner) : null;
   }
 
   async findEntitlementById(entitlementId: string): Promise<Entitlement | null> {
