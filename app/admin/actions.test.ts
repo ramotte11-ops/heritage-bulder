@@ -91,6 +91,7 @@ describe("replaceActivationKeyAction", () => {
   it.each([
     ["notFound", "refused"],
     ["notAvailable", "refused"],
+    ["concurrentModification", "refused"],
   ] as const)("maps result status %s to form status %s, with no raw key", async (resultStatus, formStatus) => {
     runAdminActivationKeyReplace.mockResolvedValue({
       status: "completed",
@@ -136,6 +137,18 @@ describe("invalidateActivationKeyAction", () => {
 
   it("maps a denied gate to a refusal", async () => {
     runAdminActivationKeyInvalidate.mockResolvedValue({ status: "denied" });
+
+    expect(
+      (await invalidateActivationKeyAction({ status: "idle", message: "" }, formWith(ENTITLEMENT_ID)))
+        .status,
+    ).toBe("refused");
+  });
+
+  it("maps a concurrentModification result to a refusal", async () => {
+    runAdminActivationKeyInvalidate.mockResolvedValue({
+      status: "completed",
+      result: { status: "concurrentModification" },
+    });
 
     expect(
       (await invalidateActivationKeyAction({ status: "idle", message: "" }, formWith(ENTITLEMENT_ID)))

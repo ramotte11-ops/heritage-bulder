@@ -41,6 +41,11 @@ const MISSING_ENTITLEMENT_ID: AdminMutationFormState = {
 
 const ACCESS_DENIED: AdminMutationFormState = { status: "refused", message: "Accès refusé." };
 const NOT_FOUND: AdminMutationFormState = { status: "refused", message: "Ce droit n'existe pas." };
+const CONCURRENT_MODIFICATION: AdminMutationFormState = {
+  status: "refused",
+  message:
+    "Ce droit a été modifié entre-temps par quelqu'un d'autre. Rechargez la recherche et réessayez.",
+};
 
 export async function replaceActivationKeyAction(
   _prevState: AdminMutationFormState,
@@ -67,6 +72,8 @@ export async function replaceActivationKeyAction(
         status: "refused",
         message: "Ce droit n'est plus disponible : sa clé ne peut plus être remplacée.",
       };
+    case "concurrentModification":
+      return CONCURRENT_MODIFICATION;
   }
 }
 
@@ -90,6 +97,8 @@ export async function invalidateActivationKeyAction(
         status: "refused",
         message: "Ce droit n'est plus disponible : sa clé ne peut plus être invalidée.",
       };
+    case "concurrentModification":
+      return CONCURRENT_MODIFICATION;
   }
 }
 

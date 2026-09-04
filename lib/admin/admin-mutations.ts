@@ -35,12 +35,17 @@ export interface AdminMutationDeps {
 export type AdminReplaceActivationKeyResult =
   | { status: "replaced"; rawActivationKey: string }
   | { status: "notFound" }
-  | { status: "notAvailable" };
+  | { status: "notAvailable" }
+  /** Somebody else's mutation of this same right won the race — see
+   * AdminActivationKeyMutationOutcome's own docstring. Always safe to
+   * retry: the next attempt reads whatever is current now. */
+  | { status: "concurrentModification" };
 
 export type AdminInvalidateActivationKeyResult =
   | { status: "invalidated" }
   | { status: "notFound" }
-  | { status: "notAvailable" };
+  | { status: "notAvailable" }
+  | { status: "concurrentModification" };
 
 /**
  * Issues a brand new activation key for an `available` entitlement and
@@ -67,12 +72,13 @@ export async function replaceEntitlementActivationKeyAsAdmin(
   }
   if (outcome.status === "notFound") return { status: "notFound" };
   if (outcome.status === "notAvailable") return { status: "notAvailable" };
+  if (outcome.status === "concurrentModification") return { status: "concurrentModification" };
 
   // "invalidated" is not reachable here: this call always sends a
-  // non-null hash, so the RPC can only ever answer replaced, notFound
-  // or notAvailable. Guarded rather than assumed, so a contract drift
-  // in the adapter fails loudly instead of silently discarding a
-  // persisted key.
+  // non-null hash, so the RPC can only ever answer replaced, notFound,
+  // notAvailable or concurrentModification. Guarded rather than assumed,
+  // so a contract drift in the adapter fails loudly instead of silently
+  // discarding a persisted key.
   throw new Error(`unexpected mutateActivationKey outcome for a replace: ${outcome.status}`);
 }
 
@@ -94,6 +100,7 @@ export async function invalidateEntitlementActivationKeyAsAdmin(
   if (outcome.status === "invalidated") return { status: "invalidated" };
   if (outcome.status === "notFound") return { status: "notFound" };
   if (outcome.status === "notAvailable") return { status: "notAvailable" };
+  if (outcome.status === "concurrentModification") return { status: "concurrentModification" };
 
   // "replaced" is not reachable here: this call always sends a null
   // hash.

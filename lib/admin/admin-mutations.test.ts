@@ -80,6 +80,20 @@ describe("replaceEntitlementActivationKeyAsAdmin", () => {
     expect(result).toEqual({ status: "notAvailable" });
   });
 
+  it("discards the freshly generated key on a concurrent modification — a raced key must never be handed out", async () => {
+    const repo = repository({
+      mutateActivationKey: vi.fn(async () => ({ status: "concurrentModification" }) as const),
+    });
+
+    const result = await replaceEntitlementActivationKeyAsAdmin(
+      { adminEntitlementRepository: repo },
+      { entitlementId: ENTITLEMENT_ID, adminAuthUserId: ADMIN_AUTH_USER_ID },
+    );
+
+    expect(result).toEqual({ status: "concurrentModification" });
+    expect(result).not.toHaveProperty("rawActivationKey");
+  });
+
   it("each call generates an independent key — never reused across entitlements", async () => {
     const seen = new Set<string>();
     const mutateActivationKey = vi.fn(async () => ({ status: "replaced" }) as const);
@@ -137,6 +151,19 @@ describe("invalidateEntitlementActivationKeyAsAdmin", () => {
         { entitlementId: ENTITLEMENT_ID, adminAuthUserId: ADMIN_AUTH_USER_ID },
       ),
     ).toEqual({ status: "notAvailable" });
+  });
+
+  it("passes concurrentModification through unchanged", async () => {
+    const repo = repository({
+      mutateActivationKey: vi.fn(async () => ({ status: "concurrentModification" }) as const),
+    });
+
+    expect(
+      await invalidateEntitlementActivationKeyAsAdmin(
+        { adminEntitlementRepository: repo },
+        { entitlementId: ENTITLEMENT_ID, adminAuthUserId: ADMIN_AUTH_USER_ID },
+      ),
+    ).toEqual({ status: "concurrentModification" });
   });
 });
 

@@ -107,20 +107,34 @@ grant select, insert on table admin_audit_events to service_role;
 -- B. admin_mutate_activation_key() — replace or invalidate, one RPC
 -- ---------------------------------------------------------------------
 --
--- Shares one predicate for both operations, exactly as the Opus audit
--- asked: the entitlement must exist and be `status = 'available'`. That
--- is the entire admission check. Deliberately NOT a compare-and-swap
--- against a caller-supplied "current hash" — Mission 013's own
--- swapActivationKey() needs that because an OWNER may be presenting a
--- key they still hold, but HERITAGE support does not and must not know
--- the raw key it once showed a family exactly once. Requiring it here
--- would make a lost response unrecoverable: support could never rotate
--- a key again without the very secret the rotation exists to replace.
--- FOR UPDATE still gives real serialisation — two concurrent callers on
--- the same row do not both read the same "before" state, and either
--- one can lose to a concurrent revoke (see C) because the second one's
--- re-read of `status`, taken after the lock is granted, no longer says
--- 'available'.
+-- Shares one predicate for both operations, and — Mission 015B
+-- correction, after review — that predicate is a REAL compare-and-swap,
+-- not merely `status = 'available'`. Two concurrent callers who both
+-- started from the same row must not both be able to write: whichever
+-- commits first changes the hash, and the second must be refused when
+-- it re-reads a hash that no longer matches what it believed was
+-- current, even though `status` itself never moved.
+--
+-- The "current hash" this compares against is NOT supplied by whoever
+-- is presenting a key (that is Mission 013's swapActivationKey(), a
+-- different problem: an OWNER proving they hold the key they are
+-- replacing). Here the caller cannot know the raw key at all — HERITAGE
+-- support never sees it again after the one time it was issued. So
+-- `p_expected_activation_key_hash` is a HASH the server read for itself,
+-- moments before this call, from the same row this call is about to
+-- lock (see SupabaseAdminEntitlementRepository.mutateActivationKey).
+-- That read is deliberately NOT itself locked — it is a snapshot, and
+-- its only job is to give this function something to compare against.
+-- Correctness never depends on the snapshot being fresh: if it is
+-- stale, the comparison below simply refuses, which is exactly the
+-- point. Recovering from a refusal costs nothing: the next attempt
+-- reads the row again and gets a hash that is, by construction, current
+-- at the moment it locks it.
+--
+-- The comparison is NULL-safe (`IS DISTINCT FROM`) because "no key" is
+-- a legitimate current state, and a plain `=` never matches two NULLs —
+-- which would make every mutation of a keyless right register as a
+-- mismatch.
 --
 -- p_next_activation_key_hash is NULL for an invalidation and a 64-hex
 -- sha256 for a replacement — generated in lib/entitlement/activation-key.ts,
@@ -130,13 +144,14 @@ grant select, insert on table admin_audit_events to service_role;
 -- accepted as a separate caller-supplied label.
 --
 -- The raw key itself never appears here, is never a parameter, and is
--- never written to `context`. Only its hash travels, exactly like every
+-- never written to `context`. Only hashes travel, exactly like every
 -- other Mission 013 write path.
 
 create or replace function admin_mutate_activation_key(
-  p_entitlement_id           uuid,
-  p_admin_auth_user_id       uuid,
-  p_next_activation_key_hash text
+  p_entitlement_id               uuid,
+  p_admin_auth_user_id           uuid,
+  p_expected_activation_key_hash text,
+  p_next_activation_key_hash     text
 )
 returns table (outcome text)
 language plpgsql
@@ -175,6 +190,15 @@ begin
     return;
   end if;
 
+  -- The real compare-and-swap. A concurrent caller that read the row
+  -- BEFORE this transaction committed will, once it finally acquires
+  -- the lock this same statement is holding, re-read a hash that no
+  -- longer equals what it captured — and stop here, mutating nothing.
+  if v_current_hash is distinct from p_expected_activation_key_hash then
+    return query select 'key_mismatch'::text;
+    return;
+  end if;
+
   v_had_key := v_current_hash is not null;
   v_key_changed := v_current_hash is distinct from p_next_activation_key_hash;
 
@@ -201,11 +225,11 @@ begin
 end;
 $$;
 
-comment on function admin_mutate_activation_key(uuid, uuid, text) is
-  'Mission 015B. Replaces or invalidates the activation key of an AVAILABLE entitlement and writes its audit row, in one transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. SECURITY INVOKER, service_role only. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available.';
+comment on function admin_mutate_activation_key(uuid, uuid, text, text) is
+  'Mission 015B (corrected after review). Replaces or invalidates the activation key of an AVAILABLE entitlement whose CURRENT hash still matches p_expected_activation_key_hash (NULL-safe compare-and-swap, under FOR UPDATE), writing its audit row in the same transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. SECURITY INVOKER, service_role only. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available | key_mismatch.';
 
-revoke all on function admin_mutate_activation_key(uuid, uuid, text) from public;
-grant execute on function admin_mutate_activation_key(uuid, uuid, text) to service_role;
+revoke all on function admin_mutate_activation_key(uuid, uuid, text, text) from public;
+grant execute on function admin_mutate_activation_key(uuid, uuid, text, text) to service_role;
 
 -- ---------------------------------------------------------------------
 -- C. admin_revoke_entitlement() — available -> revoked, one RPC
