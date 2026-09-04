@@ -519,6 +519,105 @@ the biggest one", which is exactly the bypass to prevent.
 Mission 014 built the primitive and nothing else: no Admin portal, no
 admin route, no permission list, no team/agency roles.
 
+## The Admin support console (Mission 015A)
+
+`/admin` is an internal, **read-only** staff tool. Not a product surface,
+never seen by a family, deliberately plain.
+
+Entry is `requireAdminForRequest()` (`lib/admin/admin-session.ts`), which
+resolves the session itself and reuses Mission 014's
+`requireHeritageAdmin` verbatim — `app_metadata.heritage_role === "admin"`,
+from a token Supabase validated. A refused caller gets a **404**, not a
+redirect or an "administrators only" notice: telling somebody who guessed
+the URL that an Admin area lives there turns the page into a way to test
+whether an account is staff.
+
+Being staff opens these reads and nothing else. It is still not
+ownership: `authorizeMemorialAccess` does not read `isHeritageAdmin`, and
+nothing in `lib/admin/` touches it.
+
+**Three exact lookups**, no search engine: owner email, entitlement id,
+memorial id. No partial match, no `LIKE`, no ranking, no "list everything
+and filter", no pagination, no date range — those are the first steps
+toward a CRM and toward a screen showing staff thousands of families they
+had no reason to open. The one list that exists,
+`findEntitlementsByOwnerId`, is scoped to a single already-resolved owner
+and backed by `entitlements_owner_id_idx`.
+
+A malformed id is answered as `invalidQuery` **before any read**. Sent to
+PostgreSQL it would raise `22P02`, and catching that as "no result" would
+make a typo indistinguishable from a right that genuinely does not exist
+— support would close a ticket on a lie. For the same reason no
+repository failure is caught anywhere in that path: an outage must never
+render as an empty result.
+
+**What staff are shown, and what they are not.** Memorials come back as
+`MemorialSupportSummary` — state, type, skin, language, slug, timestamps.
+Never draft or published content: a support tool that can read a family's
+grief text eventually will. `entitlements.activation_key_hash` is never
+selected by any query in `lib/adapters/supabase/admin-support-repository.ts`,
+so it does not leave PostgreSQL at all — not hidden from the UI, simply
+never read. The owner's `auth_user_id` is not displayed either; support
+needs to know *whether* an owner ever signed in (Mission 011B's unlinked-
+owner case), not the identifier of their auth account.
+
+Search is a `GET`: a lookup changes nothing, so it is a query string
+rather than a Server Action, which also keeps a query linkable inside a
+ticket. Mission 015A adds **no mutation endpoint of any kind**.
+
+No migration was needed. `service_role` already held `SELECT` on
+`owners`, `entitlements` and `memorials` (Mission 013C) — exactly what
+these reads use, and nothing more.
+
+### Mission 015B — decided, deliberately not built
+
+The mutations (replace an activation key, invalidate one, revoke a right)
+are **not** in 015A, because each must leave an audit trail and no table
+exists to hold one. Shipping irreversible commercial mutations with no
+trace would have been worse than shipping nothing. Decisions already
+locked for 015B:
+
+- **Audit table**, append-only: `id`, `admin_auth_user_id`, `action`,
+  `target_type`, `target_id`, `context jsonb`, `created_at`, plus an index
+  by target and date. No `UPDATE`, no `DELETE`, for anyone — a trail that
+  can be edited is not one. No raw key, no key hash, no secret, no
+  duplicated admin email (the auth user id alone; the human identity is
+  resolved out of band). RLS on, no client access. `action` and
+  `target_type` are validated generically in SQL, not frozen into a short
+  enum of today's actions; the concretely allowed values stay a closed,
+  typed set in server code. **No foreign key to `auth.users`**: the trail
+  must outlive the deletion of a staff account.
+- **Atomicity**: the mutation and its audit row commit in ONE PostgreSQL
+  transaction. A failed mutation leaves no success audit; an audit that
+  cannot be written rolls the mutation back. Key generation, the `HH1`
+  format, hashing and every other piece of Mission 013 cryptography stay
+  in TypeScript — the SQL stays thin and must reuse Mission 013's exact
+  CAS predicates rather than growing a second, diverging copy of them.
+  Those predicates get audited and proposed before 015B is implemented.
+- **Revocation**: `available → revoked` is an allowed Admin action.
+  `redeemed → revoked` is **forbidden** — once a right is consumed its
+  memorial is not retroactively cancelled by changing the right's status.
+  Withdrawing or correcting a published memorial is a separate operation
+  on the memorial, for a later mission.
+- 015B will need to know whether a right still HAS an outstanding key, to
+  decide whether replacement is possible. That is a boolean it must
+  derive without ever exposing the hash — which is why 015A does not
+  select the column at all.
+
+### Hero, framing and public withdrawal — still parked
+
+Mission 015's brief includes an exceptional Admin correction of the Hero
+(name, dates, photo, framing) after publication locks them for the family,
+and an exceptional public withdrawal. **Neither is wired, on purpose.**
+No Hero model exists, no framing, no post-publication lock, and nothing
+in this codebase ever publishes: `memorial_published_snapshots` has no
+writer and `MEMORIAL_STATUS_TRANSITIONS` is not called anywhere. Building
+the Admin side would mean inventing those objects first — that is a later
+mission, not this one. The product requirement stands unchanged; when
+those objects exist, the capability plugs into Mission 014's
+`requireHeritageAdmin` and Mission 015B's audit primitive, which is
+precisely why the audit is being built as a reusable brick.
+
 ## What is NOT built yet
 
 Deliberately out of scope through Mission 013 (see each mission's own

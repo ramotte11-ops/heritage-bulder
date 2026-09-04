@@ -55,6 +55,12 @@ const SERVER_ONLY_MODULES = [
   // code the user controls.
   "lib/adapters/supabase/memorial-ownership-repository.ts",
   "lib/auth/heritage-session.ts",
+  // Mission 015A: the staff support reads. They run with the
+  // service-role client over owners/entitlements/memorials — every
+  // family's record, not just the caller's — so nothing client-reachable
+  // may import them.
+  "lib/adapters/supabase/admin-support-repository.ts",
+  "lib/admin/admin-session.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];
