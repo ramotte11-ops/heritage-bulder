@@ -313,6 +313,21 @@ lib/                          Logic that operates on config/types
                                  decide *when* a skin gets chosen, only
                                  that nothing can inject one the
                                  purchased offer doesn't allow (+ tests)
+  integration/
+    etsy/                      Mission 016 — the one place HERITAGE knows
+                               an Etsy listing ID exists. Nothing under
+                               entitlement/, builder/, memorial/ or
+                               config/offers.ts may import it
+                               (etsy-boundary.test.ts enforces this)
+      listing-mapping.ts         ETSY_LISTING_MAPPINGS (empty until real
+                                 Etsy listings exist) + validation
+                                 (duplicate listing id / unknown offer id
+                                 / blank listing id), run once at module
+                                 load (+ tests)
+      resolve-listing.ts         resolveEtsyListingToOffer(listingId) —
+                                 exact match only, explicit
+                                 `{status:"unknownListing"}` refusal, no
+                                 fallback, no title parsing (+ tests)
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -617,6 +632,38 @@ mission, not this one. The product requirement stands unchanged; when
 those objects exist, the capability plugs into Mission 014's
 `requireHeritageAdmin` and Mission 015B's audit primitive, which is
 precisely why the audit is being built as a reusable brick.
+
+## Etsy listing → Offer mapping (Mission 016)
+
+Etsy is a sales channel, never a HERITAGE domain concept — `config/offers.ts`
+already says an Offer is "never named or shaped after Etsy specifically",
+and `EntitlementSource` (`config/entitlements.ts`) is the only place a
+channel is represented at all, as an opaque label. Mission 016 adds the one
+thing still missing to eventually turn a real Etsy purchase into an
+`OfferId`: `lib/integration/etsy/resolveEtsyListingToOffer(listingId)`,
+resolved against `ETSY_LISTING_MAPPINGS` (`lib/integration/etsy/listing-mapping.ts`)
+by exact string match only — no fallback, no case-folding, no logic derived
+from a listing's title. An unrecognised listing ID is refused explicitly
+(`{ status: "unknownListing" }`), never guessed at.
+
+The Etsy shop has no real listings yet, so `ETSY_LISTING_MAPPINGS` ships
+**empty** — a legitimate, fully-supported state, not a placeholder that
+blocks starting the project. `validateEtsyListingMappings` runs once at
+module load and rejects a blank listing ID, two entries sharing a listing
+ID, or an entry pointing at an offer id that doesn't exist — all fail fast
+at startup, before any real order could resolve to the wrong offer (or to
+none at all). Filling in a real listing, once the shop exists, is a
+one-line edit to that array and nothing else.
+
+This module is deliberately **not** wired into anything yet: no Etsy API,
+no webhook, no order reception, no Entitlement activation. It exists only
+so a later mission's webhook handler has a `listingId -> OfferId` step to
+call that already knows nothing about parsing, guessing, or falling back —
+and so a future HERITAGE-direct or B2B channel can produce an `OfferId` of
+its own without ever routing through this file. `etsy-boundary.test.ts`
+keeps it that way: nothing under `lib/entitlement/`, `lib/builder/`,
+`lib/memorial/`, or `config/offers.ts` may import
+`lib/integration/etsy/*`.
 
 ## What is NOT built yet
 
