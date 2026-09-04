@@ -91,6 +91,10 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "ProvisionEtsyPurchaseResult",
       "ProvisionEtsyPurchaseDeps",
       "EtsyProvisioningRejectionReason",
+      // Mission 019
+      "receiveEtsyPurchase",
+      "ReceiveEtsyPurchaseResult",
+      "ReceiveEtsyPurchaseDeps",
     ];
     const violations: string[] = [];
 
@@ -143,6 +147,7 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "lib/integration/etsy/resolve-listing.ts",
       "lib/integration/etsy/validate-purchase.ts",
       "lib/integration/etsy/provision-purchase.ts",
+      "lib/integration/etsy/receive-purchase.ts",
     ]) {
       expect(existsSync(path.join(REPO_ROOT, file))).toBe(true);
     }
@@ -180,6 +185,53 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("Mission 019: no domain source imports the composed Etsy boundary either", () => {
+    // The composition is the most tempting thing in this directory to
+    // import from the outside — it is the one function that does the
+    // whole commercial job. It is also the one that must stay hardest
+    // out of the domain: a Builder or Memorial module reaching for it
+    // would make "an order arrived" a domain concept.
+    const violations: string[] = [];
+
+    for (const file of protectedFiles()) {
+      const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+      if (source.includes("receive-purchase") || source.includes("receiveEtsyPurchase")) {
+        violations.push(file);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("Mission 019: the composition composes — it re-implements neither validation nor provisioning", () => {
+    const receive = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/receive-purchase.ts"),
+      "utf8",
+    );
+
+    // It calls both missions it sits on top of...
+    expect(receive).toContain("./validate-purchase");
+    expect(receive).toContain("./provision-purchase");
+    expect(receive).toContain("validateEtsyPurchase(");
+    expect(receive).toContain("provisionEtsyPurchase(");
+
+    // ...and owns none of their logic: no re-reading of the payload's
+    // fields, no second payment-state list, no second listing lookup, no
+    // direct repository call of its own.
+    for (const duplicated of [
+      "paymentState !==",
+      "externalPurchaseId.trim",
+      "listingId.trim",
+      "Number.isInteger",
+      "resolveEtsyListingToOffer",
+      "issueEntitlementWithActivationKey",
+      "issueWithActivationKey",
+      "generateActivationKey",
+    ]) {
+      expect(receive).not.toContain(duplicated);
+    }
   });
 
   it("Mission 018: issuing a right still takes no Etsy vocabulary at all", () => {
