@@ -20,7 +20,17 @@
 -- =====================================================================
 
 with client_roles(r) as (values ('anon'), ('authenticated')),
-all_roles(r) as (values ('anon'), ('authenticated'), ('service_role'))
+all_roles(r) as (values ('anon'), ('authenticated'), ('service_role')),
+-- MAINTAIN only exists from PostgreSQL 17 onward. The Supabase project
+-- this postflight runs against is 17; the local harness stand-in
+-- (scripts/db/test-local.sh) is 16 and never sources this file at all —
+-- but this file is still written so a human pasting it into a 16
+-- session gets an honest INFO row instead of an error, exactly like
+-- supabase/checks/013c_postflight.sql already does for the same
+-- privilege on the other seven tables.
+maintain_supported(v) as (
+  select current_setting('server_version_num')::int >= 170000
+)
 
 -- A. admin_audit_events : service_role a exactement SELECT + INSERT
 select 'A. service_role sur admin_audit_events' as bloc,
@@ -31,6 +41,32 @@ select 'A. service_role sur admin_audit_events' as bloc,
             then 'OK' else 'ECHEC' end as verdict
 from (values ('SELECT', true), ('INSERT', true), ('UPDATE', false), ('DELETE', false),
              ('TRUNCATE', false), ('REFERENCES', false), ('TRIGGER', false)) as e(p, expected)
+
+union all
+
+-- A bis. MAINTAIN sur admin_audit_events (PostgreSQL 17+ uniquement).
+-- Same non-DML doctrine as every other privilege here: TRUNCATE ignores
+-- RLS, and MAINTAIN (VACUUM/ANALYZE/REINDEX/CLUSTER/refresh matview)
+-- is exactly the same category of privilege that must never be
+-- inherited by accident. Covers all three roles this ledger's doctrine
+-- cares about — service_role included, since even the engine role gets
+-- only SELECT + INSERT, never a maintenance privilege it has no code
+-- path that needs. PUBLIC is deliberately NOT re-checked here: block C
+-- below already asserts PUBLIC holds no ACL entry on this table AT ALL
+-- (not privilege-by-privilege), which already covers MAINTAIN — a
+-- second, privilege-specific PUBLIC check here would be redundant.
+-- CASE only evaluates its chosen branch (documented PostgreSQL
+-- behaviour), so has_table_privilege(..., 'MAINTAIN') is never actually
+-- called — and never raises "unrecognized privilege type" — on a
+-- server where maintain_supported.v is false.
+select 'A bis. MAINTAIN (PG17+)', 'admin_audit_events ' || r || ' MAINTAIN', 'ne doit PAS avoir',
+       case when (select v from maintain_supported)
+            then has_table_privilege(r, 'public.admin_audit_events', 'MAINTAIN')::text
+            else '(MAINTAIN indisponible avant PG17 sur ce serveur)' end,
+       case when not (select v from maintain_supported) then 'INFO — non applicable sur ce serveur'
+            when has_table_privilege(r, 'public.admin_audit_events', 'MAINTAIN') then 'ECHEC'
+            else 'OK' end
+from all_roles
 
 union all
 
