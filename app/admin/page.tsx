@@ -10,13 +10,17 @@ import {
   type EntitlementSupportView,
 } from "@/lib/admin/support-search";
 import type { OwnerSupportSummary } from "@/types/admin-support";
+import { EntitlementActions } from "@/components/admin/EntitlementActions";
 import styles from "./page.module.css";
 
 /**
- * Mission 015A — the HERITAGE staff support console. Internal tool,
- * read-only, deliberately plain: it exists so support can answer "what
- * is the state of this family's right?" without opening the Supabase
- * dashboard. It is not a product surface and no family ever sees it.
+ * Mission 015A — the HERITAGE staff support console: a read-only search,
+ * deliberately plain, so support can answer "what is the state of this
+ * family's right?" without opening the Supabase dashboard. Mission 015B
+ * adds the only mutations this page will ever offer — replace/invalidate
+ * an activation key, revoke an `available` right — each one gated and
+ * audited server-side (lib/admin/admin-session.ts). It is not a product
+ * surface and no family ever sees it.
  *
  * ## Why `notFound()` rather than a redirect to /login
  *
@@ -27,12 +31,14 @@ import styles from "./page.module.css";
  * test whether an account happens to be staff. Staff know to sign in
  * first; nobody else learns anything.
  *
- * ## Search is a GET
+ * ## Search is a GET; mutations are Server Actions
  *
  * A lookup reads and changes nothing, so it is a query string, not a
  * Server Action. That keeps the page linkable (a ticket can carry the
- * exact query a colleague ran) and means no mutation-shaped endpoint
- * exists on an Admin surface that has no mutations in Mission 015A.
+ * exact query a colleague ran). The three Mission 015B mutations are the
+ * opposite: each is a POST-shaped Server Action
+ * (app/admin/actions.ts), rendered only where an entitlement's own
+ * status actually permits it (components/admin/EntitlementActions.tsx).
  *
  * `dynamic = "force-dynamic"` because the answer depends on who is
  * asking: a cached render of this page would be a cached render of
@@ -139,6 +145,11 @@ function EntitlementCard({ entitlement, memorial }: EntitlementSupportView) {
           Aucun mémorial : ce droit n&rsquo;a pas encore été activé.
         </p>
       )}
+
+      {/* Mission 015B — only ever offers what this right's OWN status
+          currently permits; the component itself hides on a non-`available`
+          right (see its own docstring). */}
+      <EntitlementActions entitlementId={entitlement.id} status={entitlement.status} />
     </section>
   );
 }
@@ -211,9 +222,9 @@ export default async function AdminSupportPage({
       <p className={styles.eyebrow}>HERITAGE — support interne</p>
       <h1 className={styles.title}>Recherche support</h1>
       <p className={styles.notice}>
-        Consultation seule. Aucune action n&rsquo;est possible depuis cet écran : le
-        remplacement de clé, l&rsquo;invalidation et la révocation arriveront avec leur
-        journal d&rsquo;audit.
+        La recherche est en consultation seule. Le remplacement de clé,
+        l&rsquo;invalidation et la révocation d&rsquo;un droit disponible sont
+        possibles sur chaque droit ci-dessous et sont journalisées.
       </p>
 
       <form className={styles.form} method="get">

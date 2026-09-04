@@ -61,6 +61,15 @@ const SERVER_ONLY_MODULES = [
   // may import them.
   "lib/adapters/supabase/admin-support-repository.ts",
   "lib/admin/admin-session.ts",
+  // Mission 015B: the audited Admin mutations. The adapter constructs
+  // the service-role client's RPC calls; the pure module generates a
+  // fresh activation key via node:crypto (lib/entitlement/activation-key.ts)
+  // before ever calling it. Neither has any business in a browser
+  // bundle — a client can only ever reach the Server Action in
+  // app/admin/actions.ts, which is where Next.js itself draws the line
+  // (see "stops at a Server Action boundary" below).
+  "lib/adapters/supabase/admin-entitlement-repository.ts",
+  "lib/admin/admin-mutations.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

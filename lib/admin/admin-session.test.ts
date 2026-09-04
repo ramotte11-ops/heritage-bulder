@@ -15,12 +15,18 @@ const {
   findByAuthUserId,
   supportRepositoryConstructed,
   findOwnerByEmail,
+  entitlementRepositoryConstructed,
+  mutateActivationKey,
+  revokeEntitlement,
 } = vi.hoisted(() => ({
   getAuthenticatedUser: vi.fn(),
   createServiceRoleSupabaseClient: vi.fn(() => ({})),
   findByAuthUserId: vi.fn(),
   supportRepositoryConstructed: vi.fn(),
   findOwnerByEmail: vi.fn(),
+  entitlementRepositoryConstructed: vi.fn(),
+  mutateActivationKey: vi.fn(),
+  revokeEntitlement: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/session", () => ({ getAuthenticatedUser }));
@@ -43,8 +49,23 @@ vi.mock("@/lib/adapters/supabase/admin-support-repository", () => ({
     findMemorialSummaryByEntitlementId = vi.fn();
   },
 }));
+vi.mock("@/lib/adapters/supabase/admin-entitlement-repository", () => ({
+  SupabaseAdminEntitlementRepository: class {
+    constructor() {
+      entitlementRepositoryConstructed();
+    }
+    mutateActivationKey = mutateActivationKey;
+    revokeEntitlement = revokeEntitlement;
+  },
+}));
 
-const { requireAdminForRequest, runAdminSupportSearch } = await import("./admin-session");
+const {
+  requireAdminForRequest,
+  runAdminSupportSearch,
+  runAdminActivationKeyReplace,
+  runAdminActivationKeyInvalidate,
+  runAdminEntitlementRevoke,
+} = await import("./admin-session");
 
 const OWNER = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -181,5 +202,118 @@ describe("runAdminSupportSearch", () => {
     }
 
     expect(supportRepositoryConstructed).not.toHaveBeenCalled();
+  });
+});
+
+const ENTITLEMENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+// The auth user id signedIn() puts on the session — this must be exactly
+// what reaches the repository as adminAuthUserId, since it is what the
+// audit row is attributed to.
+const ADMIN_AUTH_USER_ID = "auth-a";
+
+describe("the three Mission 015B mutation entry points", () => {
+  beforeEach(() => {
+    getAuthenticatedUser.mockReset();
+    findByAuthUserId.mockReset();
+    entitlementRepositoryConstructed.mockReset();
+    mutateActivationKey.mockReset();
+    revokeEntitlement.mockReset();
+    createServiceRoleSupabaseClient.mockClear();
+  });
+
+  const ENTRY_POINTS = [
+    {
+      name: "runAdminActivationKeyReplace",
+      run: runAdminActivationKeyReplace,
+      resolve: () => mutateActivationKey.mockResolvedValue({ status: "replaced" }),
+    },
+    {
+      name: "runAdminActivationKeyInvalidate",
+      run: runAdminActivationKeyInvalidate,
+      resolve: () => mutateActivationKey.mockResolvedValue({ status: "invalidated" }),
+    },
+    {
+      name: "runAdminEntitlementRevoke",
+      run: runAdminEntitlementRevoke,
+      resolve: () => revokeEntitlement.mockResolvedValue({ status: "revoked" }),
+    },
+  ] as const;
+
+  for (const { name, run, resolve } of ENTRY_POINTS) {
+    it(`${name} takes only an entitlementId — there is no actor, role or admin identity parameter`, () => {
+      expect(run.length).toBe(1);
+    });
+
+    it(`${name} refuses a visitor WITHOUT building a client or calling the repository`, async () => {
+      getAuthenticatedUser.mockResolvedValue(null);
+
+      expect(await run(ENTITLEMENT_ID)).toEqual({ status: "denied" });
+      expect(entitlementRepositoryConstructed).not.toHaveBeenCalled();
+      expect(createServiceRoleSupabaseClient).not.toHaveBeenCalled();
+      expect(mutateActivationKey).not.toHaveBeenCalled();
+      expect(revokeEntitlement).not.toHaveBeenCalled();
+    });
+
+    it(`${name} refuses a non-Admin owner without calling the repository`, async () => {
+      signedIn({ admin: false, owner: true });
+
+      expect(await run(ENTITLEMENT_ID)).toEqual({ status: "denied" });
+      expect(entitlementRepositoryConstructed).not.toHaveBeenCalled();
+    });
+
+    it(`${name} re-resolves the session on every call — the gate is inside, not in front`, async () => {
+      signedIn({ admin: true, owner: false });
+      resolve();
+
+      await run(ENTITLEMENT_ID);
+      await run(ENTITLEMENT_ID);
+
+      expect(getAuthenticatedUser).toHaveBeenCalledTimes(2);
+    });
+  }
+
+  it("runAdminActivationKeyReplace passes the admin's own auth user id, never anything else", async () => {
+    signedIn({ admin: true, owner: false });
+    mutateActivationKey.mockResolvedValue({ status: "replaced" });
+
+    const outcome = await runAdminActivationKeyReplace(ENTITLEMENT_ID);
+
+    expect(outcome).toEqual({
+      status: "completed",
+      result: { status: "replaced", rawActivationKey: expect.stringMatching(/^HH1-/) },
+    });
+    expect(mutateActivationKey).toHaveBeenCalledExactlyOnceWith({
+      entitlementId: ENTITLEMENT_ID,
+      nextActivationKeyHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      adminAuthUserId: ADMIN_AUTH_USER_ID,
+    });
+    expect(entitlementRepositoryConstructed).toHaveBeenCalledTimes(1);
+  });
+
+  it("runAdminActivationKeyInvalidate sends a null hash and the admin's auth user id", async () => {
+    signedIn({ admin: true, owner: false });
+    mutateActivationKey.mockResolvedValue({ status: "invalidated" });
+
+    const outcome = await runAdminActivationKeyInvalidate(ENTITLEMENT_ID);
+
+    expect(outcome).toEqual({ status: "completed", result: { status: "invalidated" } });
+    expect(mutateActivationKey).toHaveBeenCalledExactlyOnceWith({
+      entitlementId: ENTITLEMENT_ID,
+      nextActivationKeyHash: null,
+      adminAuthUserId: ADMIN_AUTH_USER_ID,
+    });
+  });
+
+  it("runAdminEntitlementRevoke passes the entitlement id and the admin's auth user id", async () => {
+    signedIn({ admin: true, owner: false });
+    revokeEntitlement.mockResolvedValue({ status: "revoked" });
+
+    const outcome = await runAdminEntitlementRevoke(ENTITLEMENT_ID);
+
+    expect(outcome).toEqual({ status: "completed", result: { status: "revoked" } });
+    expect(revokeEntitlement).toHaveBeenCalledExactlyOnceWith({
+      entitlementId: ENTITLEMENT_ID,
+      adminAuthUserId: ADMIN_AUTH_USER_ID,
+    });
   });
 });
