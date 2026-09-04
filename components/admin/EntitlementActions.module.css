@@ -1,0 +1,56 @@
+/* Mission 015B — same sober register as app/admin/page.module.css: an
+   internal tool, not a family-facing surface. */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+}
+
+.form {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.button {
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.success {
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--foreground) 85%, #16a34a);
+}
+
+.error {
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--foreground) 70%, #dc2626);
+}
+
+.rawKey {
+  font-size: 0.8125rem;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: 4px;
+  padding: 0.5rem 0.625rem;
+}
+
+.mono {
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-weight: 600;
+}

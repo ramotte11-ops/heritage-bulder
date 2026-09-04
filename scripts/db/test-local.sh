@@ -975,6 +975,415 @@ fi
 wait $LOCKER
 
 echo ""
+echo "== Mission 015B: audited Admin mutations =="
+
+# A fresh, essentially-collision-free 64-hex sha256-shaped value per
+# call — sidesteps hand-tracking which literal hash strings earlier
+# sections already persisted (entitlements_activation_key_hash_key is a
+# real UNIQUE index; reusing one by accident would fail for the wrong
+# reason).
+random_hash() {
+  $DB -t -A -c "select encode(sha256(gen_random_uuid()::text::bytea), 'hex');"
+}
+
+ADMIN_1=$($DB -t -A -c "select gen_random_uuid();")
+ADMIN_2=$($DB -t -A -c "select gen_random_uuid();")
+
+# --- admin_audit_events: privileges are exactly the append-only doctrine
+expect_service_role admin_audit_events SELECT t
+expect_service_role admin_audit_events INSERT t
+expect_service_role admin_audit_events UPDATE f
+expect_service_role admin_audit_events DELETE f
+
+for role in anon authenticated; do
+  for p in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+    HAS=$($DB -t -A -c "select has_table_privilege('$role','public.admin_audit_events','$p');")
+    check "$role has no $p on admin_audit_events" "f" "$HAS"
+  done
+done
+
+PUBLIC_AUDIT=$($DB -t -A -c "select coalesce((select true from aclexplode((select relacl from pg_class where oid='public.admin_audit_events'::regclass)) a where a.grantee = 0 limit 1), false);")
+check "PUBLIC has no privilege on admin_audit_events" "f" "$PUBLIC_AUDIT"
+
+RLS_AUDIT=$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.admin_audit_events'::regclass;")
+check "RLS is enabled on admin_audit_events" "t" "$RLS_AUDIT"
+
+POLICY_COUNT=$($DB -t -A -c "select count(*) from pg_policies where schemaname='public' and tablename='admin_audit_events';")
+check "admin_audit_events has zero RLS policies (service_role bypasses RLS; nobody else holds a privilege to policy)" "0" "$POLICY_COUNT"
+
+HASH_COL_AUDIT=$($DB -t -A -c "select count(*) from information_schema.columns where table_schema='public' and table_name='admin_audit_events' and column_name in ('activation_key_hash','raw_activation_key','activation_key');")
+check "admin_audit_events has no column that could carry a key or its hash" "0" "$HASH_COL_AUDIT"
+
+# --- the two RPCs: SECURITY INVOKER, search_path pinned, EXECUTE -------
+expect_function admin_mutate_activation_key false search_path=public
+expect_function admin_revoke_entitlement false search_path=public
+
+expect_execute admin_mutate_activation_key service_role t
+expect_execute admin_mutate_activation_key anon f
+expect_execute admin_mutate_activation_key authenticated f
+expect_execute admin_revoke_entitlement service_role t
+expect_execute admin_revoke_entitlement anon f
+expect_execute admin_revoke_entitlement authenticated f
+
+for fn in admin_mutate_activation_key admin_revoke_entitlement; do
+  PUB=$($DB -t -A -c "select coalesce((select true from aclexplode(p.proacl) a where a.grantee = 0 limit 1), false) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$fn';")
+  check "PUBLIC has no EXECUTE on $fn" "f" "$PUB"
+done
+
+# The effective privilege state above (service_role yes, everyone else
+# no) is already reachable by a migration that only ever wrote
+# `revoke ... from public` — PostgreSQL's own inheritance from PUBLIC
+# makes the two forms behave identically at runtime, so has_function_
+# privilege() cannot by itself distinguish "named explicitly" from
+# "relied on PUBLIC membership". What CAN be proven at runtime is that
+# the ACL is minimal: no grantee besides the function's own OWNER (whose
+# privileges come from ownership, not from any ACL entry, and who is
+# always present once an object's ACL is anything other than the
+# catalog's implicit NULL default — REVOKE/GRANT materialises it) holds
+# anything but service_role, EXECUTE only. That the migration's own SQL
+# text names every role rather than leaning on PUBLIC inheritance
+# (Mission 013C's doctrine, applied here after review) is a property of
+# the migration file itself, checked directly against it below.
+for fn in admin_mutate_activation_key admin_revoke_entitlement; do
+  ACL_GRANTEES=$($DB -t -A -c "select count(distinct a.grantee) from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's ACL has exactly one grantee besides its owner" "1" "$ACL_GRANTEES"
+
+  ACL_GRANTEE_NAME=$($DB -t -A -c "select a.grantee::regrole::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's sole non-owner grantee is service_role" "service_role" "$ACL_GRANTEE_NAME"
+
+  ACL_PRIVS=$($DB -t -A -c "select string_agg(distinct a.privilege_type, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's sole non-owner grant is EXECUTE, nothing else" "EXECUTE" "$ACL_PRIVS"
+done
+
+MIGRATION_FILE="$MIGRATIONS_DIR/20260904100000_admin_audit_and_mutations.sql"
+for fn in admin_mutate_activation_key admin_revoke_entitlement; do
+  if grep -Pzoq "revoke all on function ${fn}\([^)]*\)\s*\n\s*from public, anon, authenticated, service_role;" "$MIGRATION_FILE"; then
+    echo "  [PASS] the migration's own SQL text revokes $fn explicitly from public, anon, authenticated AND service_role by name"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] the migration's own SQL text does NOT explicitly name every role in $fn's REVOKE"
+    FAIL=$((FAIL + 1))
+  fi
+done
+
+# --- action/target_type: a FORMAT constraint, not a closed enum --------
+expect_error "admin_audit_events rejects an empty action" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', '', 'entitlement', gen_random_uuid());"
+
+expect_error "admin_audit_events rejects an uppercase action" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', 'Entitlement.Revoked', 'entitlement', gen_random_uuid());"
+
+FORMAT_OK=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', 'a_future_action.taken', 'x', gen_random_uuid()) returning 1;")
+check "admin_audit_events accepts a well-formed action/target_type it has never seen — no closed enum" "1" "$FORMAT_OK"
+$DB -c "delete from admin_audit_events where action = 'a_future_action.taken';" >/dev/null
+
+# --- context: must be a JSON OBJECT, never an array/scalar/null --------
+expect_error "admin_audit_events rejects a context that is a JSON array" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '[1,2,3]');"
+
+expect_error "admin_audit_events rejects a context that is a JSON scalar (string)" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '\"oops\"');"
+
+expect_error "admin_audit_events rejects a context that is a JSON scalar (number)" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '42');"
+
+expect_error "admin_audit_events rejects a context that is JSON null" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), 'null');"
+
+CONTEXT_DEFAULT=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid()) returning context::text;")
+check "admin_audit_events' default context ('{}') satisfies the object constraint" "{}" "$CONTEXT_DEFAULT"
+
+CONTEXT_OBJECT_OK=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '{\"had_activation_key\": true}') returning 1;")
+check "admin_audit_events accepts a genuine JSON object context" "1" "$CONTEXT_OBJECT_OK"
+$DB -c "delete from admin_audit_events where action = 'a.b';" >/dev/null
+
+# --- replace: an available, already-keyed right -------------------------
+AA_HASH=$(random_hash)
+AA_ENT=$(new_keyed_entitlement "$AA_HASH")
+NEW_HASH_1=$(random_hash)
+REPL_OUT=$(svc "select outcome from admin_mutate_activation_key('$AA_ENT','$ADMIN_1','$AA_HASH','$NEW_HASH_1');")
+check "replace: outcome is 'replaced'" "replaced" "$REPL_OUT"
+REPL_HASH=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AA_ENT';")
+check "replace: the new hash is actually persisted" "$NEW_HASH_1" "$REPL_HASH"
+REPL_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AA_ENT' and action='activation_key.replaced';")
+check "replace: exactly one audit row" "1" "$REPL_AUDIT"
+REPL_ATTR=$($DB -t -A -c "select admin_auth_user_id::text from admin_audit_events where target_id='$AA_ENT' and action='activation_key.replaced';")
+check "replace: the audit row is attributed to the calling admin" "$ADMIN_1" "$REPL_ATTR"
+REPL_CTX=$($DB -t -A -c "select context->>'had_activation_key' from admin_audit_events where target_id='$AA_ENT' and action='activation_key.replaced';")
+check "replace: context records had_activation_key=true (it already had one)" "true" "$REPL_CTX"
+REPL_CTX_TEXT=$($DB -t -A -c "select context::text from admin_audit_events where target_id='$AA_ENT' and action='activation_key.replaced';")
+if printf '%s' "$REPL_CTX_TEXT" | grep -qF "$NEW_HASH_1"; then
+  echo "  [FAIL] replace: the new hash leaked into the audit context"
+  FAIL=$((FAIL + 1))
+else
+  echo "  [PASS] replace: the new hash never appears in the audit context"
+  PASS=$((PASS + 1))
+fi
+
+# --- a "replacement" by the SAME hash the right already holds is refused,
+# not silently accepted as a no-op success. AA_ENT currently holds
+# NEW_HASH_1 (the successful replace just above).
+AA_UPDATED_AT_BEFORE=$($DB -t -A -c "select updated_at from entitlements where id='$AA_ENT';")
+AA_AUDIT_BEFORE=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AA_ENT';")
+SAME_OUT=$(svc "select outcome from admin_mutate_activation_key('$AA_ENT','$ADMIN_1','$NEW_HASH_1','$NEW_HASH_1');")
+check "replace by the same hash it already holds is refused as same_activation_key" "same_activation_key" "$SAME_OUT"
+AA_HASH_AFTER=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AA_ENT';")
+check "same_activation_key refusal: the hash is unchanged" "$NEW_HASH_1" "$AA_HASH_AFTER"
+AA_UPDATED_AT_AFTER=$($DB -t -A -c "select updated_at from entitlements where id='$AA_ENT';")
+check "same_activation_key refusal: updated_at is untouched (no UPDATE statement ran at all)" "$AA_UPDATED_AT_BEFORE" "$AA_UPDATED_AT_AFTER"
+AA_AUDIT_AFTER=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AA_ENT';")
+check "same_activation_key refusal: no new audit row" "$AA_AUDIT_BEFORE" "$AA_AUDIT_AFTER"
+
+# --- invalidate: an available, already-keyed right -----------------------
+AB_HASH=$(random_hash)
+AB_ENT=$(new_keyed_entitlement "$AB_HASH")
+INV_OUT=$(svc "select outcome from admin_mutate_activation_key('$AB_ENT','$ADMIN_1','$AB_HASH', null);")
+check "invalidate: outcome is 'invalidated'" "invalidated" "$INV_OUT"
+INV_HASH=$($DB -t -A -c "select coalesce(activation_key_hash, 'NULL') from entitlements where id='$AB_ENT';")
+check "invalidate: the hash is now NULL" "NULL" "$INV_HASH"
+INV_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AB_ENT' and action='activation_key.invalidated';")
+check "invalidate: exactly one audit row" "1" "$INV_AUDIT"
+
+# --- replace works even on a right that never had a key -----------------
+AC_ENT=$(new_entitlement available)
+NOKEY_HASH=$(random_hash)
+NOKEY_OUT=$(svc "select outcome from admin_mutate_activation_key('$AC_ENT','$ADMIN_1', null,'$NOKEY_HASH');")
+check "replace succeeds even when the right never had a key" "replaced" "$NOKEY_OUT"
+NOKEY_CTX=$($DB -t -A -c "select context->>'had_activation_key' from admin_audit_events where target_id='$AC_ENT' and action='activation_key.replaced';")
+check "context correctly records had_activation_key=false" "false" "$NOKEY_CTX"
+
+# --- invalidate is REFUSED (never a no-op success) when there is no key
+# already to invalidate. Without this check, NULL-current vs NULL-expected
+# passes the compare-and-swap trivially and the RPC would UPDATE NULL to
+# NULL, fire entitlements_set_updated_at for nothing, and write a SUCCESS
+# audit row for an action that never actually happened.
+AM_ENT=$(new_entitlement available)
+AM_BEFORE_UPDATED_AT=$($DB -t -A -c "select updated_at from entitlements where id='$AM_ENT';")
+AM_OUT=$(svc "select outcome from admin_mutate_activation_key('$AM_ENT','$ADMIN_1', null, null);")
+check "invalidate on a right with no key is refused as no_activation_key" "no_activation_key" "$AM_OUT"
+AM_HASH=$($DB -t -A -c "select coalesce(activation_key_hash,'NULL') from entitlements where id='$AM_ENT';")
+check "invalidate refusal: the hash stays NULL" "NULL" "$AM_HASH"
+AM_UPDATED_AT=$($DB -t -A -c "select updated_at from entitlements where id='$AM_ENT';")
+check "invalidate refusal: updated_at is untouched (no UPDATE statement ran at all)" "$AM_BEFORE_UPDATED_AT" "$AM_UPDATED_AT"
+AM_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AM_ENT';")
+check "invalidate refusal: zero audit rows" "0" "$AM_AUDIT"
+
+# --- recovery: a lost response must never block a second rotation -------
+# Each rotation here reads the CURRENT state for itself as its expected
+# hash — exactly what SupabaseAdminEntitlementRepository.mutateActivationKey
+# does — which is precisely why a lost first response never blocks a
+# second, SEQUENTIAL attempt: it is not a concurrent race, so the second
+# call's own fresh read always matches what the first call just wrote.
+AJ_ENT=$(new_entitlement available)
+AJ_HASH_1=$(random_hash)
+AJ_HASH_2=$(random_hash)
+AJ_OUT_1=$(svc "select outcome from admin_mutate_activation_key('$AJ_ENT','$ADMIN_1', null,'$AJ_HASH_1');")
+check "recovery: a first rotation succeeds" "replaced" "$AJ_OUT_1"
+AJ_OUT_2=$(svc "select outcome from admin_mutate_activation_key('$AJ_ENT','$ADMIN_1','$AJ_HASH_1','$AJ_HASH_2');")
+check "recovery: a SECOND rotation succeeds too — support never needs the lost raw key to try again" "replaced" "$AJ_OUT_2"
+AJ_FINAL=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AJ_ENT';")
+check "recovery: the entitlement carries only the LATEST hash" "$AJ_HASH_2" "$AJ_FINAL"
+
+# --- a REDEEMED right refuses both key mutation and revocation ----------
+AD_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'admin015b-redeemed@example.test') returning id;")
+AD_ENT=$(new_entitlement available)
+svc "select outcome from redeem_entitlement('$AD_ENT','$AD_OWNER','person','intemporel');" >/dev/null
+
+AD_REPL=$(svc "select outcome from admin_mutate_activation_key('$AD_ENT','$ADMIN_1', null,'$(random_hash)');")
+check "replace on a REDEEMED right is refused as not_available" "not_available" "$AD_REPL"
+AD_REPL_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AD_ENT';")
+check "the refused replace on a redeemed right writes zero audit rows" "0" "$AD_REPL_AUDIT"
+
+AD_REV=$(svc "select outcome || ',' || blocking_status from admin_revoke_entitlement('$AD_ENT','$ADMIN_1');")
+check "revoke on a REDEEMED right is refused; blocking_status=redeemed" "not_available,redeemed" "$AD_REV"
+AD_REV_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AD_ENT' and action='entitlement.revoked';")
+check "the refused revoke on a redeemed right writes zero audit rows" "0" "$AD_REV_AUDIT"
+AD_STATUS=$($DB -t -A -c "select status from entitlements where id='$AD_ENT';")
+check "the redeemed right's status is untouched by the refused revoke" "redeemed" "$AD_STATUS"
+
+# --- revoke: available -> revoked, key cleared, one audit row -----------
+AE_HASH=$(random_hash)
+AE_ENT=$(new_keyed_entitlement "$AE_HASH")
+AE_REV=$(svc "select outcome from admin_revoke_entitlement('$AE_ENT','$ADMIN_1');")
+check "revoke: outcome is 'revoked'" "revoked" "$AE_REV"
+AE_STATE=$($DB -t -A -c "select status || ',' || coalesce(activation_key_hash,'NULL') from entitlements where id='$AE_ENT';")
+check "revoke: status becomes revoked AND the key hash becomes NULL, together" "revoked,NULL" "$AE_STATE"
+AE_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AE_ENT' and action='entitlement.revoked';")
+check "revoke: exactly one audit row" "1" "$AE_AUDIT"
+AE_CTX=$($DB -t -A -c "select (context->>'had_activation_key') || ',' || (context->>'from_status') || ',' || (context->>'to_status') from admin_audit_events where target_id='$AE_ENT' and action='entitlement.revoked';")
+check "revoke: context records had_activation_key=true, from_status=available, to_status=revoked" "true,available,revoked" "$AE_CTX"
+AE_LOOKUP=$($DB -t -A -c "select count(*) from entitlements where activation_key_hash = '$AE_HASH';")
+check "revoke: the dead key hash resolves to nothing at all afterwards" "0" "$AE_LOOKUP"
+
+# --- revoked -> revoked is refused, never a second audit row -----------
+AE_REV2=$(svc "select outcome || ',' || blocking_status from admin_revoke_entitlement('$AE_ENT','$ADMIN_2');")
+check "revoke: a second revoke on an already-revoked right is refused; blocking_status=revoked" "not_available,revoked" "$AE_REV2"
+AE_AUDIT2=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AE_ENT' and action='entitlement.revoked';")
+check "revoke: the refused second attempt writes no second audit row" "1" "$AE_AUDIT2"
+
+# --- not_found, both RPCs, zero audit rows ------------------------------
+UNKNOWN_ENT_ID="00000000-0000-0000-0000-000000000000"
+NF_MUT=$(svc "select outcome from admin_mutate_activation_key('$UNKNOWN_ENT_ID','$ADMIN_1', null,'$(random_hash)');")
+check "mutate: unknown entitlement id -> not_found" "not_found" "$NF_MUT"
+NF_REV=$(svc "select outcome from admin_revoke_entitlement('$UNKNOWN_ENT_ID','$ADMIN_1');")
+check "revoke: unknown entitlement id -> not_found" "not_found" "$NF_REV"
+NF_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$UNKNOWN_ENT_ID';")
+check "not_found writes zero audit rows on either RPC" "0" "$NF_AUDIT"
+
+# --- a NULL admin identity is an invariant failure, never silently audited
+svc_expect_error "a NULL admin_auth_user_id is refused by admin_mutate_activation_key" \
+  "select * from admin_mutate_activation_key('$AC_ENT', null, null, '$(random_hash)');" \
+  "admin_auth_user_id_required"
+svc_expect_error "a NULL admin_auth_user_id is refused by admin_revoke_entitlement" \
+  "select * from admin_revoke_entitlement('$AC_ENT', null);" \
+  "admin_auth_user_id_required"
+
+# --- atomicity: if the audit INSERT cannot happen, the mutation aborts --
+AF_HASH=$(random_hash)
+AF_ENT=$(new_keyed_entitlement "$AF_HASH")
+$DB -c "revoke insert on admin_audit_events from service_role;" >/dev/null
+svc_expect_error "atomicity: mutate — if the audit INSERT cannot happen, the whole mutation aborts" \
+  "select * from admin_mutate_activation_key('$AF_ENT','$ADMIN_1','$AF_HASH','$(random_hash)');" \
+  "permission denied"
+AF_STATE=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AF_ENT';")
+check "atomicity: mutate — the entitlement's key is UNCHANGED after the aborted mutation" "$AF_HASH" "$AF_STATE"
+
+AG_HASH=$(random_hash)
+AG_ENT=$(new_keyed_entitlement "$AG_HASH")
+svc_expect_error "atomicity: revoke — if the audit INSERT cannot happen, the revoke aborts too" \
+  "select * from admin_revoke_entitlement('$AG_ENT','$ADMIN_1');" \
+  "permission denied"
+AG_STATE=$($DB -t -A -c "select status || ',' || activation_key_hash from entitlements where id='$AG_ENT';")
+check "atomicity: revoke — the entitlement's status AND key are unchanged after the aborted revoke" "available,$AG_HASH" "$AG_STATE"
+
+$DB -c "grant insert on admin_audit_events to service_role;" >/dev/null
+
+# The privilege model doctrine still holds once restored: not a
+# permanent, accidental lockout — the exact grant Mission 015B's own
+# migration establishes.
+AF_RETRY_HASH=$(random_hash)
+AF_RETRY=$(svc "select outcome from admin_mutate_activation_key('$AF_ENT','$ADMIN_1','$AF_HASH','$AF_RETRY_HASH');")
+check "atomicity: the entitlement is normally mutable again once the privilege is restored" "replaced" "$AF_RETRY"
+
+# --- concurrency: two racing revokes on the same right, one winner -----
+AH_ENT=$(new_entitlement available)
+CONC_DIR_015B="$PGDATA_DIR/concurrency-015b"
+mkdir -p "$CONC_DIR_015B"
+for i in 1 2; do
+  ADMIN_RACE=$([ "$i" = "1" ] && echo "$ADMIN_1" || echo "$ADMIN_2")
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from admin_revoke_entitlement('$AH_ENT','$ADMIN_RACE');" \
+      >"$CONC_DIR_015B/$i.out" 2>"$CONC_DIR_015B/$i.err" || rc=$?
+    echo "$rc" >"$CONC_DIR_015B/$i.rc"
+  ) &
+done
+wait
+
+CONC_OUTS="$(cat "$CONC_DIR_015B/1.out" "$CONC_DIR_015B/2.out")"
+REVOKED_COUNT=$(printf '%s\n' "$CONC_OUTS" | grep -c '^revoked$' || true)
+check "concurrency: exactly one of two racing revokes succeeds" "1" "$REVOKED_COUNT"
+NOTAVAIL_COUNT=$(printf '%s\n' "$CONC_OUTS" | grep -c '^not_available$' || true)
+check "concurrency: the loser is refused as not_available, not by a crash" "1" "$NOTAVAIL_COUNT"
+AH_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AH_ENT' and action='entitlement.revoked';")
+check "concurrency: exactly one audit row survives the race" "1" "$AH_AUDIT"
+
+# --- CAS concurrency: two rotations that captured the SAME expected hash
+#
+# This is the correction the Opus/GPT review asked for: `status =
+# 'available'` alone is not enough, because neither replace nor
+# invalidate changes status, so a second caller re-reading after the
+# first commits would still see 'available' and could overwrite the
+# first's fresh hash. p_expected_activation_key_hash closes that: both
+# processes below believe (correctly, at the moment they read it) that
+# AK_HASH is current; only whichever actually holds the row lock when it
+# checks may proceed, and the other's re-read under the lock no longer
+# matches.
+AK_HASH=$(random_hash)
+AK_ENT=$(new_keyed_entitlement "$AK_HASH")
+AK_NEXT_1=$(random_hash)
+AK_NEXT_2=$(random_hash)
+CONC_DIR_CAS="$PGDATA_DIR/concurrency-015b-cas"
+mkdir -p "$CONC_DIR_CAS"
+for i in 1 2; do
+  CAS_NEXT=$([ "$i" = "1" ] && echo "$AK_NEXT_1" || echo "$AK_NEXT_2")
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from admin_mutate_activation_key('$AK_ENT','$ADMIN_1','$AK_HASH','$CAS_NEXT');" \
+      >"$CONC_DIR_CAS/$i.out" 2>"$CONC_DIR_CAS/$i.err" || rc=$?
+    echo "$rc" >"$CONC_DIR_CAS/$i.rc"
+  ) &
+done
+wait
+
+CAS_OUTS="$(cat "$CONC_DIR_CAS/1.out" "$CONC_DIR_CAS/2.out")"
+CAS_REPLACED_COUNT=$(printf '%s\n' "$CAS_OUTS" | grep -c '^replaced$' || true)
+check "CAS concurrency: of two rotations sharing the same expected hash, exactly one succeeds" "1" "$CAS_REPLACED_COUNT"
+CAS_MISMATCH_COUNT=$(printf '%s\n' "$CAS_OUTS" | grep -c '^key_mismatch$' || true)
+check "CAS concurrency: the loser is refused as key_mismatch, not by a crash" "1" "$CAS_MISMATCH_COUNT"
+
+AK_FINAL=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AK_ENT';")
+if [ "$AK_FINAL" = "$AK_NEXT_1" ] || [ "$AK_FINAL" = "$AK_NEXT_2" ]; then
+  echo "  [PASS] CAS concurrency: the final hash is exactly one of the two candidates, never a corrupted mix"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] CAS concurrency: final hash '$AK_FINAL' matches neither candidate"
+  FAIL=$((FAIL + 1))
+fi
+
+AK_AUDIT=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AK_ENT' and action='activation_key.replaced';")
+check "CAS concurrency: exactly one audit row for the race" "1" "$AK_AUDIT"
+
+# --- CAS concurrency: a replace racing an invalidate, same expected hash
+AL_HASH=$(random_hash)
+AL_ENT=$(new_keyed_entitlement "$AL_HASH")
+AL_NEXT=$(random_hash)
+CONC_DIR_CAS2="$PGDATA_DIR/concurrency-015b-cas2"
+mkdir -p "$CONC_DIR_CAS2"
+(
+  rc=0
+  $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from admin_mutate_activation_key('$AL_ENT','$ADMIN_1','$AL_HASH','$AL_NEXT');" \
+    >"$CONC_DIR_CAS2/1.out" 2>"$CONC_DIR_CAS2/1.err" || rc=$?
+  echo "$rc" >"$CONC_DIR_CAS2/1.rc"
+) &
+(
+  rc=0
+  $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from admin_mutate_activation_key('$AL_ENT','$ADMIN_2','$AL_HASH', null);" \
+    >"$CONC_DIR_CAS2/2.out" 2>"$CONC_DIR_CAS2/2.err" || rc=$?
+  echo "$rc" >"$CONC_DIR_CAS2/2.rc"
+) &
+wait
+
+CAS2_OUTS="$(cat "$CONC_DIR_CAS2/1.out" "$CONC_DIR_CAS2/2.out")"
+CAS2_WIN_COUNT=$(printf '%s\n' "$CAS2_OUTS" | grep -cE '^(replaced|invalidated)$' || true)
+check "CAS concurrency (replace vs invalidate): exactly one of the two succeeds" "1" "$CAS2_WIN_COUNT"
+CAS2_MISMATCH_COUNT=$(printf '%s\n' "$CAS2_OUTS" | grep -c '^key_mismatch$' || true)
+check "CAS concurrency (replace vs invalidate): the loser is refused as key_mismatch" "1" "$CAS2_MISMATCH_COUNT"
+
+AL_AUDIT_TOTAL=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AL_ENT';")
+check "CAS concurrency (replace vs invalidate): exactly one audit row total" "1" "$AL_AUDIT_TOTAL"
+
+# --- the row lock is real, not inferred -------------------------------
+AI_ENT=$(new_entitlement available)
+( $DB -c "begin; select status from entitlements where id='$AI_ENT' for update; select pg_sleep(3); rollback;" >/dev/null 2>&1 ) &
+LOCKER_015B=$!
+sleep 0.5
+if $DB -c "set role service_role; set local statement_timeout='1000ms'; select * from admin_mutate_activation_key('$AI_ENT','$ADMIN_1', null,'$(random_hash)');" >/dev/null 2>&1; then
+  echo "  [FAIL] admin_mutate_activation_key did NOT block on a concurrently held row lock"
+  FAIL=$((FAIL + 1))
+else
+  echo "  [PASS] admin_mutate_activation_key blocks on the entitlement's row lock (FOR UPDATE is real)"
+  PASS=$((PASS + 1))
+fi
+wait $LOCKER_015B
+AI_STATE=$($DB -t -A -c "select coalesce(activation_key_hash,'NULL') from entitlements where id='$AI_ENT';")
+check "the blocked mutate attempt changed nothing" "NULL" "$AI_STATE"
+
+# --- no raw key material anywhere in the ledger -------------------------
+RAW_LEAK=$($DB -t -A -c "select count(*) from admin_audit_events where context::text like '%HH1-%' or action like '%HH1-%';")
+check "no raw HH1- key material ever appears in the audit ledger" "0" "$RAW_LEAK"
+
+echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
