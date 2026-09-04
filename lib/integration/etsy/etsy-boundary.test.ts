@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Mission 016/017 — the boundary these missions exist to build: Etsy is
+ * Mission 016/017/018 — the boundary these missions exist to build: Etsy is
  * a sales channel, not a HERITAGE domain concept. No module under the
  * Offer, Entitlement, Builder or Memorial domains may import anything
  * from `lib/integration/etsy/` — the only place HERITAGE is allowed to
@@ -86,6 +86,11 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "ValidatedEtsyPurchase",
       "EtsyPurchaseInput",
       "EtsyListingMapping",
+      // Mission 018
+      "provisionEtsyPurchase",
+      "ProvisionEtsyPurchaseResult",
+      "ProvisionEtsyPurchaseDeps",
+      "EtsyProvisioningRejectionReason",
     ];
     const violations: string[] = [];
 
@@ -137,8 +142,54 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "lib/integration/etsy/listing-mapping.ts",
       "lib/integration/etsy/resolve-listing.ts",
       "lib/integration/etsy/validate-purchase.ts",
+      "lib/integration/etsy/provision-purchase.ts",
     ]) {
       expect(existsSync(path.join(REPO_ROOT, file))).toBe(true);
+    }
+  });
+
+  it("Mission 018: the composition of purchase -> entitlement lives on the Etsy side of the boundary", () => {
+    // The direction of the edge is the whole point. Mission 018 needed
+    // an Etsy purchase and Mission 013's issuing primitive in the same
+    // function; putting that function under lib/integration/etsy means
+    // Etsy imports the domain, not the reverse. Had it been placed in
+    // lib/entitlement/ instead, the domain would have had to learn what
+    // a ValidatedEtsyPurchase is.
+    const provision = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/provision-purchase.ts"),
+      "utf8",
+    );
+
+    expect(provision).toContain('from "@/lib/entitlement/issue-entitlement"');
+    expect(provision).toContain("./validate-purchase");
+
+    // And the domain module it composes still knows nothing of Etsy.
+    const issue = readFileSync(path.join(REPO_ROOT, "lib/entitlement/issue-entitlement.ts"), "utf8");
+    expect(issue).not.toContain("provision-purchase");
+    expect(issue).not.toContain("provisionEtsyPurchase");
+  });
+
+  it("Mission 018: no domain source imports the Etsy provisioning module, by any path shape", () => {
+    const violations: string[] = [];
+
+    for (const file of protectedFiles()) {
+      const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+      if (source.includes("provision-purchase") || source.includes("provisionEtsyPurchase")) {
+        violations.push(file);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("Mission 018: issuing a right still takes no Etsy vocabulary at all", () => {
+    // The narrower Mission 017 check above names two types. This one is
+    // the property those types stood for: the Entitlement domain's
+    // public surface must mention no Etsy concept whatsoever — not a
+    // listing, not a receipt, not a payment state.
+    const issue = readFileSync(path.join(REPO_ROOT, "lib/entitlement/issue-entitlement.ts"), "utf8");
+    for (const term of ["listingId", "listing_id", "externalPurchaseId", "paymentState"]) {
+      expect(issue).not.toContain(term);
     }
   });
 });
