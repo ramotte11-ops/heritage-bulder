@@ -337,7 +337,31 @@ lib/                          Logic that operates on config/types
                                  `{status:"validated", purchase}` or an
                                  explicit `{status:"rejected", reason}`.
                                  Does NOT create or activate anything —
-                                 that is Mission 018, not yet built (+ tests)
+                                 that is provision-purchase.ts (+ tests)
+      provision-purchase.ts      Mission 018 — provisionEtsyPurchase(deps,
+                                 purchase): one validated purchase becomes
+                                 exactly ONE right carrying exactly ONE
+                                 activation key, via Mission 013's
+                                 issueEntitlementWithActivationKey.
+                                 Idempotent by construction (the existing
+                                 unique index decides, never a
+                                 check-then-insert): a replay is
+                                 `alreadyProvisioned` and carries no key;
+                                 quantity != 1 is `unsupportedQuantity`;
+                                 the same order resolving to a different
+                                 offer is `offerMismatch`, never a
+                                 disguised retry (+ tests)
+      receive-purchase.ts        Mission 019 — receiveEtsyPurchase(deps,
+                                 input, mappings?): the single commercial
+                                 boundary. Pure composition of 017 then
+                                 018 — adds no rule of its own — so every
+                                 anomalous case has one named outcome:
+                                 provisioned / alreadyProvisioned /
+                                 rejected(reason). A rejected validation
+                                 never reaches provisioning, and an
+                                 infrastructure failure stays an error
+                                 rather than becoming a false refusal
+                                 (+ tests)
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -680,7 +704,7 @@ keeps it that way: nothing under `lib/entitlement/`, `lib/builder/`,
 Mission 016 answers "which OfferId does this listing mean?". Mission 017
 answers the next question — "is this purchase notification valid and
 complete enough for HERITAGE?" — and stops there: **it does not create or
-activate an Entitlement.** That is Mission 018, **not yet built**.
+activate an Entitlement.** That is Mission 018 (`provision-purchase.ts`).
 
 `lib/integration/etsy/validate-purchase.ts` exports `validateEtsyPurchase(
 input, mappings?)`. `input` is typed `unknown` on purpose: this is the
@@ -707,6 +731,67 @@ deterministic — the same input always produces the same
 Entitlement issuance on it later (detecting the same Etsy order delivered
 twice). Mission 017 does **not** build that idempotency check, any table,
 or any migration itself — only the stable value the next mission needs.
+
+## The Etsy commercial boundary and its anomalous cases (Mission 019)
+
+Missions 016-018 built three correct steps: listing -> `OfferId`,
+purchase -> `ValidatedEtsyPurchase`, validated purchase -> exactly one
+right with exactly one activation key. Mission 019 adds the one thing
+missing between them — a **single boundary** that runs them in order and
+gives every outcome, normal or anomalous, an explicit name.
+
+`lib/integration/etsy/receive-purchase.ts` exports
+`receiveEtsyPurchase(deps, input, mappings?)`. It is composition and
+nothing else: it calls `validateEtsyPurchase` (017), returns that
+function's refusal **verbatim** when it refuses, and otherwise calls
+`provisionEtsyPurchase` (018). It defines no validation rule, no mapping,
+no provisioning logic, and — deliberately — **no second vocabulary**: its
+result type is built from the existing ones, so there is exactly one name
+per situation in the codebase, not two.
+
+Three commercial statuses come back:
+
+| status | when | carries |
+| --- | --- | --- |
+| `provisioned` | first provisioning of this order | the right **and** the raw activation key — the only moment it exists |
+| `alreadyProvisioned` | the same order replayed, same offer | the existing right, **never** a key |
+| `rejected` | anything incoherent | the reason, and nothing else |
+
+The `rejected` reasons are the ones the earlier missions already defined.
+Refused **before** provisioning (Mission 017 — so zero repository calls,
+zero keys): `malformedInput`, `missingExternalPurchaseId`,
+`missingListingId`, `invalidQuantity`, `unacceptablePaymentState`,
+`unknownListing`. Refused **at** provisioning (Mission 018 — so no row
+written and no key minted): `unsupportedQuantity`, `offerMismatch`,
+`invalidOffer`.
+
+What this boundary refuses to do is the point of the mission. It never
+picks a default offer for a listing it does not recognise (and
+`ETSY_LISTING_MAPPINGS` ships empty, so today it refuses *every* listing —
+a safe default, not a broken one). It never repairs a malformed payload.
+It never supports `quantity != 1` by provisioning "one anyway". A retry
+is not an error, but a contradiction is not a retry: one order arriving
+twice with two different offers is `offerMismatch`, left for a human,
+never hidden behind `alreadyProvisioned` and never resolved by rewriting
+the existing right's offer.
+
+An infrastructure failure is deliberately **absent** from that result
+type. There is no `try/catch` on this path: a repository error propagates
+as a rejected promise, exactly as Mission 018 leaves it. Flattening it
+into a business refusal would tell a caller "this order is settled" when
+nothing is settled, and stop it retrying an order that may have no right
+at all.
+
+Still nothing personal crosses: no buyer email, address, phone or payment
+data reaches the result or persistence, no full Etsy payload is retained,
+and nothing on any path logs a key, a hash, or an order id. And the
+boundary stays one-way — `etsy-boundary.test.ts` now also proves no
+Offer/Entitlement/Builder/Memorial module imports this composition, and
+that the composition really composes rather than re-implementing what it
+sits on.
+
+There is still **no webhook, no Etsy API client, and no route** calling
+`receiveEtsyPurchase`. Wiring a real transport to it is a later mission.
 
 ## What is NOT built yet
 
@@ -817,7 +902,10 @@ exclusion list for the full wording):
   to a real project independently.
 - Any link between an authenticated session and HERITAGE's own `owners`
   business table — see the architecture rule above.
-- Etsy integration or webhooks; a working (redeemable) Entitlement flow.
+- Any Etsy webhook, API client or route. The Etsy commercial boundary
+  itself exists and is tested (Missions 016-019, see above), but nothing
+  transports a real order to it, and there is still no working
+  (redeemable) Entitlement flow end to end.
 - Real persistence for the Builder *UI*: `/builder` (Mission 003) still
   edits two local demo memorials, in React state, for the current page
   session only — the write path to `memorial_drafts` now exists and is
