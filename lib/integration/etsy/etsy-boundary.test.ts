@@ -3,11 +3,17 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Mission 016 — the boundary this mission exists to build: Etsy is a
- * sales channel, not a HERITAGE domain concept. No module under the
+ * Mission 016/017 — the boundary these missions exist to build: Etsy is
+ * a sales channel, not a HERITAGE domain concept. No module under the
  * Offer, Entitlement, Builder or Memorial domains may import anything
  * from `lib/integration/etsy/` — the only place HERITAGE is allowed to
- * know an Etsy listing ID exists.
+ * know an Etsy listing ID, purchase payload, or order state exists.
+ *
+ * The dependency is one-way on purpose: `lib/integration/etsy/*` is
+ * allowed — expected — to import HERITAGE's own domain/config
+ * (`config/offers.ts`'s `OfferId`, chiefly), since its entire job is
+ * translating Etsy's world into HERITAGE's. What must never happen is
+ * the reverse.
  *
  * `config/entitlements.ts` already carries the string `"etsy"` as one
  * value of `EntitlementSource` — a pre-existing, deliberately opaque
@@ -72,17 +78,52 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
     expect(violations).toEqual([]);
   });
 
-  it("no Offer/Entitlement/Builder/Memorial source imports resolveEtsyListingToOffer by name", () => {
+  it("no Offer/Entitlement/Builder/Memorial source references any Etsy-specific export by name", () => {
+    const ETSY_EXPORT_NAMES = [
+      "resolveEtsyListingToOffer",
+      "ETSY_LISTING_MAPPINGS",
+      "validateEtsyPurchase",
+      "ValidatedEtsyPurchase",
+      "EtsyPurchaseInput",
+      "EtsyListingMapping",
+    ];
     const violations: string[] = [];
 
     for (const file of protectedFiles()) {
       const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
-      if (source.includes("resolveEtsyListingToOffer") || source.includes("ETSY_LISTING_MAPPINGS")) {
-        violations.push(file);
-      }
+      if (ETSY_EXPORT_NAMES.some((name) => source.includes(name))) violations.push(file);
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("Mission 017: the Entitlement business module's own input/output types receive no Etsy type", () => {
+    // A dedicated, narrower check on exactly the module Mission 018 will
+    // extend: issuing an Entitlement must only ever take an OfferId, a
+    // channel-agnostic source, and an external order id — never a
+    // ValidatedEtsyPurchase or an EtsyPurchaseInput passed straight
+    // through. This file's own docstring already says "knows nothing
+    // about Etsy" in prose — deliberately fine, and exactly why this
+    // checks type names, not the word "etsy" itself (see this test
+    // file's own top comment).
+    const source = readFileSync(path.join(REPO_ROOT, "lib/entitlement/issue-entitlement.ts"), "utf8");
+    expect(source).not.toContain("ValidatedEtsyPurchase");
+    expect(source).not.toContain("EtsyPurchaseInput");
+    expect(source).not.toContain("lib/integration/etsy");
+  });
+
+  it("Mission 017: lib/integration/etsy is allowed to depend on the domain/config it translates into — the edge is one-way", () => {
+    const listingMapping = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/listing-mapping.ts"),
+      "utf8",
+    );
+    const validatePurchase = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/validate-purchase.ts"),
+      "utf8",
+    );
+
+    expect(listingMapping).toContain('from "@/config/offers"');
+    expect(validatePurchase).toContain('from "@/config/offers"');
   });
 
   it("detects a violation when one is introduced (the check is not vacuous)", () => {
@@ -91,10 +132,11 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
     expect(decoySource.includes("resolveEtsyListingToOffer")).toBe(true);
   });
 
-  it("lib/integration/etsy exists and is where the mapping actually lives", () => {
+  it("lib/integration/etsy exists and is where the mapping and validation actually live", () => {
     for (const file of [
       "lib/integration/etsy/listing-mapping.ts",
       "lib/integration/etsy/resolve-listing.ts",
+      "lib/integration/etsy/validate-purchase.ts",
     ]) {
       expect(existsSync(path.join(REPO_ROOT, file))).toBe(true);
     }

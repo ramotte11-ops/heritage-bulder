@@ -328,6 +328,16 @@ lib/                          Logic that operates on config/types
                                  exact match only, explicit
                                  `{status:"unknownListing"}` refusal, no
                                  fallback, no title parsing (+ tests)
+      validate-purchase.ts       Mission 017 — validateEtsyPurchase(input):
+                                 receives an untrusted purchase
+                                 notification (typed `unknown`), validates
+                                 it structurally, resolves its listing via
+                                 resolve-listing.ts (reused, not
+                                 duplicated), returns
+                                 `{status:"validated", purchase}` or an
+                                 explicit `{status:"rejected", reason}`.
+                                 Does NOT create or activate anything —
+                                 that is Mission 018, not yet built (+ tests)
   adapters/                   Ports application code depends on instead of
                                calling a provider (Supabase, ...) directly
     data-repository.ts        Generic persistence contract
@@ -664,6 +674,39 @@ its own without ever routing through this file. `etsy-boundary.test.ts`
 keeps it that way: nothing under `lib/entitlement/`, `lib/builder/`,
 `lib/memorial/`, or `config/offers.ts` may import
 `lib/integration/etsy/*`.
+
+## Receiving and validating an Etsy purchase (Mission 017)
+
+Mission 016 answers "which OfferId does this listing mean?". Mission 017
+answers the next question — "is this purchase notification valid and
+complete enough for HERITAGE?" — and stops there: **it does not create or
+activate an Entitlement.** That is Mission 018, **not yet built**.
+
+`lib/integration/etsy/validate-purchase.ts` exports `validateEtsyPurchase(
+input, mappings?)`. `input` is typed `unknown` on purpose: this is the
+point where data from an external channel first reaches HERITAGE, and no
+real Etsy webhook format exists yet to assume the shape of — so the
+function validates structurally at runtime rather than trusting a
+compile-time type. It reuses Mission 016's `resolveEtsyListingToOffer`
+directly (not a copy of the mapping) to turn a `listingId` into an
+`OfferId`.
+
+A purchase is refused (`{ status: "rejected", reason }`) — never an
+exception, never a silent fallback — when: the input is not a well-formed
+object: `externalPurchaseId` or `listingId` is blank; `quantity` is not a
+positive integer; `paymentState` is anything other than `"paid"`; or the
+listing is not one Mission 016's mapping recognises. A valid purchase
+produces a `ValidatedEtsyPurchase`: `externalPurchaseId`, `listingId`,
+`offerId`, `quantity` — nothing else. No buyer email, address, phone,
+payment detail, title, or SKU is ever carried through, whether or not the
+raw input contained one.
+
+`externalPurchaseId` is preserved verbatim and the function is pure and
+deterministic — the same input always produces the same
+`ValidatedEtsyPurchase` — specifically so Mission 018 can key idempotent
+Entitlement issuance on it later (detecting the same Etsy order delivered
+twice). Mission 017 does **not** build that idempotency check, any table,
+or any migration itself — only the stable value the next mission needs.
 
 ## What is NOT built yet
 
