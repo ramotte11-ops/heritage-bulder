@@ -46,7 +46,8 @@ interface MutateActivationKeyRow {
     | "not_found"
     | "not_available"
     | "key_mismatch"
-    | "no_activation_key";
+    | "no_activation_key"
+    | "same_activation_key";
 }
 
 interface RevokeEntitlementRow {
@@ -117,6 +118,8 @@ export class SupabaseAdminEntitlementRepository implements AdminEntitlementRepos
         return { status: "concurrentModification" };
       case "no_activation_key":
         return { status: "noActivationKey" };
+      case "same_activation_key":
+        return { status: "sameActivationKey" };
       default:
         // The function always returns exactly one row. No row and no
         // error means the response does not match the contract — a

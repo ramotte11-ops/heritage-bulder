@@ -92,6 +92,7 @@ describe("replaceActivationKeyAction", () => {
     ["notFound", "refused"],
     ["notAvailable", "refused"],
     ["concurrentModification", "refused"],
+    ["sameActivationKey", "refused"],
   ] as const)("maps result status %s to form status %s, with no raw key", async (resultStatus, formStatus) => {
     runAdminActivationKeyReplace.mockResolvedValue({
       status: "completed",

@@ -46,7 +46,15 @@ export type AdminActivationKeyMutationOutcome =
    * success. Never reachable from a replace call: replace always sends
    * a non-null hash.
    */
-  | { status: "noActivationKey" };
+  | { status: "noActivationKey" }
+  /**
+   * A replace whose freshly generated hash happens to equal the current
+   * one — astronomically unlikely for a genuine 160-bit CSPRNG draw, but
+   * refused as a value rather than silently accepted as a "no-op
+   * success" regardless. Nothing was written and nothing was audited.
+   * Never reachable from invalidate: invalidate always sends null.
+   */
+  | { status: "sameActivationKey" };
 
 export type AdminRevokeEntitlementOutcome =
   | { status: "revoked" }

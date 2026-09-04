@@ -73,7 +73,15 @@ create table admin_audit_events (
   constraint admin_audit_events_action_format
     check (action ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$'),
   constraint admin_audit_events_target_type_format
-    check (target_type ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$')
+    check (target_type ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$'),
+  -- `context` is documented and used as a flat object of structural
+  -- facts (see the column comment below) — never an array, a scalar, or
+  -- `null`. jsonb accepts all of those silently; this constraint is the
+  -- only thing that actually enforces the shape the RPCs promise to
+  -- write and every future reader is entitled to assume. The `'{}'`
+  -- default satisfies it trivially.
+  constraint admin_audit_events_context_is_object
+    check (jsonb_typeof(context) = 'object')
 );
 
 comment on table admin_audit_events is
@@ -158,6 +166,14 @@ grant select, insert on table admin_audit_events to service_role;
 -- Replacing FROM a NULL hash (issuing a first key to a right that never
 -- had one) is unaffected by this — it is p_next_activation_key_hash that
 -- is non-NULL there, so this branch never applies to it.
+--
+-- Symmetrically: a REPLACEMENT (p_next_activation_key_hash NOT NULL)
+-- whose value is exactly the CURRENT hash also changes nothing — the
+-- row would be UPDATEd to the value it already holds. Refused as
+-- `same_activation_key`, same reasoning, same "no write, no audit"
+-- outcome as no_activation_key. hash A -> hash B (A <> B) and
+-- NULL -> hash A both still proceed normally; only the true no-op
+-- (A -> A) is caught here.
 
 create or replace function admin_mutate_activation_key(
   p_entitlement_id               uuid,
@@ -220,6 +236,18 @@ begin
     return;
   end if;
 
+  -- A "replacement" that would swap the current hash for the very same
+  -- value: no real change either, for the identical reason as the
+  -- no_activation_key case just above. This can only be reached with
+  -- p_next_activation_key_hash NOT NULL — an invalidation (NULL) that
+  -- changed nothing was already refused above, so this and that branch
+  -- never both apply to the same call.
+  if p_next_activation_key_hash is not null
+     and v_current_hash is not distinct from p_next_activation_key_hash then
+    return query select 'same_activation_key'::text;
+    return;
+  end if;
+
   v_had_key := v_current_hash is not null;
   v_key_changed := v_current_hash is distinct from p_next_activation_key_hash;
 
@@ -247,9 +275,20 @@ end;
 $$;
 
 comment on function admin_mutate_activation_key(uuid, uuid, text, text) is
-  'Mission 015B (corrected after review). Replaces or invalidates the activation key of an AVAILABLE entitlement whose CURRENT hash still matches p_expected_activation_key_hash (NULL-safe compare-and-swap, under FOR UPDATE), writing its audit row in the same transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. An invalidation whose current hash is already NULL changes nothing and is refused as no_activation_key, never audited as a success. SECURITY INVOKER, service_role only. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available | key_mismatch | no_activation_key.';
+  'Mission 015B (corrected after review). Replaces or invalidates the activation key of an AVAILABLE entitlement whose CURRENT hash still matches p_expected_activation_key_hash (NULL-safe compare-and-swap, under FOR UPDATE), writing its audit row in the same transaction. p_next_activation_key_hash NULL = invalidate, a hash = replace; the audited action is derived from that, never received as a label. A call that would change nothing — an invalidation with no current key, or a replacement by the same hash it already holds — is refused (no_activation_key / same_activation_key) and never audited as a success. SECURITY INVOKER, service_role only, EXECUTE revoked from PUBLIC/anon/authenticated/service_role and re-granted to service_role alone. Returns a value (never raises) for every business outcome: replaced | invalidated | not_found | not_available | key_mismatch | no_activation_key | same_activation_key.';
 
-revoke all on function admin_mutate_activation_key(uuid, uuid, text, text) from public;
+-- Mission 013C doctrine, applied explicitly rather than relied upon:
+-- every role this schema knows about is named and revoked, not just
+-- PUBLIC. PostgreSQL grants EXECUTE to PUBLIC on every new function by
+-- default, and every role implicitly carries whatever PUBLIC holds — so
+-- `revoke ... from public` alone is already sufficient in plain
+-- PostgreSQL. Naming anon/authenticated/service_role here too means
+-- this line depends on nothing implicit: not on PUBLIC membership
+-- behaving as documented, and not on any Supabase-specific default
+-- privilege this repository does not control. See the identical
+-- reasoning for the TABLE grant above.
+revoke all on function admin_mutate_activation_key(uuid, uuid, text, text)
+  from public, anon, authenticated, service_role;
 grant execute on function admin_mutate_activation_key(uuid, uuid, text, text) to service_role;
 
 -- ---------------------------------------------------------------------
@@ -328,9 +367,11 @@ end;
 $$;
 
 comment on function admin_revoke_entitlement(uuid, uuid) is
-  'Mission 015B. available -> revoked only; redeemed -> revoked and revoked -> revoked are refused as values, never exceptions. Clears activation_key_hash in the same update and writes the audit row in the same transaction. SECURITY INVOKER, service_role only. Returns outcome in {revoked, not_found, not_available}, plus the blocking status when refused.';
+  'Mission 015B. available -> revoked only; redeemed -> revoked and revoked -> revoked are refused as values, never exceptions. Clears activation_key_hash in the same update and writes the audit row in the same transaction. SECURITY INVOKER, EXECUTE revoked from PUBLIC/anon/authenticated/service_role and re-granted to service_role alone. Returns outcome in {revoked, not_found, not_available}, plus the blocking status when refused.';
 
-revoke all on function admin_revoke_entitlement(uuid, uuid) from public;
+-- Same explicit doctrine as admin_mutate_activation_key() above.
+revoke all on function admin_revoke_entitlement(uuid, uuid)
+  from public, anon, authenticated, service_role;
 grant execute on function admin_revoke_entitlement(uuid, uuid) to service_role;
 
 -- ---------------------------------------------------------------------

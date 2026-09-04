@@ -39,7 +39,12 @@ export type AdminReplaceActivationKeyResult =
   /** Somebody else's mutation of this same right won the race — see
    * AdminActivationKeyMutationOutcome's own docstring. Always safe to
    * retry: the next attempt reads whatever is current now. */
-  | { status: "concurrentModification" };
+  | { status: "concurrentModification" }
+  /** The freshly generated key happened to hash to the entitlement's
+   * current value — astronomically unlikely, refused as a value rather
+   * than silently reported as a change that did not happen. Simply
+   * retrying generates an independent key. */
+  | { status: "sameActivationKey" };
 
 export type AdminInvalidateActivationKeyResult =
   | { status: "invalidated" }
@@ -76,12 +81,14 @@ export async function replaceEntitlementActivationKeyAsAdmin(
   if (outcome.status === "notFound") return { status: "notFound" };
   if (outcome.status === "notAvailable") return { status: "notAvailable" };
   if (outcome.status === "concurrentModification") return { status: "concurrentModification" };
+  if (outcome.status === "sameActivationKey") return { status: "sameActivationKey" };
 
-  // "invalidated" is not reachable here: this call always sends a
-  // non-null hash, so the RPC can only ever answer replaced, notFound,
-  // notAvailable or concurrentModification. Guarded rather than assumed,
-  // so a contract drift in the adapter fails loudly instead of silently
-  // discarding a persisted key.
+  // "invalidated" and "noActivationKey" are not reachable here: this
+  // call always sends a non-null, freshly generated hash, so the RPC can
+  // only ever answer replaced, notFound, notAvailable,
+  // concurrentModification or sameActivationKey. Guarded rather than
+  // assumed, so a contract drift in the adapter fails loudly instead of
+  // silently discarding a persisted key.
   throw new Error(`unexpected mutateActivationKey outcome for a replace: ${outcome.status}`);
 }
 

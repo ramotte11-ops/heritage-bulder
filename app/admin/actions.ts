@@ -46,6 +46,10 @@ const CONCURRENT_MODIFICATION: AdminMutationFormState = {
   message:
     "Ce droit a été modifié entre-temps par quelqu'un d'autre. Rechargez la recherche et réessayez.",
 };
+const SAME_ACTIVATION_KEY: AdminMutationFormState = {
+  status: "refused",
+  message: "La nouvelle clé générée n'a rien changé. Réessayez.",
+};
 
 export async function replaceActivationKeyAction(
   _prevState: AdminMutationFormState,
@@ -74,6 +78,8 @@ export async function replaceActivationKeyAction(
       };
     case "concurrentModification":
       return CONCURRENT_MODIFICATION;
+    case "sameActivationKey":
+      return SAME_ACTIVATION_KEY;
   }
 }
 

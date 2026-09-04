@@ -133,6 +133,42 @@ where n.nspname = 'public'
 
 union all
 
+-- G bis. L'ACL de chaque RPC ne contient RIEN d'autre, en dehors du
+-- propriétaire de la fonction lui-même (dont les privilèges viennent de
+-- l'ownership, jamais d'une entrée ACL, et qui apparaît toujours dès
+-- que l'ACL cesse d'être le NULL implicite du catalogue — GRANT/REVOKE
+-- le matérialise), qu'un unique grantee, service_role, en EXECUTE seul
+-- — la preuve, au niveau de l'état effectif, que le REVOKE nommé
+-- explicitement (public, anon, authenticated, service_role) dans la
+-- migration n'a laissé aucun privilège hérité ou résiduel ailleurs.
+select 'G bis. ACL minimal', fn || ' nombre de grantees (hors owner)', '1',
+       coalesce((select count(distinct a.grantee)::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                   cross join lateral aclexplode(p.proacl) a
+                  where n.nspname='public' and p.proname = fn and a.grantee <> p.proowner), '0'),
+       case when (select count(distinct a.grantee) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                    cross join lateral aclexplode(p.proacl) a
+                   where n.nspname='public' and p.proname = fn and a.grantee <> p.proowner) = 1
+            then 'OK' else 'ECHEC' end
+from (values ('admin_mutate_activation_key'), ('admin_revoke_entitlement')) as fn(fn)
+
+union all
+
+select 'G bis. ACL minimal', fn || ' seul grantee (hors owner) = service_role, seul privilege = EXECUTE', 'service_role,EXECUTE',
+       coalesce((select string_agg(distinct a.grantee::regrole::text, ',') || ',' || string_agg(distinct a.privilege_type, ',')
+                   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                   cross join lateral aclexplode(p.proacl) a
+                  where n.nspname='public' and p.proname = fn and a.grantee <> p.proowner), '(aucun)'),
+       case when (select string_agg(distinct a.grantee::regrole::text, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                    cross join lateral aclexplode(p.proacl) a
+                   where n.nspname='public' and p.proname = fn and a.grantee <> p.proowner) = 'service_role'
+             and (select string_agg(distinct a.privilege_type, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                    cross join lateral aclexplode(p.proacl) a
+                   where n.nspname='public' and p.proname = fn and a.grantee <> p.proowner) = 'EXECUTE'
+            then 'OK' else 'ECHEC' end
+from (values ('admin_mutate_activation_key'), ('admin_revoke_entitlement')) as fn(fn)
+
+union all
+
 -- H. Le modèle 013C n'a pas bougé (contrôle partiel — voir l'en-tête)
 select 'H. 013C intact', 'service_role UPDATE sur entitlements', 'true',
        has_table_privilege('service_role','public.entitlements','UPDATE')::text,
@@ -177,5 +213,27 @@ union all
 select 'J. index', 'admin_audit_events_target_idx existe', 'true',
        (to_regclass('public.admin_audit_events_target_idx') is not null)::text,
        case when to_regclass('public.admin_audit_events_target_idx') is not null then 'OK' else 'ECHEC' end
+
+union all
+
+-- K. context est contraint à un OBJET JSON (jamais un tableau, un
+--    scalaire ou null) — la contrainte existe et porte le bon nom
+select 'K. context = objet JSON', 'contrainte admin_audit_events_context_is_object existe', 'true',
+       exists (select 1 from pg_constraint c join pg_class t on t.oid = c.conrelid
+                where t.relname = 'admin_audit_events' and c.conname = 'admin_audit_events_context_is_object')::text,
+       case when exists (select 1 from pg_constraint c join pg_class t on t.oid = c.conrelid
+                           where t.relname = 'admin_audit_events' and c.conname = 'admin_audit_events_context_is_object')
+            then 'OK' else 'ECHEC' end
+
+union all
+
+select 'K. context = objet JSON', 'la contrainte est bien CHECK (jsonb_typeof(context) = ''object'')', 'true',
+       coalesce((select pg_get_constraintdef(c.oid) from pg_constraint c join pg_class t on t.oid = c.conrelid
+                  where t.relname = 'admin_audit_events' and c.conname = 'admin_audit_events_context_is_object'),
+                '(absente)'),
+       case when (select pg_get_constraintdef(c.oid) from pg_constraint c join pg_class t on t.oid = c.conrelid
+                    where t.relname = 'admin_audit_events' and c.conname = 'admin_audit_events_context_is_object')
+                 ilike '%jsonb_typeof(context)%object%'
+            then 'OK' else 'ECHEC' end
 
 order by 1, 2;

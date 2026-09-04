@@ -1030,6 +1030,42 @@ for fn in admin_mutate_activation_key admin_revoke_entitlement; do
   check "PUBLIC has no EXECUTE on $fn" "f" "$PUB"
 done
 
+# The effective privilege state above (service_role yes, everyone else
+# no) is already reachable by a migration that only ever wrote
+# `revoke ... from public` — PostgreSQL's own inheritance from PUBLIC
+# makes the two forms behave identically at runtime, so has_function_
+# privilege() cannot by itself distinguish "named explicitly" from
+# "relied on PUBLIC membership". What CAN be proven at runtime is that
+# the ACL is minimal: no grantee besides the function's own OWNER (whose
+# privileges come from ownership, not from any ACL entry, and who is
+# always present once an object's ACL is anything other than the
+# catalog's implicit NULL default — REVOKE/GRANT materialises it) holds
+# anything but service_role, EXECUTE only. That the migration's own SQL
+# text names every role rather than leaning on PUBLIC inheritance
+# (Mission 013C's doctrine, applied here after review) is a property of
+# the migration file itself, checked directly against it below.
+for fn in admin_mutate_activation_key admin_revoke_entitlement; do
+  ACL_GRANTEES=$($DB -t -A -c "select count(distinct a.grantee) from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's ACL has exactly one grantee besides its owner" "1" "$ACL_GRANTEES"
+
+  ACL_GRANTEE_NAME=$($DB -t -A -c "select a.grantee::regrole::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's sole non-owner grantee is service_role" "service_role" "$ACL_GRANTEE_NAME"
+
+  ACL_PRIVS=$($DB -t -A -c "select string_agg(distinct a.privilege_type, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a where n.nspname='public' and p.proname='$fn' and a.grantee <> p.proowner;")
+  check "$fn's sole non-owner grant is EXECUTE, nothing else" "EXECUTE" "$ACL_PRIVS"
+done
+
+MIGRATION_FILE="$MIGRATIONS_DIR/20260904100000_admin_audit_and_mutations.sql"
+for fn in admin_mutate_activation_key admin_revoke_entitlement; do
+  if grep -Pzoq "revoke all on function ${fn}\([^)]*\)\s*\n\s*from public, anon, authenticated, service_role;" "$MIGRATION_FILE"; then
+    echo "  [PASS] the migration's own SQL text revokes $fn explicitly from public, anon, authenticated AND service_role by name"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] the migration's own SQL text does NOT explicitly name every role in $fn's REVOKE"
+    FAIL=$((FAIL + 1))
+  fi
+done
+
 # --- action/target_type: a FORMAT constraint, not a closed enum --------
 expect_error "admin_audit_events rejects an empty action" \
   "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', '', 'entitlement', gen_random_uuid());"
@@ -1040,6 +1076,26 @@ expect_error "admin_audit_events rejects an uppercase action" \
 FORMAT_OK=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', 'a_future_action.taken', 'x', gen_random_uuid()) returning 1;")
 check "admin_audit_events accepts a well-formed action/target_type it has never seen — no closed enum" "1" "$FORMAT_OK"
 $DB -c "delete from admin_audit_events where action = 'a_future_action.taken';" >/dev/null
+
+# --- context: must be a JSON OBJECT, never an array/scalar/null --------
+expect_error "admin_audit_events rejects a context that is a JSON array" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '[1,2,3]');"
+
+expect_error "admin_audit_events rejects a context that is a JSON scalar (string)" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '\"oops\"');"
+
+expect_error "admin_audit_events rejects a context that is a JSON scalar (number)" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '42');"
+
+expect_error "admin_audit_events rejects a context that is JSON null" \
+  "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), 'null');"
+
+CONTEXT_DEFAULT=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid()) returning context::text;")
+check "admin_audit_events' default context ('{}') satisfies the object constraint" "{}" "$CONTEXT_DEFAULT"
+
+CONTEXT_OBJECT_OK=$($DB -t -A -c "insert into admin_audit_events (admin_auth_user_id, action, target_type, target_id, context) values ('$ADMIN_1', 'a.b', 'x', gen_random_uuid(), '{\"had_activation_key\": true}') returning 1;")
+check "admin_audit_events accepts a genuine JSON object context" "1" "$CONTEXT_OBJECT_OK"
+$DB -c "delete from admin_audit_events where action = 'a.b';" >/dev/null
 
 # --- replace: an available, already-keyed right -------------------------
 AA_HASH=$(random_hash)
@@ -1063,6 +1119,20 @@ else
   echo "  [PASS] replace: the new hash never appears in the audit context"
   PASS=$((PASS + 1))
 fi
+
+# --- a "replacement" by the SAME hash the right already holds is refused,
+# not silently accepted as a no-op success. AA_ENT currently holds
+# NEW_HASH_1 (the successful replace just above).
+AA_UPDATED_AT_BEFORE=$($DB -t -A -c "select updated_at from entitlements where id='$AA_ENT';")
+AA_AUDIT_BEFORE=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AA_ENT';")
+SAME_OUT=$(svc "select outcome from admin_mutate_activation_key('$AA_ENT','$ADMIN_1','$NEW_HASH_1','$NEW_HASH_1');")
+check "replace by the same hash it already holds is refused as same_activation_key" "same_activation_key" "$SAME_OUT"
+AA_HASH_AFTER=$($DB -t -A -c "select activation_key_hash from entitlements where id='$AA_ENT';")
+check "same_activation_key refusal: the hash is unchanged" "$NEW_HASH_1" "$AA_HASH_AFTER"
+AA_UPDATED_AT_AFTER=$($DB -t -A -c "select updated_at from entitlements where id='$AA_ENT';")
+check "same_activation_key refusal: updated_at is untouched (no UPDATE statement ran at all)" "$AA_UPDATED_AT_BEFORE" "$AA_UPDATED_AT_AFTER"
+AA_AUDIT_AFTER=$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$AA_ENT';")
+check "same_activation_key refusal: no new audit row" "$AA_AUDIT_BEFORE" "$AA_AUDIT_AFTER"
 
 # --- invalidate: an available, already-keyed right -----------------------
 AB_HASH=$(random_hash)

@@ -94,6 +94,20 @@ describe("replaceEntitlementActivationKeyAsAdmin", () => {
     expect(result).not.toHaveProperty("rawActivationKey");
   });
 
+  it("discards the freshly generated key on sameActivationKey — a no-op must never be reported as a change", async () => {
+    const repo = repository({
+      mutateActivationKey: vi.fn(async () => ({ status: "sameActivationKey" }) as const),
+    });
+
+    const result = await replaceEntitlementActivationKeyAsAdmin(
+      { adminEntitlementRepository: repo },
+      { entitlementId: ENTITLEMENT_ID, adminAuthUserId: ADMIN_AUTH_USER_ID },
+    );
+
+    expect(result).toEqual({ status: "sameActivationKey" });
+    expect(result).not.toHaveProperty("rawActivationKey");
+  });
+
   it("each call generates an independent key — never reused across entitlements", async () => {
     const seen = new Set<string>();
     const mutateActivationKey = vi.fn(async () => ({ status: "replaced" }) as const);
