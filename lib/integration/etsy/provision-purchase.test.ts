@@ -240,6 +240,74 @@ describe("provisionEtsyPurchase — retry and concurrency", () => {
     expect(duplicate).not.toHaveProperty("rawActivationKey");
   });
 
+  it("refuses a replay that resolves to a DIFFERENT offer, instead of passing it off as a retry", async () => {
+    const { repository: entitlementRepository } = uniqueIndexRepository();
+
+    // One receipt, provisioned as `occidental`. The same receipt then
+    // arrives again resolving to `juif` — a listing remapped under a
+    // live order, a forged payload, a reused receipt id. The two
+    // deliveries disagree about what was bought.
+    const first = await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
+    if (first.status !== "provisioned") throw new Error("unreachable");
+    expect(first.entitlement.offerId).toBe("occidental");
+
+    const conflicting = await provisionEtsyPurchase(
+      { entitlementRepository },
+      validatedPurchase({ listingId: "1234567891" }),
+    );
+
+    expect(conflicting).toEqual({
+      status: "rejected",
+      reason: "offerMismatch",
+      existingOfferId: "occidental",
+      purchasedOfferId: "juif",
+    });
+    // Never reported as a successful retry — the contradiction is not
+    // hidden behind an alreadyProvisioned.
+    expect(conflicting.status).not.toBe("alreadyProvisioned");
+  });
+
+  it("the refused mismatch writes nothing, returns no key, and leaves the existing right untouched", async () => {
+    const { repository: entitlementRepository, issueWithActivationKey } = uniqueIndexRepository();
+
+    const first = await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
+    if (first.status !== "provisioned") throw new Error("unreachable");
+    const callsAfterFirst = issueWithActivationKey.mock.calls.length;
+
+    const conflicting = await provisionEtsyPurchase(
+      { entitlementRepository },
+      validatedPurchase({ listingId: "1234567891" }),
+    );
+
+    // The INSERT attempt is what discovers the conflict — that is the
+    // one call. No SECOND write follows the refusal, and no key of any
+    // kind comes back.
+    expect(issueWithActivationKey).toHaveBeenCalledTimes(callsAfterFirst + 1);
+    expect(entitlementRepository.swapActivationKey).not.toHaveBeenCalled();
+    expect(conflicting).not.toHaveProperty("rawActivationKey");
+    expect(conflicting).not.toHaveProperty("entitlement");
+    expect(JSON.stringify(conflicting)).not.toContain(first.rawActivationKey);
+
+    // And the right that already existed is exactly as it was.
+    const replay = await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
+    expect(replay).toEqual({ status: "alreadyProvisioned", entitlement: first.entitlement });
+  });
+
+  it("a replay agreeing on the offer is still a plain retry", async () => {
+    const { repository: entitlementRepository } = uniqueIndexRepository();
+
+    // The mismatch guard must not turn ordinary idempotence into a
+    // refusal: same receipt + same offer stays alreadyProvisioned.
+    const first = await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
+    const again = await provisionEtsyPurchase(
+      { entitlementRepository },
+      validatedPurchase({ listingId: "1234567890" }),
+    );
+
+    if (first.status !== "provisioned") throw new Error("unreachable");
+    expect(again).toEqual({ status: "alreadyProvisioned", entitlement: first.entitlement });
+  });
+
   it("a different purchase of the same listing still gets its own right", async () => {
     const { repository: entitlementRepository } = uniqueIndexRepository();
 

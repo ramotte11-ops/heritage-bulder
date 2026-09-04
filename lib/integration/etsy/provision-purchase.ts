@@ -1,4 +1,5 @@
 import type { EntitlementSource } from "@/config/entitlements";
+import type { OfferId } from "@/config/offers";
 import type { EntitlementRepository } from "@/lib/adapters/entitlement-repository";
 import { issueEntitlementWithActivationKey } from "@/lib/entitlement/issue-entitlement";
 import type { Entitlement } from "@/types/entitlement";
@@ -48,6 +49,12 @@ const SUPPORTED_QUANTITY = 1;
 export type EtsyProvisioningRejectionReason =
   /** The purchase is for more (or fewer) than one unit. Nothing written. */
   | { reason: "unsupportedQuantity"; quantity: number }
+  /**
+   * This order reference already carries a right for a DIFFERENT offer
+   * than the one this delivery resolves to. Two irreconcilable claims
+   * about one purchase — not a retry. Nothing written, no key.
+   */
+  | { reason: "offerMismatch"; existingOfferId: OfferId; purchasedOfferId: OfferId }
   /** The offer id is not one this build knows. Structurally unreachable
    * from a genuine `ValidatedEtsyPurchase` (Mission 016 resolves listings
    * against the configured mapping), kept because this is a boundary: a
@@ -68,7 +75,8 @@ export type ProvisionEtsyPurchaseResult =
     }
   /**
    * This purchase already has its right — the same delivery replayed, or
-   * two deliveries racing. The existing right is returned as-is.
+   * two deliveries racing — and that right is for the SAME offer this
+   * delivery resolves to. The existing right is returned as-is.
    *
    * No key. That is a deliberate product decision, not an omission: the
    * raw key is not stored and cannot be re-read, so a retry cannot
@@ -129,6 +137,24 @@ export async function provisionEtsyPurchase(
   }
 
   if (outcome.status === "duplicateExternalOrder") {
+    // A replay is only a replay if it agrees with what was provisioned.
+    // The same receipt resolving to a different offer means the two
+    // deliveries disagree about what was bought — a listing remapped
+    // under a live order, a forged payload, a receipt id reused. Either
+    // way it is a contradiction about one purchase, and reporting it as
+    // a successful retry would hand the caller a right for an offer it
+    // did not ask for while looking like nothing happened. Refused
+    // explicitly instead. Still no write and still no key: the existing
+    // right is left exactly as it is, for a human to resolve.
+    if (outcome.entitlement.offerId !== purchase.offerId) {
+      return {
+        status: "rejected",
+        reason: "offerMismatch",
+        existingOfferId: outcome.entitlement.offerId,
+        purchasedOfferId: purchase.offerId,
+      };
+    }
+
     return { status: "alreadyProvisioned", entitlement: outcome.entitlement };
   }
 
