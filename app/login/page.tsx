@@ -1,20 +1,25 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/supabase/session";
+import { sanitizeReturnPath } from "@/lib/auth/return-path";
 import { LoginForm } from "@/components/auth/LoginForm";
 import styles from "./page.module.css";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const { error, next: rawNext } = await searchParams;
+  // Mission 019C: a caller (e.g. /activate) may ask to be returned here
+  // after signing in. Sanitized before it drives anything — see
+  // lib/auth/return-path.ts.
+  const next = sanitizeReturnPath(rawNext);
+
   // Already authenticated — no point showing the form again.
   const user = await getAuthenticatedUser();
   if (user) {
-    redirect("/owner");
+    redirect(next);
   }
-
-  const { error } = await searchParams;
 
   return (
     <main className={styles.main}>
@@ -30,7 +35,7 @@ export default async function LoginPage({
         </p>
       )}
 
-      <LoginForm />
+      <LoginForm next={next} />
     </main>
   );
 }

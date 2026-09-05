@@ -75,6 +75,16 @@ const SERVER_ONLY_MODULES = [
   // is reached from a future server-side webhook handler, never from a
   // browser.
   "lib/integration/etsy/provision-purchase.ts",
+  // Mission 019C: the generic HERITAGE activation surface. The adapter
+  // constructs the rate-limit RPC call with the service-role client;
+  // activate-heritage-access.ts composes it with the Mission 013 key
+  // primitives above; activation-session.ts is the wiring that resolves
+  // the session and constructs all three server-only repositories. None
+  // of this has any business in a browser bundle — a client can only
+  // ever reach app/activate/actions.ts, a Server Action.
+  "lib/adapters/supabase/activation-rate-limiter.ts",
+  "lib/entitlement/activate-heritage-access.ts",
+  "lib/entitlement/activation-session.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

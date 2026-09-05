@@ -4,6 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { getSiteUrl } from "@/lib/supabase/site-url";
 import { isValidEmail } from "@/lib/auth/validate-email";
+import { sanitizeReturnPath } from "@/lib/auth/return-path";
 import type { MagicLinkFormState } from "@/lib/auth/magic-link-state";
 
 /**
@@ -36,6 +37,11 @@ export async function requestMagicLink(
   formData: FormData,
 ): Promise<MagicLinkFormState> {
   const email = String(formData.get("email") ?? "").trim();
+  // Mission 019C: where to send the visitor back once the magic link is
+  // followed. Sanitized here, before it ever reaches emailRedirectTo —
+  // see lib/auth/return-path.ts for why an unvalidated value would be an
+  // open-redirect vector.
+  const next = sanitizeReturnPath(formData.get("next") as string | null);
 
   if (!isValidEmail(email)) {
     return { status: "error", message: "Merci de saisir une adresse email valide." };
@@ -56,7 +62,7 @@ export async function requestMagicLink(
 
   let redirectTo: string;
   try {
-    redirectTo = `${await getSiteUrl()}/auth/callback`;
+    redirectTo = `${await getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`;
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
