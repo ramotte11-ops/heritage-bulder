@@ -38,14 +38,19 @@ const EDITORIAL_CONTEXT_LABELS: Record<Memorial["editorialContext"], string> = {
  * DataRepository<Memorial> / memorial_drafts.
  *
  * `persist` (Mission 009B) is the one optional seam this component
- * exposes for real autosave: when a future screen has a real,
- * authorized memorialId, it passes
+ * exposes for real autosave: Mission 021's real entry point
+ * (`app/builder/[memorialId]/page.tsx`) passes
  * `(content) => draftRepository.saveDraftContent(memorialId, content)`
- * here and every subsequent edit is autosaved for real, via
- * lib/builder/use-autosave.ts. The Mission 003 demo screens
- * (app/builder/[demoId]) never pass one — no fixture is ever written to
- * Supabase, and this component's behaviour is otherwise identical
- * either way (`useAutosave` is entirely inert without a `persist`).
+ * here, using a real, authorized memorialId, and every subsequent edit
+ * is autosaved for real, via lib/builder/use-autosave.ts. The Mission
+ * 003 demo screens (`app/builder/demo/[demoId]`) never pass one — no
+ * fixture is ever written to Supabase — and `useAutosave` is entirely
+ * inert without a `persist`.
+ *
+ * The "démonstration locale" labelling below is shown ONLY in that
+ * persist-less case — Mission 021's real callers must never see UI
+ * copy that falsely claims their edits are fictional and never sent
+ * anywhere.
  */
 export function BuilderShell({
   memorial,
@@ -73,7 +78,9 @@ export function BuilderShell({
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.identity}>
-          <p className={styles.eyebrow}>Builder HERITAGE — démonstration locale</p>
+          <p className={styles.eyebrow}>
+            {persist ? "Builder HERITAGE" : "Builder HERITAGE — démonstration locale"}
+          </p>
           <h1 className={styles.title}>{memorial.slug}</h1>
           <p className={styles.context}>{EDITORIAL_CONTEXT_LABELS[state.editorialContext]}</p>
         </div>
@@ -100,11 +107,13 @@ export function BuilderShell({
         </div>
       </header>
 
-      <p className={styles.demoNotice}>
-        Mode démonstration locale : ce mémorial et ce contenu sont des données fictives. Les
-        modifications ne sont conservées que dans cette page — elles ne sont jamais envoyées à un
-        serveur ni enregistrées.
-      </p>
+      {!persist && (
+        <p className={styles.demoNotice}>
+          Mode démonstration locale : ce mémorial et ce contenu sont des données fictives. Les
+          modifications ne sont conservées que dans cette page — elles ne sont jamais envoyées à
+          un serveur ni enregistrées.
+        </p>
+      )}
 
       {state.mode === "edit" ? (
         <div className={styles.editLayout}>
