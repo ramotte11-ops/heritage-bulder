@@ -33,9 +33,10 @@ vi.mock("next/headers", () => ({
   headers: vi.fn().mockResolvedValue({ get: () => null }),
 }));
 
-function formDataWith(email: string): FormData {
+function formDataWith(email: string, next?: string): FormData {
   const data = new FormData();
   data.set("email", email);
+  if (next !== undefined) data.set("next", next);
   return data;
 }
 
@@ -87,6 +88,35 @@ describe("requestMagicLink", () => {
     expect(signInWithOtp).toHaveBeenCalledWith(
       expect.objectContaining({ email: "rany@example.com" }),
     );
+  });
+
+  it("embeds a submitted 'next' path into emailRedirectTo (Mission 019C return-to-activate)", async () => {
+    const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+    createServerSupabaseClient.mockResolvedValue({ auth: { signInWithOtp } });
+
+    await requestMagicLink(INITIAL_MAGIC_LINK_STATE, formDataWith("rany@example.com", "/activate"));
+
+    expect(signInWithOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining("next=%2Factivate"),
+        }),
+      }),
+    );
+  });
+
+  it("never lets an unsafe 'next' value reach emailRedirectTo", async () => {
+    const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+    createServerSupabaseClient.mockResolvedValue({ auth: { signInWithOtp } });
+
+    await requestMagicLink(
+      INITIAL_MAGIC_LINK_STATE,
+      formDataWith("rany@example.com", "https://evil.example.com"),
+    );
+
+    const [[{ options }]] = signInWithOtp.mock.calls;
+    expect(options.emailRedirectTo).not.toContain("evil.example.com");
+    expect(options.emailRedirectTo).toContain("next=%2Fowner");
   });
 });
 

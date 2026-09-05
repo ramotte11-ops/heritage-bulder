@@ -10,12 +10,21 @@ import styles from "./LoginForm.module.css";
  * Mission 004 never asks for one. Loading/success/error states come
  * from the requestMagicLink Server Action via React's useActionState,
  * so no browser Supabase client is needed for this page at all.
+ *
+ * `next` (Mission 019C) is an optional internal path to return to once
+ * the magic link is followed — e.g. "/activate", so a visitor who lands
+ * there signed out comes right back after authenticating instead of the
+ * default /owner. Carried as a plain hidden field into requestMagicLink,
+ * which is where it is validated (lib/auth/return-path.ts) before it
+ * touches anything Supabase-facing. Never a secret: a route path is
+ * already public information.
  */
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string } = {}) {
   const [state, formAction, isPending] = useActionState(requestMagicLink, INITIAL_MAGIC_LINK_STATE);
 
   return (
     <form action={formAction} className={styles.form}>
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <label className={styles.field}>
         <span>Adresse email</span>
         <input

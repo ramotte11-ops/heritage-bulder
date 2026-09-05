@@ -1457,6 +1457,105 @@ ET_RAW_LEAK=$($DB -t -A -c "select count(*) from entitlements where activation_k
 check "no raw HH1- key material is ever stored on a right" "0" "$ET_RAW_LEAK"
 
 echo ""
+echo "== Mission 019C: activation rate limiting =="
+
+# --- privileges: exactly SELECT/INSERT/UPDATE for service_role, nothing
+#     for anyone else, same doctrine as every other table since 013C ----
+expect_service_role activation_rate_limits SELECT t
+expect_service_role activation_rate_limits INSERT t
+expect_service_role activation_rate_limits UPDATE t
+expect_service_role activation_rate_limits DELETE f
+
+for role in anon authenticated; do
+  for p in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+    HAS=$($DB -t -A -c "select has_table_privilege('$role','public.activation_rate_limits','$p');")
+    check "$role has no $p on activation_rate_limits" "f" "$HAS"
+  done
+done
+
+PUBLIC_RATE_LIMIT=$($DB -t -A -c "select coalesce((select true from aclexplode((select relacl from pg_class where oid='public.activation_rate_limits'::regclass)) a where a.grantee = 0 limit 1), false);")
+check "PUBLIC has no privilege on activation_rate_limits" "f" "$PUBLIC_RATE_LIMIT"
+
+RLS_RATE_LIMIT=$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.activation_rate_limits'::regclass;")
+check "RLS is enabled on activation_rate_limits" "t" "$RLS_RATE_LIMIT"
+
+RATE_LIMIT_POLICIES=$($DB -t -A -c "select count(*) from pg_policies where schemaname='public' and tablename='activation_rate_limits';")
+check "activation_rate_limits has zero RLS policies (service_role bypasses RLS; nobody else holds a privilege to policy)" "0" "$RATE_LIMIT_POLICIES"
+
+RATE_LIMIT_KEY_COLUMNS=$($DB -t -A -c "select count(*) from information_schema.columns where table_schema='public' and table_name='activation_rate_limits' and column_name in ('activation_key','raw_activation_key','activation_key_hash');")
+check "activation_rate_limits has no column that could carry a key or its hash" "0" "$RATE_LIMIT_KEY_COLUMNS"
+
+RATE_LIMIT_COLUMNS=$($DB -t -A -c "select string_agg(column_name, ',' order by ordinal_position) from information_schema.columns where table_schema='public' and table_name='activation_rate_limits';")
+check "activation_rate_limits carries only identity + counters, no email/IP/user-agent" "auth_user_id,window_started_at,attempt_count,updated_at" "$RATE_LIMIT_COLUMNS"
+
+expect_function record_heritage_activation_attempt false search_path=public
+expect_execute record_heritage_activation_attempt service_role t
+expect_execute record_heritage_activation_attempt anon f
+expect_execute record_heritage_activation_attempt authenticated f
+
+RATE_LIMIT_FN_PUBLIC=$($DB -t -A -c "select coalesce((select true from aclexplode(p.proacl) a where a.grantee = 0 limit 1), false) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='record_heritage_activation_attempt';")
+check "PUBLIC has no EXECUTE on record_heritage_activation_attempt" "f" "$RATE_LIMIT_FN_PUBLIC"
+
+RL_AUTH_1=$($DB -t -A -c "select gen_random_uuid();")
+RL_AUTH_2=$($DB -t -A -c "select gen_random_uuid();")
+
+# --- a NULL identity is an invariant failure, never silently counted ----
+svc_expect_error "a NULL auth_user_id is refused by record_heritage_activation_attempt" \
+  "select * from record_heritage_activation_attempt(null);" \
+  "auth_user_id_required"
+NULL_ID_ROWS=$($DB -t -A -c "select count(*) from activation_rate_limits where auth_user_id is null;")
+check "no row is ever written for a NULL identity" "0" "$NULL_ID_ROWS"
+
+# --- the first five attempts in a window are allowed, the sixth is not -
+for i in 1 2 3 4 5; do
+  OUT=$(svc "select allowed from record_heritage_activation_attempt('$RL_AUTH_1');")
+  check "attempt $i of 5 is allowed" "t" "$OUT"
+done
+SIXTH=$(svc "select allowed from record_heritage_activation_attempt('$RL_AUTH_1');")
+check "the 6th attempt within the window is refused" "f" "$SIXTH"
+SIXTH_RETRY=$(svc "select (retry_after_seconds > 0) from record_heritage_activation_attempt('$RL_AUTH_1');")
+check "a refused attempt reports a positive retry_after_seconds" "t" "$SIXTH_RETRY"
+
+RL_COUNT_1=$($DB -t -A -c "select attempt_count from activation_rate_limits where auth_user_id='$RL_AUTH_1';")
+check "the counter reflects every attempt made, including the refused ones" "7" "$RL_COUNT_1"
+
+# --- limiting is per-identity: a second auth user has an independent
+#     budget, unaffected by the first user's exhausted window -----------
+OTHER_FIRST=$(svc "select allowed from record_heritage_activation_attempt('$RL_AUTH_2');")
+check "a second identity's first attempt is allowed even though another identity is blocked" "t" "$OTHER_FIRST"
+
+# --- a fresh window is granted once the old one has fully elapsed ------
+$DB -c "update activation_rate_limits set window_started_at = now() - interval '901 seconds' where auth_user_id = '$RL_AUTH_1';" >/dev/null
+AFTER_WINDOW=$(svc "select allowed from record_heritage_activation_attempt('$RL_AUTH_1');")
+check "an attempt after the window has elapsed is allowed again" "t" "$AFTER_WINDOW"
+RL_COUNT_1_RESET=$($DB -t -A -c "select attempt_count from activation_rate_limits where auth_user_id='$RL_AUTH_1';")
+check "a fresh window resets the counter to 1, not to a running total" "1" "$RL_COUNT_1_RESET"
+
+# --- concurrency: many simultaneous attempts from ONE identity must not
+#     let more than the configured budget through. Real OS processes,
+#     real backends racing the same row — proves the single
+#     INSERT ... ON CONFLICT ... RETURNING statement really does
+#     serialize on the row, the same property Mission 011A/015B already
+#     proved for their own row locks. -----------------------------------
+RL_AUTH_RACE=$($DB -t -A -c "select gen_random_uuid();")
+CONC_DIR_019C="$PGDATA_DIR/concurrency-019c"
+mkdir -p "$CONC_DIR_019C"
+for i in $(seq 1 8); do
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.3); select allowed from record_heritage_activation_attempt('$RL_AUTH_RACE');" \
+      >"$CONC_DIR_019C/$i.out" 2>"$CONC_DIR_019C/$i.err" || rc=$?
+    echo "$rc" >"$CONC_DIR_019C/$i.rc"
+  ) &
+done
+wait
+
+RACE_ALLOWED=$(cat "$CONC_DIR_019C"/*.out | grep -c '^t$' || true)
+check "concurrency: of 8 simultaneous attempts from one identity, at most 5 are allowed" "5" "$RACE_ALLOWED"
+RACE_TOTAL_COUNT=$($DB -t -A -c "select attempt_count from activation_rate_limits where auth_user_id='$RL_AUTH_RACE';")
+check "concurrency: the counter reflects exactly the 8 racing attempts (no lost update, no double count)" "8" "$RACE_TOTAL_COUNT"
+
+echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
