@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Memorial, MemorialContent } from "@/types/memorial";
+import type { BuilderMemorial, MemorialContent } from "@/types/memorial";
 import {
   createInitialBuilderState,
   getManagedSections,
@@ -19,7 +19,7 @@ import { SectionEditor } from "./SectionEditor";
 import { MemorialPreview } from "./MemorialPreview";
 import styles from "./BuilderShell.module.css";
 
-const EDITORIAL_CONTEXT_LABELS: Record<Memorial["editorialContext"], string> = {
+const EDITORIAL_CONTEXT_LABELS: Record<BuilderMemorial["editorialContext"], string> = {
   announcement: "Annonce & Hommage",
   remembrance: "Mémoire & Hommage",
 };
@@ -29,7 +29,7 @@ const EDITORIAL_CONTEXT_LABELS: Record<Memorial["editorialContext"], string> = {
  * context and configuration (config/sections.ts, lib/sections.ts) to
  * decide what to show, rather than a screen coded per context. This
  * same component renders both currently-configured editorial contexts
- * unchanged (see app/builder/[demoId]/page.tsx).
+ * unchanged (see app/builder/demo/[demoId]/page.tsx).
  *
  * All editing state is local to this component (React state) and lives
  * only for the current page session — nothing here reads from or writes
@@ -38,14 +38,18 @@ const EDITORIAL_CONTEXT_LABELS: Record<Memorial["editorialContext"], string> = {
  * DataRepository<Memorial> / memorial_drafts.
  *
  * `persist` (Mission 009B) is the one optional seam this component
- * exposes for real autosave: Mission 021's real entry point
- * (`app/builder/[memorialId]/page.tsx`) passes
- * `(content) => draftRepository.saveDraftContent(memorialId, content)`
- * here, using a real, authorized memorialId, and every subsequent edit
- * is autosaved for real, via lib/builder/use-autosave.ts. The Mission
- * 003 demo screens (`app/builder/demo/[demoId]`) never pass one — no
- * fixture is ever written to Supabase — and `useAutosave` is entirely
- * inert without a `persist`.
+ * exposes for real autosave. Mission 021's real entry point
+ * (`app/builder/[memorialId]/page.tsx`) supplies it, and Mission 021B
+ * made what it supplies a BOUND SERVER ACTION —
+ * `saveDraftAction.bind(null, authorizedMemorialId)` — rather than a
+ * closure over a server-side repository. That matters: a Server
+ * Component may not hand a live Supabase client to a Client Component,
+ * and every autosave must be re-authorized on the server as its own
+ * request rather than riding on a decision made once at render time.
+ * See app/builder/[memorialId]/actions.ts. The Mission 003 demo screens
+ * (`app/builder/demo/[demoId]`) never pass one — no fixture is ever
+ * written to Supabase — and `useAutosave` is entirely inert without a
+ * `persist`.
  *
  * The "démonstration locale" labelling below is shown ONLY in that
  * persist-less case — Mission 021's real callers must never see UI
@@ -56,7 +60,16 @@ export function BuilderShell({
   memorial,
   persist,
 }: {
-  memorial: Memorial;
+  /** Mission 021B: the configuration + draft the Builder actually reads
+   * (types/memorial.ts), never a whole `Memorial` — nothing here
+   * consumes a published snapshot. The Mission 003 demo fixtures, which
+   * are full `Memorial`s, remain assignable unchanged. */
+  memorial: BuilderMemorial;
+  /** Mission 021B: supplied by app/builder/[memorialId]/page.tsx as a
+   * BOUND SERVER ACTION (app/builder/[memorialId]/actions.ts), not a
+   * closure over a server-side Supabase client. Same contract as
+   * Missions 007-010 either way: resolve with the row's new
+   * `updatedAt`, reject on refusal or failure — never a false success. */
   persist?: (content: MemorialContent) => Promise<{ updatedAt: string }>;
 }) {
   const [state, setState] = useState<BuilderState>(() => createInitialBuilderState(memorial));

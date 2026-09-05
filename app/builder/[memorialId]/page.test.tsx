@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { StoredMemorial } from "@/types/memorial";
+import type { MemorialVersion, StoredMemorialConfig } from "@/types/memorial";
 
 /**
  * Mission 021 — the real Builder entry point.
@@ -36,12 +36,25 @@ const { createServerSupabaseClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server-client", () => ({ createServerSupabaseClient }));
 
-const { SupabaseMemorialRepository } = vi.hoisted(() => ({
-  SupabaseMemorialRepository: vi.fn().mockImplementation(function SupabaseMemorialRepository() {
-    return { findById: vi.fn() };
-  }),
+const { SupabaseMemorialConfigRepository } = vi.hoisted(() => ({
+  SupabaseMemorialConfigRepository: vi
+    .fn()
+    .mockImplementation(function SupabaseMemorialConfigRepository() {
+      return { findConfigById: vi.fn() };
+    }),
 }));
-vi.mock("@/lib/adapters/supabase/memorial-repository", () => ({ SupabaseMemorialRepository }));
+vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
+  SupabaseMemorialConfigRepository,
+}));
+
+// Mission 021B: `persist` is a BOUND Server Action, so the page must
+// import the action itself. The bound function is what BuilderShell
+// receives — these tests check the binding, never the action's own
+// behaviour (that is actions.test.ts's job).
+const { saveDraftAction } = vi.hoisted(() => ({
+  saveDraftAction: vi.fn(async () => ({ updatedAt: "2026-02-01T00:00:00.000Z" })),
+}));
+vi.mock("./actions", () => ({ saveDraftAction }));
 
 const { SupabaseDraftRepository, draftRepositoryInstance } = vi.hoisted(() => {
   const instance = { getDraftContent: vi.fn(), saveDraftContent: vi.fn() };
@@ -80,7 +93,7 @@ const OWNER_ACTOR = {
   isHeritageAdmin: false,
 };
 
-const CONFIGURED_MEMORIAL: StoredMemorial = {
+const CONFIGURED_MEMORIAL: StoredMemorialConfig = {
   id: MEMORIAL_ID,
   ownerId: "owner-a",
   entitlementId: "entitlement-a",
@@ -91,17 +104,22 @@ const CONFIGURED_MEMORIAL: StoredMemorial = {
   enabledSections: ["story"],
   status: "draft",
   slug: "real-memorial",
-  draft: { content: { hero: { title: "Real content" } }, updatedAt: "2026-01-01T00:00:00.000Z" },
-  published: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const UNCONFIGURED_MEMORIAL: StoredMemorial = {
+/** Exactly the row a redemption creates — the family has chosen nothing
+ * yet. Mission 011A's normal state, not an error. */
+const UNCONFIGURED_MEMORIAL: StoredMemorialConfig = {
   ...CONFIGURED_MEMORIAL,
   editorialContext: null,
   language: null,
   slug: null,
+};
+
+const REAL_DRAFT: MemorialVersion = {
+  content: { hero: { title: "Real content" } },
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 function paramsFor(memorialId: string) {
@@ -174,6 +192,8 @@ describe("BuilderMemorialPage — granted access", () => {
     notFound.mockClear();
     redirect.mockClear();
     BuilderShell.mockClear();
+    SupabaseMemorialConfigRepository.mockClear();
+    saveDraftAction.mockClear();
     draftRepositoryInstance.saveDraftContent.mockReset();
   });
 
@@ -184,30 +204,86 @@ describe("BuilderMemorialPage — granted access", () => {
       ownerId: "owner-a",
       memorialId: MEMORIAL_ID,
     });
-    resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial: CONFIGURED_MEMORIAL });
+    resumeBuilderSession.mockResolvedValue({
+      status: "resumable",
+      memorial: CONFIGURED_MEMORIAL,
+      draft: REAL_DRAFT,
+    });
 
     const result = await callPage();
 
     expect(resumeBuilderSession).toHaveBeenCalledWith(expect.anything(), MEMORIAL_ID);
     expect(result.type).toBe(BuilderShell);
-    expect(result.props.memorial).toBe(CONFIGURED_MEMORIAL);
+    // The configuration, plus the one draft resumeBuilderSession read
+    // through DraftRepository — and nothing else. No `published`.
+    expect(result.props.memorial).toEqual({ ...CONFIGURED_MEMORIAL, draft: REAL_DRAFT });
+    expect(result.props.memorial).not.toHaveProperty("published");
   });
 
-  it("wires `persist` to the real draft repository, scoped to the authorized memorialId", async () => {
+  it("reads the memorial through the narrow config port, never the composing repository", async () => {
     getHeritageActor.mockResolvedValue(OWNER_ACTOR);
     authorizeMemorialForRequest.mockResolvedValue({
       status: "granted",
       ownerId: "owner-a",
       memorialId: MEMORIAL_ID,
     });
-    resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial: CONFIGURED_MEMORIAL });
-    draftRepositoryInstance.saveDraftContent.mockResolvedValue({ updatedAt: "2026-02-01T00:00:00.000Z" });
+    resumeBuilderSession.mockResolvedValue({
+      status: "resumable",
+      memorial: CONFIGURED_MEMORIAL,
+      draft: REAL_DRAFT,
+    });
+
+    await callPage();
+
+    expect(SupabaseMemorialConfigRepository).toHaveBeenCalledOnce();
+    const [deps] = resumeBuilderSession.mock.calls[0];
+    expect(deps).toHaveProperty("memorialConfigRepository");
+    expect(deps).toHaveProperty("draftRepository");
+    expect(deps).not.toHaveProperty("memorialRepository");
+  });
+
+  it("wires `persist` to the saveDraftAction Server Action, bound to the AUTHORIZED memorialId", async () => {
+    getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+    // The authorization deliberately returns a different id from the one
+    // in the URL: the bound action must follow the verified one.
+    authorizeMemorialForRequest.mockResolvedValue({
+      status: "granted",
+      ownerId: "owner-a",
+      memorialId: "authorized-id",
+    });
+    resumeBuilderSession.mockResolvedValue({
+      status: "resumable",
+      memorial: CONFIGURED_MEMORIAL,
+      draft: REAL_DRAFT,
+    });
 
     const result = await callPage();
     const newContent = { hero: { title: "Edited by the family" } };
     await result.props.persist(newContent);
 
-    expect(draftRepositoryInstance.saveDraftContent).toHaveBeenCalledWith(MEMORIAL_ID, newContent);
+    expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
+  });
+
+  it("never hands the client a closure over a server-side repository — the draft repository is never called from the page", async () => {
+    getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+    authorizeMemorialForRequest.mockResolvedValue({
+      status: "granted",
+      ownerId: "owner-a",
+      memorialId: MEMORIAL_ID,
+    });
+    resumeBuilderSession.mockResolvedValue({
+      status: "resumable",
+      memorial: CONFIGURED_MEMORIAL,
+      draft: REAL_DRAFT,
+    });
+
+    const result = await callPage();
+    await result.props.persist({ hero: { title: "Edited" } });
+
+    // Rendering built a repository for the READ path only; the write
+    // path goes through the Server Action, which builds its own client
+    // per call and re-authorizes there.
+    expect(draftRepositoryInstance.saveDraftContent).not.toHaveBeenCalled();
   });
 
   it("never renders the Builder for a memorial the family has not configured yet (editorialContext still NULL)", async () => {
@@ -217,7 +293,11 @@ describe("BuilderMemorialPage — granted access", () => {
       ownerId: "owner-a",
       memorialId: MEMORIAL_ID,
     });
-    resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial: UNCONFIGURED_MEMORIAL });
+    resumeBuilderSession.mockResolvedValue({
+      status: "resumable",
+      memorial: UNCONFIGURED_MEMORIAL,
+      draft: REAL_DRAFT,
+    });
 
     const result = await callPage();
 
@@ -273,21 +353,52 @@ describe("BuilderMemorialPage — granted access", () => {
 /**
  * Source-level guards, same technique as
  * lib/auth/heritage-session.test.ts's "declared signature" describe
- * block: fails loudly the moment somebody reintroduces exactly the
- * shortcut this mission exists to close, even before it is exploited.
+ * block: fail loudly the moment somebody reintroduces exactly the
+ * shortcut these missions exist to close, even before it is exploited.
+ *
+ * Comments are stripped before matching. This route's docstring
+ * legitimately names what it does NOT use (the demo fixtures, the
+ * composing repository, the snapshots table) to explain why — and
+ * explaining a decision must never look identical to reversing it.
  */
-describe("BuilderMemorialPage — no fixture fallback, no second authorization mechanism", () => {
+describe("BuilderMemorialPage — durable guards on the real Builder path", () => {
   const SOURCE = readFileSync(path.resolve(import.meta.dirname, "page.tsx"), "utf8");
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
   it("never imports the demo fixtures", () => {
-    // The docstring above legitimately mentions demo-memorials.ts by
-    // name (to explain why it is NOT imported) — this only checks for
-    // an actual import statement, not the file's own explanation.
-    expect(SOURCE).not.toMatch(/from ["']@\/lib\/builder\/demo-memorials["']/);
+    expect(CODE).not.toMatch(/demo-memorials/);
   });
 
   it("never imports the memorial-ownership repository or the service-role client directly — the single, already-tested boundary (authorizeMemorialForRequest) is the only ownership check", () => {
-    expect(SOURCE).not.toMatch(/memorial-ownership-repository/);
-    expect(SOURCE).not.toMatch(/service-role-client/);
+    expect(CODE).not.toMatch(/memorial-ownership-repository/);
+    expect(CODE).not.toMatch(/service-role-client/);
+  });
+
+  /**
+   * Mission 021B, decision 1. `SupabaseMemorialRepository.findById()`
+   * composes `memorials`, `memorial_drafts` AND
+   * `memorial_published_snapshots`. Reaching the Builder through it
+   * would force a client-role privilege on a table the Builder displays
+   * nothing from — which the Mission 021B migration deliberately does
+   * not grant, and scripts/db/test-local.sh asserts stays closed. A
+   * regression here would pass every behavioural test and fail only in
+   * production, as `permission denied`.
+   */
+  it("never reads memorial_published_snapshots, directly or through the composing repository", () => {
+    expect(CODE).not.toMatch(/memorial_published_snapshots/);
+    expect(CODE).not.toMatch(/SupabaseMemorialRepository/);
+    expect(CODE).not.toMatch(/memorial-repository/);
+    expect(CODE).toMatch(/SupabaseMemorialConfigRepository/);
+  });
+
+  /**
+   * Mission 021B, decision 2. A closure over a server-side repository
+   * both crosses the client boundary illegally and authorizes once per
+   * render instead of once per save.
+   */
+  it("hands BuilderShell a bound Server Action as `persist`, never a closure over a repository", () => {
+    expect(CODE).toMatch(/persist=\{saveDraftAction\.bind\(null, access\.memorialId\)\}/);
+    expect(CODE).not.toMatch(/persist=\{\(content\)/);
+    expect(CODE).not.toMatch(/saveDraftContent/);
   });
 });

@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { getHeritageActor, authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
 import { resumeBuilderSession } from "@/lib/builder/resume-session";
-import { SupabaseMemorialRepository } from "@/lib/adapters/supabase/memorial-repository";
+import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
 import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isConfiguredMemorial } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
+import { saveDraftAction } from "./actions";
 import styles from "./page.module.css";
 
 /**
@@ -21,7 +22,9 @@ import styles from "./page.module.css";
  *     -> resumeBuilderSession (Mission 009), against the SAME
  *        memorialId the authorization step just verified
  *     -> the real, persisted draft
- *     -> BuilderShell, wired to real autosave via `persist`.
+ *     -> BuilderShell, wired to real autosave through the
+ *        saveDraftAction Server Action (Mission 021B), which
+ *        re-authorizes on every single save.
  *
  * `memorialId` is a URL segment — client-controlled, and treated as
  * exactly that: a claim, never a credential. It is never trusted to
@@ -54,8 +57,8 @@ import styles from "./page.module.css";
  *
  * ## Why the memorial/draft reads use a session-scoped client
  *
- * `SupabaseMemorialRepository`/`SupabaseDraftRepository` are built on
- * `createServerSupabaseClient()` (the cookie-bound, RLS-subject
+ * `SupabaseMemorialConfigRepository`/`SupabaseDraftRepository` are built
+ * on `createServerSupabaseClient()` (the cookie-bound, RLS-subject
  * client), never the service-role client — exactly what
  * `lib/adapters/supabase/draft-repository.ts` already documents. The
  * `memorials`/`memorial_drafts` RLS policies
@@ -65,16 +68,27 @@ import styles from "./page.module.css";
  * this is the second, defense-in-depth layer behind the explicit
  * `authorizeMemorialForRequest` check above, not a replacement for it.
  *
- * IMPORTANT — see this mission's report: as of Mission 013C, `anon`/
- * `authenticated` hold NO table privilege on `memorials` or
- * `memorial_drafts` at all (the RLS policies are correctly written but
- * currently inert, deliberately deferred to "the mission that wires an
- * owner-facing screen" — see that migration's own comment). Until a
- * migration grants the missing `SELECT`/`UPDATE`, a real request here
- * will resolve `resumeBuilderSession`'s "error" case below rather than
- * "resumable" — a controlled, non-leaking failure, never a crash and
- * never a silent fixture fallback. This mission does not add that
- * migration (out of scope, see the report).
+ * Mission 013C left `anon`/`authenticated` holding no table privilege
+ * at all, deferring the grant to "the mission that wires an owner-facing
+ * screen". Mission 021B is that mission:
+ * supabase/migrations/20260905160000_builder_owner_access.sql opens
+ * exactly three privileges — `SELECT memorials`, `SELECT`/`UPDATE
+ * memorial_drafts` for `authenticated` — and nothing else. Until it is
+ * applied to a given project, a real request here resolves
+ * `resumeBuilderSession`'s "error" case below rather than "resumable":
+ * a controlled, non-leaking failure, never a crash and never a silent
+ * fixture fallback.
+ *
+ * ## What this route deliberately never reads
+ *
+ * `memorial_published_snapshots`. The Builder displays nothing from it,
+ * so the read path goes through the narrow `MemorialConfigRepository`
+ * port (one row, one table) rather than
+ * `SupabaseMemorialRepository.findById()`, which composes all three
+ * memorial tables. That is why the migration above grants no privilege
+ * on the snapshots table: no client role should hold one for a feature
+ * nobody has built. A test guards this route against reintroducing
+ * either (see page.test.tsx).
  */
 export const dynamic = "force-dynamic";
 
@@ -99,11 +113,11 @@ export default async function BuilderMemorialPage({
   }
 
   const supabase = await createServerSupabaseClient();
-  const memorialRepository = new SupabaseMemorialRepository(supabase);
+  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
   const draftRepository = new SupabaseDraftRepository(supabase);
 
   const resumed = await resumeBuilderSession(
-    { memorialRepository, draftRepository },
+    { memorialConfigRepository, draftRepository },
     access.memorialId,
   );
 
@@ -135,11 +149,12 @@ export default async function BuilderMemorialPage({
 
   // resumed.status === "resumable" — Mission 011A: a memorial row exists
   // from the moment an entitlement is redeemed, before the family has
-  // chosen its editorial context/language. The Builder needs the
-  // CONFIGURED shape (Memorial, not StoredMemorial); choosing those
-  // values is a Guided Flow the mission brief explicitly keeps out of
-  // scope here, so an unconfigured memorial gets a controlled notice
-  // instead of being force-fit into BuilderShell.
+  // chosen its editorial context/language, so `slug` and the rest can
+  // still be NULL here. The Builder needs the CONFIGURED shape
+  // (MemorialConfig, not StoredMemorialConfig); choosing those values is
+  // a Guided Flow the mission brief explicitly keeps out of scope, so an
+  // unconfigured memorial gets a controlled notice rather than invented
+  // data or a Builder rendered against NULLs.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return (
       <main className={styles.main}>
@@ -150,10 +165,19 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // The draft is passed alongside the configuration rather than grafted
+  // into it: resumeBuilderSession read it once, through DraftRepository,
+  // and that is the single authoritative copy (see BuilderMemorial).
+  //
+  // `persist` is a BOUND SERVER ACTION, never a closure over `supabase`
+  // or `draftRepository` above: a Client Component cannot receive a live
+  // server object, and — the real reason — every autosave must be
+  // re-authorized server-side as its own request rather than inheriting
+  // the decision this render made. See ./actions.ts.
   return (
     <BuilderShell
-      memorial={resumed.memorial}
-      persist={(content) => draftRepository.saveDraftContent(access.memorialId, content)}
+      memorial={{ ...resumed.memorial, draft: resumed.draft }}
+      persist={saveDraftAction.bind(null, access.memorialId)}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { EDITORIAL_CONTEXT_SECTIONS, type SectionDefinition, type SectionId } from "@/config/sections";
 import { getOrderedSections } from "@/lib/sections";
 import type { EditorialContext } from "@/config/memorial";
-import type { Memorial, MemorialContent } from "@/types/memorial";
+import type { BuilderMemorial, MemorialContent } from "@/types/memorial";
 import type { DemoSectionContent } from "./demo-content";
 
 /**
@@ -37,12 +37,15 @@ export interface BuilderState {
 }
 
 /**
- * Seeds Builder state from a Memorial. This is the one function a future
- * mission replaces (to load a real memorial instead of a local fixture)
- * — everything else in this module is already independent of where the
- * memorial came from.
+ * Seeds Builder state from a memorial's configuration plus its draft
+ * (`BuilderMemorial`, types/memorial.ts). Mission 021 made the real
+ * caller supply a real, authorized memorial here rather than a fixture;
+ * Mission 021B narrowed the parameter from the full `Memorial` to the
+ * fields the Builder genuinely reads, so nothing in this path implies a
+ * published snapshot it never displays. A full `Memorial` (the Mission
+ * 003 demo fixtures) is still assignable, unchanged.
  */
-export function createInitialBuilderState(memorial: Memorial): BuilderState {
+export function createInitialBuilderState(memorial: BuilderMemorial): BuilderState {
   const sections = EDITORIAL_CONTEXT_SECTIONS[memorial.editorialContext];
   const firstSelectable = sections[0]?.id ?? null;
 
