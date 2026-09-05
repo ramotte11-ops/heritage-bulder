@@ -12,6 +12,13 @@ const EDITORIAL_CONTEXT_LABELS = {
  * memorials (lib/builder/demo-memorials.ts), one per currently-configured
  * editorial context. Not a real project list: no Supabase, no owner
  * session, no real data.
+ *
+ * Mission 021 moved this from `/builder` to `/builder/demo` precisely so
+ * it stops sharing a URL segment with the real Builder entry point
+ * (`app/builder/[memorialId]/page.tsx`) — the two dynamic routes could
+ * not coexist under the same `/builder/[x]` slot, and the fixture index
+ * must never be reachable from the real parcours by construction, not
+ * just by convention. Nothing about the fixtures themselves changed.
  */
 export default function BuilderIndexPage() {
   const memorials = Object.values(DEMO_MEMORIALS);
@@ -27,7 +34,7 @@ export default function BuilderIndexPage() {
       <ul className={styles.list}>
         {memorials.map((memorial) => (
           <li key={memorial.id}>
-            <Link href={`/builder/${memorial.id}`} className={styles.card}>
+            <Link href={`/builder/demo/${memorial.id}`} className={styles.card}>
               <span className={styles.cardContext}>
                 {EDITORIAL_CONTEXT_LABELS[memorial.editorialContext]}
               </span>

@@ -255,12 +255,60 @@ for t in memorial_published_snapshots media messages; do
   done
 done
 
-# --- client roles get nothing from the migrations ----------------------
-for t in owners entitlements memorials memorial_drafts memorial_published_snapshots media messages; do
+# --- client roles: exactly what Mission 021B opened, and nothing else --
+#
+# Until Mission 021B every one of these was `f`: no client-role table
+# privilege existed anywhere, because no wired code read these tables as
+# `anon` or `authenticated`. The real Builder
+# (app/builder/[memorialId]/page.tsx) is that reader, and
+# 20260905160000_builder_owner_access.sql opens exactly three privileges
+# for it. This block is the harness half of that decision: it measures
+# the migrations, BEFORE this script grants anything of its own, so a
+# fourth privilege appearing anywhere fails here.
+expect_client() {
+  local role="$1"; local table="$2"; local privilege="$3"; local expected="$4"
+  local has
+  has=$($DB -t -A -c "select has_table_privilege('$role','public.$table','$privilege');")
+  check "$role $privilege on $table" "$expected" "$has"
+}
+
+# The three Mission 021B opened. Each is scoped further by an RLS policy
+# resolving the caller's own owner id (proved in the RLS section below).
+expect_client authenticated memorials SELECT t
+expect_client authenticated memorial_drafts SELECT t
+expect_client authenticated memorial_drafts UPDATE t
+
+# Everything else on those two tables stays shut: no client INSERT on
+# memorial_drafts (the SECURITY DEFINER trigger owns that invariant), no
+# client write to `memorials` (the family's own choices are a later
+# mission's Guided Flow), no DELETE anywhere.
+expect_client authenticated memorials INSERT f
+expect_client authenticated memorials UPDATE f
+expect_client authenticated memorials DELETE f
+expect_client authenticated memorial_drafts INSERT f
+expect_client authenticated memorial_drafts DELETE f
+
+# `anon` gained nothing at all: a visitor edits nothing.
+for p in SELECT INSERT UPDATE DELETE; do
+  expect_client anon memorials "$p" f
+  expect_client anon memorial_drafts "$p" f
+done
+
+# memorial_published_snapshots stays closed to BOTH client roles. This is
+# the assertion that keeps the Builder's read path narrow: the moment
+# somebody reintroduces a composed read of all three memorial tables,
+# they need this privilege, and this fails.
+for role in anon authenticated; do
+  for p in SELECT INSERT UPDATE DELETE; do
+    expect_client "$role" memorial_published_snapshots "$p" f
+  done
+done
+
+# The tables no client-facing feature touches yet.
+for t in owners entitlements media messages; do
   for role in anon authenticated; do
     for p in SELECT INSERT UPDATE DELETE; do
-      HAS=$($DB -t -A -c "select has_table_privilege('$role','public.$t','$p');")
-      check "$role has no $p on $t (no wired client reader yet)" "f" "$HAS"
+      expect_client "$role" "$t" "$p" f
     done
   done
 done
@@ -353,10 +401,22 @@ $DB -c "delete from memorial_drafts where memorial_id in (select id from memoria
 #
 # These grants exist ONLY in this script. Everything above has already
 # asserted that no migration produced them, so they cannot mask a
-# regression. The mission that wires an owner-facing screen adds the
-# real grant to a migration and moves the matching assertion.
-$DB -c "grant select on table owners, memorials, memorial_drafts, memorial_published_snapshots, media, messages to authenticated;" >/dev/null
-$DB -c "grant update on table memorials, memorial_drafts, media, messages to authenticated;" >/dev/null
+# regression.
+#
+# Mission 021B: three of them are gone from this list because they are no
+# longer test-only — `authenticated` now really holds SELECT on
+# memorials and SELECT+UPDATE on memorial_drafts, from
+# 20260905160000_builder_owner_access.sql, and the block above asserts
+# exactly that. Re-granting them here would hide the day a migration
+# stops granting them.
+#
+# memorial_published_snapshots is deliberately NOT granted to
+# `authenticated` either, test-only or otherwise: nothing reads it as an
+# owner (the Builder's read path never touches that table — Mission
+# 021B), so a grant here would only manufacture a privilege the real
+# system does not have.
+$DB -c "grant select on table owners, media, messages to authenticated;" >/dev/null
+$DB -c "grant update on table memorials, media, messages to authenticated;" >/dev/null
 $DB -c "grant insert, delete on table media to authenticated;" >/dev/null
 $DB -c "grant delete on table messages to authenticated;" >/dev/null
 $DB -c "grant select on table memorial_published_snapshots to anon;" >/dev/null

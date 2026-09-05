@@ -37,7 +37,7 @@ export function FoundationStatus() {
         </div>
       </dl>
 
-      <Link href="/builder" className={styles.builderLink}>
+      <Link href="/builder/demo" className={styles.builderLink}>
         Ouvrir le Builder (démonstration) →
       </Link>
     </main>

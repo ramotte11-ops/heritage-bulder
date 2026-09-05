@@ -98,13 +98,56 @@ export interface StoredMemorial
 }
 
 /**
+ * A memorial's CONFIGURATION alone — every field except its content.
+ *
+ * Mission 021B (audit correction). The Builder needs a memorial's
+ * configuration and its draft, and nothing else. Composing the full
+ * `Memorial`/`StoredMemorial` to get there costs a read of
+ * `memorial_published_snapshots`, a table the Builder never displays —
+ * and a privilege on it that no client role should have to hold. These
+ * two aliases name the smaller shape so a repository can return exactly
+ * it (see lib/adapters/memorial-config-repository.ts).
+ *
+ * Derived with `Omit` rather than restated: there is one definition of
+ * what a memorial is, and these are views of it. A field added to
+ * `Memorial` tomorrow appears here automatically.
+ */
+export type MemorialConfig = Omit<Memorial, "draft" | "published">;
+
+/** The same view over what persistence can actually hand back — the
+ * family's three choices may still be NULL (see `StoredMemorial`). */
+export type StoredMemorialConfig = Omit<StoredMemorial, "draft" | "published">;
+
+/**
+ * Exactly what the Builder shell consumes: a configured memorial plus
+ * the one draft it is editing. No `published` — the Builder never reads
+ * a published snapshot, and Mission 021B removed the last path that
+ * made it look like it might.
+ *
+ * A full `Memorial` is structurally assignable to this, which is why the
+ * Mission 003 demo fixtures still type-check unchanged.
+ */
+export type BuilderMemorial = MemorialConfig & { draft: MemorialVersion };
+
+/**
  * True when every family-owned choice has actually been made, which is
  * exactly what makes a stored memorial usable as a `Memorial`.
  *
  * A type predicate rather than a cast on purpose: the compiler only
  * grants the narrowing because the three checks below really ran.
+ *
+ * Mission 021B made it generic over `StoredMemorialConfig` instead of
+ * taking `StoredMemorial`. That is deliberately NOT a second definition
+ * of "configured": it is the same three checks, now usable by a caller
+ * holding only the configuration (the Builder's read path) as well as
+ * one holding a whole stored memorial. `T & MemorialConfig` preserves
+ * whatever else the caller's value carried — pass a `StoredMemorial` and
+ * it still narrows to something assignable to `Memorial`, draft and
+ * published included.
  */
-export function isConfiguredMemorial(memorial: StoredMemorial): memorial is Memorial {
+export function isConfiguredMemorial<T extends StoredMemorialConfig>(
+  memorial: T,
+): memorial is T & MemorialConfig {
   return (
     memorial.editorialContext !== null && memorial.language !== null && memorial.slug !== null
   );

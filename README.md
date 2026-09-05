@@ -58,9 +58,11 @@ No environment variables or external service is required to install, run,
 or build this project — see `.env.example` for what a future mission will
 need once Supabase is actually connected.
 
-Once running, open `/builder` for the Mission 003 Builder demo — a
+Once running, open `/builder/demo` for the Mission 003 Builder demo — a
 locally-driven memorial editor with two demo memorials, one per
-currently-configured editorial context.
+currently-configured editorial context. The real Builder
+(`/builder/[memorialId]`, Mission 021) needs a real, authenticated Owner
+and a real Memorial — see that mission's section below.
 
 Open `/login` for the Mission 004 owner authentication demo (Magic
 Link). Without `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -111,8 +113,16 @@ app/                          Next.js App Router — routes only
   layout.tsx                  Root HTML shell, global styles import
   page.tsx                    Home route — renders FoundationStatus
   builder/
-    page.tsx                  Demo memorial picker
-    [demoId]/page.tsx         Opens one demo memorial in the Builder shell
+    [memorialId]/             THE REAL BUILDER (Missions 021/021B)
+      page.tsx                  session -> Owner -> ownership check ->
+                                 resumeBuilderSession -> real draft ->
+                                 BuilderShell (+ page.test.tsx)
+      actions.ts                saveDraftAction: the autosave Server
+                                 Action, re-authorizing every save
+                                 (+ actions.test.ts)
+    demo/                     Mission 003 fixtures, explicitly isolated
+      page.tsx                  Demo memorial picker
+      [demoId]/page.tsx         Opens one demo memorial in the Builder shell
   login/page.tsx               Magic Link request form (Mission 004)
   owner/page.tsx                Protected shell — session required, no
                                 Owner/Entitlement lookup (+ page.test.tsx)
@@ -131,9 +141,10 @@ components/                   Presentational UI, grouped by domain
                                  Accepts an optional `persist` prop
                                  (Mission 009B) wired straight into
                                  lib/builder/use-autosave.ts, observing
-                                 its own state.content — the demo screen
-                                 (app/builder/[demoId]) never passes one,
-                                 so it stays exactly as before. Mission
+                                 its own state.content — the real route
+                                 passes a bound Server Action (021B), the
+                                 demo screen (app/builder/demo/[demoId])
+                                 passes none. Mission
                                  010's beforeunload/retry protection comes
                                  for free through that same hook call —
                                  no change to this file was needed
@@ -377,9 +388,27 @@ lib/                          Logic that operates on config/types
                                (deliberately indistinguishable); write
                                stays whole-content, last-write-wins,
                                and rejects instead of silently no-op'ing
+    memorial-config-repository.ts
+                              Mission 021B — findConfigById(memorialId):
+                               a memorial's CONFIGURATION alone, no
+                               content of any kind. The Builder's read
+                               path, deliberately narrower than
+                               DataRepository<StoredMemorial>.findById,
+                               which composes all three memorial tables
+                               (and would need a privilege on
+                               memorial_published_snapshots the Builder
+                               has no use for)
     supabase/                 Supabase-backed implementations of the ports
                                above — no other file talks to Supabase
-      memorial-repository.ts
+      memorial-repository.ts    Composes memorials + memorial_drafts +
+                                 memorial_published_snapshots. NOT on the
+                                 Builder path (021B) — kept for the
+                                 future publication flow, which needs all
+                                 three
+      memorial-config-repository.ts
+                                Mission 021B — one select, one table
+                                 (`memorials`), session-scoped client
+                                 (+ tests, mocked client)
       auth-provider.ts
       media-storage-provider.ts
       draft-repository.ts       Relies entirely on memorial_drafts_
@@ -793,6 +822,129 @@ sits on.
 There is still **no webhook, no Etsy API client, and no route** calling
 `receiveEtsyPurchase`. Wiring a real transport to it is a later mission.
 
+## The real Builder entry point (Missions 021 / 021B)
+
+Mission 021 wires the Builder to a real, authenticated Owner's real
+Memorial and real, persistent draft — the first mission to render
+`BuilderShell` (Mission 003) against anything other than
+`lib/builder/demo-memorials.ts`. It reuses every existing primitive
+rather than inventing a second authorization model:
+
+```
+validated session (getHeritageActor)
+  -> HERITAGE Owner (already on the resolved actor)
+  -> authorizeMemorialForRequest(memorialId)   Mission 014, unchanged
+  -> resumeBuilderSession(...)                 Mission 009, narrowed in 021B
+       MemorialConfigRepository  -> one row of `memorials`
+       DraftRepository           -> the one authoritative draft
+  -> BuilderShell
+  -> autosave -> saveDraftAction Server Action -> re-authorize -> save
+```
+
+`app/builder/[memorialId]/page.tsx` is the ONLY route in this codebase
+that does this. `memorialId` is a URL segment — a claim, never a
+credential — and `authorizeMemorialForRequest` is what turns it into a
+verified fact, server-side, before any memorial or draft content is
+read. A plain visitor (no session at all) is redirected to `/login`; an
+authenticated session with no Owner, a memorial that does not exist, and
+a memorial belonging to a different Owner all collapse into the exact
+same `notFound()` — never distinguished, so a wrong id can never be used
+to learn whether it is real (the same indistinguishability
+`authorizeMemorialAccess` itself already documents).
+
+The demo Builder (Mission 003) still exists, unchanged in behaviour, but
+moved from `/builder`/`/builder/[demoId]` to `/builder/demo`/
+`/builder/demo/[demoId]` — freeing the `/builder/[x]` URL slot for the
+real route (Next.js does not allow two differently-named dynamic
+segments at the same position) and, just as importantly, making sure the
+fixture index is no longer reachable from what looks like the real
+Builder path. `lib/builder/demo-memorials.ts` is not imported by the
+real route at all.
+
+### What Mission 021B changed, after an independent audit
+
+Two corrections, both settled by the QG:
+
+**1. The Builder's read path no longer touches
+`memorial_published_snapshots`.** Mission 021 resumed through
+`SupabaseMemorialRepository.findById()`, which composes all three
+memorial tables — and so would have required granting a client role
+`SELECT` on a table the Builder displays nothing from, for a publication
+feature nobody has built. Mission 021B introduced a narrow port instead,
+`MemorialConfigRepository` (`findConfigById`, returning
+`StoredMemorialConfig = Omit<StoredMemorial, "draft" | "published">`)
+with a Supabase adapter that reads exactly one row from `memorials`.
+`resumeBuilderSession` now takes that port plus `DraftRepository`, and
+returns the configuration and the draft as two values rather than one
+composed memorial — one draft, read once, from one place.
+`SupabaseMemorialRepository` is untouched and remains available for the
+publication flow, which genuinely needs all three tables. Source-level
+tests keep the real Builder path from regaining either dependency.
+
+**2. Autosave goes through a Server Action, re-authorized every save.**
+Mission 021 passed `BuilderShell` a `persist` closure built at render
+time, capturing a server-side repository — which both crosses the
+`"use client"` boundary illegally and decides authorization *once per
+page render* for writes that happen minutes later.
+`app/builder/[memorialId]/actions.ts` replaces it: `saveDraftAction`
+(`"use server"`) calls `authorizeMemorialForRequest` on every single
+save, writes through `access.memorialId` (the verified id, never the
+argument it was handed), builds its session-scoped Supabase client
+server-side per call, and **rejects** on refusal — never a fabricated
+`{ updatedAt }`, which Missions 007-010's autosave contract would read as
+"the row was written". The page passes
+`saveDraftAction.bind(null, access.memorialId)`.
+
+`BuilderShell` itself gained one correctness fix: the "démonstration
+locale" eyebrow text and its "jamais envoyée à un serveur" notice used to
+render unconditionally, which would have been actively misleading once a
+real, persisted memorial passed through the same component. Both are now
+shown only when no `persist` callback is supplied (i.e. only from the
+demo route) — Mission 021 did not otherwise touch Mission 003's engine,
+Mission 007/009B's autosave state machine/runtime, or Mission 010's loss
+protection.
+
+A memorial row exists from the moment an entitlement is redeemed
+(Mission 011A), before the family has chosen its editorial context or
+language, so `slug` and the rest can still be NULL
+(`StoredMemorialConfig`, not yet a configured `MemorialConfig` —
+`isConfiguredMemorial()`, `types/memorial.ts`, made generic in 021B so
+one definition of "configured" serves both the configuration-only and
+the whole-memorial callers). Choosing those values is a Guided Flow that
+stays explicitly out of scope, so an authorized-but-unconfigured memorial
+gets a controlled, static notice rather than invented data or a Builder
+rendered against NULLs.
+
+### The database privileges this needed
+
+Mission 013C closed every client-role table privilege and said the
+mission that wires an owner-facing screen opens the grant it needs, as a
+conscious act. Mission 021B's
+`supabase/migrations/20260905160000_builder_owner_access.sql` is that
+act, and it opens exactly three, all for `authenticated`:
+
+- `SELECT` on `memorials` — the configuration read;
+- `SELECT` on `memorial_drafts` — loading the draft;
+- `UPDATE` on `memorial_drafts` — autosave.
+
+Nothing else: no client `INSERT` on `memorial_drafts` (the SECURITY
+DEFINER trigger owns that invariant), no client write to `memorials`, no
+`DELETE` anywhere, nothing for `anon`, nothing new for `service_role`,
+and **nothing at all on `memorial_published_snapshots`** — which is what
+correction 1 above was for. Each of the three is scoped further by an
+RLS policy resolving the caller's own owner id
+(`memorials_select_own`, `memorial_drafts_select_own`,
+`memorial_drafts_update_own`, all Mission 002), so those policies stop
+being inert and become a real second lock behind the application's own
+ownership check. `scripts/db/test-local.sh` asserts the exact set against
+a real cluster, before granting anything of its own — see
+`supabase/README.md`.
+
+Until that migration is applied to a given project, a real request
+resolves `resumeBuilderSession`'s `"error"` case (a controlled failure
+notice — never a crash, never a silent fallback to the demo fixtures)
+rather than `"resumable"`.
+
 ## What is NOT built yet
 
 Deliberately out of scope through Mission 013 (see each mission's own
@@ -859,27 +1011,22 @@ exclusion list for the full wording):
   visual: no optimistic concurrency control (last-write-wins — see
   `supabase/README.md`), no visible saving/saved indicator (UX work, not
   built here), and no real *persistence* — see the next point.
-- Any real "resume your project" UX — Mission 009 built and tested
-  `lib/builder/resume-session.ts` (`resumeBuilderSession()`), the
-  orchestration layer that decides whether a given `memorialId` is
-  resumable, not-found-or-forbidden, has an anomalous draft, or hit a
-  repository error. Nothing calls it: no Server Action, no route, no
-  Builder wiring, no "resume where you left off" screen exists yet. No
-  mechanism for a caller to discover *which* `memorialId` to resume
-  (an owner-projects list, a URL, ...) exists either — this mission
-  deliberately takes `memorialId` as a given, explicit input, never
+- ~~Any real "resume your project" UX~~ — wired by Mission 021, see
+  above: `app/builder/[memorialId]/page.tsx` calls
+  `resumeBuilderSession()` against a server-authorized `memorialId`. What
+  is still genuinely missing is any way for an Owner to *discover* which
+  `memorialId` to open (an owner-projects list) — this mission
+  deliberately still takes `memorialId` as a given URL segment, never
   derived from "the owner's first memorial."
-- Real autosave *persistence* from the visible Builder — Mission 009B's
-  runtime (`createAutosaveController`/`useAutosave`) is complete and
-  fully tested against a fake `persist` callback, but nothing calls
-  `DraftRepository.saveDraftContent` from it: the demo Builder
-  (`app/builder/[demoId]`) has no legitimate `memorialId` — its fixtures
-  (`lib/builder/demo-memorials.ts`) are deliberately not UUID-shaped and
-  were never meant to be written to a real Supabase row. Wiring this in
-  for real needs a route/session that already has a real, authorized
-  `memorialId` (e.g. Mission 009's `resumeBuilderSession`, itself not yet
-  wired into a route) — building that route is not this mission's job
-  either.
+- ~~Real autosave *persistence* from the visible Builder~~ — wired by
+  Missions 021/021B: the real route passes
+  `saveDraftAction.bind(null, authorizedMemorialId)` as `BuilderShell`'s
+  `persist` prop — a Server Action that re-authorizes on every save. The
+  demo Builder (`app/builder/demo/[demoId]`) still passes none — its
+  fixtures (`lib/builder/demo-memorials.ts`) remain deliberately not
+  UUID-shaped and are never written to Supabase. The database grants this
+  needs ship in `20260905160000_builder_owner_access.sql`; a project that
+  has not applied it yet gets the controlled failure notice instead.
 - Any real in-app Builder navigation, or a guard for it — Mission 010
   found none exists today (`grep` for `Link`/`useRouter`/`redirect` in
   `components/builder/*` and `app/builder/**` returns nothing): the
@@ -906,13 +1053,11 @@ exclusion list for the full wording):
   itself exists and is tested (Missions 016-019, see above), but nothing
   transports a real order to it, and there is still no working
   (redeemable) Entitlement flow end to end.
-- Real persistence for the Builder *UI*: `/builder` (Mission 003) still
-  edits two local demo memorials, in React state, for the current page
-  session only — the write path to `memorial_drafts` now exists and is
-  tested (Mission 007), but nothing in `/builder` calls it yet. No
-  "Save" action or autosave trigger is wired into any component, so
-  there is nothing in the UI that could misleadingly claim to have
-  persisted anything.
+- Real persistence from the DEMO Builder specifically: `/builder/demo`
+  (Mission 003, moved from `/builder` by Mission 021) still edits two
+  local fixture memorials, in React state, for the current page session
+  only, by design — see Mission 021's section above for the real route
+  (`/builder/[memorialId]`), which does persist for real.
 - Real publication logic or real slug/URL generation. The Builder's
   "Prévisualisation" mode is a local preview of demo content, not a
   public memorial page — nothing is written to

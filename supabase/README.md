@@ -236,8 +236,11 @@ table privileges the function's body needs, granted explicitly in
 function itself holds no ambient privilege, so it can never become a
 privilege-escalation vector. If `EXECUTE` were ever granted here by
 mistake, the body would run with that caller's own rights and be
-refused twice over: the client roles hold no privilege on `memorials`
-or `entitlements` at all, and no policy grants them an INSERT either.
+refused twice over: no client role holds INSERT on `memorials` or any
+privilege at all on `entitlements`, and no policy grants them an INSERT
+either. (Mission 021B gave `authenticated` SELECT on `memorials` for the
+Builder's own read — a read, scoped by `memorials_select_own`, which
+changes nothing about that argument.)
 
 (Before Mission 013C this paragraph said `service_role` carried "full
 DML grants". It never did — see **The privilege model** below.) `EXECUTE` is revoked from
@@ -390,23 +393,58 @@ revoke everything from `PUBLIC`, `anon`, `authenticated` and
 `service_role` on all seven tables, then grant back only what a wired
 code path provably needs.
 
-| Table | `service_role` | `anon` / `authenticated` | `PUBLIC` |
-| --- | --- | --- | --- |
-| `owners` | SELECT, INSERT | — | — |
-| `entitlements` | SELECT, INSERT, UPDATE | — | — |
-| `memorials` | SELECT, INSERT | — | — |
-| `memorial_drafts` | — | — | — |
-| `memorial_published_snapshots` | — | — | — |
-| `media` | — | — | — |
-| `messages` | — | — | — |
+| Table | `service_role` | `authenticated` | `anon` | `PUBLIC` |
+| --- | --- | --- | --- | --- |
+| `owners` | SELECT, INSERT | — | — | — |
+| `entitlements` | SELECT, INSERT, UPDATE | — | — | — |
+| `memorials` | SELECT, INSERT | SELECT ¹ | — | — |
+| `memorial_drafts` | — | SELECT, UPDATE ¹ | — | — |
+| `memorial_published_snapshots` | — | — | — | — |
+| `media` | — | — | — | — |
+| `messages` | — | — | — | — |
+
+¹ Opened by `20260905160000_builder_owner_access.sql` (Mission 021B) —
+see **The Builder's client-role privileges** below. Everything else in
+this table is `20260901190000_privilege_model.sql` (Mission 013C),
+unchanged.
 
 `DELETE` is granted nowhere: no code path deletes, and a purchase record
 is not something a server flow should be able to remove by accident.
-`memorial_drafts` needs no grant at all because `create_memorial_draft()`
-became `SECURITY DEFINER` (below). The client roles get nothing because
-nothing in the codebase reads these tables as a client role yet — an RLS
-policy without a grant is inert, not broken, and the mission that wires
-an owner-facing screen opens the grant it needs as a conscious act.
+`memorial_drafts` needs no INSERT grant at all because
+`create_memorial_draft()` became `SECURITY DEFINER` (below).
+
+Mission 013C granted the client roles nothing, because nothing read
+these tables as a client role yet — an RLS policy without a grant is
+inert, not broken — and said the mission that wires an owner-facing
+screen opens the grant it needs as a conscious act. Mission 021B is that
+mission.
+
+### The Builder's client-role privileges (Mission 021B)
+
+`20260905160000_builder_owner_access.sql` opens exactly three privileges,
+all for `authenticated`, all scoped further by RLS policies that resolve
+the caller's own owner id:
+
+| Privilege | Wired reader/writer |
+| --- | --- |
+| SELECT on `memorials` | `SupabaseMemorialConfigRepository.findConfigById` — one row, the memorial's configuration |
+| SELECT on `memorial_drafts` | `SupabaseDraftRepository.getDraftContent` — loading the draft to edit |
+| UPDATE on `memorial_drafts` | `SupabaseDraftRepository.saveDraftContent` — autosave, through the `saveDraftAction` Server Action, which re-authorizes every save |
+
+Nothing else. In particular **`memorial_published_snapshots` stays closed
+to every client role**: the Builder displays nothing from it. Mission
+021B replaced the read path that would have needed it
+(`SupabaseMemorialRepository.findById`, which composes all three memorial
+tables) with the narrow `MemorialConfigRepository` port precisely so this
+privilege never had to be opened for a feature nobody has built.
+Publication is a later mission's, and it opens what it needs then.
+
+No client INSERT on `memorial_drafts` (the SECURITY DEFINER trigger owns
+that invariant), no client UPDATE on `memorials` (the family's own
+choices are a later Guided Flow mission's), no DELETE anywhere, nothing
+for `anon`, and no new `service_role` privilege — `service_role` is not
+even named in that migration's REVOKE, so what Mission 013C measured for
+the redemption engine is untouched.
 
 Two function changes go with it:
 
@@ -478,11 +516,19 @@ the *policies* return no rows rather than collapsing into *permission
 denied*. Nothing in `migrations/` produces those grants, and the
 assertions above them say so.
 
+Mission 021B removed three entries from that block — `authenticated`
+SELECT on `memorials` and SELECT/UPDATE on `memorial_drafts` — because a
+migration now grants them for real. Re-granting them in the harness would
+hide the day a migration stops. It also stopped granting `authenticated`
+any access to `memorial_published_snapshots`: nothing reads that table as
+an owner, so a test-only grant there would manufacture a privilege the
+real system deliberately does not have.
+
 ```bash
 scripts/db/test-local.sh
 ```
 
-As of Mission 013C this passes 312/312 checks.
+As of Mission 021B this passes 472/472 checks.
 
 **One gap it cannot close.** This harness runs PostgreSQL 16, where the
 `MAINTAIN` privilege does not exist; the real project runs 17+, where it
