@@ -138,6 +138,26 @@
   gap: 1rem; /* "espacement entre cartes" per the Studio spec */
 }
 
+/*
+ * Mission 023B — the Studio desktop reference (HERITAGE_T01_Desktop_
+ * Initial) shows the three options as one horizontal row of balanced-
+ * width cards, CTA centered below — never mobile's stacked column
+ * simply widened. `.options > *` targets each ChoiceCard's own
+ * rendered <label> directly, without needing to know its CSS-module
+ * class name.
+ */
+@media (min-width: 40rem) {
+  .options {
+    flex-direction: row;
+    gap: 1rem;
+  }
+
+  .options > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
 .error {
   font-size: 0.875rem;
   color: #8a3b2f;
