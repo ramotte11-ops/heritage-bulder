@@ -149,10 +149,30 @@ export type StepRuntimeStatus = "completed" | "skipped" | "incomplete" | "notApp
  *  - not part of the route right now -> "notApplicable" (never
  *    "incomplete" — this is the exact fix for the brief's own example:
  *    announcement + A04="no" must never treat A05-A08 as incomplete);
+ *  - recorded "skipped" but the step itself is `skippable: false` ->
+ *    "incomplete", never "skipped" (see below — a fail-safe invariant,
+ *    not a trusted read of the record);
  *  - the family recorded completing it -> "completed";
- *  - the family explicitly chose Skip/Later on it -> "skipped";
+ *  - the family explicitly chose Skip/Later on it (and the step really
+ *    is skippable) -> "skipped";
  *  - nothing recorded yet -> "incomplete", whether the step is required
  *    or merely optional-but-not-yet-touched.
+ *
+ * ## Why the `skippable: false` check exists here, not just in config
+ *
+ * Mission 025's QG audit named this precisely: `skippable` used to be
+ * purely declarative — a `StepRecord` claiming `"skipped"` for a
+ * non-skippable step (T03, T06, T07, T08, A01, A03, A04, M01, V02, V03,
+ * V04 in the human config) was trusted at face value, which would have
+ * let a corrupt or malformed `FlowState` silently bypass a mandatory
+ * step (`firstIncompleteStep` would step right over it). This function
+ * is the one place every other function in this module reads a step's
+ * status through, so enforcing the invariant HERE — never trust a
+ * "skipped" record for a step that cannot be skipped — makes it
+ * structural rather than a rule every future caller must remember to
+ * uphold. Deliberately a quiet downgrade to "incomplete", never a
+ * thrown exception: bad data must not be able to crash the Builder,
+ * only fail closed (mandatory work stays required) rather than open.
  */
 export function stepRuntimeStatus<TId extends string, TGroup extends string>(
   step: StepDefinition<TId, TGroup>,
@@ -160,7 +180,9 @@ export function stepRuntimeStatus<TId extends string, TGroup extends string>(
   state: FlowState<TId>,
 ): StepRuntimeStatus {
   if (!isStepApplicable(step, flow, state)) return "notApplicable";
-  return state[step.id]?.status ?? "incomplete";
+  const recorded = state[step.id]?.status;
+  if (recorded === "skipped" && !step.skippable) return "incomplete";
+  return recorded ?? "incomplete";
 }
 
 /** Steps in the current route already completed, in canonical order. */

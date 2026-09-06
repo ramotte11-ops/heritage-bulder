@@ -106,6 +106,44 @@ describe("stepRuntimeStatus — the one place required/optional/skip/non-applica
   });
 });
 
+describe("stepRuntimeStatus — the skippable:false invariant (QG micro-hardening)", () => {
+  it("honors 'skipped' for a step that is genuinely skippable", () => {
+    const state: FlowState<TestId> = { a2: { status: "skipped" } }; // a2: skippable: true
+    expect(stepRuntimeStatus(STEPS[1], ALPHA_ONLY, state)).toBe("skipped");
+  });
+
+  it("downgrades a 'skipped' record to 'incomplete' for a step declared skippable: false", () => {
+    // a1 is required + skippable: false. A malformed/corrupt FlowState
+    // claiming it was skipped anyway must never be trusted at face
+    // value — this is the exact fail-safe the QG audit asked for.
+    const corruptState: FlowState<TestId> = { a1: { status: "skipped" } };
+    expect(stepRuntimeStatus(STEPS[0], ALPHA_ONLY, corruptState)).toBe("incomplete");
+  });
+
+  it("never throws on the inconsistent record — fails closed, not with an exception", () => {
+    const corruptState: FlowState<TestId> = { a1: { status: "skipped" } };
+    expect(() => stepRuntimeStatus(STEPS[0], ALPHA_ONLY, corruptState)).not.toThrow();
+  });
+
+  it("keeps a non-skippable step a candidate for firstIncompleteStep even when artificially marked skipped", () => {
+    const corruptState: FlowState<TestId> = { a1: { status: "skipped" } };
+    // a1 is required + skippable: false — resume must not step over it.
+    expect(firstIncompleteStep(ALPHA_ONLY, corruptState)?.id).toBe("a1");
+  });
+
+  it("never lets a corrupt 'skipped' record count toward completedSteps or skippedSteps", () => {
+    const corruptState: FlowState<TestId> = { a1: { status: "skipped" } };
+    expect(completedSteps(ALPHA_ONLY, corruptState).map((s) => s.id)).not.toContain("a1");
+    expect(skippedSteps(ALPHA_ONLY, corruptState).map((s) => s.id)).not.toContain("a1");
+  });
+
+  it("never lets a corrupt 'skipped' record inflate guidedFlowProgress", () => {
+    const corruptState: FlowState<TestId> = { a1: { status: "skipped" } };
+    // Nothing genuinely done yet — progress must read 0, not 1/2.
+    expect(guidedFlowProgress(ALPHA_ONLY, corruptState)).toBe(0);
+  });
+});
+
 describe("firstIncompleteStep — the reprise doctrine", () => {
   it("returns the first applicable step when nothing is recorded", () => {
     expect(firstIncompleteStep(ALPHA_ONLY, {})?.id).toBe("a1");

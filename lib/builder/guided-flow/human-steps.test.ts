@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   applicableSteps,
+  completedSteps,
   firstIncompleteStep,
   nextApplicableStep,
   previousApplicableStep,
+  skippedSteps,
   stepRuntimeStatus,
 } from "./engine";
 import {
@@ -265,5 +267,65 @@ describe("Previous/Next — skip non-applicable steps correctly", () => {
   it("previous() from T03 (first step) is null", () => {
     const flow = humanFlowDefinition("announcement");
     expect(previousApplicableStep("T03", flow, {})).toBeNull();
+  });
+});
+
+describe("QG micro-hardening — a skippable:false UX-A step can never resolve as skipped", () => {
+  // Every currently required (skippable: false) step in the UX-A
+  // config — announcement covers T03/T06/T07/T08/A01/A03/A04/V02/V03/V04
+  // in one route; M01 only exists on the remembrance branch.
+  const NON_SKIPPABLE_ANNOUNCEMENT: StepId[] = [
+    "T03", "T06", "T07", "T08", "A01", "A03", "A04", "V02", "V03", "V04",
+  ];
+
+  it.each(NON_SKIPPABLE_ANNOUNCEMENT)(
+    "%s: a corrupt 'skipped' record resolves as incomplete, never skipped",
+    (id) => {
+      const flow = humanFlowDefinition("announcement");
+      const corruptState: HumanFlowState = { [id]: { status: "skipped" } } as HumanFlowState;
+      const step = STEPS.find((s) => s.id === id)!;
+      expect(stepRuntimeStatus(step, flow, corruptState)).toBe("incomplete");
+    },
+  );
+
+  it("M01 (remembrance's own required step): a corrupt 'skipped' record resolves as incomplete", () => {
+    const flow = humanFlowDefinition("remembrance");
+    const corruptState: HumanFlowState = { M01: { status: "skipped" } };
+    const m01 = STEPS.find((s) => s.id === "M01")!;
+    expect(stepRuntimeStatus(m01, flow, corruptState)).toBe("incomplete");
+  });
+
+  it("V04 artificially marked 'skipped' can never be considered done", () => {
+    const flow = humanFlowDefinition("announcement");
+    const corruptState: HumanFlowState = { V04: { status: "skipped" } };
+    const v04 = STEPS.find((s) => s.id === "V04")!;
+
+    expect(stepRuntimeStatus(v04, flow, corruptState)).toBe("incomplete");
+    expect(completedSteps(flow, corruptState).map((s) => s.id)).not.toContain("V04");
+    expect(skippedSteps(flow, corruptState).map((s) => s.id)).not.toContain("V04");
+  });
+
+  it("V04 artificially marked 'skipped' still surfaces as the resume target once everything else is done", () => {
+    const flow = humanFlowDefinition("announcement");
+    const state: HumanFlowState = {
+      T03: { status: "completed" }, T04: { status: "skipped" }, T05: { status: "skipped" },
+      T06: { status: "completed" }, T07: { status: "completed" }, T08: { status: "completed" },
+      A01: { status: "completed" }, A02: { status: "skipped" }, A03: { status: "completed" },
+      A04: { status: "completed", answer: "no" },
+      A09: { status: "skipped" }, A10: { status: "skipped" }, A11: { status: "skipped" },
+      A12: { status: "skipped" }, A13: { status: "skipped" },
+      P01: { status: "skipped" }, P04: { status: "skipped" },
+      V02: { status: "completed" }, V03: { status: "completed" },
+      V04: { status: "skipped" }, // corrupt/illegal for a skippable:false step
+    };
+
+    expect(firstIncompleteStep(flow, state)?.id).toBe("V04");
+  });
+
+  it("a genuinely skippable step (e.g. T04) still resolves as skipped normally — the fix is scoped to skippable:false only", () => {
+    const flow = humanFlowDefinition("announcement");
+    const state: HumanFlowState = { T04: { status: "skipped" } };
+    const t04 = STEPS.find((s) => s.id === "T04")!;
+    expect(stepRuntimeStatus(t04, flow, state)).toBe("skipped");
   });
 });
