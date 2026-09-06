@@ -191,3 +191,54 @@ describe("SupabaseMemorialConfigRepository.saveLanguage", () => {
     ).rejects.toBeTruthy();
   });
 });
+
+describe("SupabaseMemorialConfigRepository.saveEditorialContext", () => {
+  it("writes exactly the editorial_context column to memorials, scoped by id", async () => {
+    const { client, from, update, eq } = fakeSupabaseWriteClient({
+      data: { id: ROW.id },
+      error: null,
+    });
+
+    await new SupabaseMemorialConfigRepository(client).saveEditorialContext(
+      ROW.id,
+      "announcement",
+    );
+
+    expect(from).toHaveBeenCalledWith("memorials");
+    expect(update).toHaveBeenCalledWith({ editorial_context: "announcement" });
+    expect(eq).toHaveBeenCalledWith("id", ROW.id);
+  });
+
+  it("resolves with nothing on success — this is a fire-and-forget write, not a read", async () => {
+    const { client } = fakeSupabaseWriteClient({ data: { id: ROW.id }, error: null });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveEditorialContext(ROW.id, "remembrance"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects rather than silently succeeding when Postgres/PostgREST reports an error", async () => {
+    const { client } = fakeSupabaseWriteClient({
+      data: null,
+      error: { message: "no rows returned" },
+    });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveEditorialContext(ROW.id, "announcement"),
+    ).rejects.toEqual({ message: "no rows returned" });
+  });
+
+  it("never invents a false success for a memorial that isn't the caller's own — RLS surfaces as this same error path, never a resolved promise", async () => {
+    const { client } = fakeSupabaseWriteClient({
+      data: null,
+      error: { message: "JSON object requested, multiple (or no) rows returned" },
+    });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveEditorialContext(
+        "not-my-memorial",
+        "announcement",
+      ),
+    ).rejects.toBeTruthy();
+  });
+});

@@ -5,6 +5,7 @@ import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repositor
 import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isLanguage } from "@/config/languages";
+import { isEditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
@@ -117,4 +118,37 @@ export async function saveLanguageAction(memorialId: string, language: string): 
 
   // access.memorialId — the authorized id, never the raw argument.
   return memorialConfigRepository.saveLanguage(access.memorialId, language);
+}
+
+/**
+ * Mission 024 — T02's one write: the family's editorial-context choice.
+ *
+ * Identical shape and identical rules to `saveLanguageAction` above —
+ * re-authorized on every call, the id used is `access.memorialId`, the
+ * Supabase client is session-scoped and built per call, a refusal
+ * REJECTS. `editorialContext` is re-validated here against
+ * `config/memorial.ts`'s `EDITORIAL_CONTEXTS` (via `isEditorialContext`)
+ * for the same reason `saveLanguageAction` re-validates `language`: a
+ * Server Action argument crosses a network boundary.
+ */
+export async function saveEditorialContextAction(
+  memorialId: string,
+  editorialContext: string,
+): Promise<void> {
+  if (!isEditorialContext(editorialContext)) {
+    throw new Error("Unsupported editorial context.");
+  }
+
+  const access = await authorizeMemorialForRequest(memorialId);
+
+  if (access.status !== "granted") {
+    // Same deliberate opacity as saveDraftAction's refusal above.
+    throw new Error("Editorial context save refused.");
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
+
+  // access.memorialId — the authorized id, never the raw argument.
+  return memorialConfigRepository.saveEditorialContext(access.memorialId, editorialContext);
 }

@@ -4,10 +4,10 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, type Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
-import { ProgressBar } from "./ProgressBar";
+import { BuilderScreen } from "./BuilderScreen";
 import { ChoiceCard } from "./ChoiceCard";
 import { PrimaryButton } from "./PrimaryButton";
-import { playfairDisplay, inter } from "./fonts";
+import screenStyles from "./BuilderScreen.module.css";
 import styles from "./LanguageStep.module.css";
 
 /**
@@ -49,9 +49,16 @@ interface LanguageStepProps {
  * is real markup and real state, per the mission brief's "CODE for what
  * lives, assets for what brings texture" principle (section 2). The
  * ONE piece that IS an image is the decorative background itself
- * (Mission 023C's real Studio assets — see LanguageStep.module.css's
+ * (Mission 023C's real Studio assets — see BuilderScreen.module.css's
  * `.page`), and nothing functional is ever drawn into it: no title, no
  * option, no CTA, no progress bar is part of that picture.
+ *
+ * ## Mission 024 — shared chrome
+ *
+ * The background/signature/logo/progress-bar chrome moved into
+ * `BuilderScreen` so T02 (and later steps) share the literal same
+ * markup rather than a copy that could drift — this component's own
+ * rendered output is unchanged by that extraction.
  *
  * ## Why no UI language is chosen yet
  *
@@ -114,73 +121,51 @@ export function LanguageStep({ persist }: LanguageStepProps) {
   const [state, formAction, isPending] = useActionState(submit, INITIAL_STATE);
 
   return (
-    <main className={`${styles.page} ${playfairDisplay.variable} ${inter.variable}`}>
-      {/* Mission 023C: real Studio signature copy, real HTML — never
-          baked into the background image. Decorative and secondary; it
-          never sits in reading order ahead of the actual question. */}
-      <p className={styles.signature}>
-        Stories
-        <br />
-        live
-        <br />
-        forever
-      </p>
+    <BuilderScreen progress={0.15}>
+      <div className={styles.copy}>
+        <h1 className={styles.title}>{translate("en", "onboarding.chooseLanguage")}</h1>
+        <p className={styles.subcopy}>{translate("fr", "onboarding.chooseLanguage")}</p>
+        <p className={styles.subcopy}>{translate("es", "onboarding.chooseLanguage")}</p>
+      </div>
 
-      <div className={styles.frame}>
-        <header className={styles.brand}>
-          <p className={styles.wordmark}>HERITAGE</p>
-          <p className={styles.wordmarkSub}>Hommage</p>
-        </header>
+      <form action={formAction} className={styles.form}>
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.srOnly}>{translate("en", "onboarding.chooseLanguage")}</legend>
 
-        <ProgressBar value={0.15} />
+          <div className={styles.options}>
+            {LANGUAGES.map((language) => (
+              <ChoiceCard
+                key={language}
+                id={`language-${language}`}
+                name="language"
+                value={language}
+                checked={selected === language}
+                disabled={isPending}
+                onChange={(value) => setSelected(value as Language)}
+              >
+                {LANGUAGE_LABELS[language]}
+              </ChoiceCard>
+            ))}
+          </div>
+        </fieldset>
 
-        <div className={styles.copy}>
-          <h1 className={styles.title}>{translate("en", "onboarding.chooseLanguage")}</h1>
-          <p className={styles.subcopy}>{translate("fr", "onboarding.chooseLanguage")}</p>
-          <p className={styles.subcopy}>{translate("es", "onboarding.chooseLanguage")}</p>
+        {/* On desktop the Studio reference shows the CTA narrower than
+            the three-card row, centered under it — BuilderScreen's
+            shared `.ctaWrap` is what narrows/centers it at that
+            breakpoint, while PrimaryButton itself stays a plain
+            full-width-of-its-container primitive. */}
+        <div className={screenStyles.ctaWrap}>
+          <PrimaryButton type="submit" disabled={selected === null || isPending}>
+            {translate("en", "common.continue")}
+          </PrimaryButton>
         </div>
 
-        <form action={formAction} className={styles.form}>
-          <fieldset className={styles.fieldset}>
-            <legend className={styles.srOnly}>
-              {translate("en", "onboarding.chooseLanguage")}
-            </legend>
-
-            <div className={styles.options}>
-              {LANGUAGES.map((language) => (
-                <ChoiceCard
-                  key={language}
-                  id={`language-${language}`}
-                  name="language"
-                  value={language}
-                  checked={selected === language}
-                  disabled={isPending}
-                  onChange={(value) => setSelected(value as Language)}
-                >
-                  {LANGUAGE_LABELS[language]}
-                </ChoiceCard>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* Mission 023C: on desktop the Studio reference shows the CTA
-              narrower than the three-card row, centered under it — this
-              wrapper is what narrows/centers it at that breakpoint (see
-              .ctaWrap), while PrimaryButton itself stays a plain
-              full-width-of-its-container primitive. */}
-          <div className={styles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={selected === null || isPending}>
-              {translate("en", "common.continue")}
-            </PrimaryButton>
-          </div>
-
-          {state.status === "error" && (
-            <p role="alert" className={styles.error}>
-              {state.message}
-            </p>
-          )}
-        </form>
-      </div>
-    </main>
+        {state.status === "error" && (
+          <p role="alert" className={styles.error}>
+            {state.message}
+          </p>
+        )}
+      </form>
+    </BuilderScreen>
   );
 }

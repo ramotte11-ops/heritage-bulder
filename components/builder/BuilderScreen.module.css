@@ -1,0 +1,110 @@
+/*
+ * Mission 024 — extracted verbatim from Mission 023's LanguageStep
+ * (T01): same selectors, same values, nothing repositioned. See
+ * BuilderScreen.tsx's own docstring for why this exists as its own
+ * file rather than staying duplicated per screen.
+ */
+
+.page {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background-color: #f6f1e7; /* shows while the image loads, or if it fails */
+  background-image: url("/assets/builder/backgrounds/heritage-builder-background-mobile.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2.5rem 1.25rem;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  color: #2b2b28;
+}
+
+@media (min-width: 40rem) {
+  .page {
+    background-image: url("/assets/builder/backgrounds/heritage-builder-background-desktop.png");
+  }
+}
+
+.signature {
+  position: absolute;
+  z-index: 1;
+  top: 1.5rem;
+  right: 1.5rem;
+  margin: 0;
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-style: italic;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: right;
+  color: #6f6b63;
+}
+
+@media (min-width: 40rem) {
+  .signature {
+    /* Pushed further from the immediate corner than a naive top-right
+       offset would sit — the Studio desktop asset's own floral sprig
+       occupies that exact corner, and the signature must stay clear of
+       it, never overlapping. */
+    top: 6.5rem;
+    right: 3rem;
+    font-size: 0.8125rem;
+  }
+}
+
+.frame {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 335px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.5rem;
+}
+
+@media (min-width: 40rem) {
+  .frame {
+    max-width: 600px;
+    gap: 2rem;
+  }
+}
+
+.brand {
+  text-align: center;
+}
+
+.wordmark {
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+}
+
+.wordmarkSub {
+  margin-top: 0.125rem;
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-style: italic;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  color: #6f6b63;
+}
+
+/*
+ * The shared "narrower, centered CTA on desktop" rule (Mission 023C) —
+ * every Guided Flow screen's own module reuses this class (via
+ * `import screenStyles from "./BuilderScreen.module.css"`) instead of
+ * re-declaring it, so the one Studio-observed ratio stays in one place.
+ */
+.ctaWrap {
+  width: 100%;
+}
+
+@media (min-width: 40rem) {
+  .ctaWrap {
+    max-width: 335px;
+    margin-inline: auto;
+  }
+}

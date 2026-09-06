@@ -117,4 +117,23 @@ export class SupabaseMemorialConfigRepository implements MemorialConfigRepositor
 
     if (error) throw error;
   }
+
+  /**
+   * Mission 024 — same contract and same reasoning as `saveLanguage`
+   * above, over `editorial_context` instead. Requires the `authenticated`
+   * role to hold `UPDATE (editorial_context)` on `memorials` — a
+   * column-level grant this mission prepared in
+   * `supabase/migrations/20260906130000_builder_context_access.sql`, not
+   * yet applied to any real project.
+   */
+  async saveEditorialContext(memorialId: string, editorialContext: EditorialContext): Promise<void> {
+    const { error } = await this.client
+      .from("memorials")
+      .update({ editorial_context: editorialContext })
+      .eq("id", memorialId)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+  }
 }
