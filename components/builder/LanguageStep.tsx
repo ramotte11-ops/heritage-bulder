@@ -47,8 +47,11 @@ interface LanguageStepProps {
  * Every piece of it — the logo/header, the progress indicator, the
  * title, the three language options, the selected state, and the CTA —
  * is real markup and real state, per the mission brief's "CODE for what
- * lives, assets for what brings texture" principle (section 2). No
- * Studio visual is used as a full-bleed background image.
+ * lives, assets for what brings texture" principle (section 2). The
+ * ONE piece that IS an image is the decorative background itself
+ * (Mission 023C's real Studio assets — see LanguageStep.module.css's
+ * `.page`), and nothing functional is ever drawn into it: no title, no
+ * option, no CTA, no progress bar is part of that picture.
  *
  * ## Why no UI language is chosen yet
  *
@@ -112,8 +115,16 @@ export function LanguageStep({ persist }: LanguageStepProps) {
 
   return (
     <main className={`${styles.page} ${playfairDisplay.variable} ${inter.variable}`}>
-      <span className={styles.leafTopLeft} aria-hidden="true" />
-      <span className={styles.leafBottomRight} aria-hidden="true" />
+      {/* Mission 023C: real Studio signature copy, real HTML — never
+          baked into the background image. Decorative and secondary; it
+          never sits in reading order ahead of the actual question. */}
+      <p className={styles.signature}>
+        Stories
+        <br />
+        live
+        <br />
+        forever
+      </p>
 
       <div className={styles.frame}>
         <header className={styles.brand}>
@@ -152,9 +163,16 @@ export function LanguageStep({ persist }: LanguageStepProps) {
             </div>
           </fieldset>
 
-          <PrimaryButton type="submit" disabled={selected === null || isPending}>
-            {translate("en", "common.continue")}
-          </PrimaryButton>
+          {/* Mission 023C: on desktop the Studio reference shows the CTA
+              narrower than the three-card row, centered under it — this
+              wrapper is what narrows/centers it at that breakpoint (see
+              .ctaWrap), while PrimaryButton itself stays a plain
+              full-width-of-its-container primitive. */}
+          <div className={styles.ctaWrap}>
+            <PrimaryButton type="submit" disabled={selected === null || isPending}>
+              {translate("en", "common.continue")}
+            </PrimaryButton>
+          </div>
 
           {state.status === "error" && (
             <p role="alert" className={styles.error}>
