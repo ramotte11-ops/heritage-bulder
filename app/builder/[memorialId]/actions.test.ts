@@ -35,14 +35,16 @@ const { SupabaseDraftRepository, saveDraftContent } = vi.hoisted(() => {
 });
 vi.mock("@/lib/adapters/supabase/draft-repository", () => ({ SupabaseDraftRepository }));
 
-const { SupabaseMemorialConfigRepository, saveLanguage } = vi.hoisted(() => {
+const { SupabaseMemorialConfigRepository, saveLanguage, saveEditorialContext } = vi.hoisted(() => {
   const save = vi.fn();
+  const saveContext = vi.fn();
   return {
     saveLanguage: save,
+    saveEditorialContext: saveContext,
     SupabaseMemorialConfigRepository: vi
       .fn()
       .mockImplementation(function SupabaseMemorialConfigRepository() {
-        return { findConfigById: vi.fn(), saveLanguage: save };
+        return { findConfigById: vi.fn(), saveLanguage: save, saveEditorialContext: saveContext };
       }),
   };
 });
@@ -51,7 +53,8 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
 }));
 
 // Imported after the mocks above are registered.
-const { saveDraftAction, saveLanguageAction } = await import("./actions");
+const { saveDraftAction, saveLanguageAction, saveEditorialContextAction } =
+  await import("./actions");
 
 const MEMORIAL_ID = "memorial-abc";
 const CONTENT = { hero: { title: "Edited by the family" } };
@@ -304,6 +307,152 @@ describe("saveLanguageAction — a refusal is a rejection, and writes nothing", 
   });
 });
 
+describe("saveEditorialContextAction — authorization on every single save", () => {
+  beforeEach(() => {
+    authorizeMemorialForRequest.mockReset();
+    createServerSupabaseClient.mockClear();
+    SupabaseMemorialConfigRepository.mockClear();
+    saveEditorialContext.mockReset();
+  });
+
+  it("re-authorizes on each call — never once per rendered page", async () => {
+    authorizeMemorialForRequest.mockResolvedValue(granted());
+    saveEditorialContext.mockResolvedValue(undefined);
+
+    await saveEditorialContextAction(MEMORIAL_ID, "announcement");
+    await saveEditorialContextAction(MEMORIAL_ID, "announcement");
+    await saveEditorialContextAction(MEMORIAL_ID, "announcement");
+
+    expect(authorizeMemorialForRequest).toHaveBeenCalledTimes(3);
+    expect(saveEditorialContext).toHaveBeenCalledTimes(3);
+  });
+
+  it("saves through the real config repository", async () => {
+    authorizeMemorialForRequest.mockResolvedValue(granted());
+    saveEditorialContext.mockResolvedValue(undefined);
+
+    await saveEditorialContextAction(MEMORIAL_ID, "remembrance");
+
+    expect(saveEditorialContext).toHaveBeenCalledExactlyOnceWith(MEMORIAL_ID, "remembrance");
+  });
+
+  it("writes to the id the authorization returned, never the one it was handed", async () => {
+    authorizeMemorialForRequest.mockResolvedValue(granted("authorized-id"));
+    saveEditorialContext.mockResolvedValue(undefined);
+
+    await saveEditorialContextAction("claimed-id", "announcement");
+
+    expect(authorizeMemorialForRequest).toHaveBeenCalledWith("claimed-id");
+    expect(saveEditorialContext).toHaveBeenCalledExactlyOnceWith("authorized-id", "announcement");
+  });
+
+  it("builds the Supabase client server-side, per call, and only after authorization succeeds", async () => {
+    authorizeMemorialForRequest.mockResolvedValue(granted());
+    saveEditorialContext.mockResolvedValue(undefined);
+
+    await saveEditorialContextAction(MEMORIAL_ID, "announcement");
+
+    expect(createServerSupabaseClient).toHaveBeenCalledOnce();
+    expect(SupabaseMemorialConfigRepository).toHaveBeenCalledExactlyOnceWith({
+      fake: "session-scoped-client",
+    });
+  });
+
+  it.each(["announcement", "remembrance"] as const)(
+    "accepts the canonical editorial context %s",
+    async (editorialContext) => {
+      authorizeMemorialForRequest.mockResolvedValue(granted());
+      saveEditorialContext.mockResolvedValue(undefined);
+
+      await expect(
+        saveEditorialContextAction(MEMORIAL_ID, editorialContext),
+      ).resolves.toBeUndefined();
+      expect(saveEditorialContext).toHaveBeenCalledWith(MEMORIAL_ID, editorialContext);
+    },
+  );
+});
+
+describe("saveEditorialContextAction — an unsupported value is refused before any authorization or write", () => {
+  beforeEach(() => {
+    authorizeMemorialForRequest.mockReset();
+    createServerSupabaseClient.mockClear();
+    saveEditorialContext.mockReset();
+  });
+
+  // Mission 024 section 3's absolute rule: the context is a family
+  // choice, never deduced. This test guards a related but distinct
+  // fact — even a caller that tried to pass something else (a death
+  // date, a duration, any string that isn't one of the two canonical
+  // values) is refused before anything is authorized or written.
+  it.each(["death-date", "xx", "", "ANNOUNCEMENT", "announcement "])(
+    "rejects %j without authorizing or writing anything",
+    async (value) => {
+      await expect(saveEditorialContextAction(MEMORIAL_ID, value)).rejects.toThrow();
+
+      expect(authorizeMemorialForRequest).not.toHaveBeenCalled();
+      expect(saveEditorialContext).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("saveEditorialContextAction — a refusal is a rejection, and writes nothing", () => {
+  beforeEach(() => {
+    authorizeMemorialForRequest.mockReset();
+    createServerSupabaseClient.mockClear();
+    saveEditorialContext.mockReset();
+  });
+
+  it("rejects and never calls saveEditorialContext when access is denied", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
+
+    await expect(saveEditorialContextAction(MEMORIAL_ID, "announcement")).rejects.toThrow();
+
+    expect(saveEditorialContext).not.toHaveBeenCalled();
+  });
+
+  it("never builds a Supabase client for a refused save", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
+
+    await expect(saveEditorialContextAction(MEMORIAL_ID, "announcement")).rejects.toThrow();
+
+    expect(createServerSupabaseClient).not.toHaveBeenCalled();
+  });
+
+  it("never resolves with a fabricated success", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
+
+    const outcome = await saveEditorialContextAction(MEMORIAL_ID, "announcement").then(
+      () => ({ resolved: true }),
+      () => ({ resolved: false }),
+    );
+
+    expect(outcome.resolved).toBe(false);
+  });
+
+  it("refuses Owner A's save on Owner B's memorial exactly like any other denial — no distinguishing message", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
+
+    const notMine = await saveEditorialContextAction("owner-b-memorial", "announcement").catch(
+      (e: Error) => e.message,
+    );
+    const nonexistent = await saveEditorialContextAction("no-such-memorial", "announcement").catch(
+      (e: Error) => e.message,
+    );
+
+    expect(notMine).toBe(nonexistent);
+    expect(saveEditorialContext).not.toHaveBeenCalled();
+  });
+
+  it("propagates a genuine repository failure instead of swallowing it into a success", async () => {
+    authorizeMemorialForRequest.mockResolvedValue(granted());
+    saveEditorialContext.mockRejectedValue(new Error("permission denied for table memorials"));
+
+    await expect(saveEditorialContextAction(MEMORIAL_ID, "announcement")).rejects.toThrow(
+      "permission denied for table memorials",
+    );
+  });
+});
+
 /**
  * Source-level guards, same technique as
  * lib/auth/heritage-session.test.ts. Comments are stripped first so the
@@ -365,6 +514,49 @@ describe("saveLanguageAction — the shape of the boundary", () => {
 
   it("re-validates language against the canonical LANGUAGES before doing anything else", () => {
     expect(CODE).toMatch(/isLanguage\(language\)/);
+  });
+
+  it("never builds a second authorization mechanism of its own", () => {
+    expect(CODE).not.toMatch(/memorial-ownership-repository/);
+    expect(CODE).not.toMatch(/authorizeMemorialAccess/);
+    expect(CODE).toMatch(/authorizeMemorialForRequest\(memorialId\)/);
+  });
+});
+
+describe("saveEditorialContextAction — the shape of the boundary", () => {
+  const SOURCE = readFileSync(path.resolve(import.meta.dirname, "actions.ts"), "utf8");
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  it("never uses the service-role client — the session-scoped one keeps RLS as a second lock", () => {
+    expect(CODE).not.toMatch(/service-role-client/);
+    expect(CODE).not.toMatch(/createServiceRoleSupabaseClient/);
+  });
+
+  it("never accepts an actor, owner id, session, or already-typed EditorialContext as a parameter", () => {
+    const signature = CODE.match(
+      /export async function saveEditorialContextAction\(([\s\S]*?)\):/,
+    );
+    expect(signature).not.toBeNull();
+    const parameters = (signature as RegExpMatchArray)[1]
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    // `editorialContext: string`, not `editorialContext: EditorialContext`
+    // — re-validated here (isEditorialContext), never merely typed and
+    // trusted, same discipline as saveLanguageAction's `language`.
+    expect(parameters).toEqual(["memorialId: string", "editorialContext: string"]);
+  });
+
+  it("re-validates editorialContext against the canonical EDITORIAL_CONTEXTS before doing anything else", () => {
+    expect(CODE).toMatch(/isEditorialContext\(editorialContext\)/);
+  });
+
+  it("never deduces the context from anything else — no date, no offer, no skin, no culture in scope", () => {
+    // Mission 024 section 3's absolute rule, asserted at the source
+    // level: this action's only inputs are memorialId and
+    // editorialContext — nothing here could even read a death date, an
+    // offer, a skin, or a culture to deduce a default from.
+    expect(CODE).not.toMatch(/deathDate|dateOfDeath|offerId|skin|culture/i);
   });
 
   it("never builds a second authorization mechanism of its own", () => {

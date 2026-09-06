@@ -19,3 +19,14 @@ export type MemorialType = (typeof MEMORIAL_TYPES)[number];
 export const EDITORIAL_CONTEXTS = ["announcement", "remembrance"] as const;
 
 export type EditorialContext = (typeof EDITORIAL_CONTEXTS)[number];
+
+/**
+ * Mission 024 — the one runtime guard for "is this a legal
+ * `EditorialContext` value?", next to the canonical array it checks
+ * against, same pattern as `config/languages.ts`'s `isLanguage`
+ * (Mission 023). Used where a caller has an unchecked string (a Server
+ * Action's argument) rather than an already-typed `EditorialContext`.
+ */
+export function isEditorialContext(value: string): value is EditorialContext {
+  return (EDITORIAL_CONTEXTS as readonly string[]).includes(value);
+}

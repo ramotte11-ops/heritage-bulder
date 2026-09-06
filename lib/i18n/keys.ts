@@ -28,6 +28,14 @@
  * it is otherwise configured (see app/builder/[memorialId]/page.tsx).
  * T01's own CTA reuses the existing `common.continue` rather than a
  * third key for the same concept.
+ *
+ * Mission 024 adds a `context` namespace for T02 (choix du contexte
+ * éditorial): the title, subtitle, and each of the two cards' title +
+ * description, in the QG's own validated copy (mission brief section
+ * 7) — six keys, one per distinct piece of text, none of them named
+ * after a component. T02's CTA reuses `common.continue` again, and
+ * reaching an unconfigured memorial past T02 reuses the same
+ * `builder.notConfiguredYet` T01 already uses — no third stopgap text.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -40,6 +48,13 @@ export const TRANSLATION_KEYS = [
   // Mission 023 — T01 (Welcome + choix de langue).
   "onboarding.chooseLanguage",
   "builder.notConfiguredYet",
+  // Mission 024 — T02 (choix du contexte éditorial).
+  "context.title",
+  "context.subtitle",
+  "context.announcementTitle",
+  "context.announcementDescription",
+  "context.remembranceTitle",
+  "context.remembranceDescription",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

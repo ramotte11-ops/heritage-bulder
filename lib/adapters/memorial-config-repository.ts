@@ -1,5 +1,6 @@
 import type { StoredMemorialConfig } from "@/types/memorial";
 import type { Language } from "@/config/languages";
+import type { EditorialContext } from "@/config/memorial";
 
 /**
  * Mission 021B (audit correction) — the narrowest possible contract for
@@ -64,8 +65,8 @@ export interface MemorialConfigRepository {
    * migration predicted this exact moment: "the family's own choices
    * ... are a later mission's Guided Flow, and it will open the UPDATE
    * it needs then, not now." This is that mission, for `language`
-   * only — `editorial_context` and `slug` stay closed for whichever
-   * later mission builds their own Guided Flow step.
+   * only — `editorial_context` and `slug` stayed closed for whichever
+   * later mission built their own Guided Flow step.
    *
    * Whole-value, last-write-wins — same shape as
    * `DraftRepository.saveDraftContent`. Never silently no-ops: if
@@ -77,4 +78,19 @@ export interface MemorialConfigRepository {
    * must be told, not handed a false success.
    */
   saveLanguage(memorialId: string, language: Language): Promise<void>;
+
+  /**
+   * Mission 024 — persists the family's editorial-context choice (T02):
+   * the second of the three still-NULL family choices this port's own
+   * docstring names. `slug` stays closed for whichever later mission
+   * generates it.
+   *
+   * Same contract as `saveLanguage` in every respect — whole-value,
+   * last-write-wins, never a false success on zero affected rows — over
+   * `editorial_context` instead of `language`. Reuses the existing
+   * `EditorialContext` type (`config/memorial.ts`, already the type of
+   * `Memorial`/`StoredMemorialConfig.editorialContext`) rather than a
+   * second representation of "announcement vs remembrance".
+   */
+  saveEditorialContext(memorialId: string, editorialContext: EditorialContext): Promise<void>;
 }

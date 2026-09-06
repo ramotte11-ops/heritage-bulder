@@ -397,7 +397,7 @@ code path provably needs.
 | --- | --- | --- | --- | --- |
 | `owners` | SELECT, INSERT | — | — | — |
 | `entitlements` | SELECT, INSERT, UPDATE | — | — | — |
-| `memorials` | SELECT, INSERT | SELECT ¹, UPDATE (`language`) ² | — | — |
+| `memorials` | SELECT, INSERT | SELECT ¹, UPDATE (`language`) ², UPDATE (`editorial_context`) ³ | — | — |
 | `memorial_drafts` | — | SELECT, UPDATE ¹ | — | — |
 | `memorial_published_snapshots` | — | — | — | — |
 | `media` | — | — | — | — |
@@ -410,10 +410,20 @@ unchanged.
 
 ² Column-level only — `UPDATE (language)`, not a blanket `UPDATE` on the
 table. Prepared by `20260906120000_builder_language_access.sql` (Mission
-023) but **not yet applied to any real Supabase project** — see **T01's
-one write privilege (Mission 023)** below. `editorial_context` and `slug`
-stay closed for whichever later mission builds their own Guided Flow
-step.
+023) — see **T01's one write privilege (Mission 023)** below. **Applied
+to the real Supabase project**: the QG ran this grant manually at the
+end of Mission 023 and postflighted it read-only
+(`authenticated_table_update = false`, `authenticated_language_update =
+true`, `authenticated_effective_update_columns = {language}`, `anon_*
+= false`, `rls_enabled = true`, `owner_update_policy_ok = true`) — the
+migration file now represents the real, applied state, not just a
+prepared one.
+
+³ Column-level only — `UPDATE (editorial_context)`, not a blanket
+`UPDATE`. Prepared by `20260906130000_builder_context_access.sql`
+(Mission 024) but **not yet applied to any real Supabase project** —
+see **T02's one write privilege (Mission 024)** below. `slug` stays
+closed for whichever later mission generates it.
 
 `DELETE` is granted nowhere: no code path deletes, and a purchase record
 is not something a server flow should be able to remove by accident.
@@ -479,15 +489,33 @@ Scoped further by the same `memorials_update_own` row-level policy
 `UPDATE` since Mission 002 for lack of exactly this table-level
 privilege.
 
-**Not yet applied to any real Supabase project.** Mission 023's brief
-requires implementing only what can be safely prepared locally and
-stopping short of any real mutation — this migration is prepared,
-committed, and validated against `scripts/db/test-local.sh`'s fully
-local, no-network PostgreSQL cluster (472/472, unchanged from Mission
-021B's baseline), but applying it to a real project is the QG's own,
-separate step.
+**Applied to the real Supabase project as of the end of Mission 023** —
+see footnote ² above for the QG's own postflight values.
 
-Two function changes go with it:
+### T02's one write privilege (Mission 024)
+
+`20260906130000_builder_context_access.sql` opens exactly one more
+privilege, for `authenticated`, on top of Mission 023's four:
+
+| Privilege | Wired reader/writer |
+| --- | --- |
+| UPDATE (`editorial_context`) on `memorials` | `SupabaseMemorialConfigRepository.saveEditorialContext` — T02's editorial-context choice, through the `saveEditorialContextAction` Server Action, which re-authorizes every save exactly like `saveLanguageAction` does |
+
+Column-level, not a blanket `UPDATE`: `saveEditorialContext` sets
+`editorial_context` and nothing else, same discipline as Mission 023's
+`language` grant. `slug` stays closed for whichever mission generates
+it. No RLS policy change — `memorials_update_own` already covers this
+column the same way it already covers `language`.
+
+**Not yet applied to any real Supabase project.** Prepared, committed,
+and validated against `scripts/db/test-local.sh`'s fully local,
+no-network PostgreSQL cluster (472/472, unchanged from Mission 023's
+baseline), but applying it to a real project is the QG's own, separate
+step.
+
+Two function changes go with Mission 021B's own migration (unrelated to
+either column-level grant above, restated here only because this
+section used to describe them immediately after the language grant):
 
 - **`current_owner_id()` → `SECURITY DEFINER`**, `search_path` pinned,
   `public.owners` schema-qualified. It is a policy helper, not business

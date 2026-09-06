@@ -59,6 +59,25 @@
   color: #3e4a34;
 }
 
+/*
+ * Mission 024 — the "roomy" size variant (a title + description, e.g.
+ * T02's editorial-context cards): more breathing room than T01's
+ * single-line cards, and the indicator aligns to the top of the
+ * content rather than dead-center against a two-line block. Combined
+ * with `.card`/`.cardSelected` (same specificity; source order after
+ * them is what makes these win) — color, radius, border and the
+ * selection mechanics are untouched.
+ */
+.roomy {
+  align-items: flex-start;
+  padding: 1.25rem 1.25rem;
+  gap: 1rem;
+}
+
+.roomy .indicator {
+  margin-top: 0.1875rem;
+}
+
 /* Real, visible keyboard focus — keyed off the hidden input's own
    native :focus-visible state via :has(), never a hand-maintained
    "isFocused" flag. */

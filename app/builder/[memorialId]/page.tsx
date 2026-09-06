@@ -7,8 +7,9 @@ import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isConfiguredMemorial } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
+import { ContextStep } from "@/components/builder/ContextStep";
 import { translate } from "@/lib/i18n/translate";
-import { saveDraftAction, saveLanguageAction } from "./actions";
+import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
 import styles from "./page.module.css";
 
 /**
@@ -97,10 +98,18 @@ import styles from "./page.module.css";
  * A resumed memorial with `language === null` renders `LanguageStep`
  * instead of the "not configured" notice below — the family's very
  * first choice, gated on nothing but that one column. Once a language
- * IS recorded, this route never shows T01 again for that memorial; a
- * still-unconfigured memorial (a Guided Flow step no later mission has
- * built yet) falls through to the existing notice, now shown in the
- * family's own language.
+ * IS recorded, this route never shows T01 again for that memorial.
+ *
+ * ## Mission 024 — T02 sits right after T01
+ *
+ * Once `language` is recorded but `editorialContext` is still NULL,
+ * this route renders `ContextStep` (T02) instead of the "not
+ * configured" notice — gated on nothing but that one column, exactly
+ * the same discipline as T01's own gate. Once an editorial context IS
+ * recorded, T02 is never shown again either; a memorial with both
+ * `language` and `editorialContext` but still not fully configured (a
+ * Guided Flow step no later mission has built yet) falls through to the
+ * existing notice, shown in the family's own language.
  */
 export const dynamic = "force-dynamic";
 
@@ -184,13 +193,34 @@ export default async function BuilderMemorialPage({
     return <LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />;
   }
 
+  // Mission 024 — T02. Language is now guaranteed non-null (narrowed by
+  // the `return` above), so T02's own copy can render fully resolved in
+  // it. `editorialContext === null` means this family has completed T01
+  // but never T02 — shown NOW, unconditionally, on nothing but this one
+  // column: never deduced from a death date, an offer, a skin, or a
+  // culture (mission brief section 3 — an absolute rule). Once an
+  // editorial context IS recorded, T02 is never shown again for this
+  // Memorial — reached only through this one condition, on a field only
+  // `saveEditorialContextAction` (through `ContextStep`) ever sets.
+  //
+  // `saveEditorialContextAction.bind(null, access.memorialId)` mirrors
+  // `saveLanguageAction`'s own binding above for the same reasons.
+  if (resumed.memorial.editorialContext === null) {
+    return (
+      <ContextStep
+        language={resumed.memorial.language}
+        persist={saveEditorialContextAction.bind(null, access.memorialId)}
+      />
+    );
+  }
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
-  // StoredMemorialConfig); choosing `editorialContext`/`slug` is a
-  // Guided Flow step no later mission has built yet, so — for now — a
-  // memorial with a language but nothing else configured gets a
-  // controlled notice rather than invented data or a Builder rendered
+  // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
+  // later mission has built yet, so — for now — a memorial with a
+  // language and an editorial context but nothing else configured gets
+  // a controlled notice rather than invented data or a Builder rendered
   // against NULLs. `resumed.memorial.language` is narrowed non-null by
-  // the `return` above, so this notice can already speak the family's
+  // the earlier `return`, so this notice can already speak the family's
   // own language rather than a hard-coded one.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return (

@@ -1,0 +1,51 @@
+-- Mission 024: opens exactly the one more write privilege T02 (choix du
+-- contexte éditorial) needs, and not one more.
+--
+-- ---------------------------------------------------------------------
+-- WHY THIS MIGRATION EXISTS
+-- ---------------------------------------------------------------------
+--
+-- 20260906120000_builder_language_access.sql (Mission 023) opened
+-- `UPDATE (language)` on `memorials` for `authenticated`, and named what
+-- it deliberately left closed: "`editorial_context` and `slug` stay
+-- exactly as closed as they were after Mission 021B — this migration
+-- grants nothing for either, deliberately: whichever later mission
+-- builds the editorial-context step ... opens the grant it needs then."
+--
+-- Mission 024 wires that step — T02, the family choosing "Announcement
+-- & Tribute" or "Memory & Tribute" — through
+-- lib/adapters/supabase/memorial-config-repository.ts's
+-- `saveEditorialContext`. This is that later mission, for
+-- `editorial_context` only. `slug` stays closed for whichever mission
+-- generates it.
+--
+-- ---------------------------------------------------------------------
+-- WHY A COLUMN-LEVEL GRANT, NOT A BLANKET `UPDATE ON memorials`
+-- ---------------------------------------------------------------------
+--
+-- `saveEditorialContext` sets `editorial_context` and nothing else — the
+-- same discipline Mission 023's migration already established for
+-- `language`. A column-level grant makes that the enforced ceiling, not
+-- just the current code's intent: even a future bug in that one write
+-- path could not silently reach `status`, `owner_id`, `entitlement_id`,
+-- `skin_id`, `enabled_sections`, `language`, or `slug` through this
+-- privilege.
+--
+-- The existing row-level policy `memorials_update_own`
+-- (supabase/migrations/20260829154000_memorials.sql) already scopes any
+-- update this privilege makes reachable to the caller's own memorial
+-- (`owner_id = current_owner_id()`, both USING and WITH CHECK) — no RLS
+-- policy changes here at all; the existing one already suffices.
+--
+-- ---------------------------------------------------------------------
+-- STATUS
+-- ---------------------------------------------------------------------
+--
+-- NOT YET APPLIED to any real Supabase project. Prepared here per the
+-- Mission 024 brief (section 6: a minimal column-level grant only, same
+-- principle as Mission 023, never a blanket `UPDATE ON memorials`, no
+-- RLS policy change, no real Supabase action) for the QG to review and
+-- apply through its own process. Safely re-runnable: a bare column-level
+-- GRANT, no DDL, no data.
+
+grant update (editorial_context) on table memorials to authenticated;

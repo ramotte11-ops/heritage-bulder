@@ -11,6 +11,16 @@ interface ChoiceCardProps {
   checked: boolean;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /**
+   * Mission 024. `"compact"` (the default) is T01's exact, unchanged
+   * geometry — a single-line label, vertically centered, minimal
+   * padding. `"roomy"` is for a card whose content is a title PLUS a
+   * description (T02's editorial-context choice): more padding, and the
+   * indicator aligns to the top of the content instead of dead-center
+   * against a two-line block. Never changes color, radius, or the
+   * selection mechanics — only geometry.
+   */
+  size?: "compact" | "roomy";
   children: ReactNode;
 }
 
@@ -40,9 +50,21 @@ interface ChoiceCardProps {
  * (culture, skin) without change — it renders exactly one option, knows
  * nothing about `Language` or any other specific domain type.
  */
-export function ChoiceCard({ id, name, value, checked, onChange, disabled, children }: ChoiceCardProps) {
+export function ChoiceCard({
+  id,
+  name,
+  value,
+  checked,
+  onChange,
+  disabled,
+  size = "compact",
+  children,
+}: ChoiceCardProps) {
+  const base = checked ? styles.cardSelected : styles.card;
+  const className = size === "roomy" ? `${base} ${styles.roomy}` : base;
+
   return (
-    <label htmlFor={id} className={checked ? styles.cardSelected : styles.card}>
+    <label htmlFor={id} className={className}>
       <input
         type="radio"
         id={id}

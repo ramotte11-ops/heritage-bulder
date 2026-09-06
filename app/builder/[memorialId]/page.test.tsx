@@ -59,7 +59,12 @@ const { saveDraftAction } = vi.hoisted(() => ({
 const { saveLanguageAction } = vi.hoisted(() => ({
   saveLanguageAction: vi.fn(async () => undefined),
 }));
-vi.mock("./actions", () => ({ saveDraftAction, saveLanguageAction }));
+// Mission 024: `saveEditorialContextAction` is bound the same way again
+// — see the "wires ContextStep's persist" test below.
+const { saveEditorialContextAction } = vi.hoisted(() => ({
+  saveEditorialContextAction: vi.fn(async () => undefined),
+}));
+vi.mock("./actions", () => ({ saveDraftAction, saveLanguageAction, saveEditorialContextAction }));
 
 const { SupabaseDraftRepository, draftRepositoryInstance } = vi.hoisted(() => {
   const instance = { getDraftContent: vi.fn(), saveDraftContent: vi.fn() };
@@ -87,6 +92,9 @@ vi.mock("@/components/builder/BuilderShell", () => ({ BuilderShell }));
 
 const { LanguageStep } = vi.hoisted(() => ({ LanguageStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/LanguageStep", () => ({ LanguageStep }));
+
+const { ContextStep } = vi.hoisted(() => ({ ContextStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/ContextStep", () => ({ ContextStep }));
 
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
@@ -125,11 +133,20 @@ const UNCONFIGURED_MEMORIAL: StoredMemorialConfig = {
   slug: null,
 };
 
-/** Mission 023 — T01 is done (language chosen), but no later mission has
- * built the editorial-context step yet. */
+/** Mission 023 — T01 is done (language chosen), but Mission 024's T02
+ * (editorial context) has not been completed yet. */
 const LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
   ...CONFIGURED_MEMORIAL,
   editorialContext: null,
+  language: "es",
+  slug: null,
+};
+
+/** Mission 024 — T01 AND T02 are both done (language + editorial context
+ * chosen), but no later mission has built slug generation yet. */
+const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
+  ...CONFIGURED_MEMORIAL,
+  editorialContext: "remembrance",
   language: "es",
   slug: null,
 };
@@ -210,9 +227,11 @@ describe("BuilderMemorialPage — granted access", () => {
     redirect.mockClear();
     BuilderShell.mockClear();
     LanguageStep.mockClear();
+    ContextStep.mockClear();
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
     saveLanguageAction.mockClear();
+    saveEditorialContextAction.mockClear();
     draftRepositoryInstance.saveDraftContent.mockReset();
   });
 
@@ -385,7 +404,12 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).not.toBe(LanguageStep);
     });
 
-    it("resumes straight past T01 (to the not-yet-configured notice) when only the language has been chosen so far", async () => {
+    it("resumes straight past T01 (to Mission 024's T02) when only the language has been chosen so far", async () => {
+      // Mission 024 update: this used to fall through all the way to the
+      // generic "not configured" notice (there was no T02 yet). Now that
+      // T02 exists, a memorial with language set but no editorialContext
+      // renders ContextStep instead — see the "Mission 024 — T02" block
+      // below for that gate's own dedicated tests.
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -402,10 +426,136 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(LanguageStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
+      expect(result.type).toBe(ContextStep);
+    });
+  });
+
+  describe("Mission 024 — T02 (language chosen, editorial context not yet chosen)", () => {
+    it("renders ContextStep instead of BuilderShell when language is set but editorialContext is NULL", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(ContextStep);
+      expect(BuilderShell).not.toHaveBeenCalled();
+      expect(LanguageStep).not.toHaveBeenCalled();
+    });
+
+    it("passes the memorial's already-persisted language to ContextStep", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // language: "es"
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(result.props.language).toBe("es");
+    });
+
+    it("wires ContextStep's persist to saveEditorialContextAction, bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      // Deliberately a different id from the URL — the bound action must
+      // follow the verified id, never the raw one.
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+      await result.props.persist("announcement");
+
+      expect(saveEditorialContextAction).toHaveBeenCalledExactlyOnceWith(
+        "authorized-id",
+        "announcement",
+      );
+    });
+
+    it("never renders ContextStep once an editorial context has already been recorded — T02 is never re-posed", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL, // language: "fr", editorialContext: "announcement"
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(ContextStep).not.toHaveBeenCalled();
+      expect(result.type).not.toBe(ContextStep);
+    });
+
+    it("resumes straight past T02 (to the not-yet-configured notice) when language and editorial context are both chosen but slug is not", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(ContextStep).not.toHaveBeenCalled();
+      expect(LanguageStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
       // Localized in the family's own already-chosen language (Spanish
       // in this fixture), not hard-coded French.
       expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
       expect(JSON.stringify(result)).not.toContain("Votre mémorial doit encore être configuré");
+    });
+
+    it("never deduces the editorial context from a death date, an offer, a skin, or a culture — resumeBuilderSession's memorial carries no such signal to ContextStep", async () => {
+      // Mission 024 section 3's absolute rule, checked at the boundary
+      // this route controls: ContextStep receives only `language` and
+      // `persist` — never the memorial's skin, offer, or any date field,
+      // so there is nothing for it to deduce from even if it wanted to.
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(Object.keys(result.props)).toEqual(["language", "persist"]);
     });
   });
 
@@ -504,5 +654,14 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
     expect(CODE).toMatch(/persist=\{saveDraftAction\.bind\(null, access\.memorialId\)\}/);
     expect(CODE).not.toMatch(/persist=\{\(content\)/);
     expect(CODE).not.toMatch(/saveDraftContent/);
+  });
+
+  it("hands ContextStep a bound Server Action as `persist` too, never a closure over a repository", () => {
+    expect(CODE).toMatch(/persist=\{saveEditorialContextAction\.bind\(null, access\.memorialId\)\}/);
+    expect(CODE).not.toMatch(/saveEditorialContext\(/);
+  });
+
+  it("never deduces the editorial context from a death date, an offer, a skin, or a culture — the source has no such signal in scope", () => {
+    expect(CODE).not.toMatch(/deathDate|dateOfDeath|offerId|\.skin|culture/i);
   });
 });

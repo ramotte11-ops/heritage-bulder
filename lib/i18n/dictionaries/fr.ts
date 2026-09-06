@@ -19,4 +19,13 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "errors.notFound": "Page introuvable.",
   "onboarding.chooseLanguage": "Choisissez votre langue",
   "builder.notConfiguredYet": "Votre mémorial doit encore être configuré avant de pouvoir être édité ici.",
+  "context.title": "Que souhaitez-vous créer aujourd'hui ?",
+  "context.subtitle":
+    "Choisissez le parcours qui correspond le mieux à ce dont vous avez besoin aujourd'hui.",
+  "context.announcementTitle": "Annonce & Hommage",
+  "context.announcementDescription":
+    "Pour un décès récent — partagez d'abord les informations essentielles, puis enrichissez l'hommage de souvenirs au fil du temps.",
+  "context.remembranceTitle": "Mémoire & Hommage",
+  "context.remembranceDescription":
+    "Créez un espace de mémoire durable, centré sur la vie, l'histoire et les souvenirs de la personne.",
 };

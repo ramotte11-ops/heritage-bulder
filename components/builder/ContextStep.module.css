@@ -1,0 +1,105 @@
+/*
+ * Mission 024 — T02's own body. Chrome (background, logo, signature,
+ * progress bar) lives in BuilderScreen.module.css and is not repeated
+ * here. Colors/typography reuse the exact T01 palette (mission brief
+ * section 8) — nothing new introduced.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.title {
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: #2b2b28;
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: #6f6b63;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem; /* "espace avant CTA", same as T01 */
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem; /* T02 is allowed its own spacing — "respiration généreuse" */
+}
+
+/*
+ * Desktop: two big cards side by side (Announcement & Tribute on the
+ * left, Memory & Tribute on the right — DOM order, not a positioning
+ * trick), balanced width. Same generic pattern as T01's `.options`
+ * (mission brief section 9) but never forced onto T01's row — T02 has
+ * exactly two cards, so this rule is declared independently rather
+ * than importing T01's CSS module for a coincidentally-identical
+ * selector.
+ */
+@media (min-width: 40rem) {
+  .options {
+    flex-direction: row;
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+
+  .options > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.cardTitle {
+  display: block;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 1rem;
+  color: #2b2b28;
+}
+
+.cardDescription {
+  display: block;
+  margin-top: 0.375rem;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #6f6b63;
+}
+
+.error {
+  font-size: 0.875rem;
+  color: #8a3b2f;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

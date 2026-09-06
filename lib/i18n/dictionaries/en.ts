@@ -20,4 +20,12 @@ export const en: Record<TranslationKey, string> = {
   "errors.notFound": "Page not found.",
   "onboarding.chooseLanguage": "Choose your language",
   "builder.notConfiguredYet": "Your memorial still needs to be configured before it can be edited here.",
+  "context.title": "What would you like to create today?",
+  "context.subtitle": "Choose the path that best reflects what you need right now.",
+  "context.announcementTitle": "Announcement & Tribute",
+  "context.announcementDescription":
+    "For a recent loss — share the essential information first, then add memories over time.",
+  "context.remembranceTitle": "Memory & Tribute",
+  "context.remembranceDescription":
+    "Create a lasting space of remembrance centered on the person's life, story, and memory.",
 };
