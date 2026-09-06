@@ -71,7 +71,10 @@ import type { MemorialVersion, StoredMemorialConfig } from "@/types/memorial";
  * re-derived here. Nothing in this file calls Supabase.
  */
 export interface ResumeBuilderSessionDeps {
-  memorialConfigRepository: MemorialConfigRepository;
+  // Mission 023: MemorialConfigRepository grew a saveLanguage method
+  // this function never calls — narrowed to the one method it actually
+  // uses, same discipline already applied to draftRepository below.
+  memorialConfigRepository: Pick<MemorialConfigRepository, "findConfigById">;
   draftRepository: Pick<DraftRepository, "getDraftContent">;
 }
 

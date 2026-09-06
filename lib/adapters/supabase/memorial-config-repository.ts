@@ -88,4 +88,33 @@ export class SupabaseMemorialConfigRepository implements MemorialConfigRepositor
       updatedAt: data.updated_at,
     };
   }
+
+  /**
+   * Mission 023. `.select("id").single()` is the same deliberate choice
+   * as `SupabaseDraftRepository.saveDraftContent`: if the row-level
+   * policy (`memorials_update_own`,
+   * supabase/migrations/20260829154000_memorials.sql) makes this affect
+   * zero rows — wrong owner, or a `memorialId` that doesn't exist —
+   * PostgREST returns no row and the client surfaces that as an error
+   * here, turning "silently updated nothing" into a rejected promise
+   * instead of a false success.
+   *
+   * Requires the `authenticated` role to hold `UPDATE (language)` on
+   * `memorials` — a column-level grant this mission prepared in
+   * `supabase/migrations/20260906120000_builder_language_access.sql`,
+   * not yet applied to any real project (see that file). Until it is
+   * applied, this call resolves the same "permission denied" a real
+   * Supabase project would return today, exactly like every other
+   * not-yet-granted write in this codebase — never a silent success.
+   */
+  async saveLanguage(memorialId: string, language: Language): Promise<void> {
+    const { error } = await this.client
+      .from("memorials")
+      .update({ language })
+      .eq("id", memorialId)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+  }
 }

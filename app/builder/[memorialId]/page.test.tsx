@@ -54,7 +54,12 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
 const { saveDraftAction } = vi.hoisted(() => ({
   saveDraftAction: vi.fn(async () => ({ updatedAt: "2026-02-01T00:00:00.000Z" })),
 }));
-vi.mock("./actions", () => ({ saveDraftAction }));
+// Mission 023: `saveLanguageAction` is bound the same way as
+// `saveDraftAction` — see the "wires LanguageStep's persist" test below.
+const { saveLanguageAction } = vi.hoisted(() => ({
+  saveLanguageAction: vi.fn(async () => undefined),
+}));
+vi.mock("./actions", () => ({ saveDraftAction, saveLanguageAction }));
 
 const { SupabaseDraftRepository, draftRepositoryInstance } = vi.hoisted(() => {
   const instance = { getDraftContent: vi.fn(), saveDraftContent: vi.fn() };
@@ -79,6 +84,9 @@ vi.mock("next/navigation", () => ({ notFound, redirect }));
 
 const { BuilderShell } = vi.hoisted(() => ({ BuilderShell: vi.fn(() => null) }));
 vi.mock("@/components/builder/BuilderShell", () => ({ BuilderShell }));
+
+const { LanguageStep } = vi.hoisted(() => ({ LanguageStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/LanguageStep", () => ({ LanguageStep }));
 
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
@@ -114,6 +122,15 @@ const UNCONFIGURED_MEMORIAL: StoredMemorialConfig = {
   ...CONFIGURED_MEMORIAL,
   editorialContext: null,
   language: null,
+  slug: null,
+};
+
+/** Mission 023 — T01 is done (language chosen), but no later mission has
+ * built the editorial-context step yet. */
+const LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
+  ...CONFIGURED_MEMORIAL,
+  editorialContext: null,
+  language: "es",
   slug: null,
 };
 
@@ -192,8 +209,10 @@ describe("BuilderMemorialPage — granted access", () => {
     notFound.mockClear();
     redirect.mockClear();
     BuilderShell.mockClear();
+    LanguageStep.mockClear();
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
+    saveLanguageAction.mockClear();
     draftRepositoryInstance.saveDraftContent.mockReset();
   });
 
@@ -303,6 +322,91 @@ describe("BuilderMemorialPage — granted access", () => {
 
     expect(BuilderShell).not.toHaveBeenCalled();
     expect(result.type).not.toBe(BuilderShell);
+  });
+
+  describe("Mission 023 — T01 (language not yet chosen)", () => {
+    it("renders LanguageStep instead of BuilderShell when language is NULL", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: UNCONFIGURED_MEMORIAL,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(LanguageStep);
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("wires LanguageStep's persist to saveLanguageAction, bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      // Deliberately a different id from the URL, same technique as the
+      // equivalent saveDraftAction test above: the bound action must
+      // follow the verified id, never the raw one.
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: UNCONFIGURED_MEMORIAL,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+      await result.props.persist("fr");
+
+      expect(saveLanguageAction).toHaveBeenCalledExactlyOnceWith("authorized-id", "fr");
+    });
+
+    it("never renders LanguageStep once a language has already been recorded — T01 is never re-posed", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL, // language: "fr"
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(LanguageStep).not.toHaveBeenCalled();
+      expect(result.type).not.toBe(LanguageStep);
+    });
+
+    it("resumes straight past T01 (to the not-yet-configured notice) when only the language has been chosen so far", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(LanguageStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+      // Localized in the family's own already-chosen language (Spanish
+      // in this fixture), not hard-coded French.
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(JSON.stringify(result)).not.toContain("Votre mémorial doit encore être configuré");
+    });
   });
 
   it("resolves notFoundOrForbidden from resumeBuilderSession the same way as a denied authorization", async () => {

@@ -18,6 +18,16 @@
  * French-hardcoded interface text (`lib/builder/section-labels.ts`) is a
  * deliberate, separate, pre-existing exception this mission does not
  * touch — see that file's own docstring.
+ *
+ * Mission 023 adds two keys, in the same convention, for T01 (Welcome +
+ * choix de langue): `onboarding` for the one concept T01 itself asks
+ * ("choose your language", displayed in all three languages at once on
+ * that screen — never a component name, since a later onboarding step
+ * could reuse it just as well), and `builder` for the minimal stopgap
+ * notice a memorial reaches right after a language is chosen but before
+ * it is otherwise configured (see app/builder/[memorialId]/page.tsx).
+ * T01's own CTA reuses the existing `common.continue` rather than a
+ * third key for the same concept.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -27,6 +37,9 @@ export const TRANSLATION_KEYS = [
   "nav.home",
   "errors.generic",
   "errors.notFound",
+  // Mission 023 — T01 (Welcome + choix de langue).
+  "onboarding.chooseLanguage",
+  "builder.notConfiguredYet",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

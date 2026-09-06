@@ -17,4 +17,6 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "nav.home": "Accueil",
   "errors.generic": "Une erreur est survenue.",
   "errors.notFound": "Page introuvable.",
+  "onboarding.chooseLanguage": "Choisissez votre langue",
+  "builder.notConfiguredYet": "Votre mémorial doit encore être configuré avant de pouvoir être édité ici.",
 };

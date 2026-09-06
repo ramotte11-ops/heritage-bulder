@@ -1,4 +1,5 @@
 import type { StoredMemorialConfig } from "@/types/memorial";
+import type { Language } from "@/config/languages";
 
 /**
  * Mission 021B (audit correction) — the narrowest possible contract for
@@ -55,4 +56,25 @@ export interface MemorialConfigRepository {
    * absence.
    */
   findConfigById(memorialId: string): Promise<StoredMemorialConfig | null>;
+
+  /**
+   * Mission 023 — persists the family's language choice, the first of
+   * the three still-NULL family choices this port's own docstring
+   * names (`editorial_context`, `language`, `slug`). Mission 021B's
+   * migration predicted this exact moment: "the family's own choices
+   * ... are a later mission's Guided Flow, and it will open the UPDATE
+   * it needs then, not now." This is that mission, for `language`
+   * only — `editorial_context` and `slug` stay closed for whichever
+   * later mission builds their own Guided Flow step.
+   *
+   * Whole-value, last-write-wins — same shape as
+   * `DraftRepository.saveDraftContent`. Never silently no-ops: if
+   * `memorialId` doesn't belong to the caller (or doesn't exist), the
+   * underlying row-level policy makes the update affect zero rows,
+   * which a conforming implementation must surface as a rejected
+   * promise, exactly like `saveDraftContent` does for the same case —
+   * a caller that tried to change something and had nothing happen
+   * must be told, not handed a false success.
+   */
+  saveLanguage(memorialId: string, language: Language): Promise<void>;
 }

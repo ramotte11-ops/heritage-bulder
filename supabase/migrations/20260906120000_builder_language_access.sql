@@ -1,0 +1,54 @@
+-- Mission 023: opens exactly the one write privilege T01 (Welcome +
+-- choix de langue) needs, and not one more.
+--
+-- ---------------------------------------------------------------------
+-- WHY THIS MIGRATION EXISTS
+-- ---------------------------------------------------------------------
+--
+-- 20260905160000_builder_owner_access.sql (Mission 021B) opened the
+-- three privileges the real Builder's READ path needs, and named
+-- exactly what it deliberately left closed:
+--
+--     "UPDATE on memorials — no wired code path writes it as a client
+--      ... the family's own choices (editorial_context, language,
+--      slug) are a later mission's Guided Flow, and it will open the
+--      UPDATE it needs then, not now."
+--
+-- Mission 023 wires that Guided Flow's first step — the family choosing
+-- a language on T01 — through
+-- lib/adapters/supabase/memorial-config-repository.ts's `saveLanguage`.
+-- This is the "later mission", for `language` only.
+--
+-- ---------------------------------------------------------------------
+-- WHY A COLUMN-LEVEL GRANT, NOT A BLANKET `UPDATE ON memorials`
+-- ---------------------------------------------------------------------
+--
+-- `saveLanguage` sets `language` and nothing else. A column-level grant
+-- makes that the enforced ceiling, not just the current code's intent:
+-- even a future bug in that one write path could not silently reach
+-- `status`, `owner_id`, `entitlement_id`, `skin_id`, `enabled_sections`
+-- or `slug` through this privilege. `editorial_context` and `slug` stay
+-- exactly as closed as they were after Mission 021B — this migration
+-- grants nothing for either, deliberately: whichever later mission
+-- builds the editorial-context step (or slug generation) opens the
+-- grant it needs then, following the same discipline.
+--
+-- The existing row-level policy `memorials_update_own`
+-- (supabase/migrations/20260829154000_memorials.sql) already scopes any
+-- update this privilege makes reachable to the caller's own memorial
+-- (`owner_id = current_owner_id()`, both USING and WITH CHECK) — it has
+-- been sitting inert since Mission 002 for lack of exactly this
+-- table-level privilege, the same story `memorial_drafts` had before
+-- Mission 021B.
+--
+-- ---------------------------------------------------------------------
+-- STATUS
+-- ---------------------------------------------------------------------
+--
+-- NOT YET APPLIED to any real Supabase project. Prepared here per the
+-- Mission 023 brief (section 8: implement only what can be safely
+-- prepared locally, stop short of any real mutation) for the QG to
+-- review and apply through its own process. Safely re-runnable: a bare
+-- column-level GRANT, no DDL, no data.
+
+grant update (language) on table memorials to authenticated;

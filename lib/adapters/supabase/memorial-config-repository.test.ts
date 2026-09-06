@@ -7,7 +7,7 @@ import { SupabaseMemorialConfigRepository } from "./memorial-config-repository";
  *
  * Same fake-query-builder technique as draft-repository.test.ts: one
  * shape only, `.from(...).select(...).eq(...).maybeSingle()`, because
- * one shape is all this repository is allowed to have.
+ * one shape is all `findConfigById` is allowed to have.
  */
 function fakeSupabaseClient(finalResult: { data: unknown; error: unknown }) {
   const maybeSingle = vi.fn().mockResolvedValue(finalResult);
@@ -16,6 +16,24 @@ function fakeSupabaseClient(finalResult: { data: unknown; error: unknown }) {
   const from = vi.fn().mockReturnValue({ select });
 
   return { client: { from } as unknown as SupabaseClient, from, select, eq, maybeSingle };
+}
+
+/**
+ * Mission 023 — the write shape `saveLanguage` uses:
+ * `.from(...).update(...).eq(...).select(...).single()`. Same technique
+ * as draft-repository.test.ts's `saveDraftContent` fake — a separate
+ * helper from the one above because `findConfigById` never calls
+ * `.update()` and this repository has no reason to fake a shape it
+ * cannot produce.
+ */
+function fakeSupabaseWriteClient(finalResult: { data: unknown; error: unknown }) {
+  const single = vi.fn().mockResolvedValue(finalResult);
+  const select = vi.fn().mockReturnValue({ single });
+  const eq = vi.fn().mockReturnValue({ select });
+  const update = vi.fn().mockReturnValue({ eq });
+  const from = vi.fn().mockReturnValue({ update });
+
+  return { client: { from } as unknown as SupabaseClient, from, update, eq, select, single };
 }
 
 const ROW = {
@@ -123,5 +141,53 @@ describe("SupabaseMemorialConfigRepository.findConfigById", () => {
     const result = await new SupabaseMemorialConfigRepository(client).findConfigById(ROW.id);
 
     expect(result).toMatchObject({ editorialContext: null, language: null, slug: null });
+  });
+});
+
+describe("SupabaseMemorialConfigRepository.saveLanguage", () => {
+  it("writes exactly the language column to memorials, scoped by id", async () => {
+    const { client, from, update, eq } = fakeSupabaseWriteClient({
+      data: { id: ROW.id },
+      error: null,
+    });
+
+    await new SupabaseMemorialConfigRepository(client).saveLanguage(ROW.id, "fr");
+
+    expect(from).toHaveBeenCalledWith("memorials");
+    expect(update).toHaveBeenCalledWith({ language: "fr" });
+    expect(eq).toHaveBeenCalledWith("id", ROW.id);
+  });
+
+  it("resolves with nothing on success — this is a fire-and-forget write, not a read", async () => {
+    const { client } = fakeSupabaseWriteClient({ data: { id: ROW.id }, error: null });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveLanguage(ROW.id, "es"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects rather than silently succeeding when Postgres/PostgREST reports an error", async () => {
+    const { client } = fakeSupabaseWriteClient({
+      data: null,
+      error: { message: "no rows returned" },
+    });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveLanguage(ROW.id, "en"),
+    ).rejects.toEqual({ message: "no rows returned" });
+  });
+
+  it("never invents a false success for a memorial that isn't the caller's own — RLS surfaces as this same error path, never a resolved promise", async () => {
+    // Exactly what a wrong-owner update looks like once RLS blocks it:
+    // zero rows match, .single() has nothing to return, PostgREST
+    // reports it as an error rather than an empty success.
+    const { client } = fakeSupabaseWriteClient({
+      data: null,
+      error: { message: "JSON object requested, multiple (or no) rows returned" },
+    });
+
+    await expect(
+      new SupabaseMemorialConfigRepository(client).saveLanguage("not-my-memorial", "en"),
+    ).rejects.toBeTruthy();
   });
 });
