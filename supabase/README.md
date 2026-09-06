@@ -397,7 +397,7 @@ code path provably needs.
 | --- | --- | --- | --- | --- |
 | `owners` | SELECT, INSERT | — | — | — |
 | `entitlements` | SELECT, INSERT, UPDATE | — | — | — |
-| `memorials` | SELECT, INSERT | SELECT ¹ | — | — |
+| `memorials` | SELECT, INSERT | SELECT ¹, UPDATE (`language`) ² | — | — |
 | `memorial_drafts` | — | SELECT, UPDATE ¹ | — | — |
 | `memorial_published_snapshots` | — | — | — | — |
 | `media` | — | — | — | — |
@@ -407,6 +407,13 @@ code path provably needs.
 see **The Builder's client-role privileges** below. Everything else in
 this table is `20260901190000_privilege_model.sql` (Mission 013C),
 unchanged.
+
+² Column-level only — `UPDATE (language)`, not a blanket `UPDATE` on the
+table. Prepared by `20260906120000_builder_language_access.sql` (Mission
+023) but **not yet applied to any real Supabase project** — see **T01's
+one write privilege (Mission 023)** below. `editorial_context` and `slug`
+stay closed for whichever later mission builds their own Guided Flow
+step.
 
 `DELETE` is granted nowhere: no code path deletes, and a purchase record
 is not something a server flow should be able to remove by accident.
@@ -440,11 +447,45 @@ privilege never had to be opened for a feature nobody has built.
 Publication is a later mission's, and it opens what it needs then.
 
 No client INSERT on `memorial_drafts` (the SECURITY DEFINER trigger owns
-that invariant), no client UPDATE on `memorials` (the family's own
-choices are a later Guided Flow mission's), no DELETE anywhere, nothing
+that invariant), no client UPDATE on `memorials` as of this migration
+(the family's own choices are each a later Guided Flow mission's — see
+Mission 023 below for the first of them), no DELETE anywhere, nothing
 for `anon`, and no new `service_role` privilege — `service_role` is not
 even named in that migration's REVOKE, so what Mission 013C measured for
 the redemption engine is untouched.
+
+### T01's one write privilege (Mission 023)
+
+`20260906120000_builder_language_access.sql` opens exactly one more
+privilege, for `authenticated`, on top of Mission 021B's three:
+
+| Privilege | Wired reader/writer |
+| --- | --- |
+| UPDATE (`language`) on `memorials` | `SupabaseMemorialConfigRepository.saveLanguage` — T01's language choice, through the `saveLanguageAction` Server Action, which re-authorizes every save exactly like `saveDraftAction` does |
+
+Column-level, not a blanket `UPDATE` on the table: `saveLanguage` sets
+`language` and nothing else, and the grant is the enforced ceiling for
+that, not just the current code's intent — a future bug in that one
+write path still could not reach `status`, `owner_id`,
+`entitlement_id`, `skin_id`, `enabled_sections` or `slug` through this
+privilege. `editorial_context` and `slug` stay exactly as closed as
+Mission 021B left them; whichever later mission builds the
+editorial-context step (or slug generation) opens the grant it needs
+then, following the same discipline this migration does.
+
+Scoped further by the same `memorials_update_own` row-level policy
+(`supabase/migrations/20260829154000_memorials.sql`) Mission 021B's
+`SELECT` already relies on — that policy has been sitting inert for
+`UPDATE` since Mission 002 for lack of exactly this table-level
+privilege.
+
+**Not yet applied to any real Supabase project.** Mission 023's brief
+requires implementing only what can be safely prepared locally and
+stopping short of any real mutation — this migration is prepared,
+committed, and validated against `scripts/db/test-local.sh`'s fully
+local, no-network PostgreSQL cluster (472/472, unchanged from Mission
+021B's baseline), but applying it to a real project is the QG's own,
+separate step.
 
 Two function changes go with it:
 

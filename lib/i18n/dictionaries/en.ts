@@ -18,4 +18,6 @@ export const en: Record<TranslationKey, string> = {
   "nav.home": "Home",
   "errors.generic": "Something went wrong.",
   "errors.notFound": "Page not found.",
+  "onboarding.chooseLanguage": "Choose your language",
+  "builder.notConfiguredYet": "Your memorial still needs to be configured before it can be edited here.",
 };

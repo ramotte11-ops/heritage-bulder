@@ -15,4 +15,6 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "nav.home": "Inicio",
   "errors.generic": "Algo salió mal.",
   "errors.notFound": "Página no encontrada.",
+  "onboarding.chooseLanguage": "Elige tu idioma",
+  "builder.notConfiguredYet": "Tu memorial todavía debe configurarse antes de poder editarlo aquí.",
 };

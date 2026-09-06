@@ -1,0 +1,32 @@
+.button {
+  width: 100%;
+  min-height: 3.5rem; /* 56px, per the Studio spec */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 12px;
+  border: none;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: #3e4a34;
+  color: #ffffff;
+  transition: background-color 0.15s ease;
+}
+
+.button:disabled {
+  background: #d7d2c7;
+  color: #8f887a;
+  cursor: not-allowed;
+}
+
+.button:not(:disabled):hover {
+  background: #333d2b;
+}
+
+.button:focus-visible {
+  outline: 2px solid #3e4a34;
+  outline-offset: 2px;
+}

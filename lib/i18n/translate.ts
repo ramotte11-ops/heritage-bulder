@@ -1,4 +1,4 @@
-import { DEFAULT_LANGUAGE, LANGUAGES, type Language } from "@/config/languages";
+import { DEFAULT_LANGUAGE, isLanguage, type Language } from "@/config/languages";
 import { type TranslationKey, isTranslationKey } from "./keys";
 import { en } from "./dictionaries/en";
 import { fr } from "./dictionaries/fr";
@@ -50,11 +50,11 @@ export const DICTIONARIES: Readonly<Record<Language, Readonly<Dictionary>>> = Ob
  * this module treats a language as untrusted input rather than an
  * already-typed `Language` — useful the moment a caller has a raw
  * string (persisted data, a future request) rather than a value it
- * already knows is valid.
+ * already knows is valid. A re-export of `config/languages.ts`'s
+ * `isLanguage` (Mission 023) under the name this module already
+ * documented — not a second implementation of the same check.
  */
-export function isSupportedLanguage(value: string): value is Language {
-  return (LANGUAGES as readonly string[]).includes(value);
-}
+export const isSupportedLanguage = isLanguage;
 
 /**
  * Resolves one piece of system text.

@@ -6,7 +6,9 @@ import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repositor
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isConfiguredMemorial } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
-import { saveDraftAction } from "./actions";
+import { LanguageStep } from "@/components/builder/LanguageStep";
+import { translate } from "@/lib/i18n/translate";
+import { saveDraftAction, saveLanguageAction } from "./actions";
 import styles from "./page.module.css";
 
 /**
@@ -89,6 +91,16 @@ import styles from "./page.module.css";
  * on the snapshots table: no client role should hold one for a feature
  * nobody has built. A test guards this route against reintroducing
  * either (see page.test.tsx).
+ *
+ * ## Mission 023 — T01 sits in front of the Builder proper
+ *
+ * A resumed memorial with `language === null` renders `LanguageStep`
+ * instead of the "not configured" notice below — the family's very
+ * first choice, gated on nothing but that one column. Once a language
+ * IS recorded, this route never shows T01 again for that memorial; a
+ * still-unconfigured memorial (a Guided Flow step no later mission has
+ * built yet) falls through to the existing notice, now shown in the
+ * family's own language.
  */
 export const dynamic = "force-dynamic";
 
@@ -150,16 +162,41 @@ export default async function BuilderMemorialPage({
   // resumed.status === "resumable" — Mission 011A: a memorial row exists
   // from the moment an entitlement is redeemed, before the family has
   // chosen its editorial context/language, so `slug` and the rest can
-  // still be NULL here. The Builder needs the CONFIGURED shape
-  // (MemorialConfig, not StoredMemorialConfig); choosing those values is
-  // a Guided Flow the mission brief explicitly keeps out of scope, so an
-  // unconfigured memorial gets a controlled notice rather than invented
-  // data or a Builder rendered against NULLs.
+  // still be NULL here.
+  //
+  // Mission 023 — T01. `language` is the first of those still-NULL
+  // choices to get a real step: no language recorded yet means this
+  // family has never completed T01, so it is shown NOW, unconditionally
+  // — never gated behind anything else, never skipped by any signal
+  // from the browser, the offer, or the culture (mission brief section
+  // 5/7: no silent auto-detection). Once a language IS recorded, T01 is
+  // never shown again for this Memorial — reached only through this
+  // one condition, on a field that only `saveLanguageAction` (through
+  // `LanguageStep`) ever sets, so a family that already chose resumes
+  // straight past it on every future visit, including after a refresh.
+  //
+  // `saveLanguageAction.bind(null, access.memorialId)` mirrors
+  // `saveDraftAction`'s own binding just below: the AUTHORIZED id, never
+  // the raw URL segment, and a bound Server Action rather than a closure
+  // over `supabase`/`memorialConfigRepository` — the same reasons
+  // Mission 021B already documents for the draft's `persist`.
+  if (resumed.memorial.language === null) {
+    return <LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />;
+  }
+
+  // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
+  // StoredMemorialConfig); choosing `editorialContext`/`slug` is a
+  // Guided Flow step no later mission has built yet, so — for now — a
+  // memorial with a language but nothing else configured gets a
+  // controlled notice rather than invented data or a Builder rendered
+  // against NULLs. `resumed.memorial.language` is narrowed non-null by
+  // the `return` above, so this notice can already speak the family's
+  // own language rather than a hard-coded one.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return (
       <main className={styles.main}>
         <p className={styles.notice}>
-          Votre mémorial doit encore être configuré avant de pouvoir être édité ici.
+          {translate(resumed.memorial.language, "builder.notConfiguredYet")}
         </p>
       </main>
     );

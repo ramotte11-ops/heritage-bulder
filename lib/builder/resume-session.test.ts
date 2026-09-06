@@ -183,8 +183,17 @@ describe("resumeBuilderSession — the Builder's read path stays narrow", () => 
   const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
   it("depends on the narrow MemorialConfigRepository port", () => {
-    expect(CODE).toMatch(/memorialConfigRepository: MemorialConfigRepository;/);
+    // Mission 023: narrowed further, via Pick, to the one method this
+    // function actually calls — MemorialConfigRepository itself grew a
+    // saveLanguage this function has no business calling.
+    expect(CODE).toMatch(
+      /memorialConfigRepository: Pick<MemorialConfigRepository, "findConfigById">;/,
+    );
     expect(CODE).toMatch(/from "@\/lib\/adapters\/memorial-config-repository"/);
+  });
+
+  it("never calls saveLanguage — that is a write, and this function only ever reads", () => {
+    expect(CODE).not.toMatch(/\.saveLanguage\(/);
   });
 
   it("never depends on DataRepository or the composing memorial repository", () => {

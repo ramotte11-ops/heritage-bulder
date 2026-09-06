@@ -2,7 +2,9 @@
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
 import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repository";
+import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
+import { isLanguage } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
@@ -76,4 +78,43 @@ export async function saveDraftAction(
 
   // access.memorialId — the authorized id, never the raw argument.
   return draftRepository.saveDraftContent(access.memorialId, content);
+}
+
+/**
+ * Mission 023 — T01's one write: the family's language choice.
+ *
+ * Same shape and same rules as `saveDraftAction` above, deliberately:
+ * re-authorized on EVERY call (never once at render time), the id used
+ * is `access.memorialId` (the verified one), the Supabase client is
+ * built here, server-side, per call, with the session-scoped client so
+ * `memorials_update_own` is a real second lock, and a refusal REJECTS
+ * rather than resolving with a fabricated success.
+ *
+ * `language` is re-validated here against `config/languages.ts`'s
+ * `LANGUAGES` (via `isLanguage`) even though `LanguageStep` never lets a
+ * caller submit anything else: a Server Action's argument crosses a
+ * network boundary and must never be trusted just because the one
+ * client this codebase ships happens to behave — see
+ * `lib/i18n/translate.ts`'s own `isSupportedLanguage`, the same guard
+ * under the name that module already documented. An invalid value
+ * rejects before any Supabase call, the same "never a false success"
+ * discipline as a denied authorization.
+ */
+export async function saveLanguageAction(memorialId: string, language: string): Promise<void> {
+  if (!isLanguage(language)) {
+    throw new Error("Unsupported language.");
+  }
+
+  const access = await authorizeMemorialForRequest(memorialId);
+
+  if (access.status !== "granted") {
+    // Same deliberate opacity as saveDraftAction's refusal above.
+    throw new Error("Language save refused.");
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
+
+  // access.memorialId — the authorized id, never the raw argument.
+  return memorialConfigRepository.saveLanguage(access.memorialId, language);
 }

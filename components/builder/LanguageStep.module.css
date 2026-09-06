@@ -1,0 +1,219 @@
+/*
+ * Mission 023 — T01. Palette and dimensions below come straight from
+ * the Studio's "05 — MINI FICHE UI T01" reference sheet (colors, card/
+ * CTA heights, corner radius, spacing).
+ *
+ * Mission 023C — `.page`'s background is now the real Studio asset
+ * pair (`public/assets/builder/backgrounds/heritage-builder-
+ * background-{mobile,desktop}.png`), not an invented placeholder.
+ * Mobile is the default `background-image`; the desktop file swaps in
+ * at the same `40rem` breakpoint every other mobile/desktop split in
+ * this file already uses, so there is exactly one place that decides
+ * "which layout" for the whole screen. Each image is used whole — the
+ * mobile file is never stretched to fill a desktop viewport, and the
+ * desktop file is never just a crop of the mobile one; they are two
+ * distinct Studio compositions. `background-size: cover` +
+ * `background-position: center` preserves each file's own proportions
+ * (crops at the edges when a viewport's aspect ratio does not match
+ * the asset's, never distorts it) and keeps the calm center of the
+ * artwork behind the calm center of the actual content.
+ */
+
+.page {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background-color: #f6f1e7; /* shows while the image loads, or if it fails */
+  background-image: url("/assets/builder/backgrounds/heritage-builder-background-mobile.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2.5rem 1.25rem;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  color: #2b2b28;
+}
+
+@media (min-width: 40rem) {
+  .page {
+    background-image: url("/assets/builder/backgrounds/heritage-builder-background-desktop.png");
+  }
+}
+
+/*
+ * Mission 023C — the Studio "Stories / live / forever" signature: real
+ * text, never baked into the background image, positioned independently
+ * of the centered `.frame` (top-right, same corner as the Studio
+ * reference on both mobile and desktop). Deliberately small and muted
+ * — it must never compete with the title or the language choice for
+ * attention.
+ */
+.signature {
+  position: absolute;
+  z-index: 1;
+  top: 1.5rem;
+  right: 1.5rem;
+  margin: 0;
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-style: italic;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: right;
+  color: #6f6b63;
+}
+
+@media (min-width: 40rem) {
+  .signature {
+    /* Pushed further from the immediate corner than a naive top-right
+       offset would sit — the Studio desktop asset's own floral sprig
+       occupies that exact corner, and the signature must stay clear of
+       it, never overlapping (mission brief section 3/10: decoration
+       never in front of real content, and vice versa: real content
+       must stay legible against the decoration). */
+    top: 6.5rem;
+    right: 3rem;
+    font-size: 0.8125rem;
+  }
+}
+
+.frame {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 335px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.5rem;
+}
+
+@media (min-width: 40rem) {
+  .frame {
+    max-width: 600px;
+    gap: 2rem;
+  }
+}
+
+.brand {
+  text-align: center;
+}
+
+.wordmark {
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+}
+
+.wordmarkSub {
+  margin-top: 0.125rem;
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-style: italic;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  color: #6f6b63;
+}
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.title {
+  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-weight: 600;
+  font-size: 1.75rem;
+  color: #2b2b28;
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2.125rem;
+  }
+}
+
+.subcopy {
+  font-size: 0.9375rem;
+  color: #6f6b63;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem; /* "espace avant CTA" per the Studio spec */
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* "espacement entre cartes" per the Studio spec */
+}
+
+/*
+ * Mission 023B — the Studio desktop reference (HERITAGE_T01_Desktop_
+ * Initial) shows the three options as one horizontal row of balanced-
+ * width cards, CTA centered below — never mobile's stacked column
+ * simply widened. `.options > *` targets each ChoiceCard's own
+ * rendered <label> directly, without needing to know its CSS-module
+ * class name.
+ */
+@media (min-width: 40rem) {
+  .options {
+    flex-direction: row;
+    gap: 1rem;
+  }
+
+  .options > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+/*
+ * Mission 023C — on desktop the Studio reference (T01 Desktop Initial)
+ * shows the CTA narrower than the three-card row above it, centered —
+ * never stretched to the row's full ~600px. 335px reuses this file's
+ * own mobile content-width token rather than inventing a new arbitrary
+ * number: a deliberate, explained choice where the exact Studio ratio
+ * cannot be measured pixel-for-pixel from a reference image (see the
+ * Mission 023C report). PrimaryButton itself stays untouched — a plain
+ * "fill whatever container I'm given" primitive; this wrapper is what
+ * narrows and centers that container at this one breakpoint.
+ */
+.ctaWrap {
+  width: 100%;
+}
+
+@media (min-width: 40rem) {
+  .ctaWrap {
+    max-width: 335px;
+    margin-inline: auto;
+  }
+}
+
+.error {
+  font-size: 0.875rem;
+  color: #8a3b2f;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
