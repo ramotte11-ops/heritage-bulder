@@ -55,7 +55,7 @@ export const dynamic = "force-dynamic";
  */
 const CLAIM_NOTICES = {
   recovery:
-    "Nous n'avons pas trouvé d'achat rattaché à ce compte Etsy. Si votre achat a été effectué sans compte Etsy, votre clé d'activation ci-dessous prend le relais.",
+    "Votre achat n’a pas pu être confirmé automatiquement. Si vous disposez d’une clé d’activation HERITAGE, vous pouvez l’utiliser ci-dessous.",
   support:
     "Nous n'avons pas pu confirmer cet achat automatiquement. Notre équipe peut le faire pour vous — contactez-nous et nous nous en occupons.",
   retry:
