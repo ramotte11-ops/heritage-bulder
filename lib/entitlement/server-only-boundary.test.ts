@@ -85,6 +85,33 @@ const SERVER_ONLY_MODULES = [
   "lib/adapters/supabase/activation-rate-limiter.ts",
   "lib/entitlement/activate-heritage-access.ts",
   "lib/entitlement/activation-session.ts",
+  // Mission 019B: the Etsy channel's server half.
+  //
+  // `config.ts` reads ETSY_API_SHARED_SECRET and the bootstrap refresh
+  // token — neither is NEXT_PUBLIC_, and neither may be reached from a
+  // module that could be bundled. `api-client.ts` signs requests with
+  // them; `seller-credential.ts` and its repository hold the one
+  // long-lived integration credential HERITAGE has; the two session
+  // files construct the service-role client; the claim and support
+  // modules compose the Mission 013 key primitives.
+  //
+  // A client can only ever reach app/activate/actions.ts,
+  // app/admin/actions.ts (Server Actions) or /api/etsy/callback (a Route
+  // Handler) — all three of which Next.js itself keeps server-side.
+  "lib/integration/etsy/config.ts",
+  // Not a secret holder, but a CSPRNG one: oauth.ts draws the `state`
+  // and PKCE verifier from node:crypto. Nothing that generates the
+  // material protecting a handshake belongs in a browser bundle.
+  "lib/integration/etsy/oauth.ts",
+  "lib/integration/etsy/api-client.ts",
+  "lib/integration/etsy/seller-credential.ts",
+  "lib/adapters/supabase/seller-credential-repository.ts",
+  "lib/adapters/supabase/admin-audit-repository.ts",
+  "lib/integration/etsy/oauth-cookies.ts",
+  "lib/integration/etsy/claim-by-etsy-identity.ts",
+  "lib/integration/etsy/provision-order-for-support.ts",
+  "lib/integration/etsy/etsy-session.ts",
+  "lib/integration/etsy/support-session.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

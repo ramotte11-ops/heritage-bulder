@@ -1,3 +1,4 @@
+import type { EntitlementSource } from "@/config/entitlements";
 import type { Entitlement } from "@/types/entitlement";
 import type { MemorialSupportSummary, OwnerSupportSummary } from "@/types/admin-support";
 
@@ -59,6 +60,28 @@ export interface AdminSupportRepository {
 
   /** The entitlement with this id, or null. */
   findEntitlementById(entitlementId: string): Promise<Entitlement | null>;
+
+  /**
+   * Mission 019B — the right recorded for one commercial order
+   * reference, or null.
+   *
+   * Added because support could previously hold an Etsy order number and
+   * do nothing with it: the only lookups were by owner email, right id
+   * and memorial id, none of which a family's order confirmation
+   * contains. That gap is what made the "guest checkout falls back to
+   * support" doctrine unusable in practice.
+   *
+   * Exact equality on `(source, external_order_id)` — the same pair
+   * `entitlements_external_order_unique` is built on, so this returns at
+   * most one row and reads the relation the database already enforces
+   * rather than inferring anything. Never a pattern: `like`/`ilike`
+   * would let a wildcard in a typed order reference return a stranger's
+   * record.
+   */
+  findEntitlementByExternalOrder(
+    source: EntitlementSource,
+    externalOrderId: string,
+  ): Promise<Entitlement | null>;
 
   /**
    * Every right belonging to this owner, oldest first.

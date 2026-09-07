@@ -24,3 +24,27 @@
   border-left: 3px solid color-mix(in srgb, var(--foreground) 30%, transparent);
   padding-left: 0.625rem;
 }
+
+/* Mission 019B. Same tokens as .notice above — the recovery path is a
+   quieter member of the existing grammar, not a new visual language. */
+
+.claimNotice {
+  font-size: 0.8125rem;
+  border-left: 3px solid color-mix(in srgb, var(--foreground) 45%, transparent);
+  padding-left: 0.625rem;
+}
+
+.recovery {
+  margin-top: 1.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+  padding-top: 1rem;
+}
+
+/* Deliberately quieter than the primary action: smaller, dimmed, and
+   with no button affordance at all. It has to be findable, never
+   competing with "Confirmer mon achat Etsy". */
+.recoverySummary {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+  cursor: pointer;
+}

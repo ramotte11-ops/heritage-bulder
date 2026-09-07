@@ -41,10 +41,14 @@ const REDEEMED: Entitlement = {
   updatedAt: "2026-01-02T00:00:00.000Z",
 };
 
+/** Mission 019B — a real Etsy receipt id is decimal, and the support
+ * lookup validates that shape before reading anything. */
+const ETSY_ORDER_ID = "3216549870";
+
 const AVAILABLE: Entitlement = {
   ...REDEEMED,
   id: ENT_AVAILABLE,
-  externalOrderId: "ORDER-2",
+  externalOrderId: ETSY_ORDER_ID,
   status: "available",
   ownerId: null,
   redeemedAt: null,
@@ -85,6 +89,12 @@ function repository(overrides: Partial<AdminSupportRepository> = {}): AdminSuppo
     findMemorialSummaryByEntitlementId: vi.fn(async (id: string) =>
       id === ENT_REDEEMED ? MEMORIAL : null,
     ),
+    // Mission 019B — the Etsy order lookup. Only ETSY_ORDER_ID resolves,
+    // and only for the `etsy` source, so a test that asks for the right
+    // reference under the wrong source still gets nothing.
+    findEntitlementByExternalOrder: vi.fn(async (source: string, externalOrderId: string) =>
+      source === "etsy" && externalOrderId === ETSY_ORDER_ID ? AVAILABLE : null,
+    ),
   };
 
   return { ...base, ...overrides };
@@ -92,7 +102,7 @@ function repository(overrides: Partial<AdminSupportRepository> = {}): AdminSuppo
 
 function search(
   adminSupportRepository: AdminSupportRepository,
-  kind: "ownerEmail" | "entitlementId" | "memorialId",
+  kind: "ownerEmail" | "entitlementId" | "memorialId" | "externalOrderId",
   value: string,
 ): Promise<AdminSupportSearchResult> {
   return searchAdminSupport({ adminSupportRepository }, { kind, value });
@@ -306,17 +316,20 @@ describe("searchAdminSupport — nothing secret is in the shape", () => {
     expect(serialised).not.toMatch(/hash/i);
   });
 
-  it("never asks the repository for anything but the six support reads", async () => {
+  it("never asks the repository for anything but the support reads", async () => {
     const repo = repository();
 
     await search(repo, "ownerEmail", OWNER.email);
     await search(repo, "entitlementId", ENT_REDEEMED);
     await search(repo, "memorialId", MEMORIAL_ID);
+    await search(repo, "externalOrderId", ETSY_ORDER_ID);
 
     // The port exposes only reads; this asserts the search calls no
     // method outside the ones it declares, so a future write method
-    // could not be reached from here by accident.
+    // could not be reached from here by accident. Mission 019B added
+    // exactly one entry — another read.
     expect(Object.keys(repo).sort()).toEqual([
+      "findEntitlementByExternalOrder",
       "findEntitlementById",
       "findEntitlementsByOwnerId",
       "findMemorialSummaryByEntitlementId",
@@ -325,11 +338,61 @@ describe("searchAdminSupport — nothing secret is in the shape", () => {
       "findOwnerById",
     ]);
   });
+
+  /**
+   * Mission 019B — the lookup that makes the guest-recovery doctrine
+   * usable. Before it, support held an order number and had no mode that
+   * accepted one.
+   */
+  describe("Mission 019B — lookup by Etsy order reference", () => {
+    it("finds the right recorded for that order", async () => {
+      const result = await search(repository(), "externalOrderId", ETSY_ORDER_ID);
+
+      expect(result.status).toBe("found");
+      if (result.status !== "found") return;
+      expect(result.record.entitlements[0].entitlement.externalOrderId).toBe(ETSY_ORDER_ID);
+    });
+
+    it("answers notFound for an order that carries no right yet", async () => {
+      const result = await search(repository(), "externalOrderId", "1111111111");
+
+      expect(result.status).toBe("notFound");
+    });
+
+    it("only ever asks for the etsy source — the caller cannot choose it", async () => {
+      const repo = repository();
+
+      await search(repo, "externalOrderId", ETSY_ORDER_ID);
+
+      expect(repo.findEntitlementByExternalOrder).toHaveBeenCalledWith("etsy", ETSY_ORDER_ID);
+    });
+
+    it.each(["not-a-number", "12 34", "", "  ", "1'; drop table entitlements;--", "%"])(
+      "refuses %j before reading anything",
+      async (value) => {
+        const repo = repository();
+
+        const result = await search(repo, "externalOrderId", value);
+
+        expect(result.status).toBe("invalidQuery");
+        expect(repo.findEntitlementByExternalOrder).not.toHaveBeenCalled();
+      },
+    );
+
+    it("refuses a reference longer than any real receipt id", async () => {
+      const repo = repository();
+
+      const result = await search(repo, "externalOrderId", "9".repeat(33));
+
+      expect(result.status).toBe("invalidQuery");
+      expect(repo.findEntitlementByExternalOrder).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("parseAdminSupportQueryKind", () => {
-  it("accepts the three supported modes", () => {
-    for (const kind of ["ownerEmail", "entitlementId", "memorialId"]) {
+  it("accepts every supported mode", () => {
+    for (const kind of ["ownerEmail", "entitlementId", "memorialId", "externalOrderId"]) {
       expect(parseAdminSupportQueryKind(kind)).toBe(kind);
     }
   });

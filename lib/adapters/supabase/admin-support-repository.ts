@@ -185,6 +185,26 @@ export class SupabaseAdminSupportRepository implements AdminSupportRepository {
     return data ? toEntitlement(data) : null;
   }
 
+  async findEntitlementByExternalOrder(
+    source: EntitlementSource,
+    externalOrderId: string,
+  ): Promise<Entitlement | null> {
+    // Exact equality on both halves of
+    // `entitlements_external_order_unique`, so at most one row can
+    // match. Same named-column discipline as every other read here:
+    // `activation_key_hash` is not in ENTITLEMENT_COLUMNS and therefore
+    // never leaves PostgreSQL.
+    const { data, error } = await this.client
+      .from("entitlements")
+      .select(ENTITLEMENT_COLUMNS)
+      .eq("source", source)
+      .eq("external_order_id", externalOrderId)
+      .maybeSingle<EntitlementRow>();
+
+    if (error) throw error;
+    return data ? toEntitlement(data) : null;
+  }
+
   async findEntitlementsByOwnerId(ownerId: string): Promise<Entitlement[]> {
     const { data, error } = await this.client
       .from("entitlements")

@@ -37,12 +37,23 @@ import { isValidEmail } from "@/lib/auth/validate-email";
 export type AdminSupportQuery =
   | { kind: "ownerEmail"; value: string }
   | { kind: "entitlementId"; value: string }
-  | { kind: "memorialId"; value: string };
+  | { kind: "memorialId"; value: string }
+  /**
+   * Mission 019B — an Etsy order reference.
+   *
+   * The one identifier a family actually has in hand. Every other mode
+   * here needs something they have never seen: an internal UUID, or the
+   * email of an owner record that does not exist until they activate. A
+   * guest buyer who cannot use the OAuth path has exactly one thing to
+   * quote to support, and before this it matched nothing.
+   */
+  | { kind: "externalOrderId"; value: string };
 
 export const ADMIN_SUPPORT_QUERY_KINDS = [
   "ownerEmail",
   "entitlementId",
   "memorialId",
+  "externalOrderId",
 ] as const satisfies readonly AdminSupportQuery["kind"][];
 
 export type AdminSupportQueryKind = (typeof ADMIN_SUPPORT_QUERY_KINDS)[number];
@@ -159,6 +170,38 @@ async function searchByMemorialId(
   };
 }
 
+/**
+ * Mission 019B — an Etsy order reference is a decimal receipt id.
+ *
+ * Validated before any read, exactly like the UUID modes: a typed
+ * reference that cannot be an Etsy receipt id is refused here rather
+ * than sent to the database. Bounded in length so a pasted paragraph
+ * never becomes a query.
+ */
+const EXTERNAL_ORDER_ID = /^[0-9]{1,32}$/;
+
+async function searchByExternalOrderId(
+  repository: AdminSupportRepository,
+  externalOrderId: string,
+): Promise<AdminSupportSearchResult> {
+  // `"etsy"` is fixed here rather than taken from the query. It is the
+  // only external channel that issues an order reference today, and
+  // letting a caller choose the source would widen a support lookup into
+  // a way to probe the whole `(source, external_order_id)` space.
+  const entitlement = await repository.findEntitlementByExternalOrder("etsy", externalOrderId);
+  if (!entitlement) return { status: "notFound" };
+
+  const memorial = await repository.findMemorialSummaryByEntitlementId(entitlement.id);
+
+  // Same rule as searchByEntitlementId: the owner comes from the right's
+  // own `ownerId`, never from anything the caller typed.
+  const owner = entitlement.ownerId
+    ? await repository.findOwnerById(entitlement.ownerId)
+    : null;
+
+  return { status: "found", record: { owner, entitlements: [{ entitlement, memorial }] } };
+}
+
 export async function searchAdminSupport(
   { adminSupportRepository }: AdminSupportSearchDeps,
   query: AdminSupportQuery,
@@ -180,6 +223,11 @@ export async function searchAdminSupport(
     case "memorialId":
       return isUuid(value)
         ? searchByMemorialId(adminSupportRepository, value)
+        : { status: "invalidQuery", reason: "malformedId" };
+
+    case "externalOrderId":
+      return EXTERNAL_ORDER_ID.test(value)
+        ? searchByExternalOrderId(adminSupportRepository, value)
         : { status: "invalidQuery", reason: "malformedId" };
   }
 }

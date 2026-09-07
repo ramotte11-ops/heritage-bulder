@@ -114,8 +114,14 @@ export async function runAdminSupportSearch(
  * from a session Supabase itself validated. It never comes from, and is
  * never influenced by, anything a browser sent — see
  * lib/auth/heritage-actor.ts.
+ *
+ * Exported since Mission 019B so the Etsy support wiring
+ * (lib/integration/etsy/support-session.ts) passes through this exact
+ * gate rather than assembling a second one. The direction of the import
+ * is deliberate: the Etsy layer depends on the Admin gate, never the
+ * reverse — nothing in lib/admin/ names Etsy.
  */
-async function requireAdminIdentityForRequest(): Promise<
+export async function requireAdminIdentityForRequest(): Promise<
   { status: "granted"; adminAuthUserId: string } | { status: "denied" }
 > {
   const actor = await getHeritageActor();
