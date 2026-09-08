@@ -1,0 +1,57 @@
+/*
+ * Mission 028 — HERITAGE design tokens: layer B, semantic tokens.
+ *
+ * Components should read from *this* file, not from `primitives.css`
+ * directly — `text-primary`, not `ink-900`. A name here describes a
+ * role ("this is the primary accent action"), not a color; the day the
+ * olive is ever revisited, or a future skin (Mission 029+) needs to
+ * point `accent-primary` somewhere else, every component that asked
+ * for "the accent" keeps working unchanged.
+ *
+ * No client-facing control reads or writes any of this (mission brief
+ * section 2 — the client never chooses typography or colors). These
+ * variables exist purely for components to consume; nothing exposes
+ * them for end-user choice.
+ *
+ * No skin runtime is implemented here — that is a later mission's job.
+ * This file only makes that future mission's job smaller: a future
+ * variation could plausibly override a handful of these semantic
+ * tokens under its own scoping mechanism without ever touching
+ * component CSS. No such mechanism exists yet, and none is added here.
+ */
+
+@import "./primitives.css";
+
+:root {
+  /* --- Typography ------------------------------------------------- */
+  --heritage-font-family-serif: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  --heritage-font-family-sans: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+
+  /* --- Text ---------------------------------------------------------- */
+  --heritage-text-primary: var(--heritage-color-ink-900);
+  --heritage-text-secondary: var(--heritage-color-ink-600);
+
+  /* --- Surfaces / borders --------------------------------------------- */
+  --heritage-surface-page: var(--heritage-color-cream-100);
+  --heritage-surface-card: var(--heritage-color-paper);
+  --heritage-surface-selected: var(--heritage-color-sand-100);
+  --heritage-border-soft: var(--heritage-color-sand-300);
+  --heritage-border-selected: var(--heritage-color-sand-500);
+
+  /* --- Accent / action ------------------------------------------------- */
+  --heritage-accent-primary: var(--heritage-color-olive-700);
+  --heritage-accent-primary-hover: var(--heritage-color-olive-800);
+  /* Focus rings reuse the accent color rather than a separate value —
+     that was already true of every hardcoded `outline` in the Builder
+     (ChoiceCard, PrimaryButton, Preview triggers all used #3e4a34). */
+  --heritage-focus-ring: var(--heritage-color-olive-700);
+
+  /* --- State ----------------------------------------------------------- */
+  --heritage-state-disabled-surface: var(--heritage-color-stone-300);
+  --heritage-state-disabled-text: var(--heritage-color-stone-500);
+  --heritage-state-error-text: var(--heritage-color-rust-700);
+
+  /* --- Progress ---------------------------------------------------------- */
+  --heritage-progress-track: var(--heritage-color-sand-200);
+  --heritage-progress-fill: var(--heritage-color-olive-700);
+}

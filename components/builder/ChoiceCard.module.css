@@ -4,16 +4,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--heritage-space-md);
   min-height: 3.5rem; /* 56px mobile, per the Studio spec */
   padding: 0 1.125rem;
-  border-radius: 12px;
-  border: 1px solid #e0d9cc;
-  background: #ffffff;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
   cursor: pointer;
   transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
+    background-color var(--heritage-motion-fast) var(--heritage-easing-standard),
+    border-color var(--heritage-motion-fast) var(--heritage-easing-standard);
 }
 
 @media (min-width: 40rem) {
@@ -24,8 +24,8 @@
 }
 
 .cardSelected {
-  background: #f2ede2;
-  border-color: #b7a98a;
+  background: var(--heritage-surface-selected);
+  border-color: var(--heritage-border-selected);
 }
 
 /* The real control: kept in the accessibility tree and in tab order,
@@ -44,19 +44,19 @@
 }
 
 .label {
-  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-family: var(--heritage-font-family-sans);
   font-size: 1rem;
-  color: #2b2b28;
+  color: var(--heritage-text-primary);
 }
 
 .indicator {
   flex-shrink: 0;
   display: flex;
-  color: #6f6b63;
+  color: var(--heritage-text-secondary);
 }
 
 .cardSelected .indicator {
-  color: #3e4a34;
+  color: var(--heritage-accent-primary);
 }
 
 /*
@@ -71,7 +71,7 @@
 .roomy {
   align-items: flex-start;
   padding: 1.25rem 1.25rem;
-  gap: 1rem;
+  gap: var(--heritage-space-lg);
 }
 
 .roomy .indicator {
@@ -83,6 +83,6 @@
    "isFocused" flag. */
 .card:has(.input:focus-visible),
 .cardSelected:has(.input:focus-visible) {
-  outline: 2px solid #3e4a34;
+  outline: 2px solid var(--heritage-focus-ring);
   outline-offset: 2px;
 }

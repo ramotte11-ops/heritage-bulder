@@ -9,14 +9,14 @@
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--heritage-space-sm);
 }
 
 .title {
-  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-family: var(--heritage-font-family-serif);
   font-weight: 600;
   font-size: 1.625rem;
-  color: #2b2b28;
+  color: var(--heritage-text-primary);
 }
 
 @media (min-width: 40rem) {
@@ -27,13 +27,13 @@
 
 .subtitle {
   font-size: 0.9375rem;
-  color: #6f6b63;
+  color: var(--heritage-text-secondary);
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 2rem; /* "espace avant CTA", same as T01 */
+  gap: var(--heritage-space-breathing); /* "espace avant CTA", same as T01 */
 }
 
 .fieldset {
@@ -72,24 +72,24 @@
 
 .cardTitle {
   display: block;
-  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-family: var(--heritage-font-family-sans);
   font-weight: 600;
   font-size: 1rem;
-  color: #2b2b28;
+  color: var(--heritage-text-primary);
 }
 
 .cardDescription {
   display: block;
-  margin-top: 0.375rem;
-  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  margin-top: var(--heritage-space-xs);
+  font-family: var(--heritage-font-family-sans);
   font-size: 0.875rem;
   line-height: 1.45;
-  color: #6f6b63;
+  color: var(--heritage-text-secondary);
 }
 
 .error {
   font-size: 0.875rem;
-  color: #8a3b2f;
+  color: var(--heritage-state-error-text);
 }
 
 .srOnly {

@@ -4,29 +4,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  border-radius: 12px;
+  gap: var(--heritage-space-sm);
+  border-radius: var(--heritage-radius-control);
   border: none;
-  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-family: var(--heritage-font-family-sans);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  background: #3e4a34;
-  color: #ffffff;
-  transition: background-color 0.15s ease;
+  background: var(--heritage-accent-primary);
+  color: var(--heritage-surface-card);
+  transition: background-color var(--heritage-motion-fast) var(--heritage-easing-standard);
 }
 
 .button:disabled {
-  background: #d7d2c7;
-  color: #8f887a;
+  background: var(--heritage-state-disabled-surface);
+  color: var(--heritage-state-disabled-text);
   cursor: not-allowed;
 }
 
 .button:not(:disabled):hover {
-  background: #333d2b;
+  background: var(--heritage-accent-primary-hover);
 }
 
 .button:focus-visible {
-  outline: 2px solid #3e4a34;
+  outline: 2px solid var(--heritage-focus-ring);
   outline-offset: 2px;
 }

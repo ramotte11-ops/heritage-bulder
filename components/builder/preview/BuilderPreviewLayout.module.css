@@ -1,14 +1,14 @@
 /*
  * Mission 026 — Live Preview layout mechanic.
  *
- * Reuses the existing Builder grammar (BuilderScreen.module.css /
- * PrimaryButton.module.css / ChoiceCard.module.css): the same ink
- * (#2b2b28 / #6f6b63), the same accent (#3e4a34), the same card border
- * (#e0d9cc) and radius (12px), the same 40rem breakpoint T01/T02 already
- * use. No new palette, no new background image — this file only
- * arranges the Builder/Preview relationship; whatever chrome (Studio
- * background, logo, signature) wraps it is a future Guided Flow screen's
- * own concern, exactly like BuilderScreen already is for T01/T02.
+ * Reuses the existing Builder grammar, now via the Mission 028 HERITAGE
+ * tokens (styles/tokens/): the same ink/secondary text, the same
+ * accent, the same card border and radius, the same 40rem breakpoint
+ * T01/T02 already use. No new palette, no new background image — this
+ * file only arranges the Builder/Preview relationship; whatever chrome
+ * (Studio background, logo, signature) wraps it is a future Guided Flow
+ * screen's own concern, exactly like BuilderScreen already is for
+ * T01/T02.
  *
  * The mobile/desktop split below is the ENTIRE mobile mechanic (mission
  * brief section 8): both panes are always in the DOM (see
@@ -44,7 +44,7 @@
 .previewControls {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 1rem;
+  margin-bottom: var(--heritage-space-lg);
 }
 
 .openTrigger,
@@ -52,32 +52,32 @@
 .closeTriggerMobile {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  border: 1px solid #e0d9cc;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #3e4a34;
-  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  gap: var(--heritage-space-xs);
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-pill);
+  background: var(--heritage-surface-card);
+  color: var(--heritage-accent-primary);
+  font-family: var(--heritage-font-family-sans);
   font-size: 0.8125rem;
   font-weight: 500;
   padding: 0.625rem 1.125rem;
   cursor: pointer;
   transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
+    background-color var(--heritage-motion-fast) var(--heritage-easing-standard),
+    border-color var(--heritage-motion-fast) var(--heritage-easing-standard);
 }
 
 .openTrigger:hover,
 .closeTriggerDesktop:hover,
 .closeTriggerMobile:hover {
-  background: #f2ede2;
-  border-color: #b7a98a;
+  background: var(--heritage-surface-selected);
+  border-color: var(--heritage-border-selected);
 }
 
 .openTrigger:focus-visible,
 .closeTriggerDesktop:focus-visible,
 .closeTriggerMobile:focus-visible {
-  outline: 2px solid #3e4a34;
+  outline: 2px solid var(--heritage-focus-ring);
   outline-offset: 2px;
 }
 
@@ -88,7 +88,7 @@
   display: flex;
   width: 100%;
   justify-content: center;
-  margin-top: 1.5rem;
+  margin-top: var(--heritage-space-xl);
 }
 
 .closeTriggerDesktop {
@@ -102,7 +102,7 @@
     display: grid;
     grid-template-columns: minmax(300px, 420px) 1fr;
     align-items: start;
-    gap: 2rem;
+    gap: var(--heritage-space-breathing);
   }
 
   .shell[data-mode="split"] .builderPane,
@@ -132,7 +132,7 @@
   .shell[data-mode="closed"] .openTrigger {
     display: inline-flex;
     width: auto;
-    margin-top: 1rem;
+    margin-top: var(--heritage-space-lg);
   }
 
   .closeTriggerDesktop {

@@ -16,14 +16,14 @@
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: var(--heritage-space-xs);
 }
 
 .title {
-  font-family: var(--font-heritage-serif, "Playfair Display", Georgia, serif);
+  font-family: var(--heritage-font-family-serif);
   font-weight: 600;
   font-size: 1.75rem;
-  color: #2b2b28;
+  color: var(--heritage-text-primary);
 }
 
 @media (min-width: 40rem) {
@@ -34,13 +34,13 @@
 
 .subcopy {
   font-size: 0.9375rem;
-  color: #6f6b63;
+  color: var(--heritage-text-secondary);
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 2rem; /* "espace avant CTA" per the Studio spec */
+  gap: var(--heritage-space-breathing); /* "espace avant CTA" per the Studio spec */
 }
 
 .fieldset {
@@ -52,7 +52,7 @@
 .options {
   display: flex;
   flex-direction: column;
-  gap: 1rem; /* "espacement entre cartes" per the Studio spec */
+  gap: var(--heritage-space-lg); /* "espacement entre cartes" per the Studio spec */
 }
 
 /*
@@ -66,7 +66,7 @@
 @media (min-width: 40rem) {
   .options {
     flex-direction: row;
-    gap: 1rem;
+    gap: var(--heritage-space-lg);
   }
 
   .options > * {
@@ -77,7 +77,7 @@
 
 .error {
   font-size: 0.875rem;
-  color: #8a3b2f;
+  color: var(--heritage-state-error-text);
 }
 
 .srOnly {
