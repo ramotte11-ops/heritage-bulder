@@ -12,13 +12,21 @@ import {
   type SectionSelectionInput,
 } from "./section-selection";
 
-const announcement = (flowState?: HumanFlowState): SectionSelectionInput => ({
+const announcement = (
+  flowState?: HumanFlowState,
+  explicitContentSectionIds?: SectionSelectionInput["explicitContentSectionIds"],
+): SectionSelectionInput => ({
   editorialContext: "announcement",
   flowState,
+  explicitContentSectionIds,
 });
-const remembrance = (flowState?: HumanFlowState): SectionSelectionInput => ({
+const remembrance = (
+  flowState?: HumanFlowState,
+  explicitContentSectionIds?: SectionSelectionInput["explicitContentSectionIds"],
+): SectionSelectionInput => ({
   editorialContext: "remembrance",
   flowState,
+  explicitContentSectionIds,
 });
 
 describe("Hero/Footer — always structural, never selectable (mission brief section 2)", () => {
@@ -28,9 +36,12 @@ describe("Hero/Footer — always structural, never selectable (mission brief sec
     }
   });
 
-  it("hero stays structural regardless of A04", () => {
+  it("hero stays structural regardless of A04 or the content signal", () => {
     expect(
-      resolveSectionSelectionStatus("hero", announcement({ A04: { status: "completed", answer: "yes" } })),
+      resolveSectionSelectionStatus(
+        "hero",
+        announcement({ A04: { status: "completed", answer: "yes" } }, ["hero"]),
+      ),
     ).toBe("structural");
   });
 
@@ -42,8 +53,13 @@ describe("Hero/Footer — always structural, never selectable (mission brief sec
 });
 
 describe("announcement — death notice", () => {
-  it("is possible (recommended, mandatory) in announcement", () => {
+  it("is possible: recommended (mandatory, no content signal yet)", () => {
     expect(resolveSectionSelectionStatus("deathNotice", announcement())).toBe("recommended");
+  });
+
+  it("becomes applicable once the generic content signal names it", () => {
+    const input = announcement(undefined, ["deathNotice"]);
+    expect(resolveSectionSelectionStatus("deathNotice", input)).toBe("applicable");
   });
 });
 
@@ -52,28 +68,33 @@ describe("remembrance — death notice", () => {
     expect(resolveSectionSelectionStatus("deathNotice", remembrance())).toBe("notRelevant");
   });
 
-  it("never appears in remembrance's bulk resolution as recommended or available", () => {
+  it("stays not relevant even if a content signal tries to force it — context always wins", () => {
+    const input = remembrance(undefined, ["deathNotice"]);
+    expect(resolveSectionSelectionStatus("deathNotice", input)).toBe("notRelevant");
+  });
+
+  it("never appears in remembrance's bulk resolution as recommended, applicable, or available", () => {
     const result = resolveSectionSelection(remembrance());
     expect(result.deathNotice).toBe("notRelevant");
   });
 });
 
 describe("A04 yes/no/undecided — ceremony applicability", () => {
-  it("A04=yes makes ceremony/details applicable (recommended)", () => {
+  it("A04=yes makes ceremony applicable", () => {
     const input = announcement({ A04: { status: "completed", answer: "yes" } });
     const status = resolveSectionSelectionStatus("ceremony", input);
-    expect(status).toBe("recommended");
+    expect(status).toBe("applicable");
     expect(isSectionApplicable(status)).toBe(true);
   });
 
-  it("A04=no makes ceremony detail sections not applicable", () => {
+  it("A04=no makes ceremony not applicable", () => {
     const input = announcement({ A04: { status: "completed", answer: "no" } });
     const status = resolveSectionSelectionStatus("ceremony", input);
     expect(status).toBe("notRelevant");
     expect(isSectionApplicable(status)).toBe(false);
   });
 
-  it("A04=undecided leaves details not applicable now, without blocking", () => {
+  it("A04=undecided leaves ceremony not applicable now, without blocking", () => {
     const input = announcement({ A04: { status: "completed", answer: "undecided" } });
     const status = resolveSectionSelectionStatus("ceremony", input);
     // Not applicable right now — but resolving it never throws and never
@@ -95,11 +116,30 @@ describe("A04 yes/no/undecided — ceremony applicability", () => {
     expect(resolveSectionSelectionStatus("ceremony", input)).toBe("notRelevant");
   });
 
-  it("recalculates ceremony immediately if A04 flips from no to yes", () => {
-    const no = resolveSectionSelectionStatus("ceremony", announcement({ A04: { status: "completed", answer: "no" } }));
-    const yes = resolveSectionSelectionStatus("ceremony", announcement({ A04: { status: "completed", answer: "yes" } }));
+  it("recalculates ceremony immediately if A04 flips from no to yes — nothing is a one-way door", () => {
+    const no = resolveSectionSelectionStatus(
+      "ceremony",
+      announcement({ A04: { status: "completed", answer: "no" } }),
+    );
+    const yes = resolveSectionSelectionStatus(
+      "ceremony",
+      announcement({ A04: { status: "completed", answer: "yes" } }),
+    );
     expect(no).toBe("notRelevant");
-    expect(yes).toBe("recommended");
+    expect(yes).toBe("applicable");
+  });
+
+  it("and back again if the family changes their mind from yes to no", () => {
+    const yes = resolveSectionSelectionStatus(
+      "ceremony",
+      announcement({ A04: { status: "completed", answer: "yes" } }),
+    );
+    const no = resolveSectionSelectionStatus(
+      "ceremony",
+      announcement({ A04: { status: "completed", answer: "no" } }),
+    );
+    expect(yes).toBe("applicable");
+    expect(no).toBe("notRelevant");
   });
 });
 
@@ -114,12 +154,39 @@ describe("remembrance — funeral traditions never automatically applicable", ()
     const input = remembrance({ A04: { status: "completed", answer: "yes" } });
     expect(resolveSectionSelectionStatus("traditions", input)).toBe("notRelevant");
   });
+
+  it("stays not relevant even if a content signal tries to force it — context always wins", () => {
+    const input = remembrance(undefined, ["traditions"]);
+    expect(resolveSectionSelectionStatus("traditions", input)).toBe("notRelevant");
+  });
 });
 
-describe("traditions — choix explicite uniquement (mission brief section 8)", () => {
-  it("is available but never recommended in announcement", () => {
+describe("traditions — choix explicite uniquement (mission brief section 6/8)", () => {
+  it("is available but not applicable in announcement with no explicit signal", () => {
     const status = resolveSectionSelectionStatus("traditions", announcement());
     expect(status).toBe("optionalAvailable");
+    expect(isSectionApplicable(status)).toBe(false);
+  });
+
+  it("becomes applicable once the family's explicit choice is signaled", () => {
+    const input = announcement(undefined, ["traditions"]);
+    const status = resolveSectionSelectionStatus("traditions", input);
+    expect(status).toBe("applicable");
+    expect(isSectionApplicable(status)).toBe(true);
+  });
+
+  it("reverts to optionalAvailable if the family withdraws that choice", () => {
+    const withChoice = resolveSectionSelectionStatus("traditions", announcement(undefined, ["traditions"]));
+    const withdrawn = resolveSectionSelectionStatus("traditions", announcement(undefined, []));
+    expect(withChoice).toBe("applicable");
+    expect(withdrawn).toBe("optionalAvailable");
+  });
+
+  it("never reaches recommended — only optionalAvailable or applicable, never pushed by default", () => {
+    expect(resolveSectionSelectionStatus("traditions", announcement())).not.toBe("recommended");
+    expect(resolveSectionSelectionStatus("traditions", announcement(undefined, ["traditions"]))).not.toBe(
+      "recommended",
+    );
   });
 
   it("stays merely available even when A04=yes (A04 only ever drives ceremony, never traditions)", () => {
@@ -128,7 +195,7 @@ describe("traditions — choix explicite uniquement (mission brief section 8)", 
   });
 });
 
-describe("any offer/skin — never auto-enables religion/traditions (mission brief section 8)", () => {
+describe("any offer/skin — never auto-enables religion/traditions (mission brief section 6/8)", () => {
   it("SectionSelectionInput structurally cannot carry a skin or offer", () => {
     const input: SectionSelectionInput = {
       editorialContext: "announcement",
@@ -155,23 +222,43 @@ describe("any offer/skin — never auto-enables religion/traditions (mission bri
   });
 });
 
-describe("optional sections remain optional where UX-A says optional", () => {
-  it("gallery is available but not pushed as recommended in either context", () => {
+describe("optional sections: optionalAvailable without matter, applicable with matter (mission brief section 9)", () => {
+  it("gallery has no default matter in either context", () => {
     expect(resolveSectionSelectionStatus("gallery", announcement())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("gallery", remembrance())).toBe("optionalAvailable");
   });
 
-  it("testimonials, video and condolences stay optional in announcement", () => {
+  it("gallery becomes applicable once photos give it real matter", () => {
+    expect(resolveSectionSelectionStatus("gallery", announcement(undefined, ["gallery"]))).toBe(
+      "applicable",
+    );
+    expect(resolveSectionSelectionStatus("gallery", remembrance(undefined, ["gallery"]))).toBe(
+      "applicable",
+    );
+  });
+
+  it("gallery reverts to optionalAvailable once the photos are removed again", () => {
+    const withPhotos = resolveSectionSelectionStatus("gallery", announcement(undefined, ["gallery"]));
+    const withoutPhotos = resolveSectionSelectionStatus("gallery", announcement(undefined, []));
+    expect(withPhotos).toBe("applicable");
+    expect(withoutPhotos).toBe("optionalAvailable");
+  });
+
+  it("testimonials, video and condolences stay optional in announcement without a signal", () => {
     expect(resolveSectionSelectionStatus("testimonials", announcement())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("video", announcement())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("condolences", announcement())).toBe("optionalAvailable");
   });
 
-  it("story, testimonials, memoryMessage and video stay optional in remembrance", () => {
+  it("story, testimonials, memoryMessage and video stay optional in remembrance without a signal", () => {
     expect(resolveSectionSelectionStatus("story", remembrance())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("testimonials", remembrance())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("memoryMessage", remembrance())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("video", remembrance())).toBe("optionalAvailable");
+  });
+
+  it("story becomes applicable in remembrance once the signal names it", () => {
+    expect(resolveSectionSelectionStatus("story", remembrance(undefined, ["story"]))).toBe("applicable");
   });
 });
 
@@ -196,9 +283,14 @@ describe("unknown/invalid state — fail-safe (mission brief section 12)", () =>
     }
   });
 
-  it("an empty flowState never recommends a sensitive section (ceremony)", () => {
+  it("an empty flowState never makes a sensitive section applicable (ceremony)", () => {
     const status = resolveSectionSelectionStatus("ceremony", announcement({}));
-    expect(status).not.toBe("recommended");
+    expect(status).not.toBe("applicable");
+  });
+
+  it("an absent content signal never makes a section applicable", () => {
+    const result = resolveSectionSelection(announcement());
+    expect(Object.values(result)).not.toContain("applicable");
   });
 });
 
@@ -209,7 +301,7 @@ describe("resolveSectionSelection — bulk resolution", () => {
   });
 
   it("agrees with the single-section resolver for every id", () => {
-    const input = announcement({ A04: { status: "completed", answer: "yes" } });
+    const input = announcement({ A04: { status: "completed", answer: "yes" } }, ["gallery", "traditions"]);
     const bulk = resolveSectionSelection(input);
     for (const id of SECTION_IDS) {
       expect(bulk[id]).toBe(resolveSectionSelectionStatus(id, input));
@@ -218,30 +310,45 @@ describe("resolveSectionSelection — bulk resolution", () => {
 });
 
 describe("sectionIdsWithStatus", () => {
-  it("returns recommended sections for announcement with A04=yes, in canonical order", () => {
+  it("returns recommended sections for announcement with A04=yes but no content signal", () => {
     const input = announcement({ A04: { status: "completed", answer: "yes" } });
-    expect(sectionIdsWithStatus(input, "recommended")).toEqual(["deathNotice", "ceremony"]);
+    // deathNotice is mandatory with no content signal yet -> recommended.
+    // ceremony is driven straight to applicable by A04=yes, so it is NOT
+    // in the recommended bucket.
+    expect(sectionIdsWithStatus(input, "recommended")).toEqual(["deathNotice"]);
+    expect(sectionIdsWithStatus(input, "applicable")).toEqual(["ceremony"]);
   });
 
-  it("never includes hero in the recommended bucket (hero is structural, not recommended)", () => {
+  it("never includes hero in the recommended or applicable bucket (hero is structural)", () => {
     const input = announcement({ A04: { status: "completed", answer: "yes" } });
     expect(sectionIdsWithStatus(input, "recommended")).not.toContain("hero");
+    expect(sectionIdsWithStatus(input, "applicable")).not.toContain("hero");
     expect(sectionIdsWithStatus(input, "structural")).toEqual(["hero"]);
   });
 
   it("traditions never appears in the recommended bucket", () => {
     expect(sectionIdsWithStatus(announcement(), "recommended")).not.toContain("traditions");
     expect(
-      sectionIdsWithStatus(announcement({ A04: { status: "completed", answer: "yes" } }), "recommended"),
+      sectionIdsWithStatus(
+        announcement({ A04: { status: "completed", answer: "yes" } }),
+        "recommended",
+      ),
     ).not.toContain("traditions");
   });
 });
 
-describe("isSectionApplicable", () => {
-  it("is true for structural, recommended and optionalAvailable; false only for notRelevant", () => {
+describe("isSectionApplicable — QG micro-correction", () => {
+  it("is true only for structural and applicable", () => {
     expect(isSectionApplicable("structural")).toBe(true);
-    expect(isSectionApplicable("recommended")).toBe(true);
-    expect(isSectionApplicable("optionalAvailable")).toBe(true);
+    expect(isSectionApplicable("applicable")).toBe(true);
+  });
+
+  it("is false for recommended and optionalAvailable — neither one means 'has content yet'", () => {
+    expect(isSectionApplicable("recommended")).toBe(false);
+    expect(isSectionApplicable("optionalAvailable")).toBe(false);
+  });
+
+  it("is false for notRelevant", () => {
     expect(isSectionApplicable("notRelevant")).toBe(false);
   });
 });
