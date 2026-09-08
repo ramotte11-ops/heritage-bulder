@@ -28,4 +28,7 @@ export const en: Record<TranslationKey, string> = {
   "context.remembranceTitle": "Memory & Tribute",
   "context.remembranceDescription":
     "Create a lasting space of remembrance centered on the person's life, story, and memory.",
+  "preview.view": "View preview",
+  "preview.hide": "Hide preview",
+  "preview.backToCreation": "Back to creation",
 };

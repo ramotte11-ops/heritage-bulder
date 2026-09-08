@@ -36,6 +36,17 @@
  * after a component. T02's CTA reuses `common.continue` again, and
  * reaching an unconfigured memorial past T02 reuses the same
  * `builder.notConfiguredYet` T01 already uses — no third stopgap text.
+ *
+ * Mission 026 adds a `preview` namespace for the Live Preview layout
+ * mechanic's three own controls (mission brief sections 5, 6, 8) — the
+ * discreet access label shown once the preview is unlocked but closed
+ * ("Voir l'aperçu", reused verbatim on mobile for the same concept), the
+ * desktop dismiss label ("Masquer l'aperçu"), and the mobile-only return
+ * label ("Revenir à la création"), which is deliberately its own key
+ * rather than reusing `common.back` — the QG-validated copy names the
+ * destination ("la création"), a concept `common.back` does not carry.
+ * None of the three is named after a component, same convention as
+ * every namespace above.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -55,6 +66,10 @@ export const TRANSLATION_KEYS = [
   "context.announcementDescription",
   "context.remembranceTitle",
   "context.remembranceDescription",
+  // Mission 026 — Live Preview layout mechanic.
+  "preview.view",
+  "preview.hide",
+  "preview.backToCreation",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
