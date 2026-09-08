@@ -1,0 +1,87 @@
+/*
+ * Mission 028 — HERITAGE design tokens: layer A, primitives.
+ *
+ * Raw values only. Nothing here describes what a value is *for* — that
+ * is `semantic.css`'s job, one layer up. Components should not reach
+ * into this file directly (see `semantic.css`'s own docstring).
+ *
+ * Every color below is copied verbatim from either the Mission 028
+ * brief's validated Builder palette (section 5) or an already-shipped,
+ * hardcoded value found in `components/builder/*.module.css` during
+ * this mission's audit (Mission 023/024/026 — T01/T02/Preview). No
+ * value here is new or invented; centralizing is the only change.
+ * See the mission report for the full hardcoded-value inventory this
+ * was built from.
+ */
+
+:root {
+  /* --- Colors -------------------------------------------------------
+   * Named for their hue/role in the palette, not their literal use
+   * site — a name like `ink-900` stays correct even where the semantic
+   * layer later points a *different* role at the same value.
+   */
+  --heritage-color-ink-900: #2b2b28; /* texte principal */
+  --heritage-color-ink-600: #6f6b63; /* texte secondaire */
+  --heritage-color-paper: #ffffff; /* surface carte */
+  --heritage-color-sand-300: #e0d9cc; /* bordure douce */
+  --heritage-color-sand-200: #e6e0d6; /* rail/progression */
+  --heritage-color-sand-100: #f2ede2; /* fond sélectionné */
+  --heritage-color-sand-500: #b7a98a; /* bord sélectionné */
+  --heritage-color-olive-700: #3e4a34; /* accent/action olive — validated, do not replace */
+  --heritage-color-olive-800: #333d2b; /* accent hover — existing hardcoded PrimaryButton hover shade */
+  --heritage-color-stone-300: #d7d2c7; /* désactivé (surface) */
+  --heritage-color-stone-500: #8f887a; /* désactivé (text) — existing hardcoded PrimaryButton disabled text */
+  --heritage-color-rust-700: #8a3b2f; /* error text — existing hardcoded T01/T02 .error */
+  --heritage-color-cream-100: #f6f1e7; /* Builder page fallback before the background photo loads */
+
+  /* --- Fonts ----------------------------------------------------------
+   * These are indirections onto `--font-heritage-serif` /
+   * `--font-heritage-sans`, the CSS custom properties `next/font`
+   * itself generates from `components/builder/fonts.ts`. Those two are
+   * deliberately scoped locally (applied on BuilderScreen's own
+   * `.page` element, not the root layout — see `fonts.ts`'s docstring)
+   * rather than declared here, so this mission leaves that scoping
+   * untouched; see `semantic.css` for how the two layers connect.
+   */
+
+  /* --- Spacing --------------------------------------------------------
+   * Derived from the recurring general-purpose gap/margin values
+   * already used across T01/T02/Preview (Mission 023/024/026) — not
+   * new values. Positional one-offs (a signature's corner offset, a
+   * hairline nudge) stay inline rather than being forced into this
+   * scale; see the mission report.
+   */
+  --heritage-space-xs: 0.375rem; /* 6px */
+  --heritage-space-sm: 0.5rem; /* 8px */
+  --heritage-space-md: 0.75rem; /* 12px */
+  --heritage-space-lg: 1rem; /* 16px */
+  --heritage-space-xl: 1.5rem; /* 24px */
+  --heritage-space-breathing: 2rem; /* 32px — "espace avant CTA" */
+
+  /* --- Radius ----------------------------------------------------------
+   * Only the two levels actually in use.
+   */
+  --heritage-radius-control: 12px; /* ChoiceCard / PrimaryButton, per Studio spec */
+  --heritage-radius-pill: 999px; /* ProgressBar track, Preview trigger pills */
+
+  /* --- Shadow -----------------------------------------------------------
+   * Foundation only — no Builder surface currently uses a shadow, and
+   * this mission does not add one anywhere (section 9: no reinforcing
+   * existing depth). Values are deliberately subtle ("papier / calme /
+   * profondeur discrète") and wait for a future mission's use and
+   * Studio sign-off before being applied to anything.
+   */
+  --heritage-shadow-paper: 0 1px 2px rgba(43, 43, 40, 0.06);
+  --heritage-shadow-elevated: 0 4px 12px rgba(43, 43, 40, 0.1);
+
+  /* --- Motion -----------------------------------------------------------
+   * `-fast` and `-normal` are the two durations already in use
+   * (ChoiceCard/PrimaryButton/Preview state transitions; ProgressBar's
+   * fill). `-slow` is foundation for a future signature animation, not
+   * used anywhere yet.
+   */
+  --heritage-motion-fast: 0.15s;
+  --heritage-motion-normal: 0.3s;
+  --heritage-motion-slow: 0.6s;
+  --heritage-easing-standard: ease;
+}

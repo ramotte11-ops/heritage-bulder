@@ -6,6 +6,17 @@
  * fonts and colors are product decisions for a later mission.
  */
 
+/*
+ * Mission 028 — the HERITAGE design tokens foundation (primitives +
+ * semantic layer, see styles/tokens/). Declared globally so every
+ * route can read from it, exactly like `--background`/`--foreground`
+ * below — but nothing here changes what those two do, and nothing
+ * below reads from the HERITAGE tokens. Builder components
+ * (T01/T02/Preview) are the only current consumers; see
+ * styles/tokens/semantic.css's own docstring.
+ */
+@import "./tokens/semantic.css";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
