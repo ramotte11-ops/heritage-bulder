@@ -28,4 +28,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "context.remembranceTitle": "Mémoire & Hommage",
   "context.remembranceDescription":
     "Créez un espace de mémoire durable, centré sur la vie, l'histoire et les souvenirs de la personne.",
+  "preview.view": "Voir l'aperçu",
+  "preview.hide": "Masquer l'aperçu",
+  "preview.backToCreation": "Revenir à la création",
 };

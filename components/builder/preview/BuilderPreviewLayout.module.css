@@ -1,0 +1,145 @@
+/*
+ * Mission 026 — Live Preview layout mechanic.
+ *
+ * Reuses the existing Builder grammar (BuilderScreen.module.css /
+ * PrimaryButton.module.css / ChoiceCard.module.css): the same ink
+ * (#2b2b28 / #6f6b63), the same accent (#3e4a34), the same card border
+ * (#e0d9cc) and radius (12px), the same 40rem breakpoint T01/T02 already
+ * use. No new palette, no new background image — this file only
+ * arranges the Builder/Preview relationship; whatever chrome (Studio
+ * background, logo, signature) wraps it is a future Guided Flow screen's
+ * own concern, exactly like BuilderScreen already is for T01/T02.
+ *
+ * The mobile/desktop split below is the ENTIRE mobile mechanic (mission
+ * brief section 8): both panes are always in the DOM (see
+ * BuilderPreviewLayout.tsx's own docstring for why), and only `display`
+ * ever changes which one a given viewport shows — no JS media-query
+ * check, no remount, no device-simulator control anywhere in here.
+ */
+
+.shell {
+  width: 100%;
+}
+
+.builderPane {
+  position: relative;
+}
+
+.previewPane {
+  display: none;
+}
+
+/* --- Mobile (default): exactly one full-screen pane, chosen by mode --- */
+
+.shell[data-mode="split"] .builderPane,
+.shell[data-mode="focus"] .builderPane {
+  display: none;
+}
+
+.shell[data-mode="split"] .previewPane,
+.shell[data-mode="focus"] .previewPane {
+  display: block;
+}
+
+.previewControls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.openTrigger,
+.closeTriggerDesktop,
+.closeTriggerMobile {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid #e0d9cc;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #3e4a34;
+  font-family: var(--font-heritage-sans, Inter, system-ui, sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.625rem 1.125rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.openTrigger:hover,
+.closeTriggerDesktop:hover,
+.closeTriggerMobile:hover {
+  background: #f2ede2;
+  border-color: #b7a98a;
+}
+
+.openTrigger:focus-visible,
+.closeTriggerDesktop:focus-visible,
+.closeTriggerMobile:focus-visible {
+  outline: 2px solid #3e4a34;
+  outline-offset: 2px;
+}
+
+/* On mobile, the still-closed Builder pane's own discreet trigger sits
+   as a full-width row rather than a small floating pill — same label,
+   same button, just given room to be a comfortable tap target. */
+.shell[data-mode="closed"] .openTrigger {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.closeTriggerDesktop {
+  display: none;
+}
+
+/* --- Desktop (>= 40rem): split / focus / closed compositions --- */
+
+@media (min-width: 40rem) {
+  .shell[data-mode="split"] {
+    display: grid;
+    grid-template-columns: minmax(300px, 420px) 1fr;
+    align-items: start;
+    gap: 2rem;
+  }
+
+  .shell[data-mode="split"] .builderPane,
+  .shell[data-mode="focus"] .builderPane {
+    /* Studio état 2: Builder keeps working prominence at this width — a
+       real column, not a hidden pane, on desktop split. */
+    display: block;
+  }
+
+  .shell[data-mode="focus"] .builderPane {
+    /* Studio état 3 ("le Builder s'efface ou devient secondaire"): kept
+       mounted (its own state never resets — see the component's own
+       docstring) but visually stepped back rather than occupying a
+       working column. */
+    display: none;
+  }
+
+  .shell[data-mode="focus"] {
+    display: block;
+  }
+
+  .shell[data-mode="focus"] .previewPane {
+    max-width: 960px;
+    margin-inline: auto;
+  }
+
+  .shell[data-mode="closed"] .openTrigger {
+    display: inline-flex;
+    width: auto;
+    margin-top: 1rem;
+  }
+
+  .closeTriggerDesktop {
+    display: inline-flex;
+  }
+
+  .closeTriggerMobile {
+    display: none;
+  }
+}
