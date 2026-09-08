@@ -27,7 +27,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "direct",
     externalOrderId: null,
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-01T10:00:00.000Z",
@@ -162,7 +162,7 @@ describe("redeemActivationKey — reuses Mission 011B, never re-implements it", 
   });
 
   it("applies the same skin validation before any redemption", async () => {
-    const d = deps({ found: entitlement({ offerId: "occidental" }) });
+    const d = deps({ found: entitlement({ offerId: "intemporel" }) });
 
     const result = await redeemActivationKey(d, {
       identity: IDENTITY,

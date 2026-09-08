@@ -36,7 +36,7 @@ export interface EtsyListingMapping {
  *
  * Example of what a real entry will look like (kept commented out: no
  * invented listing ID is checked in as if it were real):
- *   { listingId: "1234567890", offerId: "occidental" },
+ *   { listingId: "1234567890", offerId: "intemporel" },
  */
 export const ETSY_LISTING_MAPPINGS: readonly EtsyListingMapping[] = [];
 

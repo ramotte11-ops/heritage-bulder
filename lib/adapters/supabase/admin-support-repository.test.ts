@@ -80,7 +80,7 @@ const ENTITLEMENT_ROW = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   source: "etsy",
   external_order_id: "ORDER-1",
-  offer_id: "occidental",
+  offer_id: "intemporel",
   status: "redeemed",
   owner_id: OWNER_ROW.id,
   created_at: "2026-01-01T00:00:00.000Z",

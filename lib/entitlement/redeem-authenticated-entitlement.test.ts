@@ -40,7 +40,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: ENTITLEMENT_ID,
     source: "direct",
     externalOrderId: null,
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-01T10:00:00.000Z",
@@ -181,8 +181,8 @@ describe("redeemAuthenticatedEntitlement — Offer drives type and skin", () => 
 
   it("H: asks for a choice when an offer allows several skins and none was supplied", async () => {
     // Simulates the future multi-skin offer this must not guess at.
-    const multiSkin = { ...OFFERS.occidental, allowedSkins: ["intemporel", "maghreb"] as const };
-    vi.spyOn(OFFERS, "occidental", "get").mockReturnValue(multiSkin);
+    const multiSkin = { ...OFFERS.intemporel, allowedSkins: ["intemporel", "musulman"] as const };
+    vi.spyOn(OFFERS, "intemporel", "get").mockReturnValue(multiSkin);
     const d = deps();
 
     const result = await redeemAuthenticatedEntitlement(d, {
@@ -192,26 +192,26 @@ describe("redeemAuthenticatedEntitlement — Offer drives type and skin", () => 
 
     expect(result).toEqual({
       status: "skinSelectionRequired",
-      allowedSkins: ["intemporel", "maghreb"],
+      allowedSkins: ["intemporel", "musulman"],
     });
     expect(d.redeem).not.toHaveBeenCalled();
   });
 
   it("uses the supplied skin when the offer allows it", async () => {
-    const d = deps({ entitlementRow: entitlement({ offerId: "arabe" }) });
+    const d = deps({ entitlementRow: entitlement({ offerId: "musulman" }) });
 
     const result = await redeemAuthenticatedEntitlement(d, {
       identity: IDENTITY,
       entitlementId: ENTITLEMENT_ID,
-      selectedSkin: "maghreb",
+      selectedSkin: "musulman",
     });
 
     expect(result.status).toBe("redeemed");
-    expect(d.redeem).toHaveBeenCalledWith(expect.objectContaining({ skinId: "maghreb" }));
+    expect(d.redeem).toHaveBeenCalledWith(expect.objectContaining({ skinId: "musulman" }));
   });
 
   it("I: refuses a skin the offer does not allow, before any RPC call", async () => {
-    const d = deps({ entitlementRow: entitlement({ offerId: "occidental" }) });
+    const d = deps({ entitlementRow: entitlement({ offerId: "intemporel" }) });
 
     const result = await redeemAuthenticatedEntitlement(d, {
       identity: IDENTITY,

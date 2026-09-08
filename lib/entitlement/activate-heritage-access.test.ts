@@ -28,7 +28,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "direct",
     externalOrderId: null,
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-05T10:00:00.000Z",

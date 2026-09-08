@@ -11,7 +11,7 @@ import { receiveEtsyPurchase } from "./receive-purchase";
  */
 
 const MAPPINGS: readonly EtsyListingMapping[] = [
-  { listingId: "1234567890", offerId: "occidental" },
+  { listingId: "1234567890", offerId: "intemporel" },
   { listingId: "1234567891", offerId: "juif" },
 ];
 
@@ -20,7 +20,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "etsy",
     externalOrderId: "receipt-9001",
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-04T10:00:00.000Z",
@@ -292,7 +292,7 @@ describe("receiveEtsyPurchase — a contradiction is never a retry", () => {
 
     const first = await receiveEtsyPurchase({ entitlementRepository }, purchaseInput(), MAPPINGS);
     if (first.status !== "provisioned") throw new Error("unreachable");
-    expect(first.entitlement.offerId).toBe("occidental");
+    expect(first.entitlement.offerId).toBe("intemporel");
 
     const contradiction = await receiveEtsyPurchase(
       { entitlementRepository },
@@ -303,7 +303,7 @@ describe("receiveEtsyPurchase — a contradiction is never a retry", () => {
     expect(contradiction).toEqual({
       status: "rejected",
       reason: "offerMismatch",
-      existingOfferId: "occidental",
+      existingOfferId: "intemporel",
       purchasedOfferId: "juif",
     });
     // Never masked as a successful retry, and never as a plain unknown.
@@ -336,7 +336,7 @@ describe("receiveEtsyPurchase — a contradiction is never a retry", () => {
     const replay = await receiveEtsyPurchase({ entitlementRepository }, purchaseInput(), MAPPINGS);
     expect(replay).toEqual({ status: "alreadyProvisioned", entitlement: first.entitlement });
     if (replay.status !== "alreadyProvisioned") throw new Error("unreachable");
-    expect(replay.entitlement.offerId).toBe("occidental");
+    expect(replay.entitlement.offerId).toBe("intemporel");
   });
 });
 

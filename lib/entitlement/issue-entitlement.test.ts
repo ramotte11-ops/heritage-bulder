@@ -9,7 +9,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "direct",
     externalOrderId: null,
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-01T10:00:00.000Z",
@@ -56,7 +56,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository },
-      { offerId: "occidental", source: "etsy", externalOrderId: "order-1" },
+      { offerId: "intemporel", source: "etsy", externalOrderId: "order-1" },
     );
 
     if (result.status !== "issued") throw new Error("unreachable");
@@ -79,11 +79,11 @@ describe("issueEntitlementWithActivationKey", () => {
 
     await issueEntitlementWithActivationKey(
       { entitlementRepository: repository({ issueWithActivationKey }) },
-      { offerId: "arabe", source: "etsy", externalOrderId: "receipt-42" },
+      { offerId: "musulman", source: "etsy", externalOrderId: "receipt-42" },
     );
 
     expect(issueWithActivationKey).toHaveBeenCalledWith(
-      expect.objectContaining({ offerId: "arabe", source: "etsy", externalOrderId: "receipt-42" }),
+      expect.objectContaining({ offerId: "musulman", source: "etsy", externalOrderId: "receipt-42" }),
     );
   });
 
@@ -94,7 +94,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     await issueEntitlementWithActivationKey(
       { entitlementRepository: repository({ issueWithActivationKey }) },
-      { offerId: "arabe", source: "direct" },
+      { offerId: "musulman", source: "direct" },
     );
 
     expect(issueWithActivationKey).toHaveBeenCalledWith(
@@ -124,7 +124,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository },
-      { offerId: "occidental", source: "etsy", externalOrderId: "order-1" },
+      { offerId: "intemporel", source: "etsy", externalOrderId: "order-1" },
     );
 
     expect(result).toEqual({ status: "duplicateExternalOrder", entitlement: existing });
@@ -138,7 +138,7 @@ describe("issueEntitlementWithActivationKey", () => {
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const result = await issueEntitlementWithActivationKey(
         { entitlementRepository },
-        { offerId: "indien", source: "direct" },
+        { offerId: "hindou", source: "direct" },
       );
       if (result.status !== "issued") throw new Error("unreachable");
       keys.add(result.rawActivationKey);

@@ -10,15 +10,15 @@ import { resolveEtsyListingToOffer } from "./resolve-listing";
  */
 
 const FIXTURE_MAPPINGS: readonly EtsyListingMapping[] = [
-  { listingId: "TEST-FIXTURE-OCCIDENTAL", offerId: "occidental" },
-  { listingId: "TEST-FIXTURE-ARABE", offerId: "arabe" },
+  { listingId: "TEST-FIXTURE-INTEMPOREL", offerId: "intemporel" },
+  { listingId: "TEST-FIXTURE-MUSULMAN", offerId: "musulman" },
 ];
 
 describe("resolveEtsyListingToOffer", () => {
   it("resolves a known listing to exactly the right OfferId", () => {
-    expect(resolveEtsyListingToOffer("TEST-FIXTURE-OCCIDENTAL", FIXTURE_MAPPINGS)).toEqual({
+    expect(resolveEtsyListingToOffer("TEST-FIXTURE-INTEMPOREL", FIXTURE_MAPPINGS)).toEqual({
       status: "resolved",
-      offerId: "occidental",
+      offerId: "intemporel",
     });
   });
 
@@ -29,24 +29,24 @@ describe("resolveEtsyListingToOffer", () => {
   });
 
   it("refuses an empty mapping — a legitimate pre-launch state, not a crash", () => {
-    expect(resolveEtsyListingToOffer("TEST-FIXTURE-OCCIDENTAL", [])).toEqual({
+    expect(resolveEtsyListingToOffer("TEST-FIXTURE-INTEMPOREL", [])).toEqual({
       status: "unknownListing",
     });
   });
 
   it("never falls back to a case-insensitive or partial match", () => {
-    expect(resolveEtsyListingToOffer("test-fixture-occidental", FIXTURE_MAPPINGS)).toEqual({
+    expect(resolveEtsyListingToOffer("test-fixture-intemporel", FIXTURE_MAPPINGS)).toEqual({
       status: "unknownListing",
     });
-    expect(resolveEtsyListingToOffer("TEST-FIXTURE-OCCIDENTAL-EXTRA", FIXTURE_MAPPINGS)).toEqual({
+    expect(resolveEtsyListingToOffer("TEST-FIXTURE-INTEMPOREL-EXTRA", FIXTURE_MAPPINGS)).toEqual({
       status: "unknownListing",
     });
-    expect(resolveEtsyListingToOffer("FIXTURE-OCCIDENTAL", FIXTURE_MAPPINGS)).toEqual({
+    expect(resolveEtsyListingToOffer("FIXTURE-INTEMPOREL", FIXTURE_MAPPINGS)).toEqual({
       status: "unknownListing",
     });
   });
 
-  it("every one of the five real HERITAGE offers can be targeted through this mechanism", () => {
+  it("every one of the four real HERITAGE offers can be targeted through this mechanism", () => {
     const fixtures: EtsyListingMapping[] = OFFER_IDS.map((offerId, index) => ({
       listingId: `TEST-FIXTURE-ALL-OFFERS-${index}`,
       offerId,
@@ -61,6 +61,6 @@ describe("resolveEtsyListingToOffer", () => {
   });
 
   it("defaults to the real (currently empty) configuration when no mapping is passed", () => {
-    expect(resolveEtsyListingToOffer("TEST-FIXTURE-OCCIDENTAL")).toEqual({ status: "unknownListing" });
+    expect(resolveEtsyListingToOffer("TEST-FIXTURE-INTEMPOREL")).toEqual({ status: "unknownListing" });
   });
 });

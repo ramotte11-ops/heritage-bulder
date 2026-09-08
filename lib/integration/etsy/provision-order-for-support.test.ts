@@ -21,7 +21,7 @@ import type { EtsyListingMapping } from "./listing-mapping";
 const LISTING = "1122334455";
 const RECEIPT_ID = "3216549870";
 const ADMIN = "admin-auth-user-1";
-const MAPPINGS: readonly EtsyListingMapping[] = [{ listingId: LISTING, offerId: "occidental" }];
+const MAPPINGS: readonly EtsyListingMapping[] = [{ listingId: LISTING, offerId: "intemporel" }];
 
 function receipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -41,7 +41,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "etsy",
     externalOrderId: RECEIPT_ID,
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -273,7 +273,7 @@ describe("provisioning is not re-implemented here", () => {
 
     expect(d.entitlementRepository.issueWithActivationKey).toHaveBeenCalledWith(
       expect.objectContaining({
-        offerId: "occidental",
+        offerId: "intemporel",
         source: "etsy",
         externalOrderId: RECEIPT_ID,
       }),

@@ -5,15 +5,15 @@ import { planEntitlementActivation } from "./activate-entitlement";
 
 describe("planEntitlementActivation — legality of the entitlement's status", () => {
   it("accepts an available entitlement with an allowed skin", () => {
-    const result = planEntitlementActivation({ status: "available", offerId: "arabe" }, "maghreb");
+    const result = planEntitlementActivation({ status: "available", offerId: "musulman" }, "musulman");
 
-    expect(result).toEqual({ ok: true, memorialType: "person", skinId: "maghreb" });
+    expect(result).toEqual({ ok: true, memorialType: "person", skinId: "musulman" });
   });
 
   const NOT_AVAILABLE: EntitlementStatus[] = ["redeemed", "revoked"];
 
   it.each(NOT_AVAILABLE)("rejects a %s entitlement, never throws", (status) => {
-    const result = planEntitlementActivation({ status, offerId: "arabe" }, "maghreb");
+    const result = planEntitlementActivation({ status, offerId: "musulman" }, "musulman");
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -24,17 +24,17 @@ describe("planEntitlementActivation — legality of the entitlement's status", (
 
 describe("planEntitlementActivation — skin must belong to the offer's allowedSkins", () => {
   it("rejects a skin from a different culture, never throws", () => {
-    const result = planEntitlementActivation({ status: "available", offerId: "arabe" }, "indien");
+    const result = planEntitlementActivation({ status: "available", offerId: "musulman" }, "hindou");
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toContain("indien");
-      expect(result.reason).toContain("arabe");
+      expect(result.reason).toContain("hindou");
+      expect(result.reason).toContain("musulman");
     }
   });
 
   it("never lets an unauthorized skin through even when the entitlement is otherwise valid", () => {
-    const result = planEntitlementActivation({ status: "available", offerId: "occidental" }, "juif");
+    const result = planEntitlementActivation({ status: "available", offerId: "intemporel" }, "juif");
 
     expect(result.ok).toBe(false);
   });
