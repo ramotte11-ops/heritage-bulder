@@ -5,6 +5,7 @@ import {
   runAdminActivationKeyReplace,
   runAdminEntitlementRevoke,
 } from "@/lib/admin/admin-session";
+import { runAdminEtsyOrderProvision } from "@/lib/integration/etsy/support-session";
 import type { AdminMutationFormState } from "@/lib/admin/admin-mutation-state";
 
 /**
@@ -132,6 +133,81 @@ export async function revokeEntitlementAction(
           outcome.result.blockingStatus === "redeemed"
             ? "Ce droit a déjà été activé par une famille : il ne peut pas être révoqué."
             : "Ce droit est déjà révoqué.",
+      };
+  }
+}
+
+/**
+ * Mission 019B — provisioning a guest Etsy order, for support.
+ *
+ * Reads exactly one field, `receiptId`, and it is not trusted: it is an
+ * order reference HERITAGE then verifies against ETSY, on our own shop,
+ * before anything is created. Staff cannot conjure a right by typing
+ * plausible data — every eligibility rule is the same code the nominal
+ * OAuth path runs, and no Admin privilege overrides any of its refusals
+ * (see lib/integration/etsy/provision-order-for-support.ts).
+ *
+ * Like the three Mission 015B actions above, there is no
+ * `adminAuthUserId` field in this form and there could not be one that
+ * meant anything: the identity is resolved from the validated session,
+ * every time, inside `runAdminEtsyOrderProvision`.
+ */
+export async function provisionEtsyOrderAction(
+  _prevState: AdminMutationFormState,
+  formData: FormData,
+): Promise<AdminMutationFormState> {
+  const value = formData.get("receiptId");
+  const receiptId = typeof value === "string" ? value.trim() : "";
+  if (receiptId === "") {
+    return { status: "error", message: "Numéro de commande Etsy manquant." };
+  }
+
+  const outcome = await runAdminEtsyOrderProvision(receiptId);
+  if (outcome.status === "denied") return ACCESS_DENIED;
+
+  switch (outcome.result.status) {
+    case "provisioned":
+      return {
+        status: "success",
+        message:
+          "Droit créé pour cette commande. La clé ci-dessous ne sera plus jamais affichée — notez-la maintenant et transmettez-la à la famille.",
+        rawActivationKey: outcome.result.rawActivationKey,
+      };
+    case "alreadyProvisioned":
+      // Deliberately no key. The raw key is not stored and cannot be
+      // re-read, so this path cannot legitimately produce one; minting a
+      // fresh one here would silently break a key the family may already
+      // hold, on nothing more than a second lookup. Re-keying stays the
+      // explicit, audited Mission 015B replacement.
+      return {
+        status: "refused",
+        message:
+          "Cette commande a déjà un droit. Recherchez-la par numéro de commande, puis utilisez « Remplacer la clé » si la famille n'a plus la sienne.",
+      };
+    case "orderNotFound":
+      return {
+        status: "refused",
+        message: "Etsy ne connaît pas cette commande pour notre boutique.",
+      };
+    case "notGuestPurchase":
+      return {
+        status: "refused",
+        message:
+          "Cette commande est rattachée à un compte Etsy : la famille peut la confirmer elle-même depuis /activate. Ce recours est réservé aux achats sans compte.",
+      };
+    case "notEligible":
+      // The structural reason is deliberately not shown. Staff need to
+      // know it cannot be provisioned, not which of six internal checks
+      // said so — and several of those reasons name Etsy vocabulary.
+      return {
+        status: "refused",
+        message:
+          "Cette commande ne peut pas ouvrir de droit HERITAGE (paiement, annulation, remboursement, quantité ou article non reconnu).",
+      };
+    case "etsyUnavailable":
+      return {
+        status: "refused",
+        message: "Etsy est momentanément injoignable. Réessayez dans quelques instants.",
       };
   }
 }

@@ -313,6 +313,48 @@ for t in owners entitlements media messages; do
   done
 done
 
+# --- Mission 019B: the Etsy seller credential store -------------------
+#
+# The strongest statement this harness can make about that table is that
+# no client role holds ANY privilege on it. That is stronger than an RLS
+# policy or a column-level revoke, and — unlike either — it keeps holding
+# for every column a future migration adds.
+SELLER_TABLE=$($DB -t -A -c "select count(*) from information_schema.tables where table_schema='public' and table_name='etsy_seller_credentials';")
+if [ "$SELLER_TABLE" = "1" ]; then
+  for role in anon authenticated; do
+    for p in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+      expect_client "$role" etsy_seller_credentials "$p" f
+    done
+  done
+
+  # service_role gets exactly what the refresh algorithm needs and no
+  # more. DELETE in particular is granted to nobody: losing this row
+  # means re-bootstrapping the channel by hand, so no code path may be
+  # able to remove it, not even by accident.
+  expect_service_role etsy_seller_credentials SELECT t
+  expect_service_role etsy_seller_credentials INSERT t
+  expect_service_role etsy_seller_credentials UPDATE t
+  expect_service_role etsy_seller_credentials DELETE f
+
+  # RLS enabled with no policy at all — the second lock on a door the
+  # grants already keep shut.
+  SELLER_RLS=$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.etsy_seller_credentials'::regclass;")
+  check "etsy_seller_credentials has RLS enabled" "t" "$SELLER_RLS"
+  SELLER_POLICIES=$($DB -t -A -c "select count(*) from pg_policies where schemaname='public' and tablename='etsy_seller_credentials';")
+  check "etsy_seller_credentials carries no policy" "0" "$SELLER_POLICIES"
+
+  # The singleton is enforced by the schema, not by the application: a
+  # second row cannot be committed.
+  $DB -c "insert into etsy_seller_credentials (refresh_token) values ('harness-token-1');" >/dev/null 2>&1
+  SECOND_ROW=$($DB -t -A -c "insert into etsy_seller_credentials (refresh_token) values ('harness-token-2') on conflict do nothing returning 1;" 2>/dev/null)
+  check "a second credential row cannot be inserted" "" "$SECOND_ROW"
+  ROW_COUNT=$($DB -t -A -c "select count(*) from etsy_seller_credentials;")
+  check "etsy_seller_credentials holds exactly one row" "1" "$ROW_COUNT"
+  KEPT=$($DB -t -A -c "select refresh_token from etsy_seller_credentials;")
+  check "the bootstrap never overwrote the stored credential" "harness-token-1" "$KEPT"
+  $DB -c "delete from etsy_seller_credentials;" >/dev/null 2>&1
+fi
+
 # activation_key_hash is unreachable because the whole table is — which
 # survives any column added later, unlike a column-level revoke.
 HASH_COL=$($DB -t -A -c "select count(*) from information_schema.columns where table_schema='public' and table_name='entitlements' and column_name='activation_key_hash';")

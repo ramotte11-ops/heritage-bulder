@@ -1,0 +1,32 @@
+/* Mission 019B. Deliberately the same tokens as
+   components/activate/ActivateForm.module.css — this is the primary
+   action on the same surface, so it reuses Mission 019C's grammar
+   rather than introducing a second button style. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.submit {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--foreground);
+  background: var(--foreground);
+  color: var(--background);
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error {
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--foreground) 70%, #dc2626);
+}

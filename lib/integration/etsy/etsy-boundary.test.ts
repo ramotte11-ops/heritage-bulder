@@ -50,6 +50,22 @@ function listSourceFiles(directory: string): string[] {
   return files;
 }
 
+/**
+ * Strips comments before a "does this word appear" assertion.
+ *
+ * This file's own doctrine, from its top comment, is that the boundary
+ * is about IMPORT EDGES and functional references — not about the string
+ * "etsy" appearing anywhere. Prose is the clearest case: several domain
+ * modules document that they deliberately know nothing about Etsy, and
+ * a check that failed on those sentences would punish exactly the
+ * comments that record the rule.
+ *
+ * `//` inside `://` is left alone so a real URL in code is still seen.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 function protectedFiles(): string[] {
   const files = PROTECTED_DIRECTORIES.flatMap((directory) => listSourceFiles(directory));
   for (const file of PROTECTED_FILES) {
@@ -95,6 +111,30 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "receiveEtsyPurchase",
       "ReceiveEtsyPurchaseResult",
       "ReceiveEtsyPurchaseDeps",
+      // Mission 019B — the OAuth claim, the receipt adapter, the seller
+      // credential and the support recovery. The claim is the most
+      // tempting of all to import from the outside: it is the one
+      // function that takes somebody from "I bought this" to "here is my
+      // memorial". It is also the one that must stay hardest out of the
+      // domain — a Builder or Memorial module reaching for it would make
+      // "an Etsy account owns this" a domain concept.
+      "claimByEtsyIdentity",
+      "ClaimByEtsyIdentityResult",
+      "ClaimByEtsyIdentityDeps",
+      "parseEtsyReceipt",
+      "toEtsyPurchaseInput",
+      "ParsedEtsyReceipt",
+      "parseEtsyBuyerIdentity",
+      "normalizeReceiptBuyerUserId",
+      "buildEtsyAuthorizationUrl",
+      "createEtsyOAuthHandshake",
+      "getSellerAccessToken",
+      "provisionEtsyOrderForSupport",
+      "startEtsyClaim",
+      "completeEtsyClaim",
+      "runAdminEtsyOrderProvision",
+      "getEtsyApiConfig",
+      "isEtsyChannelConfigured",
     ];
     const violations: string[] = [];
 
@@ -148,8 +188,113 @@ describe("Etsy boundary — the domain never depends on the sales channel", () =
       "lib/integration/etsy/validate-purchase.ts",
       "lib/integration/etsy/provision-purchase.ts",
       "lib/integration/etsy/receive-purchase.ts",
+      // Mission 019B
+      "lib/integration/etsy/oauth.ts",
+      "lib/integration/etsy/receipt.ts",
+      "lib/integration/etsy/api-client.ts",
+      "lib/integration/etsy/seller-credential.ts",
+      "lib/integration/etsy/claim-by-etsy-identity.ts",
+      "lib/integration/etsy/provision-order-for-support.ts",
     ]) {
       expect(existsSync(path.join(REPO_ROOT, file))).toBe(true);
+    }
+  });
+
+  /**
+   * Mission 019B — the edge still runs one way, now that the Etsy layer
+   * has grown a claim, a credential store and a support surface.
+   */
+  it("Mission 019B: no domain source imports the claim, the receipt adapter or the credential store", () => {
+    const violations: string[] = [];
+
+    for (const file of protectedFiles()) {
+      const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+      for (const forbidden of [
+        "claim-by-etsy-identity",
+        "provision-order-for-support",
+        "seller-credential",
+        "etsy-session",
+        "support-session",
+        "oauth-cookies",
+        "api-client",
+      ]) {
+        if (source.includes(forbidden)) violations.push(`${file} -> ${forbidden}`);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("Mission 019B: the claim composes the existing primitives — it re-implements none of them", () => {
+    const claim = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/claim-by-etsy-identity.ts"),
+      "utf8",
+    );
+
+    // It stands on Missions 016-019 and 011B...
+    expect(claim).toContain("receiveEtsyPurchase(");
+    expect(claim).toContain("resolveOwnerForIdentity(");
+    expect(claim).toContain("completeRedemptionForResolvedRight(");
+    expect(claim).toContain("validateEtsyPurchase(");
+
+    // ...and owns none of their logic: no key generation, no hashing, no
+    // second payment-state list, no second listing lookup, no direct RPC.
+    for (const duplicated of [
+      "generateActivationKey",
+      "hashActivationKey",
+      "issueEntitlementWithActivationKey",
+      "resolveEtsyListingToOffer",
+      'paymentState !==',
+      "redeem_entitlement",
+    ]) {
+      expect(claim).not.toContain(duplicated);
+    }
+  });
+
+  it("Mission 019B: the guest recovery uses the SAME provisioning path, not a second one", () => {
+    const support = readFileSync(
+      path.join(REPO_ROOT, "lib/integration/etsy/provision-order-for-support.ts"),
+      "utf8",
+    );
+
+    expect(support).toContain("receiveEtsyPurchase(");
+    // No parallel issuing path that could diverge from the nominal one.
+    expect(support).not.toContain("issueEntitlementWithActivationKey");
+    expect(support).not.toContain("generateActivationKey");
+  });
+
+  it("Mission 019B: nothing under lib/admin names Etsy — the support edge is one-way too", () => {
+    // The Etsy layer imports the Admin gate (support-session.ts), never
+    // the reverse. lib/admin stays a channel-agnostic staff surface.
+    for (const file of listSourceFiles("lib/admin")) {
+      const source = stripComments(readFileSync(path.join(REPO_ROOT, file), "utf8"));
+      // An import edge, not a mention: admin-session.ts documents in
+      // prose that the Etsy layer imports ITS gate, which is the rule
+      // being asserted rather than a breach of it.
+      expect(source).not.toMatch(/from\s+["'](@\/)?lib\/integration\/etsy/);
+    }
+  });
+
+  it("Mission 019B: the Builder carries no Etsy vocabulary at all", () => {
+    // The QG's locked rule: Etsy stops at /activate. Past the redirect
+    // the family is inside HERITAGE, and the Builder never learns which
+    // channel sold the memorial.
+    const builderFiles = [
+      ...listSourceFiles("lib/builder"),
+      ...listSourceFiles("components/builder"),
+      ...listSourceFiles("app/builder"),
+    ];
+    expect(builderFiles.length).toBeGreaterThan(0);
+
+    for (const file of builderFiles) {
+      const source = stripComments(readFileSync(path.join(REPO_ROOT, file), "utf8"));
+      // Not merely the imports — the word itself, in any casing, once
+      // comments are set aside. A button label, an alt text or a piece
+      // of copy would each break the same rule. Comments are excluded on
+      // purpose: lib/builder/resume-session.ts states that it knows
+      // nothing about Etsy, and that sentence is the rule, not a
+      // violation of it.
+      expect(source.toLowerCase()).not.toContain("etsy");
     }
   });
 

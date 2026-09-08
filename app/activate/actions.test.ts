@@ -1,12 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { INITIAL_ACTIVATE_STATE } from "@/lib/entitlement/activate-form-state";
 
-const { runHeritageActivationAttempt } = vi.hoisted(() => ({
+const { runHeritageActivationAttempt, startEtsyClaim, redirect } = vi.hoisted(() => ({
   runHeritageActivationAttempt: vi.fn(),
+  startEtsyClaim: vi.fn(),
+  // Next's redirect() signals by throwing, and every caller here relies
+  // on that: nothing may run after it. The mock reproduces the throw so
+  // a test would fail loudly if the action ever kept going.
+  redirect: vi.fn((url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  }),
 }));
 vi.mock("@/lib/entitlement/activation-session", () => ({ runHeritageActivationAttempt }));
+vi.mock("@/lib/integration/etsy/etsy-session", () => ({ startEtsyClaim }));
+vi.mock("next/navigation", () => ({ redirect }));
 
-const { activateHeritageAccessAction } = await import("./actions");
+const { activateHeritageAccessAction, startEtsyClaimAction } = await import("./actions");
 
 function formWith(activationKey?: string): FormData {
   const data = new FormData();
@@ -16,6 +25,8 @@ function formWith(activationKey?: string): FormData {
 
 beforeEach(() => {
   runHeritageActivationAttempt.mockReset();
+  startEtsyClaim.mockReset();
+  redirect.mockClear();
 });
 
 describe("activateHeritageAccessAction", () => {
@@ -39,21 +50,34 @@ describe("activateHeritageAccessAction", () => {
       result: { status: "redeemed", memorialId: "memorial-1" },
     });
 
-    await activateHeritageAccessAction(INITIAL_ACTIVATE_STATE, formWith("  HH1-KEY  "));
+    await expect(
+      activateHeritageAccessAction(INITIAL_ACTIVATE_STATE, formWith("  HH1-KEY  ")),
+    ).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(runHeritageActivationAttempt).toHaveBeenCalledWith("HH1-KEY");
   });
 
-  it.each(["redeemed", "alreadyRedeemed"])("reports success on a %s outcome", async (status) => {
-    runHeritageActivationAttempt.mockResolvedValue({
-      status: "completed",
-      result: { status, memorialId: "memorial-1" },
-    });
+  // Mission 019B — the maillon that was missing. A successful activation
+  // used to end on a sentence promising the editor "in a later step"; the
+  // memorial it had just created was unreachable.
+  it.each(["redeemed", "alreadyRedeemed"])(
+    "redirects a %s outcome straight into the Builder",
+    async (status) => {
+      runHeritageActivationAttempt.mockResolvedValue({
+        status: "completed",
+        result: { status, memorialId: "memorial-1" },
+      });
 
-    const state = await activateHeritageAccessAction(INITIAL_ACTIVATE_STATE, formWith("HH1-KEY"));
+      await expect(
+        activateHeritageAccessAction(INITIAL_ACTIVATE_STATE, formWith("HH1-KEY")),
+      ).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(state.status).toBe("success");
-  });
+      // Both outcomes land on the SAME memorial: re-submitting a key one
+      // has already used is somebody looking for their memorial, not an
+      // error, and never a second memorial.
+      expect(redirect).toHaveBeenCalledWith("/builder/memorial-1");
+    },
+  );
 
   it("maps a rate-limited outcome to a distinct, still-generic message", async () => {
     runHeritageActivationAttempt.mockResolvedValue({
@@ -101,4 +125,45 @@ describe("activateHeritageAccessAction", () => {
 
     expect(JSON.stringify(state)).not.toContain(rawKey);
   });
+});
+
+describe("startEtsyClaimAction", () => {
+  it("sends the family to the URL the server built, and nothing else", async () => {
+    startEtsyClaim.mockResolvedValue({
+      status: "redirect",
+      authorizationUrl: "https://www.etsy.com/oauth/connect?state=abc",
+    });
+
+    await expect(startEtsyClaimAction()).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(redirect).toHaveBeenCalledWith("https://www.etsy.com/oauth/connect?state=abc");
+  });
+
+  it("takes nothing from the caller — the wiring is invoked with no arguments", async () => {
+    startEtsyClaim.mockResolvedValue({ status: "unavailable" });
+
+    // The action declares no parameter, so a submitted field cannot
+    // reach it even in principle: React calls it with (prevState,
+    // formData) and both are discarded. This asserts the consequence —
+    // the shop, redirect URI and identity come from the server alone.
+    await startEtsyClaimAction();
+
+    expect(startEtsyClaim).toHaveBeenCalledWith();
+  });
+
+  it.each(["unauthenticated", "unavailable"])(
+    "collapses a %s outcome into one calm message, never a redirect",
+    async (status) => {
+      startEtsyClaim.mockResolvedValue({ status });
+
+      const state = await startEtsyClaimAction();
+
+      expect(state.status).toBe("error");
+      expect(redirect).not.toHaveBeenCalled();
+      // Never "you are not signed in" versus "Etsy is not configured":
+      // one is unreachable from the rendered page, the other is an
+      // operator's problem, and neither is a family's business.
+      expect(state.message).toMatch(/n'est pas disponible/i);
+    },
+  );
 });

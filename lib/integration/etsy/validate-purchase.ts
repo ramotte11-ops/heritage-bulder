@@ -50,12 +50,30 @@ export interface EtsyPurchaseInput {
   readonly paymentState: string;
 }
 
-/** The one payment state this build treats as good enough to validate a
- * purchase. Every other value — "pending", "cancelled", "refunded", a
- * typo, anything not yet known — is refused explicitly. This is not the
- * full vocabulary Etsy's real API may use; it is deliberately narrow
- * until a real, documented Etsy payment-state contract is wired in. */
-const ACCEPTABLE_PAYMENT_STATE = "paid";
+/**
+ * The payment states this build treats as good enough to validate a
+ * purchase. Every other value is refused explicitly.
+ *
+ * Mission 019B widened this from the single literal `"paid"` to the pair
+ * below, and the widening is a bug fix rather than a relaxation. The
+ * real `ShopReceipt.status` vocabulary is now known:
+ *
+ *   paid, completed, open, payment processing,
+ *   canceled, fully refunded, partially refunded
+ *
+ * `completed` is what a PAID order becomes once the seller has shipped
+ * it. Accepting only `"paid"` therefore refused legitimate buyers for
+ * the sole reason that their order had progressed — a family whose
+ * memorial had already been dispatched could never have claimed it.
+ *
+ * Everything else stays refused, which is exactly the QG's locked
+ * doctrine that a cancelled or refunded order grants nothing:
+ * `canceled`, `fully refunded` and `partially refunded` are refused, and
+ * so are the not-yet-paid states `open` and `payment processing`. The
+ * list is still an allowlist of known-good values, never a denylist —
+ * an unknown or future state is refused, not assumed benign.
+ */
+const ACCEPTABLE_PAYMENT_STATES: readonly string[] = ["paid", "completed"];
 
 /**
  * What survives validation. Deliberately minimal: no buyer email, no
@@ -136,7 +154,7 @@ export function validateEtsyPurchase(
     return { status: "rejected", reason: "invalidQuantity" };
   }
 
-  if (paymentState !== ACCEPTABLE_PAYMENT_STATE) {
+  if (!ACCEPTABLE_PAYMENT_STATES.includes(paymentState)) {
     return { status: "rejected", reason: "unacceptablePaymentState", paymentState };
   }
 

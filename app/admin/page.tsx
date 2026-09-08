@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin/support-search";
 import type { OwnerSupportSummary } from "@/types/admin-support";
 import { EntitlementActions } from "@/components/admin/EntitlementActions";
+import { EtsyOrderProvision } from "@/components/admin/EtsyOrderProvision";
 import styles from "./page.module.css";
 
 /**
@@ -50,11 +51,16 @@ const QUERY_LABELS: Record<AdminSupportQueryKind, string> = {
   ownerEmail: "Email du propriétaire",
   entitlementId: "ID de droit (entitlement)",
   memorialId: "ID de mémorial",
+  // Mission 019B — the only identifier a family actually holds. Every
+  // other mode here needs something they have never seen.
+  externalOrderId: "Numéro de commande Etsy",
 };
 
 const INVALID_QUERY_MESSAGES = {
   malformedEmail: "Cette adresse email n'est pas valide.",
-  malformedId: "Cet identifiant n'est pas un UUID valide.",
+  // Covers both shapes this form accepts: a UUID for the two internal
+  // ids, and a numeric receipt id for an Etsy order.
+  malformedId: "Cet identifiant n'a pas un format valide.",
   empty: "Saisissez une valeur à rechercher.",
   invalidKind: "Ce type de recherche n'est pas valide.",
 } as const;
@@ -251,6 +257,12 @@ export default async function AdminSupportPage({
 
         <button type="submit">Rechercher</button>
       </form>
+
+      {/* Mission 019B — the guest recovery. Rendered inside the same
+          Admin gate as everything else on this page: this component is
+          never reachable by a non-admin, and the Server Action behind it
+          re-checks that on its own account anyway. */}
+      <EtsyOrderProvision />
 
       {outcome === null ? null : outcome.status === "denied" ? (
         // Unreachable in practice — the gate above already ran — but the
