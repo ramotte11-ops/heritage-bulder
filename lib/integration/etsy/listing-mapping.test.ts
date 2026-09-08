@@ -34,21 +34,21 @@ describe("validateEtsyListingMappings", () => {
   });
 
   it("rejects a blank listing ID", () => {
-    expect(validateEtsyListingMappings([{ listingId: "", offerId: "occidental" }])).toEqual([
+    expect(validateEtsyListingMappings([{ listingId: "", offerId: "intemporel" }])).toEqual([
       { reason: "emptyListingId", index: 0 },
     ]);
   });
 
   it("rejects a whitespace-only listing ID", () => {
-    expect(validateEtsyListingMappings([{ listingId: "   ", offerId: "occidental" }])).toEqual([
+    expect(validateEtsyListingMappings([{ listingId: "   ", offerId: "intemporel" }])).toEqual([
       { reason: "emptyListingId", index: 0 },
     ]);
   });
 
   it("rejects two entries sharing the same listing ID, even pointing at different offers", () => {
     const errors = validateEtsyListingMappings([
-      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "occidental" },
-      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "arabe" },
+      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "intemporel" },
+      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "musulman" },
     ]);
 
     expect(errors).toEqual([{ reason: "duplicateListingId", listingId: "TEST-FIXTURE-DUPLICATE" }]);
@@ -66,10 +66,10 @@ describe("validateEtsyListingMappings", () => {
 
   it("reports every error found, not just the first", () => {
     const errors = validateEtsyListingMappings([
-      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "occidental" },
-      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "occidental" },
+      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "intemporel" },
+      { listingId: "TEST-FIXTURE-DUPLICATE", offerId: "intemporel" },
       { listingId: "TEST-FIXTURE-BAD-OFFER", offerId: "not-a-real-offer" },
-      { listingId: "", offerId: "occidental" },
+      { listingId: "", offerId: "intemporel" },
     ]);
 
     expect(errors).toEqual([

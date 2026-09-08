@@ -35,7 +35,7 @@ describe("SupabaseEntitlementRepository.findById", () => {
         id: "entitlement-1",
         source: "direct",
         external_order_id: null,
-        offer_id: "occidental",
+        offer_id: "intemporel",
         status: "available",
         owner_id: null,
         created_at: "2026-09-01T10:00:00.000Z",
@@ -50,7 +50,7 @@ describe("SupabaseEntitlementRepository.findById", () => {
     expect(from).toHaveBeenCalledWith("entitlements");
     expect(entitlement).toMatchObject({
       id: "entitlement-1",
-      offerId: "occidental",
+      offerId: "intemporel",
       status: "available",
       ownerId: null,
       externalOrderId: null,
@@ -154,7 +154,7 @@ const ROW = {
   id: "entitlement-1",
   source: "direct",
   external_order_id: null,
-  offer_id: "occidental",
+  offer_id: "intemporel",
   status: "available",
   owner_id: null,
   created_at: "2026-09-01T10:00:00.000Z",
@@ -227,7 +227,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     const { client, insert } = fakeInsertClient({ data: ROW, error: null });
 
     const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
-      offerId: "occidental",
+      offerId: "intemporel",
       source: "etsy",
       externalOrderId: "order-1",
       activationKeyHash: HASH,
@@ -235,7 +235,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
 
     expect(insert).toHaveBeenCalledTimes(1);
     expect(insert).toHaveBeenCalledWith({
-      offer_id: "occidental",
+      offer_id: "intemporel",
       source: "etsy",
       external_order_id: "order-1",
       activation_key_hash: HASH,
@@ -250,7 +250,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     );
 
     const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
-      offerId: "occidental",
+      offerId: "intemporel",
       source: "etsy",
       externalOrderId: "order-1",
       activationKeyHash: HASH,
@@ -274,7 +274,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
 
     await expect(
       new SupabaseEntitlementRepository(client).issueWithActivationKey({
-        offerId: "occidental",
+        offerId: "intemporel",
         source: "etsy",
         externalOrderId: "order-1",
         activationKeyHash: HASH,
@@ -290,7 +290,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
 
     await expect(
       new SupabaseEntitlementRepository(client).issueWithActivationKey({
-        offerId: "occidental",
+        offerId: "intemporel",
         source: "direct",
         externalOrderId: null,
         activationKeyHash: HASH,

@@ -20,12 +20,12 @@ describe("getAllowedSkins", () => {
 
 describe("isSkinAllowedForOffer", () => {
   it("accepts a skin that is in the offer's allowedSkins", () => {
-    expect(isSkinAllowedForOffer("arabe", "maghreb")).toBe(true);
+    expect(isSkinAllowedForOffer("musulman", "musulman")).toBe(true);
   });
 
   it("rejects a skin from a different offer's culture", () => {
-    expect(isSkinAllowedForOffer("arabe", "indien")).toBe(false);
-    expect(isSkinAllowedForOffer("occidental", "maghreb")).toBe(false);
+    expect(isSkinAllowedForOffer("musulman", "hindou")).toBe(false);
+    expect(isSkinAllowedForOffer("intemporel", "musulman")).toBe(false);
   });
 
   it.each(OFFER_IDS)("%s never allows a skin id that doesn't exist", (offerId) => {

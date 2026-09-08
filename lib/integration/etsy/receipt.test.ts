@@ -175,7 +175,7 @@ describe("toEtsyPurchaseInput", () => {
  * QG's locked doctrine on cancellations and refunds.
  */
 describe("receipt -> validateEtsyPurchase, on the real status vocabulary", () => {
-  const MAPPINGS = [{ listingId: "1122334455", offerId: "occidental" as const }];
+  const MAPPINGS = [{ listingId: "1122334455", offerId: "intemporel" as const }];
 
   function validate(status: string) {
     const converted = toEtsyPurchaseInput(parsed({ status }));

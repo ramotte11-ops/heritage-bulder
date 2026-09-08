@@ -92,7 +92,7 @@ describe("translate — no coupling to culture, skin, or offer", () => {
     // completely different "contexts" (stood in for here by unrelated
     // local values that are never passed to translate()) must produce
     // the exact same resolution for the same language + key.
-    const contextA = { skin: "maghreb", offerId: "arabe", culture: "arabe" };
+    const contextA = { skin: "musulman", offerId: "musulman", culture: "musulman" };
     const contextB = { skin: "juif", offerId: "juif", culture: "juif" };
     void contextA;
     void contextB;

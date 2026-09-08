@@ -18,7 +18,7 @@ import type { EtsyListingMapping } from "./listing-mapping";
 const ETSY_USER = "12345678";
 const OTHER_ETSY_USER = "99999999";
 const LISTING = "1122334455";
-const MAPPINGS: readonly EtsyListingMapping[] = [{ listingId: LISTING, offerId: "occidental" }];
+const MAPPINGS: readonly EtsyListingMapping[] = [{ listingId: LISTING, offerId: "intemporel" }];
 
 const IDENTITY = {
   id: "auth-user-1",
@@ -51,7 +51,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "etsy",
     externalOrderId: "3216549870",
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-01-01T00:00:00.000Z",

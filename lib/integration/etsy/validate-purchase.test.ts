@@ -11,14 +11,14 @@ import { validateEtsyPurchase } from "./validate-purchase";
  */
 
 const FIXTURE_MAPPINGS: readonly EtsyListingMapping[] = [
-  { listingId: "TEST-FIXTURE-OCCIDENTAL", offerId: "occidental" },
-  { listingId: "TEST-FIXTURE-ARABE", offerId: "arabe" },
+  { listingId: "TEST-FIXTURE-INTEMPOREL", offerId: "intemporel" },
+  { listingId: "TEST-FIXTURE-MUSULMAN", offerId: "musulman" },
 ];
 
 function validPurchase(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     externalPurchaseId: "TEST-FIXTURE-ORDER-1",
-    listingId: "TEST-FIXTURE-OCCIDENTAL",
+    listingId: "TEST-FIXTURE-INTEMPOREL",
     quantity: 1,
     paymentState: "paid",
     ...overrides,
@@ -33,8 +33,8 @@ describe("validateEtsyPurchase", () => {
       status: "validated",
       purchase: {
         externalPurchaseId: "TEST-FIXTURE-ORDER-1",
-        listingId: "TEST-FIXTURE-OCCIDENTAL",
-        offerId: "occidental",
+        listingId: "TEST-FIXTURE-INTEMPOREL",
+        offerId: "intemporel",
         quantity: 1,
       },
     });
@@ -77,21 +77,21 @@ describe("validateEtsyPurchase", () => {
 
   it("5. no approximate/fallback matching — case, prefix or suffix variants of a known listing are unknown", () => {
     expect(
-      validateEtsyPurchase(validPurchase({ listingId: "test-fixture-occidental" }), FIXTURE_MAPPINGS),
-    ).toEqual({ status: "rejected", reason: "unknownListing", listingId: "test-fixture-occidental" });
+      validateEtsyPurchase(validPurchase({ listingId: "test-fixture-intemporel" }), FIXTURE_MAPPINGS),
+    ).toEqual({ status: "rejected", reason: "unknownListing", listingId: "test-fixture-intemporel" });
 
     expect(
-      validateEtsyPurchase(validPurchase({ listingId: "TEST-FIXTURE-OCCIDENTAL-EXTRA" }), FIXTURE_MAPPINGS),
+      validateEtsyPurchase(validPurchase({ listingId: "TEST-FIXTURE-INTEMPOREL-EXTRA" }), FIXTURE_MAPPINGS),
     ).toEqual({
       status: "rejected",
       reason: "unknownListing",
-      listingId: "TEST-FIXTURE-OCCIDENTAL-EXTRA",
+      listingId: "TEST-FIXTURE-INTEMPOREL-EXTRA",
     });
   });
 
   it("6. really calls Mission 016's resolveEtsyListingToOffer — a mapping change alone changes the outcome", () => {
     const retargeted: readonly EtsyListingMapping[] = [
-      { listingId: "TEST-FIXTURE-OCCIDENTAL", offerId: "juif" },
+      { listingId: "TEST-FIXTURE-INTEMPOREL", offerId: "juif" },
     ];
 
     const result = validateEtsyPurchase(validPurchase(), retargeted);
@@ -100,7 +100,7 @@ describe("validateEtsyPurchase", () => {
       status: "validated",
       purchase: {
         externalPurchaseId: "TEST-FIXTURE-ORDER-1",
-        listingId: "TEST-FIXTURE-OCCIDENTAL",
+        listingId: "TEST-FIXTURE-INTEMPOREL",
         offerId: "juif",
         quantity: 1,
       },
@@ -148,7 +148,7 @@ describe("validateEtsyPurchase", () => {
     expect(JSON.stringify(result.purchase)).not.toContain("SKU-FIXTURE-123");
   });
 
-  it("9. every one of the five real HERITAGE offers is reachable through fixtures", () => {
+  it("9. every one of the four real HERITAGE offers is reachable through fixtures", () => {
     const fixtures: EtsyListingMapping[] = OFFER_IDS.map((offerId, index) => ({
       listingId: `TEST-FIXTURE-ALL-OFFERS-${index}`,
       offerId,
@@ -199,7 +199,7 @@ describe("validateEtsyPurchase", () => {
   it("rejects a missing required field as malformed", () => {
     const withoutQuantity = {
       externalPurchaseId: "TEST-FIXTURE-ORDER-1",
-      listingId: "TEST-FIXTURE-OCCIDENTAL",
+      listingId: "TEST-FIXTURE-INTEMPOREL",
       paymentState: "paid",
     };
     expect(validateEtsyPurchase(withoutQuantity, FIXTURE_MAPPINGS)).toEqual({
@@ -237,8 +237,8 @@ describe("validateEtsyPurchase", () => {
     const result = validateEtsyPurchase(
       validPurchase({
         listingId: "TEST-FIXTURE-NEVER-CONFIGURED",
-        listingTitle: "Occidental / Intemporel Memorial",
-        sku: "occidental-v1",
+        listingTitle: "Intemporel Memorial",
+        sku: "intemporel-v1",
       }),
       FIXTURE_MAPPINGS,
     );
@@ -254,7 +254,7 @@ describe("validateEtsyPurchase", () => {
     expect(validateEtsyPurchase(validPurchase())).toEqual({
       status: "rejected",
       reason: "unknownListing",
-      listingId: "TEST-FIXTURE-OCCIDENTAL",
+      listingId: "TEST-FIXTURE-INTEMPOREL",
     });
   });
 });

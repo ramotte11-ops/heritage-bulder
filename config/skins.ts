@@ -14,6 +14,8 @@
  * supabase/README.md).
  */
 
-export const SKINS = ["intemporel", "maghreb", "africain", "indien", "juif"] as const;
+// V1 segmentation (QG/PO doctrine) — see config/offers.ts's OFFER_IDS
+// comment for the full correspondence and why `africain` is retired.
+export const SKINS = ["intemporel", "musulman", "juif", "hindou"] as const;
 
 export type Skin = (typeof SKINS)[number];

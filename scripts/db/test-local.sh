@@ -415,7 +415,7 @@ done
 
 # --- the parcours actually works with exactly these privileges --------
 PM_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'privmodel@example.test') returning id;")
-PM_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','occidental') returning id;")
+PM_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
 PM_OUT=$(svc "select outcome from redeem_entitlement('$PM_ENT','$PM_OWNER','person','intemporel');")
 check "redeem_entitlement succeeds as service_role with ONLY the granted privileges" "redeemed" "$PM_OUT"
 
@@ -488,8 +488,8 @@ OWNER_B=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_ran
 AUTH_UID_A=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_A';")
 AUTH_UID_B=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_B';")
 
-ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'occidental') returning id;")
-ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'occidental') returning id;")
+ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'intemporel') returning id;")
+ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'intemporel') returning id;")
 
 MEM_A=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug, status) values ('$OWNER_A', '$ENT_A', 'person', 'announcement', 'intemporel', 'en', 'test-memorial-a-1x2y3z', 'published') returning id;")
 MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug, status) values ('$OWNER_B', '$ENT_B', 'person', 'remembrance', 'intemporel', 'en', 'test-memorial-b-4a5b6c', 'draft') returning id;")
@@ -625,7 +625,7 @@ OWNER_C=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_ran
 OWNER_D=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-d@example.test') returning id;")
 
 new_entitlement() {
-  $DB -t -A -c "insert into entitlements (source, offer_id, status) values ('direct', 'occidental', '$1') returning id;"
+  $DB -t -A -c "insert into entitlements (source, offer_id, status) values ('direct', 'intemporel', '$1') returning id;"
 }
 
 ENT_NULLS=$(new_entitlement available)
@@ -889,7 +889,7 @@ echo "== Mission 013: activation keys =="
 K_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'keys@example.test') returning id;")
 K_AUTH=$($DB -t -A -c "select auth_user_id from owners where id = '$K_OWNER';")
 K_HASH=$(printf 'a%.0s' $(seq 1 64))
-K_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$K_HASH') returning id;")
+K_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$K_HASH') returning id;")
 # Give this owner a redeemed right too: that is the only state in which
 # entitlements_select_own matches a row at all, so it is the only state
 # where a leak could actually happen.
@@ -974,15 +974,15 @@ $DB -c "alter table entitlements drop column future_column;" >/dev/null
 
 # --- the hash column's own integrity ---
 expect_error "a non-sha256 activation_key_hash is rejected" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','not-a-hash');"
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','not-a-hash');"
 
 expect_error "an uppercase hex activation_key_hash is rejected" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$(printf 'A%.0s' $(seq 1 64))');"
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$(printf 'A%.0s' $(seq 1 64))');"
 
 expect_error "two rights cannot share one activation key hash" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$K_HASH');"
+  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$K_HASH');"
 
-NULL_KEYS=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','occidental'),('direct','arabe') returning 1;" | wc -l)
+NULL_KEYS=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel'),('direct','musulman') returning 1;" | wc -l)
 check "several rights may coexist with no activation key (partial unique index)" "2" "$NULL_KEYS"
 
 # --- the wrapper's permissions ---
@@ -1004,7 +1004,7 @@ check "Mission 011A's redeem_entitlement is untouched (keyless path preserved)" 
 
 # --- concurrency / linearisation, scenarios A-F ---
 new_keyed_entitlement() {
-  $DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','occidental','$1') returning id;"
+  $DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$1') returning id;"
 }
 HASH_A=$(printf '1%.0s' $(seq 1 64)); HASH_B=$(printf '2%.0s' $(seq 1 64))
 HASH_C=$(printf '3%.0s' $(seq 1 64)); HASH_D=$(printf '4%.0s' $(seq 1 64))
@@ -1499,11 +1499,11 @@ echo "== Mission 018: one Etsy purchase can only ever become one right =="
 
 ET_ORDER="etsy-receipt-$(date +%s%N)"
 ET_HASH=$(random_hash)
-ET_FIRST=$($DB -t -A -c "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_ORDER','$ET_HASH') returning id;")
+ET_FIRST=$($DB -t -A -c "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_ORDER','$ET_HASH') returning id;")
 check "a first Etsy provisioning inserts one right" "1" "$($DB -t -A -c "select count(*) from entitlements where source='etsy' and external_order_id='$ET_ORDER';")"
 
 expect_error "a replay of the same receipt is refused by the unique index (no second right)" \
-  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_ORDER','$(random_hash)');"
+  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_ORDER','$(random_hash)');"
 
 expect_error "a replay is refused even when it resolves to a DIFFERENT offer" \
   "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','juif','$ET_ORDER','$(random_hash)');"
@@ -1511,7 +1511,7 @@ expect_error "a replay is refused even when it resolves to a DIFFERENT offer" \
 # The constraint is on the PAIR, not on the order reference alone: the
 # same string arriving through a different sales channel is a different
 # order and must still be provisionable.
-$DB -c "insert into entitlements (source, offer_id, external_order_id) values ('direct','occidental','$ET_ORDER');" >/dev/null
+$DB -c "insert into entitlements (source, offer_id, external_order_id) values ('direct','intemporel','$ET_ORDER');" >/dev/null
 check "the same reference under another source is a different order (the key is the PAIR)" "1" \
   "$($DB -t -A -c "select count(*) from entitlements where source='direct' and external_order_id='$ET_ORDER';")"
 
@@ -1525,7 +1525,7 @@ mkdir -p "$CONC_DIR_018"
 for i in 1 2; do
   (
     rc=0
-    $DB -t -A -c "set role service_role; select pg_sleep(0.7); insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','occidental','$ET_RACE_ORDER','$(random_hash)') returning id;" \
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_RACE_ORDER','$(random_hash)') returning id;" \
       >"$CONC_DIR_018/$i.out" 2>"$CONC_DIR_018/$i.err" || rc=$?
     echo "$rc" >"$CONC_DIR_018/$i.rc"
   ) &
@@ -1544,7 +1544,7 @@ check "exactly one right exists after the race" "1" "$ET_RACE_ROWS"
 # The unit tests assert the adapter recognises a duplicate by SQLSTATE
 # 23505, never by parsing a message. That code is what PostgreSQL really
 # raises here.
-ET_SQLSTATE=$($DB -t -A -c "do \$\$ begin insert into entitlements (source, offer_id, external_order_id) values ('etsy','occidental','$ET_RACE_ORDER'); exception when others then raise notice 'SQLSTATE=%', sqlstate; end \$\$;" 2>&1 | grep -c "SQLSTATE=23505" || true)
+ET_SQLSTATE=$($DB -t -A -c "do \$\$ begin insert into entitlements (source, offer_id, external_order_id) values ('etsy','intemporel','$ET_RACE_ORDER'); exception when others then raise notice 'SQLSTATE=%', sqlstate; end \$\$;" 2>&1 | grep -c "SQLSTATE=23505" || true)
 check "a duplicate order raises SQLSTATE 23505 (what the adapter branches on)" "1" "$ET_SQLSTATE"
 
 # Mission 018 provisions a right and stops: no owner, no memorial, no

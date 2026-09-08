@@ -33,7 +33,7 @@ const REDEEMED: Entitlement = {
   id: ENT_REDEEMED,
   source: "etsy",
   externalOrderId: "ORDER-1",
-  offerId: "occidental",
+  offerId: "intemporel",
   status: "redeemed",
   ownerId: OWNER_ID,
   createdAt: "2026-01-01T00:00:00.000Z",

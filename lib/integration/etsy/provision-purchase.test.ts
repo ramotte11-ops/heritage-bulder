@@ -13,7 +13,7 @@ import type { EtsyListingMapping } from "./listing-mapping";
  */
 
 const MAPPINGS: readonly EtsyListingMapping[] = [
-  { listingId: "1234567890", offerId: "occidental" },
+  { listingId: "1234567890", offerId: "intemporel" },
   { listingId: "1234567891", offerId: "juif" },
 ];
 
@@ -22,7 +22,7 @@ function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
     id: "entitlement-1",
     source: "etsy",
     externalOrderId: "receipt-9001",
-    offerId: "occidental",
+    offerId: "intemporel",
     status: "available",
     ownerId: null,
     createdAt: "2026-09-04T10:00:00.000Z",
@@ -243,13 +243,13 @@ describe("provisionEtsyPurchase — retry and concurrency", () => {
   it("refuses a replay that resolves to a DIFFERENT offer, instead of passing it off as a retry", async () => {
     const { repository: entitlementRepository } = uniqueIndexRepository();
 
-    // One receipt, provisioned as `occidental`. The same receipt then
+    // One receipt, provisioned as `intemporel`. The same receipt then
     // arrives again resolving to `juif` — a listing remapped under a
     // live order, a forged payload, a reused receipt id. The two
     // deliveries disagree about what was bought.
     const first = await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
     if (first.status !== "provisioned") throw new Error("unreachable");
-    expect(first.entitlement.offerId).toBe("occidental");
+    expect(first.entitlement.offerId).toBe("intemporel");
 
     const conflicting = await provisionEtsyPurchase(
       { entitlementRepository },
@@ -259,7 +259,7 @@ describe("provisionEtsyPurchase — retry and concurrency", () => {
     expect(conflicting).toEqual({
       status: "rejected",
       reason: "offerMismatch",
-      existingOfferId: "occidental",
+      existingOfferId: "intemporel",
       purchasedOfferId: "juif",
     });
     // Never reported as a successful retry — the contradiction is not

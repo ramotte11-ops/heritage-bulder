@@ -31,7 +31,13 @@ import type { Skin } from "./skins";
  * itself is represented.
  */
 
-export const OFFER_IDS = ["occidental", "arabe", "africain", "indien", "juif"] as const;
+// V1 segmentation (QG/PO doctrine, superseding Mission 006's original
+// five-offer wedding-derived split): Intemporel / Musulman / Juif /
+// Hindou. `occidental` -> `intemporel`, `arabe`/`maghreb` -> `musulman`,
+// `indien` -> `hindou`, `juif` unchanged, `africain` retired from V1
+// (no code or persisted data referenced it beyond this config and its
+// own CHECK constraint — see the segmentation-correction migration).
+export const OFFER_IDS = ["intemporel", "musulman", "juif", "hindou"] as const;
 
 export type OfferId = (typeof OFFER_IDS)[number];
 
@@ -43,9 +49,8 @@ export interface OfferDefinition {
 }
 
 export const OFFERS: Record<OfferId, OfferDefinition> = {
-  occidental: { memorialType: "person", allowedSkins: ["intemporel"] },
-  arabe: { memorialType: "person", allowedSkins: ["maghreb"] },
-  africain: { memorialType: "person", allowedSkins: ["africain"] },
-  indien: { memorialType: "person", allowedSkins: ["indien"] },
+  intemporel: { memorialType: "person", allowedSkins: ["intemporel"] },
+  musulman: { memorialType: "person", allowedSkins: ["musulman"] },
   juif: { memorialType: "person", allowedSkins: ["juif"] },
+  hindou: { memorialType: "person", allowedSkins: ["hindou"] },
 };
