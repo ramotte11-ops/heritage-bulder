@@ -131,6 +131,70 @@ grant execute on function auth.uid() to anon, authenticated;
 -- application needs, and must revoke what the platform handed over. If
 -- either stops happening, this suite goes red instead of quietly
 -- passing.
+-- ---------------------------------------------------------------------
+-- Mission 030 stand-in: Supabase Storage's `storage` schema.
+-- ---------------------------------------------------------------------
+--
+-- Same discipline as the auth.uid() stand-in above: defined ONLY here,
+-- never in supabase/migrations/, so it can never ship to a real project
+-- (which already has the genuine article, owned by
+-- `supabase_storage_admin`).
+--
+-- It reproduces the two things Mission 030's migration actually touches
+-- and the ones its assertions read:
+--
+--   * storage.buckets, with the `public`, `file_size_limit` and
+--     `allowed_mime_types` columns the migration writes. This lets the
+--     harness prove the bucket is genuinely created PRIVATE, with the
+--     right ceiling and the right allowlist, rather than trusting that
+--     the INSERT would have worked;
+--   * storage.objects with RLS ENABLED and the client roles holding
+--     table privileges. That combination is the fidelity that matters:
+--     it is exactly the state a real Supabase project is in, and it is
+--     what makes "no policy means no access" a measurable claim instead
+--     of an assumption. If Mission 030 ever created a permissive policy
+--     here, the assertions below would go green on access they should
+--     refuse — so the harness starts from the permissive-grant state
+--     and proves the policies are what close it.
+--
+-- Deliberately NOT reproduced: signed URL generation, the storage API,
+-- object upload. Those are HTTP-layer behaviour with no SQL surface;
+-- they are covered by the TypeScript suite against the port
+-- (lib/adapters/media-object-store.ts).
+create schema storage;
+
+create table storage.buckets (
+  id text primary key,
+  name text not null unique,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz not null default now()
+);
+
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text,
+  owner uuid,
+  metadata jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table storage.objects enable row level security;
+
+-- The platform's own grants. Supabase hands the client roles table
+-- privileges on storage.objects and relies on RLS policies as the only
+-- gate — unlike HERITAGE's own tables, where Mission 013C made the
+-- grant itself the first lock. Reproduced faithfully so the Mission 030
+-- assertions measure the real question: with these privileges present,
+-- does the absence of a policy actually deny?
+grant usage on schema storage to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated;
+grant select on storage.buckets to anon, authenticated;
+grant all on storage.objects to service_role;
+grant all on storage.buckets to service_role;
+
 alter default privileges in schema public
   grant references, trigger, truncate on tables
   to anon, authenticated, service_role;
@@ -248,8 +312,28 @@ expect_service_role memorials DELETE f
 # invariant no longer depends on the inserting role's privileges.
 expect_service_role memorial_drafts INSERT f
 expect_service_role memorial_drafts SELECT f
+# Mission 030: the media engine is wired, so `media` opens the four
+# privileges its four operations need — and this is the assertion that
+# keeps them to four.
+#
+#   SELECT  the owner's own media, finalization re-reading its
+#           reservation, the sweep finding expired ones
+#   INSERT  reserveMediaUpload writing the pending row
+#   UPDATE  finalizeMediaUpload flipping pending -> ready
+#   DELETE  deleteMedia, and the sweep reclaiming an abandoned upload
+#
+# DELETE is the one that differs from every other table here, where it
+# is granted nowhere: a purchase record is history and must not be
+# removable, but a photograph is something a family may take back, and
+# an abandoned reservation MUST be removable or "zero orphans by
+# design" cannot hold.
+expect_service_role media SELECT t
+expect_service_role media INSERT t
+expect_service_role media UPDATE t
+expect_service_role media DELETE t
+
 # Tables whose features are not built: nothing is opened early.
-for t in memorial_published_snapshots media messages; do
+for t in memorial_published_snapshots messages; do
   for p in SELECT INSERT UPDATE DELETE; do
     expect_service_role "$t" "$p" f
   done
@@ -1656,6 +1740,349 @@ RACE_ALLOWED=$(cat "$CONC_DIR_019C"/*.out | grep -c '^t$' || true)
 check "concurrency: of 8 simultaneous attempts from one identity, at most 5 are allowed" "5" "$RACE_ALLOWED"
 RACE_TOTAL_COUNT=$($DB -t -A -c "select attempt_count from activation_rate_limits where auth_user_id='$RL_AUTH_RACE';")
 check "concurrency: the counter reflects exactly the 8 racing attempts (no lost update, no double count)" "8" "$RACE_TOTAL_COUNT"
+
+
+# ======================================================================
+# MISSION 030 — the secure media storage foundation
+# ======================================================================
+#
+# What is proved here is the half of Mission 030 that lives in
+# PostgreSQL and Storage: the bucket's privacy, the policy surface, the
+# privileges, the constraints, and the ownership/lifecycle behaviour of
+# the `media` table. The TypeScript suite proves the domain half
+# (validation, paths, replacement ordering) — neither substitutes for
+# the other, which is exactly why both exist.
+
+echo ""
+echo "== Mission 030: the media storage foundation =="
+
+# --- the bucket: exactly one, and PRIVATE ----------------------------
+#
+# The single most important assertion in this mission. A `true` here
+# would mean every family's original photographs are readable by anyone
+# with a URL.
+BUCKET_PUBLIC=$($DB -t -A -c "select public from storage.buckets where id = 'memorial-media';")
+check "the memorial-media bucket exists" "f" "${BUCKET_PUBLIC:-MISSING}"
+
+BUCKET_COUNT=$($DB -t -A -c "select count(*) from storage.buckets;")
+check "exactly one bucket is created (no forest of buckets)" "1" "$BUCKET_COUNT"
+
+# No bucket anywhere in the project is public. Written over the whole
+# table rather than over our own row so that a public bucket introduced
+# by any other means also fails here.
+PUBLIC_BUCKETS=$($DB -t -A -c "select count(*) from storage.buckets where public;")
+check "no public bucket exists at all" "0" "$PUBLIC_BUCKETS"
+
+# The ceiling Storage itself enforces, in bytes. Must equal
+# MAX_MEDIA_BYTES in config/media.ts (15 MiB) — config/media.test.ts
+# asserts the other direction, against this migration's text.
+BUCKET_LIMIT=$($DB -t -A -c "select file_size_limit from storage.buckets where id = 'memorial-media';")
+check "the bucket enforces a 15 MiB ceiling of its own" "15728640" "$BUCKET_LIMIT"
+
+# The allowlist Storage applies to the declared content-type. A filter,
+# never proof — but it is the layer that refuses an unacceptable type
+# while the transfer is still in flight.
+BUCKET_MIMES=$($DB -t -A -c "select array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'memorial-media';")
+check "the bucket admits exactly JPEG, PNG and WebP" "image/jpeg,image/png,image/webp" "$BUCKET_MIMES"
+
+# The formats that must never be accepted, each named individually so a
+# regression says WHICH one came back.
+for forbidden in image/svg+xml image/heic image/heif image/avif image/gif video/mp4 video/quicktime application/pdf; do
+  HAS_FORBIDDEN=$($DB -t -A -c "select '$forbidden' = any(allowed_mime_types) from storage.buckets where id = 'memorial-media';")
+  check "the bucket refuses $forbidden" "f" "$HAS_FORBIDDEN"
+done
+
+# --- Storage policies: none, which IS the model -----------------------
+#
+# Mission 030 chose model B: no client-role access to storage.objects at
+# all, every operation through a server primitive that proves ownership
+# first. Under RLS, a bucket named by no policy is a bucket no client
+# role can touch — so the assertion is that the policy count is zero.
+#
+# This also catches the genuine risk that model B carries: storage
+# policies are written against ONE shared table, so a permissive policy
+# added by the dashboard, a quickstart or another feature would apply to
+# this bucket too. Here that would show up as a non-zero count.
+STORAGE_POLICIES=$($DB -t -A -c "select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects';")
+check "no policy exists on storage.objects (model B: nothing for client roles)" "0" "$STORAGE_POLICIES"
+
+# RLS is enabled on storage.objects. Without this, "no policy" would
+# mean "no restriction" rather than "no access" — the assertion above
+# would be measuring nothing.
+STORAGE_RLS=$($DB -t -A -c "select relrowsecurity from pg_class where oid = 'storage.objects'::regclass;")
+check "row-level security is enabled on storage.objects" "t" "$STORAGE_RLS"
+
+# The proof that the two facts above combine into actual denial.
+#
+# The client roles DO hold table privileges on storage.objects here (the
+# harness grants them, reproducing what Supabase does), so this is not
+# testing a missing grant — it is testing that RLS with no policy denies
+# a role that is otherwise fully privileged. That is the entire security
+# argument of model B, executed rather than asserted.
+$DB -c "insert into storage.buckets (id, name, public) values ('probe-bucket','probe-bucket',false) on conflict do nothing;" >/dev/null
+$DB -c "insert into storage.objects (bucket_id, name) values ('memorial-media','probe/seed.jpg');" >/dev/null
+
+for role in anon authenticated; do
+  READ_COUNT=$($DB -t -A -c "set role $role; select count(*) from storage.objects;")
+  check "$role can read no object at all (RLS, no policy)" "0" "$READ_COUNT"
+
+  expect_error "$role cannot write an object" \
+    "set role $role; insert into storage.objects (bucket_id, name) values ('memorial-media','$role/forged.jpg');"
+
+  DELETED=$($DB -t -A -c "set role $role; with d as (delete from storage.objects returning 1) select count(*) from d;")
+  check "$role can delete no object" "0" "$DELETED"
+done
+
+# service_role is the only role that reaches objects, and only ever
+# behind lib/auth/memorial-access.ts.
+SVC_OBJECTS=$($DB -t -A -c "set role service_role; select count(*) from storage.objects;")
+check "service_role reaches objects (it is the engine's only route)" "1" "$SVC_OBJECTS"
+
+$DB -c "delete from storage.objects;" >/dev/null
+$DB -c "delete from storage.buckets where id = 'probe-bucket';" >/dev/null
+
+# --- the media table: client roles still hold nothing -----------------
+#
+# Mission 030 opened service_role's four privileges (asserted in the
+# Mission 013C block above, which runs before this script grants
+# anything of its own) and opened NOTHING for a browser session.
+#
+# Earlier sections of this harness granted themselves test-only
+# privileges on `media` to simulate RLS, so the production state has to
+# be restored before it can be asserted again here. That revoke is what
+# the migrations leave behind; everything this section grants below is
+# taken away again at its end.
+$DB -c "revoke all privileges on table media from anon, authenticated;" >/dev/null
+
+for role in anon authenticated; do
+  for p in SELECT INSERT UPDATE DELETE; do
+    expect_client "$role" media "$p" f
+  done
+done
+
+# PUBLIC too — a privilege granted to PUBLIC is held by every role,
+# including future ones nobody remembers to check.
+for p in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+  PUB_MEDIA=$($DB -t -A -c "select has_table_privilege('public','public.media','$p');")
+  check "PUBLIC has no $p on media" "f" "$PUB_MEDIA"
+done
+
+# RLS is on, and the Mission 002 owner policy is still there — inert
+# while no client grant exists, and a genuine second lock the day one
+# is opened.
+MEDIA_RLS=$($DB -t -A -c "select relrowsecurity from pg_class where oid = 'public.media'::regclass;")
+check "row-level security is enabled on media" "t" "$MEDIA_RLS"
+
+MEDIA_POLICY=$($DB -t -A -c "select count(*) from pg_policies where schemaname='public' and tablename='media' and policyname='media_all_own';")
+check "the Mission 002 owner policy on media is preserved" "1" "$MEDIA_POLICY"
+
+# --- the lifecycle columns and their constraints ----------------------
+#
+# Fixtures: two owners, two memorials. Owner A must never be able to
+# reach Owner B's media, and the RLS simulation below is where that is
+# proved against PostgreSQL rather than against a mock.
+M030_AUTH_A=$($DB -t -A -c "select gen_random_uuid();")
+M030_AUTH_B=$($DB -t -A -c "select gen_random_uuid();")
+M030_OWNER_A=$($DB -t -A -c "insert into owners (email, auth_user_id) values ('m030-a@heritage.test','$M030_AUTH_A') returning id;")
+M030_OWNER_B=$($DB -t -A -c "insert into owners (email, auth_user_id) values ('m030-b@heritage.test','$M030_AUTH_B') returning id;")
+M030_ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M030_ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M030_MEM_A=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug) values ('$M030_OWNER_A','$M030_ENT_A','person','remembrance','intemporel','fr','m030-memorial-a') returning id;")
+M030_MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug) values ('$M030_OWNER_B','$M030_ENT_B','person','remembrance','intemporel','fr','m030-memorial-b') returning id;")
+
+# A reservation: pending, and size genuinely unknown because the file
+# does not exist yet. This is the row that makes an abandoned upload a
+# known object rather than an orphan.
+M030_MEDIA_A=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/original.jpg','photo','image/jpeg','hero','pending') returning id;")
+check "a reservation may be recorded with no size yet (pending)" "1" "$($DB -t -A -c "select count(*) from media where id='$M030_MEDIA_A' and size_bytes is null;")"
+
+# The constraint that makes the NULL above safe: a media may not become
+# usable while its size is unknown.
+expect_error "a media cannot become ready while its size is unknown" \
+  "update media set status='ready' where id='$M030_MEDIA_A';"
+
+$DB -c "update media set status='ready', size_bytes=2048 where id='$M030_MEDIA_A';" >/dev/null
+check "a media becomes ready once its measured size is recorded" "ready" "$($DB -t -A -c "select status from media where id='$M030_MEDIA_A';")"
+
+# updated_at moves on finalization, via the same helper every other
+# HERITAGE table uses.
+check "updated_at is maintained by the shared trigger" "t" "$($DB -t -A -c "select updated_at > created_at from media where id='$M030_MEDIA_A';")"
+
+# The closed vocabularies. Both are CHECK constraints rather than
+# conventions, so a typo or an unreviewed new value fails at write time.
+expect_error "an unknown purpose is refused" \
+  "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/x/original.jpg','photo','image/jpeg','banner','ready',10);"
+
+expect_error "an unknown status is refused" \
+  "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/y/original.jpg','photo','image/jpeg','hero','published',10);"
+
+# No video reaches this foundation at the schema level either. The
+# allowlist in the bucket is one layer; media_type is another, and it
+# has admitted exactly one value since Mission 002.
+expect_error "no video may be recorded in this foundation" \
+  "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/v/original.mp4','video','video/mp4','gallery','ready',10);"
+
+# A path is unique across the whole table, so two media can never
+# resolve to the same object — the property that lets replacement work
+# without locking.
+expect_error "two media cannot share one object path" \
+  "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_B','$M030_OWNER_B','$M030_MEM_A/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/original.jpg','photo','image/jpeg','hero','ready',10);"
+
+# A media cannot exist without a memorial to belong to.
+expect_error "a media must belong to a real memorial" \
+  "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values (gen_random_uuid(),'$M030_OWNER_A','$M030_MEM_A/z/original.jpg','photo','image/jpeg','hero','ready',10);"
+
+# --- Hero and Gallery are ONE engine ----------------------------------
+#
+# Same table, same constraints, same policy, same bucket, same path
+# shape — the only difference is the value in `purpose`. Proved by
+# storing both and observing they differ in nothing else.
+M030_GALLERY=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original.webp','photo','image/webp','gallery','ready',4096) returning id;")
+check "hero and gallery media live in the same table" "2" "$($DB -t -A -c "select count(*) from media where memorial_id='$M030_MEM_A';")"
+check "hero and gallery media share one memorial and one owner" "1" "$($DB -t -A -c "select count(distinct owner_id) from media where memorial_id='$M030_MEM_A';")"
+check "purpose is the only thing that distinguishes them" "2" "$($DB -t -A -c "select count(distinct purpose) from media where memorial_id='$M030_MEM_A';")"
+
+# Replacement requires two ready hero media to coexist for an instant —
+# so the schema must NOT forbid it. This asserts the deliberate absence
+# of a "one ready hero" unique index: forbidding the overlap would make
+# it impossible to keep the old photograph until the new one is proven.
+M030_HERO_2=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/cccccccc-cccc-4ccc-8ccc-cccccccccccc/original.jpg','photo','image/jpeg','hero','ready',3072) returning id;")
+check "two ready heroes may coexist, so replacement never loses the old one" "2" "$($DB -t -A -c "select count(*) from media where memorial_id='$M030_MEM_A' and purpose='hero' and status='ready';")"
+$DB -c "delete from media where id='$M030_HERO_2';" >/dev/null
+
+# --- cross-owner isolation, proved against PostgreSQL -----------------
+#
+# The Mission 002 policy is inert in production because `authenticated`
+# holds no grant on media — which is a stronger guarantee than the
+# policy, not a weaker one. But the policy is the second lock, and a
+# second lock that has never been tested is a decoration. This block
+# grants the client role a temporary SELECT so the policy can actually
+# be exercised, then takes it away again.
+#
+# The grant is made HERE, in the test, and never in a migration —
+# nothing about the production privilege model changes.
+M030_MEDIA_B=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M030_MEM_B','$M030_OWNER_B','$M030_MEM_B/dddddddd-dddd-4ddd-8ddd-dddddddddddd/original.png','photo','image/png','hero','ready',1024) returning id;")
+
+$DB -c "grant select, update, delete on media to authenticated;" >/dev/null
+
+as_owner() {
+  local auth_uid="$1"; shift
+  $DB -t -A -c "set role authenticated; set local request.jwt.claim.sub = '$auth_uid'; $*"
+}
+
+check "Owner A sees exactly their own media" "2" "$(as_owner "$M030_AUTH_A" "select count(*) from media;")"
+check "Owner B sees exactly their own media" "1" "$(as_owner "$M030_AUTH_B" "select count(*) from media;")"
+check "Owner A cannot see Owner B's media by its id" "0" "$(as_owner "$M030_AUTH_A" "select count(*) from media where id='$M030_MEDIA_B';")"
+check "Owner B cannot see Owner A's media by its id" "0" "$(as_owner "$M030_AUTH_B" "select count(*) from media where id='$M030_MEDIA_A';")"
+
+# Reading is not the interesting half. These are the ones that would
+# let one family vandalise another's memorial.
+check "Owner A cannot overwrite Owner B's media" "0" "$(as_owner "$M030_AUTH_A" "with u as (update media set storage_path='hijacked' where id='$M030_MEDIA_B' returning 1) select count(*) from u;")"
+check "Owner A cannot delete Owner B's media" "0" "$(as_owner "$M030_AUTH_A" "with d as (delete from media where id='$M030_MEDIA_B' returning 1) select count(*) from d;")"
+check "Owner B's media is intact after Owner A's attempts" "1" "$($DB -t -A -c "select count(*) from media where id='$M030_MEDIA_B' and storage_path <> 'hijacked';")"
+
+# The path is the thing an attacker would forge, so the policy must not
+# be fooled by one that merely LOOKS like it belongs elsewhere.
+check "Owner A cannot reach Owner B's media by guessing its path" "0" "$(as_owner "$M030_AUTH_A" "select count(*) from media where storage_path like '$M030_MEM_B/%';")"
+
+# --- anon: nothing, at any layer --------------------------------------
+#
+# A visitor has no session, so current_owner_id() is NULL and the owner
+# policy matches nothing. Asserted even though anon also holds no grant,
+# because these are two independent locks and the mission requires both.
+$DB -c "grant select on media to anon;" >/dev/null
+ANON_MEDIA=$($DB -t -A -c "set role anon; select count(*) from media;")
+check "anon can read no media at all" "0" "$ANON_MEDIA"
+ANON_PENDING=$($DB -t -A -c "set role anon; select count(*) from media where status='pending';")
+check "anon can read no reservation either" "0" "$ANON_PENDING"
+$DB -c "revoke select on media from anon;" >/dev/null
+
+$DB -c "revoke all privileges on table media from anon, authenticated;" >/dev/null
+
+# The temporary grants are gone; the production model is back exactly
+# where the migrations left it. Re-asserted so a future edit to this
+# block cannot silently leave a privilege open.
+for role in anon authenticated; do
+  for p in SELECT INSERT UPDATE DELETE; do
+    expect_client "$role" media "$p" f
+  done
+done
+
+# --- the sweep's view of an abandoned upload --------------------------
+#
+# The sweep looks for pending rows older than the TTL. What must be
+# impossible is for it to see a `ready` one — a finalized photograph
+# reclaimed as garbage would be the worst bug this foundation could
+# have.
+$DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, created_at) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/original.jpg','photo','image/jpeg','gallery','pending', now() - interval '3 hours');" >/dev/null
+
+SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '1 hour';")
+check "an abandoned reservation is visible to the sweep" "1" "$SWEEPABLE"
+
+SWEEPABLE_READY=$($DB -t -A -c "select count(*) from media where status='ready' and created_at < now() - interval '1 hour';")
+check "no ready media is ever sweepable, however old" "0" "$SWEEPABLE_READY"
+
+# A fresh reservation is protected: reclaiming a path while its upload
+# is still in flight would turn a slow success into a mystery failure.
+$DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/ffffffff-ffff-4fff-8fff-ffffffffffff/original.jpg','photo','image/jpeg','gallery','pending');" >/dev/null
+FRESH_SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '1 hour';")
+check "a reservation younger than the TTL is left alone" "1" "$FRESH_SWEEPABLE"
+
+# The partial index the sweep reads, and the fact that it covers only
+# pending rows.
+SWEEP_INDEX=$($DB -t -A -c "select count(*) from pg_indexes where tablename='media' and indexname='media_pending_created_at_idx';")
+check "the sweep has a partial index over pending rows" "1" "$SWEEP_INDEX"
+
+# --- deleting a memorial takes its media with it ----------------------
+#
+# ON DELETE CASCADE from Mission 002. Worth asserting in this mission
+# because it is now load-bearing for orphans: a memorial removed
+# without its media rows would leave objects in the bucket that nothing
+# references and nobody can attribute.
+$DB -c "delete from memorials where id='$M030_MEM_B';" >/dev/null
+check "removing a memorial removes its media rows with it" "0" "$($DB -t -A -c "select count(*) from media where memorial_id='$M030_MEM_B';")"
+
+$DB -c "delete from media where memorial_id='$M030_MEM_A';" >/dev/null
+$DB -c "delete from memorials where id='$M030_MEM_A';" >/dev/null
+$DB -c "delete from entitlements where id in ('$M030_ENT_A','$M030_ENT_B');" >/dev/null
+$DB -c "delete from owners where id in ('$M030_OWNER_A','$M030_OWNER_B');" >/dev/null
+
+
+
+# --- the preflight/postflight the QG will hand to the PO ---------------
+#
+# supabase/checks/*.sql is SQL a human pastes into the Supabase SQL
+# Editor on the real project. Until now nothing executed those files at
+# all, so a typo in one would only be discovered by the person running
+# it against production — the worst possible place to find it.
+#
+# Both are read-only, so running them here costs nothing and proves two
+# things: that they parse and execute, and — for the postflight — that
+# the migration this harness just applied actually satisfies every
+# assertion the QG will be reading.
+
+if $DB -f "$REPO_ROOT/supabase/checks/030_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
+  echo "  [PASS] 030_preflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] 030_preflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/preflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+
+if $DB -f "$REPO_ROOT/supabase/checks/030_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  echo "  [PASS] 030_postflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] 030_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+
+# The postflight grades itself. Every row carries OK / ECHEC / INFO, so
+# the strongest possible assertion is simply that it reports no ECHEC
+# against a database built from these migrations.
+POSTFLIGHT_FAILURES=$($DB -t -A -f "$REPO_ROOT/supabase/checks/030_postflight.sql" 2>/dev/null | grep -c "ECHEC" || true)
+check "030_postflight.sql reports zero ECHEC against these migrations" "0" "$POSTFLIGHT_FAILURES"
+
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="

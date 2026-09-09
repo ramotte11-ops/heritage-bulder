@@ -33,7 +33,7 @@ its memorial — see "Entitlement ⟷ memorial" below.
 | `memorials` | The core entity: identity, configuration, status, slug. | One per memorial. |
 | `memorial_drafts` | The content currently being edited. Never public. | Exactly one per memorial (auto-created). |
 | `memorial_published_snapshots` | The current live content. What visitors read. | At most one per memorial (present only once published). |
-| `media` | Photo metadata (no upload yet). | Many per memorial. |
+| `media` | Photo metadata and upload lifecycle, over the private `memorial-media` bucket (Mission 030). | Many per memorial. |
 | `messages` | Visitor condolences / testimonials / memory messages (no form yet). | Many per memorial. |
 
 Every table, column, and constraint carries an inline comment in its
@@ -546,6 +546,143 @@ deliberately *not* modified: they are shared with Supabase-managed
 objects, invisible to Git, and would not reproduce on a plain PostgreSQL
 instance.
 
+### The media engine's privileges (Mission 030)
+
+`20260909120000_media_storage.sql` opens the first `service_role`
+privileges on `media`, and opens nothing at all for a client role:
+
+| Role | Privilege on `media` | Wired reader/writer |
+| --- | --- | --- |
+| `service_role` | SELECT | `SupabaseMediaRepository.findById` / `listForMemorial` / `findExpiredPending` — the owner's own media, finalization re-reading its reservation, the sweep finding expired ones |
+| `service_role` | INSERT | `createPending` — `reserveMediaUpload` recording a reservation |
+| `service_role` | UPDATE | `markReady` — `finalizeMediaUpload` flipping pending → ready |
+| `service_role` | DELETE | `deleteById` — `deleteMedia`, and `sweepAbandonedUploads` reclaiming an abandoned upload |
+| `anon` / `authenticated` | *none* | nothing reads or writes `media` as a client role |
+
+`DELETE` is granted here where Mission 013C granted it nowhere, and the
+distinction is deliberate: a purchase record is history and must not be
+removable by a server flow, but a photograph is something a family is
+entitled to take back, and an abandoned reservation **must** be
+removable or "zero orphans by design" cannot hold. It is reachable only
+through `deleteMedia` (which proves ownership against the memorial
+first) and through the sweep (which can only ever see `pending` rows).
+
+The Mission 002 policy `media_all_own` is left exactly as it is —
+correct, and inert while no client grant exists.
+
+## Storage (Mission 030)
+
+One bucket, `memorial-media`, **private**, shared by every family and
+every purpose. Originals are never public: a published memorial will
+serve photographs through a derived, deliberately-published variant,
+and that problem is not pre-solved by opening the sources today.
+
+### How Storage differs from the table model
+
+This is the one place where HERITAGE's privilege doctrine does *not*
+apply as written, so it is stated explicitly rather than left to be
+inferred.
+
+For HERITAGE's own tables, the grant is the first lock and RLS the
+second — Mission 013C proved a policy is inert without a grant.
+`storage.objects` is **not ours**: Supabase owns it, grants the client
+roles table privileges on it as part of the platform, and expects
+*policies* to be the only gate.
+
+So Mission 030 **revokes nothing on `storage.objects`** — those grants
+are shared with every Supabase-managed feature, revoking them would be
+invisible in Git to anyone reading only HERITAGE's schema, and it could
+break platform behaviour unrelated to us. Instead it relies on the gate
+Storage actually uses, and **creates no policy at all**. Under RLS, a
+bucket that no policy names is a bucket no client role can read, write,
+list or delete.
+
+Two models were available; this is model **B**:
+
+| | Model A | Model B (chosen) |
+| --- | --- | --- |
+| Client access to `storage.objects` | `authenticated`, fenced by policies | none |
+| Where ownership is decided | an RLS policy parsing the object path and joining `memorials` | `lib/auth/memorial-access.ts`, once |
+| What the browser holds | a session that can reach the bucket | a token for one object path |
+
+Model A would re-implement `authorizeMemorialAccess` in SQL over a
+string split — one authorization rule with two implementations, which is
+one implementation and one future divergence. Model B keeps the rule in
+one place and leaves the browser holding nothing that names the bucket.
+
+**The risk model B carries, named so it is checked rather than
+forgotten:** storage policies are written against one shared table, so a
+permissive policy added by *any* other means — the dashboard's "New
+policy" button, a Supabase quickstart, another feature — would apply to
+`memorial-media` too. `checks/030_preflight.sql` inventories every
+existing policy on `storage.objects` before anything is applied, and
+`checks/030_postflight.sql` re-checks that the count is still zero
+afterwards.
+
+### Object paths
+
+    <memorial_id>/<media_id>/original.<ext>
+
+Both segments are server-generated UUIDs. No email, no person's name, no
+activation key, no Etsy order id, no client filename — a path leaks
+nothing about the family and cannot be guessed. The extension is derived
+from the type **verified from the file's own bytes**, never from the
+name or content-type the browser sent.
+
+Giving every upload its own directory is what makes replacement safe
+without locking: a new photograph physically cannot land on the old
+one's object, so the old one keeps working until the new one is proven.
+Future derivatives (Missions 033/047) become siblings under the same
+media id.
+
+`media.storage_path` holds this internal path and **never a provider
+URL**. Since the bucket is private, that is now a security property as
+well as the portability rule below: a leaked row hands nobody a working
+link. A usable URL is a short-lived signed one, minted per read by
+`lib/media/read-media.ts` and allowed to expire.
+
+### Lifecycle, and the honest limits
+
+`media` rows and Storage objects live in two systems that **cannot be
+committed together**. No transaction spans them, and this foundation
+claims no atomicity it does not have. What it does instead is choose
+which side is left inconsistent by a crash:
+
+- **Creation.** The `pending` row is written *before* any upload
+  permission is issued. Every path HERITAGE hands out is therefore
+  already recorded, so an abandoned upload is never an unknown object —
+  it is a known row that `lib/media/orphan-sweep.ts` reclaims after
+  `PENDING_MEDIA_TTL_MS`.
+- **Replacement.** The old media is removed only *after* the new one is
+  finalized. `delete old → upload new → new fails → Hero lost` is
+  structurally impossible. Both are momentarily `ready`, which is why
+  there is deliberately **no** unique index forcing one ready hero per
+  memorial: such a constraint would forbid exactly the overlap that
+  keeps a family from losing their photograph. "Which hero is current"
+  is a selection rule for the consumer — the most recently created
+  `ready` hero — not a storage constraint.
+- **Deletion.** The object goes first, the row second. A row pointing at
+  a missing object is *visible, attributable and retryable*; an object
+  no row mentions is an orphan nobody can ever find again. Both halves
+  are idempotent, so a retry converges.
+
+### File validation
+
+`file.name`, `file.type` and the extension are claims, never evidence.
+The allowlist is JPEG, PNG and WebP, and it is enforced three times:
+
+1. at reservation, against the declared type (a cheap pre-filter);
+2. by Storage itself, via the bucket's `allowed_mime_types` and
+   `file_size_limit` — the only layer that can stop a bad transfer while
+   it is still in flight, since uploads go browser → Storage directly;
+3. at finalization, from the object's **actual leading bytes**
+   (`lib/media/image-signature.ts`), read over a 16-byte Range request
+   rather than by downloading the photograph.
+
+No SVG (a script host), and no HEIC/HEIF, AVIF or GIF — see
+`config/media.ts` for why each exclusion is a decision rather than an
+omission.
+
 ## Local testing
 
 `scripts/db/test-local.sh` spins up a throwaway, vanilla PostgreSQL
@@ -597,7 +734,7 @@ real system deliberately does not have.
 scripts/db/test-local.sh
 ```
 
-As of Mission 021B this passes 472/472 checks.
+As of Mission 030 this passes 573/573 checks.
 
 **One gap it cannot close.** This harness runs PostgreSQL 16, where the
 `MAINTAIN` privilege does not exist; the real project runs 17+, where it
@@ -609,9 +746,10 @@ real GoTrue-issued JWTs, real PostgREST.
 
 ## Préflight / postflight (`checks/`)
 
-`checks/013c_preflight.sql` and `checks/013c_postflight.sql` are
-**read-only** queries meant to be pasted into the Supabase SQL Editor by
-someone who is not a developer. Neither performs a GRANT, REVOKE, CREATE
+`checks/*_preflight.sql` and `checks/*_postflight.sql` are **read-only**
+queries meant to be pasted into the Supabase SQL Editor by someone who
+is not a developer. There is one pair per migration that changes the
+security model: `013c`, `015b`, `019c` and `030`. Neither performs a GRANT, REVOKE, CREATE
 or UPDATE; both read catalogues only, and each returns **one** result
 set.
 
@@ -638,6 +776,33 @@ default-ACL signature, including negatively: each of `grant truncate`,
 `grant delete`, an over-broad client `grant select`, an extra `execute`
 grant, a `grant ... to public`, and reverting `current_owner_id()` to a
 non-pinned INVOKER was individually shown to turn rows red.
+
+### Mission 030's pair
+
+`checks/030_preflight.sql` and `checks/030_postflight.sql` cover the
+media storage foundation. The preflight's most important job is the one
+nothing else can do: it inventories **every existing policy on
+`storage.objects`**, including any that filters no bucket at all, because
+such a policy would silently apply to `memorial-media` and defeat model
+B (see [Storage](#storage-mission-030)). It also reports whether
+`storage.buckets` has the `file_size_limit` / `allowed_mime_types`
+columns on this project's Storage version, since the migration writes
+them only if they exist.
+
+The postflight asserts the bucket exists and is private, that no bucket
+in the project is public, that the size ceiling and the format allowlist
+are the ones `config/media.ts` declares, that each forbidden format
+(SVG, HEIC, HEIF, AVIF, GIF, MP4, MOV, PDF) is individually absent, that
+`storage.objects` still carries zero policies with RLS enabled, that
+`service_role` holds exactly four privileges on `media` and every client
+role holds none, and that no unique index has appeared that would break
+safe replacement.
+
+Unlike the earlier pairs, both of these are **executed by the local
+harness on every run** (`scripts/db/test-local.sh`), which asserts that
+they parse and that the postflight reports zero `ECHEC` against a
+database built from these migrations. A typo in SQL a non-developer will
+paste into production is not something to discover in production.
 
 ## Migration workflow
 
