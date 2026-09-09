@@ -142,6 +142,17 @@ describe("the ownership proof", () => {
   });
 });
 
+describe("Mission 029B: skinVariant, even on the Etsy channel", () => {
+  it("passes skinVariant: 'light' explicitly — the same TEMPORARY default, no Etsy-derived value", async () => {
+    const d = deps([receipt()]);
+
+    expect(await claim(d)).toEqual({ status: "claimed", memorialId: "memorial-1" });
+    expect(d.entitlementRepository.redeem).toHaveBeenCalledWith(
+      expect.objectContaining({ skinVariant: "light" }),
+    );
+  });
+});
+
 describe("eligibility — nothing is written for a purchase that cannot be claimed", () => {
   it.each([
     ["a cancelled order", { status: "canceled" }],

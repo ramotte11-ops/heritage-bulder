@@ -8,7 +8,7 @@ import type {
 import type { EntitlementSource, EntitlementStatus } from "@/config/entitlements";
 import type { MemorialType } from "@/config/memorial";
 import type { OfferId } from "@/config/offers";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { Entitlement } from "@/types/entitlement";
 
 /**
@@ -215,12 +215,14 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
     ownerId,
     memorialType,
     skinId,
+    skinVariant,
   }: {
     entitlementId: string;
     expectedActivationKeyHash: string;
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }): Promise<RedeemEntitlementOutcome> {
     return this.callRedeem("redeem_entitlement_with_activation_key", {
       p_entitlement_id: entitlementId,
@@ -228,6 +230,7 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
       p_owner_id: ownerId,
       p_memorial_type: memorialType,
       p_skin_id: skinId,
+      p_skin_variant: skinVariant,
     });
   }
 
@@ -236,17 +239,20 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
     ownerId,
     memorialType,
     skinId,
+    skinVariant,
   }: {
     entitlementId: string;
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }): Promise<RedeemEntitlementOutcome> {
     return this.callRedeem("redeem_entitlement", {
       p_entitlement_id: entitlementId,
       p_owner_id: ownerId,
       p_memorial_type: memorialType,
       p_skin_id: skinId,
+      p_skin_variant: skinVariant,
     });
   }
 

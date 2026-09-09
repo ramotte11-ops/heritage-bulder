@@ -31,6 +31,9 @@ export const DEMO_MEMORIALS: Record<string, Memorial> = {
     memorialType: "person",
     editorialContext: "announcement",
     skin: "intemporel",
+    // Mission 029B: fixture data, so explicit like every real creation
+    // path — see lib/entitlement/redeem-authenticated-entitlement.ts.
+    skinVariant: "light",
     language: "fr",
     enabledSections: ["story", "gallery"],
     status: "draft",
@@ -58,6 +61,9 @@ export const DEMO_MEMORIALS: Record<string, Memorial> = {
     memorialType: "person",
     editorialContext: "remembrance",
     skin: "intemporel",
+    // Mission 029B: fixture data, so explicit like every real creation
+    // path — see lib/entitlement/redeem-authenticated-entitlement.ts.
+    skinVariant: "light",
     language: "fr",
     enabledSections: ["gallery", "memoryMessage"],
     status: "draft",

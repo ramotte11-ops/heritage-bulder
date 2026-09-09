@@ -1,6 +1,6 @@
 import type { EditorialContext, MemorialType } from "@/config/memorial";
 import type { Language } from "@/config/languages";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialStatus } from "@/types/memorial";
 
 /**
@@ -42,6 +42,8 @@ export interface MemorialSupportSummary {
   /** NULL between redemption and the family's own choices (Mission 011A). */
   editorialContext: EditorialContext | null;
   skin: Skin;
+  /** Mission 029B — never nullable, decided at redemption like `skin`. */
+  skinVariant: SkinVariant;
   language: Language | null;
   status: MemorialStatus;
   slug: string | null;

@@ -238,6 +238,32 @@ describe("redeemAuthenticatedEntitlement — Offer drives type and skin", () => 
   });
 });
 
+describe("redeemAuthenticatedEntitlement — Mission 029B: skinVariant", () => {
+  it("passes skinVariant: 'light' explicitly on every redemption — the current parcours' documented temporary default", async () => {
+    const d = deps();
+
+    await redeemAuthenticatedEntitlement(d, {
+      identity: IDENTITY,
+      entitlementId: ENTITLEMENT_ID,
+    });
+
+    expect(d.redeem).toHaveBeenCalledWith(expect.objectContaining({ skinVariant: "light" }));
+  });
+
+  it("never derives skinVariant from the offer/skin selection — same value across every offer", async () => {
+    for (const offerId of Object.keys(OFFERS) as (keyof typeof OFFERS)[]) {
+      const d = deps({ entitlementRow: entitlement({ offerId }) });
+
+      await redeemAuthenticatedEntitlement(d, {
+        identity: IDENTITY,
+        entitlementId: ENTITLEMENT_ID,
+      });
+
+      expect(d.redeem).toHaveBeenCalledWith(expect.objectContaining({ skinVariant: "light" }));
+    }
+  });
+});
+
 describe("redeemAuthenticatedEntitlement — refusals", () => {
   it("F: never calls the RPC when the entitlement does not exist", async () => {
     const d = deps({ entitlementRow: null });

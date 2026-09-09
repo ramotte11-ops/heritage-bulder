@@ -2,7 +2,7 @@ import type { Entitlement } from "@/types/entitlement";
 import type { EntitlementSource } from "@/config/entitlements";
 import type { OfferId } from "@/config/offers";
 import type { MemorialType } from "@/config/memorial";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 
 /**
  * Mission 011B — the contract over `entitlements`, including the one
@@ -109,6 +109,15 @@ export interface EntitlementRepository {
    * the SQL function behind it, never decides them and knows nothing
    * about offers, allowed skins, cultures or sales channels.
    *
+   * `skinVariant` (Mission 029B) is likewise received already decided —
+   * currently always the explicit, documented `"light"` default every
+   * real creation path assigns until a commercial UX mission wires a
+   * real choice (see
+   * `lib/entitlement/redeem-authenticated-entitlement.ts`'s
+   * `TEMPORARY_SKIN_VARIANT`). This port never defaults it and never
+   * derives it from `offerId`, a sales channel, or anything else —
+   * exactly like `skinId`, just one dimension further.
+   *
    * `ownerId` must come from server-side identity resolution, never from
    * a request payload.
    *
@@ -120,6 +129,7 @@ export interface EntitlementRepository {
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }): Promise<RedeemEntitlementOutcome>;
 
   /**
@@ -137,5 +147,6 @@ export interface EntitlementRepository {
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }): Promise<RedeemEntitlementOutcome>;
 }

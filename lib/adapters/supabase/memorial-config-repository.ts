@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MemorialConfigRepository } from "@/lib/adapters/memorial-config-repository";
 import type { EditorialContext, MemorialType } from "@/config/memorial";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { Language } from "@/config/languages";
 import type { SectionId } from "@/config/sections";
 import type { MemorialStatus, StoredMemorialConfig } from "@/types/memorial";
@@ -23,6 +23,7 @@ interface MemorialRow {
   memorial_type: MemorialType;
   editorial_context: EditorialContext | null;
   skin_id: Skin;
+  skin_variant: SkinVariant;
   language: Language | null;
   enabled_sections: SectionId[];
   status: MemorialStatus;
@@ -65,7 +66,7 @@ export class SupabaseMemorialConfigRepository implements MemorialConfigRepositor
     const { data, error } = await this.client
       .from("memorials")
       .select(
-        "id, owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, enabled_sections, status, slug, created_at, updated_at",
+        "id, owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, enabled_sections, status, slug, created_at, updated_at",
       )
       .eq("id", memorialId)
       .maybeSingle<MemorialRow>();
@@ -80,6 +81,7 @@ export class SupabaseMemorialConfigRepository implements MemorialConfigRepositor
       memorialType: data.memorial_type,
       editorialContext: data.editorial_context,
       skin: data.skin_id,
+      skinVariant: data.skin_variant,
       language: data.language,
       enabledSections: data.enabled_sections,
       status: data.status,

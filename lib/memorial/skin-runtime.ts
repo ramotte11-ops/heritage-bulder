@@ -1,7 +1,9 @@
-import { SKINS, type Skin } from "@/config/skins";
+import { SKINS, SKIN_VARIANTS, type Skin, type SkinVariant } from "@/config/skins";
 
 /**
  * Mission 029 — the memorial skin runtime foundation.
+ * Mission 029B extends it with the independent `SkinVariant` (light/dark)
+ * dimension — see that section of this docstring below.
  *
  * HERITAGE has one Memorial Builder and one memorial renderer; a skin
  * only changes which visual identity that same renderer is scoped
@@ -13,10 +15,12 @@ import { SKINS, type Skin } from "@/config/skins";
  *
  * ## Source of truth
  *
- * `SKINS`/`Skin` come from `config/skins.ts` — this module deliberately
- * does not restate the four V1 ids (`intemporel`, `musulman`, `juif`,
- * `hindou`) as a second list. Growing or correcting the V1 segmentation
- * is a `config/skins.ts` change only; this file picks it up for free.
+ * `SKINS`/`Skin` and `SKIN_VARIANTS`/`SkinVariant` come from
+ * `config/skins.ts` — this module deliberately does not restate the
+ * four V1 ids (`intemporel`, `musulman`, `juif`, `hindou`) or the two
+ * variants (`light`, `dark`) as a second list. Growing or correcting
+ * either is a `config/skins.ts` change only; this file picks it up for
+ * free.
  *
  * ## Fail-safe strategy for an invalid or missing skin (mission brief
  * section 12)
@@ -40,6 +44,24 @@ import { SKINS, type Skin } from "@/config/skins";
  * surface that owns the real memorial renderer — no such surface exists
  * yet (see this module's own docstring below on integration), so this
  * mission does not build that handling UI.
+ *
+ * ## Mission 029B — the same fail-safe doctrine for `SkinVariant`
+ *
+ * `resolveSkinVariantRuntime` mirrors `resolveSkinRuntime` exactly, one
+ * level down: it NEVER falls back to `"light"` — not for an unrecognized
+ * value, and not for a missing one. There is no `?? "light"` anywhere in
+ * this runtime. The only place `"light"` is ever assigned is the
+ * explicit, documented, TEMPORARY default in
+ * `lib/entitlement/redeem-authenticated-entitlement.ts`, at the moment a
+ * Memorial is actually created — never here, and never silently.
+ *
+ * `SkinVariant` is deliberately NOT `prefers-color-scheme`, a device or
+ * browser dark mode, or anything read from `window.matchMedia`. It is a
+ * HERITAGE artistic ambiance persisted on the Memorial itself: this
+ * entire module (this function included) is framework-free and has no
+ * access to — and never reads — a window, a `matchMedia`, or a media
+ * query. A dark memorial must render dark for every visitor, on every
+ * device, regardless of that visitor's own system preference.
  */
 
 export type SkinRuntimeResolution =
@@ -70,21 +92,72 @@ export function resolveSkinRuntime(skinId: unknown): SkinRuntimeResolution {
 }
 
 /**
- * The single DOM attribute name the skin runtime scopes a memorial
- * render under (mission brief section 10). One constant so every future
- * caller (Preview, V02, the published memorial, ...) and every future
+ * Mission 029B — the `SkinVariant` counterpart of `SkinRuntimeResolution`.
+ * A separate, independent resolution: a variant is never inferred from,
+ * or validated against, a particular skin — the two dimensions compose
+ * freely, all 4 × 2 = 8 combinations are equally valid (mission brief
+ * section 2/17).
+ */
+export type SkinVariantRuntimeResolution =
+  | { status: "resolved"; variant: SkinVariant }
+  | { status: "invalid"; received: unknown };
+
+const VALID_SKIN_VARIANTS: readonly string[] = SKIN_VARIANTS;
+
+/**
+ * Validates a raw `skin_variant` value (as it arrives from
+ * `memorial.skin_variant`) against the two real variants. Same
+ * `unknown`-in contract as `resolveSkinRuntime`, for the same reason,
+ * and the same refusal to guess: a missing value (`null`, `undefined`,
+ * an empty string) and an unrecognized one (a bad type, a typo, a
+ * future third variant this build does not know yet) both come back as
+ * the same explicit `{ status: "invalid" }` — never a silent `"light"`.
+ */
+export function resolveSkinVariantRuntime(skinVariant: unknown): SkinVariantRuntimeResolution {
+  if (typeof skinVariant === "string" && VALID_SKIN_VARIANTS.includes(skinVariant)) {
+    return { status: "resolved", variant: skinVariant as SkinVariant };
+  }
+
+  return { status: "invalid", received: skinVariant };
+}
+
+/**
+ * The DOM attribute name the skin runtime scopes a memorial render
+ * under (mission brief section 10). One constant so every future caller
+ * (Preview, V02, the published memorial, ...) and every future
  * skin-aware CSS rule agree on the exact same name.
  */
 export const SKIN_SCOPE_ATTRIBUTE = "data-heritage-skin" as const;
 
 /**
+ * Mission 029B — the sibling attribute for the variant, namespaced
+ * HERITAGE exactly like `SKIN_SCOPE_ATTRIBUTE` (mission brief section
+ * 9's target shape: `data-heritage-skin` + `data-heritage-skin-variant`
+ * on the same node).
+ */
+export const SKIN_VARIANT_SCOPE_ATTRIBUTE = "data-heritage-skin-variant" as const;
+
+/**
  * The scope attributes to spread onto whatever DOM node wraps the
  * memorial renderer — see `components/memorial/SkinScope.tsx` for the
  * thin component built on top of this. Takes an already-resolved `Skin`
- * on purpose (see this module's docstring): there is no overload that
- * accepts a `SkinRuntimeResolution` or an `unknown`, so an `"invalid"`
- * resolution structurally cannot be turned into a scope value.
+ * and `SkinVariant` on purpose (see this module's docstring): there is
+ * no overload that accepts a `SkinRuntimeResolution`,
+ * `SkinVariantRuntimeResolution`, or an `unknown`, so an `"invalid"`
+ * resolution of either dimension structurally cannot be turned into a
+ * scope value.
+ *
+ * Mission 029B extended this function rather than adding a second one:
+ * one scope, two independent attributes, the exact same call site every
+ * future renderer uses.
  */
-export function skinScopeAttributes(skin: Skin): Record<typeof SKIN_SCOPE_ATTRIBUTE, Skin> {
-  return { [SKIN_SCOPE_ATTRIBUTE]: skin };
+export function skinScopeAttributes(
+  skin: Skin,
+  skinVariant: SkinVariant,
+): Record<typeof SKIN_SCOPE_ATTRIBUTE, Skin> &
+  Record<typeof SKIN_VARIANT_SCOPE_ATTRIBUTE, SkinVariant> {
+  return {
+    [SKIN_SCOPE_ATTRIBUTE]: skin,
+    [SKIN_VARIANT_SCOPE_ATTRIBUTE]: skinVariant,
+  };
 }

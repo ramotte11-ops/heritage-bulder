@@ -7,7 +7,7 @@ import type { EntitlementSource, EntitlementStatus } from "@/config/entitlements
 import type { OfferId } from "@/config/offers";
 import type { EditorialContext, MemorialType } from "@/config/memorial";
 import type { Language } from "@/config/languages";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialStatus } from "@/types/memorial";
 import { SupabaseOwnerRepository } from "./owner-repository";
 import { ENTITLEMENT_COLUMNS } from "./entitlement-repository";
@@ -63,6 +63,7 @@ interface MemorialSummaryRow {
   memorial_type: MemorialType;
   editorial_context: EditorialContext | null;
   skin_id: Skin;
+  skin_variant: SkinVariant;
   language: Language | null;
   status: MemorialStatus;
   slug: string | null;
@@ -76,7 +77,7 @@ interface MemorialSummaryRow {
  * words are not support material.
  */
 const MEMORIAL_SUMMARY_COLUMNS =
-  "id, owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, status, slug, created_at, updated_at";
+  "id, owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, status, slug, created_at, updated_at";
 
 const OWNER_COLUMNS = "id, auth_user_id, email, created_at, updated_at";
 
@@ -131,6 +132,7 @@ function toMemorialSummary(row: MemorialSummaryRow): MemorialSupportSummary {
     memorialType: row.memorial_type,
     editorialContext: row.editorial_context,
     skin: row.skin_id,
+    skinVariant: row.skin_variant,
     language: row.language,
     status: row.status,
     slug: row.slug,

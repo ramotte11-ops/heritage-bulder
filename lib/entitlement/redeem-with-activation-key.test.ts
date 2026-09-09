@@ -100,6 +100,17 @@ describe("redeemActivationKey — resolution", () => {
     expect(d.redeem).not.toHaveBeenCalled();
   });
 
+  it("Mission 029B: passes skinVariant: 'light' explicitly too — the same TEMPORARY default as the keyless path", async () => {
+    const rawKey = generateActivationKey().rawKey;
+    const d = deps();
+
+    await redeemActivationKey(d, { identity: IDENTITY, rawActivationKey: rawKey });
+
+    expect(d.redeemWithActivationKey).toHaveBeenCalledWith(
+      expect.objectContaining({ skinVariant: "light" }),
+    );
+  });
+
   it("never sends the raw key to the database layer", async () => {
     const rawKey = generateActivationKey().rawKey;
     const d = deps();
