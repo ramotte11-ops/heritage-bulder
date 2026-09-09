@@ -55,6 +55,23 @@ const SERVER_ONLY_MODULES = [
   // code the user controls.
   "lib/adapters/supabase/memorial-ownership-repository.ts",
   "lib/auth/heritage-session.ts",
+  // Mission 030: the media engine. Both adapters run with the
+  // service-role client over `media` and over the private
+  // `memorial-media` bucket — `authenticated` holds no privilege on
+  // either, and no policy on storage.objects names that bucket, so
+  // service_role's RLS bypass is the ONLY route to a family's
+  // photographs. A browser holding one of these would hold
+  // read/write/delete over every family's originals.
+  "lib/adapters/supabase/media-repository.ts",
+  "lib/adapters/supabase/media-object-store.ts",
+  // Mints signed read URLs for private objects, and performs no
+  // ownership check of its own by design (see its port). Server side
+  // only, behind lib/media/read-media.ts.
+  "lib/adapters/supabase/media-storage-provider.ts",
+  // The maintenance sweep runs with no session and across memorials.
+  // It is bounded to `pending` rows, but it is emphatically not
+  // something a browser may reach.
+  "lib/media/orphan-sweep.ts",
   // Mission 015A: the staff support reads. They run with the
   // service-role client over owners/entitlements/memorials — every
   // family's record, not just the caller's — so nothing client-reachable
