@@ -4,7 +4,7 @@ import type {
 } from "@/lib/adapters/entitlement-repository";
 import type { OwnerRepository } from "@/lib/adapters/owner-repository";
 import { OFFERS, type OfferId } from "@/config/offers";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialType } from "@/config/memorial";
 import type { Entitlement } from "@/types/entitlement";
 import { getAllowedSkins, getMemorialTypeForOffer, isSkinAllowedForOffer } from "./offer-skin";
@@ -96,6 +96,31 @@ function isKnownOffer(offerId: string): offerId is OfferId {
 }
 
 /**
+ * Mission 029B, mission brief section 7 — TEMPORARY.
+ *
+ * There is no UI yet that lets a family (or Etsy, or a future B2B
+ * channel) choose light or dark, so every real memorial-creation path
+ * this codebase has today (the trusted-`entitlementId` flow below, the
+ * activation-key flow, and the Etsy OAuth direct-claim flow — all three
+ * fold into `completeRedemption` just below) must keep preserving the
+ * product's actual current behaviour EXPLICITLY: `"light"` is the only
+ * identity that has ever really existed in HERITAGE before this
+ * mission, so that is what every new memorial gets, on purpose, written
+ * here rather than defaulted anywhere near the runtime.
+ *
+ * This is NOT an Etsy dependency, an offer property, or a runtime
+ * fallback — `lib/memorial/skin-runtime.ts`'s `resolveSkinVariantRuntime`
+ * has no fallback at all and never will. It is a decided, temporary
+ * product default for the current parcours, assigned once, at the exact
+ * moment a Memorial is created, exactly the way `skin_id` already is.
+ *
+ * DELETE this constant the moment a commercial UX mission wires a real
+ * choice, and thread that choice through here (mirroring how
+ * `selectedSkin` already flows into `resolveSkin` below) instead.
+ */
+const TEMPORARY_SKIN_VARIANT: SkinVariant = "light";
+
+/**
  * Picks the skin this memorial will be created with, or explains why it
  * cannot. Never silently takes `allowedSkins[0]` from a multi-skin offer
  * — that would turn a product decision nobody made into a persisted one.
@@ -148,6 +173,7 @@ async function completeRedemption(
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }) => Promise<RedeemEntitlementOutcome>,
 ): Promise<RedeemAuthenticatedEntitlementResult> {
   // The column has a CHECK, but this build is the one that has to know
@@ -171,6 +197,8 @@ async function completeRedemption(
     ownerId,
     memorialType: getMemorialTypeForOffer(entitlement.offerId),
     skinId: skin.skinId,
+    // Mission 029B — see TEMPORARY_SKIN_VARIANT's own docstring above.
+    skinVariant: TEMPORARY_SKIN_VARIANT,
   });
 
   switch (outcome.status) {
@@ -223,6 +251,7 @@ export async function completeRedemptionForResolvedRight(
     ownerId: string;
     memorialType: MemorialType;
     skinId: Skin;
+    skinVariant: SkinVariant;
   }) => Promise<RedeemEntitlementOutcome>,
 ): Promise<RedeemAuthenticatedEntitlementResult> {
   return completeRedemption(ownerId, entitlement, selectedSkin, performRedeem);

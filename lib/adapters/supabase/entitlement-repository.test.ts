@@ -26,6 +26,7 @@ const REDEEM_INPUT = {
   ownerId: "owner-1",
   memorialType: "person" as const,
   skinId: "intemporel" as const,
+  skinVariant: "light" as const,
 };
 
 describe("SupabaseEntitlementRepository.findById", () => {
@@ -78,6 +79,7 @@ describe("SupabaseEntitlementRepository.redeem", () => {
       p_owner_id: "owner-1",
       p_memorial_type: "person",
       p_skin_id: "intemporel",
+      p_skin_variant: "light",
     });
     expect(outcome).toEqual({ status: "redeemed", memorialId: "memorial-1" });
   });
@@ -357,6 +359,7 @@ describe("SupabaseEntitlementRepository.redeemWithActivationKey", () => {
       ownerId: "owner-1",
       memorialType: "person",
       skinId: "intemporel",
+      skinVariant: "light",
     });
 
     expect(rpc).toHaveBeenCalledWith("redeem_entitlement_with_activation_key", {
@@ -365,6 +368,7 @@ describe("SupabaseEntitlementRepository.redeemWithActivationKey", () => {
       p_owner_id: "owner-1",
       p_memorial_type: "person",
       p_skin_id: "intemporel",
+      p_skin_variant: "light",
     });
     expect(outcome).toEqual({ status: "redeemed", memorialId: "memorial-1" });
   });
@@ -381,6 +385,7 @@ describe("SupabaseEntitlementRepository.redeemWithActivationKey", () => {
       ownerId: "owner-1",
       memorialType: "person",
       skinId: "intemporel",
+      skinVariant: "light",
     });
 
     expect(outcome).toEqual({ status: "activationKeySuperseded" });
@@ -397,6 +402,7 @@ describe("SupabaseEntitlementRepository.redeemWithActivationKey", () => {
         ownerId: "owner-1",
         memorialType: "person",
         skinId: "intemporel",
+        skinVariant: "light",
       }),
     ).rejects.toMatchObject({ code: "08006" });
   });

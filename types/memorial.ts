@@ -1,6 +1,6 @@
 import type { EditorialContext, MemorialType } from "@/config/memorial";
 import type { Language } from "@/config/languages";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { SectionId } from "@/config/sections";
 
 /**
@@ -57,6 +57,19 @@ export interface Memorial {
   memorialType: MemorialType;
   editorialContext: EditorialContext;
   skin: Skin;
+  /**
+   * Mission 029B — the skin's light/dark declination. Decided at the
+   * exact same moment as `skin` itself (redemption), never a family
+   * choice deferred like `editorialContext`/`language`/`slug` below —
+   * so, unlike those three, this is never nullable on `StoredMemorial`
+   * either. Every real memorial-creation path assigns it explicitly
+   * (currently always `"light"` — see
+   * lib/entitlement/redeem-authenticated-entitlement.ts's
+   * `TEMPORARY_SKIN_VARIANT` — until a commercial UX mission wires a
+   * real choice); nothing here or in the runtime ever defaults a
+   * missing one.
+   */
+  skinVariant: SkinVariant;
   language: Language;
   /**
    * Client-toggleable optional sections only. The Footer is never part of

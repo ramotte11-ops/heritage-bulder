@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DataRepository } from "@/lib/adapters/data-repository";
 import type { EditorialContext, MemorialType } from "@/config/memorial";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { Language } from "@/config/languages";
 import type { SectionId } from "@/config/sections";
 import type { MemorialContent, MemorialStatus, StoredMemorial } from "@/types/memorial";
@@ -24,6 +24,9 @@ interface MemorialRow {
   // the app something the row does not actually prove.
   editorial_context: EditorialContext | null;
   skin_id: Skin;
+  // Mission 029B: never nullable, decided at redemption like skin_id —
+  // contrast with the three genuinely-deferred family choices above.
+  skin_variant: SkinVariant;
   language: Language | null;
   enabled_sections: SectionId[];
   status: MemorialStatus;
@@ -54,6 +57,7 @@ function toMemorial(
     memorialType: row.memorial_type,
     editorialContext: row.editorial_context,
     skin: row.skin_id,
+    skinVariant: row.skin_variant,
     language: row.language,
     enabledSections: row.enabled_sections,
     status: row.status,
@@ -131,6 +135,7 @@ export class SupabaseMemorialRepository implements DataRepository<StoredMemorial
         memorial_type: entity.memorialType,
         editorial_context: entity.editorialContext,
         skin_id: entity.skin,
+        skin_variant: entity.skinVariant,
         language: entity.language,
         enabled_sections: entity.enabledSections,
         status: entity.status,
@@ -154,6 +159,7 @@ export class SupabaseMemorialRepository implements DataRepository<StoredMemorial
     const update: Record<string, unknown> = {};
     if (patch.editorialContext !== undefined) update.editorial_context = patch.editorialContext;
     if (patch.skin !== undefined) update.skin_id = patch.skin;
+    if (patch.skinVariant !== undefined) update.skin_variant = patch.skinVariant;
     if (patch.language !== undefined) update.language = patch.language;
     if (patch.enabledSections !== undefined) update.enabled_sections = patch.enabledSections;
     if (patch.status !== undefined) update.status = patch.status;

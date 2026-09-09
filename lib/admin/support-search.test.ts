@@ -61,6 +61,7 @@ const MEMORIAL: MemorialSupportSummary = {
   memorialType: "person",
   editorialContext: "announcement",
   skin: "intemporel",
+  skinVariant: "light",
   language: "fr",
   status: "draft",
   slug: null,

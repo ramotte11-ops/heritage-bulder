@@ -20,6 +20,7 @@ const FIXTURE_CONFIG: StoredMemorialConfig = {
   memorialType: "person",
   editorialContext: "announcement",
   skin: "intemporel",
+  skinVariant: "light",
   language: "fr",
   enabledSections: ["story"],
   status: "draft",

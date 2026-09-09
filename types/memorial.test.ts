@@ -22,6 +22,7 @@ const justRedeemed: StoredMemorial = {
   memorialType: "person",
   editorialContext: null,
   skin: "intemporel",
+  skinVariant: "light",
   language: null,
   enabledSections: [],
   status: "draft",
