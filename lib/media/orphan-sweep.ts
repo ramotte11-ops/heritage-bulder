@@ -1,4 +1,4 @@
-import { PENDING_MEDIA_TTL_MS } from "@/config/media";
+import { MEDIA_PENDING_TTL_MS } from "@/config/media";
 import { buildMediaObjectPrefix, isPathWithinMemorial } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
 
@@ -59,7 +59,7 @@ export async function sweepAbandonedUploads(
   // and cannot itself become the outage.
   const limit = options.limit ?? 100;
 
-  const cutoff = new Date(deps.now().getTime() - PENDING_MEDIA_TTL_MS);
+  const cutoff = new Date(deps.now().getTime() - MEDIA_PENDING_TTL_MS);
 
   const expired = await deps.mediaRepository.findExpiredPending({
     olderThan: cutoff,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PENDING_MEDIA_TTL_MS } from "@/config/media";
+import { MEDIA_PENDING_TTL_MS, SIGNED_UPLOAD_PERMISSION_TTL_MS } from "@/config/media";
 import { sweepAbandonedUploads } from "./orphan-sweep";
 import { finalizeMediaUpload, reserveMediaUpload } from "./upload-lifecycle";
 import {
@@ -40,7 +40,7 @@ describe("sweepAbandonedUploads", () => {
     const engine = createTestEngine();
     const abandoned = await abandonedUpload(engine, { withBytes: true });
 
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
     const result = await sweepAbandonedUploads(engine);
 
     expect(result).toEqual({ examined: 1, reclaimed: 1 });
@@ -52,7 +52,7 @@ describe("sweepAbandonedUploads", () => {
     const engine = createTestEngine();
     const abandoned = await abandonedUpload(engine);
 
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
     await sweepAbandonedUploads(engine);
 
     expect(engine.mediaRepository.rows.has(abandoned.mediaId)).toBe(false);
@@ -64,12 +64,93 @@ describe("sweepAbandonedUploads", () => {
     const engine = createTestEngine();
     const fresh = await abandonedUpload(engine, { withBytes: true });
 
-    engine.advance(PENDING_MEDIA_TTL_MS - 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS - 1000);
     const result = await sweepAbandonedUploads(engine);
 
     expect(result).toEqual({ examined: 0, reclaimed: 0 });
     expect(engine.mediaRepository.rows.has(fresh.mediaId)).toBe(true);
     expect(engine.objectStore.objects.has(fresh.storagePath)).toBe(true);
+  });
+
+  it("leaves a reservation alone at the two-hour mark, when its permission may still work", async () => {
+    // THE regression test for the bug the QG caught.
+    //
+    // Supabase keeps a signed upload permission valid for two hours.
+    // A sweep that ran at one hour would delete the row and the object
+    // while the browser could still complete its upload — producing an
+    // object no row records, the one orphan shape this foundation
+    // forbids. At two hours and one second, the reservation must still
+    // be here.
+    const engine = createTestEngine();
+    const inFlight = await abandonedUpload(engine, { withBytes: true });
+
+    engine.advance(SIGNED_UPLOAD_PERMISSION_TTL_MS + 1000);
+    const result = await sweepAbandonedUploads(engine);
+
+    expect(result).toEqual({ examined: 0, reclaimed: 0 });
+    expect(engine.mediaRepository.rows.get(inFlight.mediaId)?.status).toBe("pending");
+    expect(engine.objectStore.objects.has(inFlight.storagePath)).toBe(true);
+  });
+
+  it("leaves a reservation alone at every point before three hours", async () => {
+    // Swept across the whole window rather than at one convenient
+    // point, so a future change to either constant cannot leave a gap
+    // that a single sample happens to miss.
+    for (const elapsed of [
+      0,
+      30 * 60 * 1000,
+      60 * 60 * 1000,
+      90 * 60 * 1000,
+      SIGNED_UPLOAD_PERMISSION_TTL_MS,
+      SIGNED_UPLOAD_PERMISSION_TTL_MS + 30 * 60 * 1000,
+      MEDIA_PENDING_TTL_MS - 1000,
+    ]) {
+      const engine = createTestEngine();
+      const reservation = await abandonedUpload(engine, { withBytes: true });
+
+      engine.advance(elapsed);
+      const result = await sweepAbandonedUploads(engine);
+
+      expect(result).toEqual({ examined: 0, reclaimed: 0 });
+      expect(engine.mediaRepository.rows.has(reservation.mediaId)).toBe(true);
+      // An object that really did land must survive too: deleting it
+      // while its row is kept would be the same orphan in reverse.
+      expect(engine.objectStore.objects.has(reservation.storagePath)).toBe(true);
+    }
+  });
+
+  it("becomes eligible once three hours have passed", async () => {
+    const engine = createTestEngine();
+    const abandoned = await abandonedUpload(engine, { withBytes: true });
+
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+    const result = await sweepAbandonedUploads(engine);
+
+    expect(result).toEqual({ examined: 1, reclaimed: 1 });
+    expect(engine.mediaRepository.rows.has(abandoned.mediaId)).toBe(false);
+    expect(engine.objectStore.objects.has(abandoned.storagePath)).toBe(false);
+  });
+
+  it("keeps an uploaded-but-unfinalized object under three hours", async () => {
+    // The nastiest shape: the bytes really did land, the user simply
+    // never finalized — perhaps they are about to. Cleanup must not
+    // touch the object OR the row while the permission window is open.
+    const engine = createTestEngine();
+    const uploaded = await abandonedUpload(engine, { withBytes: true });
+
+    engine.advance(MEDIA_PENDING_TTL_MS - 60 * 1000);
+    await sweepAbandonedUploads(engine);
+
+    expect(engine.objectStore.objects.get(uploaded.storagePath)).toBeDefined();
+    expect(engine.mediaRepository.rows.get(uploaded.mediaId)?.status).toBe("pending");
+
+    // And it can still be finalized normally afterwards — the whole
+    // point of not having reclaimed it.
+    const finalized = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A,
+      mediaId: uploaded.mediaId,
+    });
+    expect(finalized.ok).toBe(true);
   });
 
   it("NEVER touches a finalized media, however old", async () => {
@@ -82,7 +163,7 @@ describe("sweepAbandonedUploads", () => {
       mediaId: kept.mediaId,
     });
 
-    engine.advance(PENDING_MEDIA_TTL_MS * 100);
+    engine.advance(MEDIA_PENDING_TTL_MS * 100);
     const result = await sweepAbandonedUploads(engine);
 
     expect(result).toEqual({ examined: 0, reclaimed: 0 });
@@ -99,7 +180,7 @@ describe("sweepAbandonedUploads", () => {
       mediaId: kept.mediaId,
     });
 
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
     const result = await sweepAbandonedUploads(engine);
 
     expect(result).toEqual({ examined: 1, reclaimed: 1 });
@@ -111,7 +192,7 @@ describe("sweepAbandonedUploads", () => {
     const engine = createTestEngine();
     await abandonedUpload(engine, { withBytes: true });
 
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
     await sweepAbandonedUploads(engine);
     const second = await sweepAbandonedUploads(engine);
 
@@ -125,7 +206,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
     // nothing points at.
     const engine = createTestEngine();
     const abandoned = await abandonedUpload(engine, { withBytes: true });
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     let rowPresentWhenObjectRemoved = false;
     const store = engine.objectStore;
@@ -143,7 +224,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
   it("keeps the row for a later retry when the object cannot be removed", async () => {
     const engine = createTestEngine();
     const abandoned = await abandonedUpload(engine, { withBytes: true });
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
     engine.objectStore.failOn.removeByPrefix = new Error("storage down");
 
     const result = await sweepAbandonedUploads(engine);
@@ -156,7 +237,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
     const engine = createTestEngine();
     const bad = await abandonedUpload(engine, { withBytes: true });
     const good = await abandonedUpload(engine, { withBytes: true });
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     const store = engine.objectStore;
     const original = store.removeByPrefix.bind(store);
@@ -184,7 +265,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
       storagePath: `${MEMORIAL_B}/victim/original.jpg`,
     });
     engine.objectStore.objects.set(`${MEMORIAL_B}/victim/original.jpg`, JPEG_BYTES);
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     const result = await sweepAbandonedUploads(engine);
 
@@ -203,7 +284,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
 
     const row = engine.mediaRepository.rows.get(corrupt.mediaId)!;
     engine.mediaRepository.rows.set(corrupt.mediaId, { ...row, id: "../../escape" });
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     const result = await sweepAbandonedUploads(engine);
 
@@ -218,7 +299,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
     for (let i = 0; i < 5; i += 1) {
       await abandonedUpload(engine, { withBytes: true });
     }
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     const first = await sweepAbandonedUploads(engine, { limit: 2 });
     expect(first).toEqual({ examined: 2, reclaimed: 2 });
@@ -236,7 +317,7 @@ describe("sweepAbandonedUploads — ordering and resilience", () => {
     const engine = createTestEngine();
     await abandonedUpload(engine, { withBytes: true });
     await abandonedUpload(engine, { memorialId: MEMORIAL_B, owner: OWNER_B, withBytes: true });
-    engine.advance(PENDING_MEDIA_TTL_MS + 1000);
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
 
     const result = await sweepAbandonedUploads(engine);
 

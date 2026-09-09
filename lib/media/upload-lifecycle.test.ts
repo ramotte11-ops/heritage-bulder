@@ -299,6 +299,67 @@ describe("finalizeMediaUpload — accepting genuine photographs", () => {
     expect(result.ok && result.value.sizeBytes).toBe(4096);
   });
 
+  it("takes the size from STORAGE, never from anything the client sent", async () => {
+    // The mission requires the second size check to measure the real
+    // stored object. Proved by making the object's real size differ
+    // from every number the client was ever in a position to influence:
+    // the recorded size must be the one Storage reported.
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, {
+      bytes: JPEG_BYTES,
+      sizeOverride: 123456,
+    });
+
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A,
+      mediaId: reserved.mediaId,
+    });
+
+    expect(result.ok && result.value.sizeBytes).toBe(123456);
+  });
+
+  it("asks Storage for the size of the exact object it reserved", async () => {
+    // There is no size parameter on either primitive, so a client
+    // cannot declare one. This asserts the positive half: the number
+    // comes from a stat of the server-generated path.
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: JPEG_BYTES, sizeOverride: 7777 });
+
+    const statted: string[] = [];
+    const store = engine.objectStore;
+    const original = store.statObject.bind(store);
+    store.statObject = async (input) => {
+      statted.push(input.path);
+      return original(input);
+    };
+
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A,
+      mediaId: reserved.mediaId,
+    });
+
+    expect(statted).toEqual([reserved.storagePath]);
+    expect(result.ok && result.value.sizeBytes).toBe(7777);
+  });
+
+  it("refuses an oversized object even though the client declared an allowed type", async () => {
+    // The client's declaration was impeccable; the bytes were not. The
+    // size that decides is the measured one.
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, {
+      declaredMimeType: "image/jpeg",
+      bytes: JPEG_BYTES,
+      sizeOverride: MAX_MEDIA_BYTES + 1,
+    });
+
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A,
+      mediaId: reserved.mediaId,
+    });
+
+    expect(result).toEqual({ ok: false, code: "file_too_large" });
+  });
+
   it("is idempotent — finalizing twice returns the same ready media", async () => {
     // A browser on a bad connection retries. That must not be punished.
     const engine = createTestEngine();

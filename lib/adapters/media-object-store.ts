@@ -36,15 +36,27 @@ export interface MediaObjectStore {
    * type system about a security property, which is worse than the
    * limitation itself.
    *
-   * So the expiry of this permission is NOT a HERITAGE guarantee, and
-   * nothing in this foundation depends on it being short. What IS a
-   * HERITAGE guarantee is everything the permission is bounded by: one
-   * path, chosen by us; no overwrite; a path already recorded as a
-   * `pending` row; and a reservation the sweep reclaims after
-   * PENDING_MEDIA_TTL_MS whether or not the token still works. A
-   * permission that outlives its reservation can only write an object
-   * that is about to be deleted, into a media nothing will ever
-   * finalize.
+   * So the expiry of this permission is NOT a HERITAGE guarantee. What
+   * IS a HERITAGE guarantee is everything else the permission is
+   * bounded by: one path, chosen by us; no overwrite; and a path
+   * already recorded as a `pending` row before the permission was ever
+   * issued.
+   *
+   * ## The lifetime we do not control still constrains one we do
+   *
+   * Supabase currently keeps these permissions valid for two hours.
+   * Because we cannot shorten that, the sweep must be SLOWER than it:
+   * reclaiming a reservation while its permission still works would
+   * let a browser complete an upload into a path whose row has just
+   * been deleted — an object nothing records, which is the one orphan
+   * shape this foundation forbids.
+   *
+   * That is why config/media.ts declares the platform's two hours as
+   * SIGNED_UPLOAD_PERMISSION_TTL_MS and derives MEDIA_PENDING_TTL_MS
+   * (three hours) from it, with the relationship asserted in
+   * config/media.test.ts rather than trusted to this comment. An
+   * implementation of this port whose permissions outlive three hours
+   * would break that reasoning and must say so.
    */
   createUploadPermission(input: { path: string }): Promise<{ url: string; token: string }>;
 

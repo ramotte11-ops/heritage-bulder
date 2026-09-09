@@ -652,7 +652,19 @@ which side is left inconsistent by a crash:
   permission is issued. Every path HERITAGE hands out is therefore
   already recorded, so an abandoned upload is never an unknown object —
   it is a known row that `lib/media/orphan-sweep.ts` reclaims after
-  `PENDING_MEDIA_TTL_MS`.
+  `MEDIA_PENDING_TTL_MS` (**three hours**).
+
+  That three hours is *derived, not chosen*. Supabase keeps a signed
+  upload permission valid for two hours and `createSignedUploadUrl`
+  accepts no expiry argument, so a sweep running sooner would delete a
+  row and its object while the browser could still complete its
+  upload — leaving an object no row records, which is exactly the
+  orphan this design forbids. `config/media.ts` therefore declares the
+  platform's two hours as `SIGNED_UPLOAD_PERMISSION_TTL_MS` and asserts
+  `MEDIA_PENDING_TTL_MS > SIGNED_UPLOAD_PERMISSION_TTL_MS` with an
+  hour of margin for clock skew (`config/media.test.ts`). If a future
+  Storage version changes that lifetime, the sweep window must be
+  re-derived rather than left as a number someone once wrote down.
 - **Replacement.** The old media is removed only *after* the new one is
   finalized. `delete old → upload new → new fails → Hero lost` is
   structurally impossible. Both are momentarily `ready`, which is why

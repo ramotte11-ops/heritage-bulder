@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MAX_MEDIA_BYTES } from "@/config/media";
+import {
+  MAX_MEDIA_BYTES,
+  MEDIA_PENDING_TTL_MS,
+  SIGNED_UPLOAD_PERMISSION_TTL_MS,
+} from "@/config/media";
 import { replaceMedia } from "./replace-media";
+import { sweepAbandonedUploads } from "./orphan-sweep";
 import { reserveMediaUpload, finalizeMediaUpload } from "./upload-lifecycle";
 import {
   JPEG_BYTES,
@@ -302,6 +307,64 @@ describe("replaceMedia — ownership", () => {
 
     expect(result).toEqual({ ok: false, code: "invalid_file" });
     expect(engine.objectStore.objects.has(hero.storagePath)).toBe(true);
+  });
+});
+
+describe("replaceMedia — the new media obeys the same TTL as any other", () => {
+  it("survives the sweep while its upload permission could still be used", async () => {
+    // A replacement's new media is an ordinary `pending` reservation,
+    // so it inherits the rule exactly: nothing may reclaim it while
+    // Supabase would still honour its upload permission. If the sweep
+    // took it at two hours, a family who left the tab open would come
+    // back to a replacement that silently could not complete.
+    const engine = createTestEngine();
+    const oldHero = await existingHero(engine);
+    const newHero = await reserve(engine);
+
+    engine.advance(SIGNED_UPLOAD_PERMISSION_TTL_MS + 1000);
+    const swept = await sweepAbandonedUploads(engine);
+
+    expect(swept).toEqual({ examined: 0, reclaimed: 0 });
+
+    // The upload lands late, and the replacement still works.
+    engine.objectStore.put(newHero.storagePath, JPEG_BYTES);
+    const result = await replaceMedia(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A,
+      mediaId: newHero.mediaId,
+      previousMediaId: oldHero.mediaId,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.previousRemoved).toBe(true);
+  });
+
+  it("is reclaimed after three hours, leaving the OLD hero intact", async () => {
+    // An abandoned replacement must cost the family nothing: the new
+    // reservation goes, the photograph they already had stays.
+    const engine = createTestEngine();
+    const oldHero = await existingHero(engine);
+    const newHero = await reserve(engine);
+    engine.objectStore.put(newHero.storagePath, JPEG_BYTES);
+
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+    const swept = await sweepAbandonedUploads(engine);
+
+    expect(swept).toEqual({ examined: 1, reclaimed: 1 });
+    expect(engine.mediaRepository.rows.has(newHero.mediaId)).toBe(false);
+
+    // THE assertion: the old hero is untouched and still ready.
+    expect(engine.mediaRepository.rows.get(oldHero.mediaId)?.status).toBe("ready");
+    expect(engine.objectStore.objects.has(oldHero.storagePath)).toBe(true);
+  });
+
+  it("never lets the sweep touch the previous hero, which is ready", async () => {
+    const engine = createTestEngine();
+    const oldHero = await existingHero(engine);
+
+    engine.advance(MEDIA_PENDING_TTL_MS * 10);
+    await sweepAbandonedUploads(engine);
+
+    expect(engine.mediaRepository.rows.get(oldHero.mediaId)?.status).toBe("ready");
   });
 });
 

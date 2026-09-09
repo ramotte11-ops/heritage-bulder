@@ -10,7 +10,8 @@ import {
   MEDIA_READ_URL_TTL_SECONDS,
   MEDIA_STATUSES,
   MEDIA_TYPES,
-  PENDING_MEDIA_TTL_MS,
+  MEDIA_PENDING_TTL_MS,
+  SIGNED_UPLOAD_PERMISSION_TTL_MS,
 } from "./media";
 
 /**
@@ -194,10 +195,36 @@ describe("the closed vocabularies", () => {
 });
 
 describe("the lifecycle windows", () => {
-  it("gives an abandoned upload an hour before it is reclaimed", () => {
-    // Long enough for a 15 MiB photo on a bad mobile connection;
-    // short enough that cleanup is predictable rather than eventual.
-    expect(PENDING_MEDIA_TTL_MS).toBe(60 * 60 * 1000);
+  it("gives an abandoned upload three hours before it is reclaimed", () => {
+    expect(MEDIA_PENDING_TTL_MS).toBe(3 * 60 * 60 * 1000);
+  });
+
+  it("NEVER reclaims a reservation whose upload permission could still be used", () => {
+    // THE invariant this pair of constants exists for.
+    //
+    // Supabase keeps a signed upload permission valid for two hours and
+    // offers no way to shorten it. If the sweep ran sooner, a browser
+    // could complete its upload AFTER the row and object were deleted,
+    // producing an object no row records — an unrecoverable orphan, and
+    // exactly what the anti-orphan design forbids.
+    //
+    // The first version of this constant was one hour and had that bug.
+    // It could not be caught by a behavioural test, because the two
+    // hours belong to the platform and nothing in this repository
+    // declared them. Now they are declared, and the relationship is
+    // checked here rather than trusted to a comment.
+    expect(MEDIA_PENDING_TTL_MS).toBeGreaterThan(SIGNED_UPLOAD_PERMISSION_TTL_MS);
+  });
+
+  it("keeps a real safety margin, not a one-millisecond technicality", () => {
+    // Room for clock skew between our runtime and Storage, and for a
+    // permission issued a moment before the row was timestamped.
+    const margin = MEDIA_PENDING_TTL_MS - SIGNED_UPLOAD_PERMISSION_TTL_MS;
+    expect(margin).toBeGreaterThanOrEqual(60 * 60 * 1000);
+  });
+
+  it("still reclaims predictably rather than eventually", () => {
+    expect(MEDIA_PENDING_TTL_MS).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
   });
 
   it("keeps a read URL short-lived", () => {

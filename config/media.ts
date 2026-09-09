@@ -90,10 +90,16 @@ export const MEDIA_BUCKET = "memorial-media";
  *     could sniff the `ftyp` box and call it validated, and then serve
  *     a file most of our visitors would see as a broken image. Real
  *     support means a decode/normalize step (Mission 047's territory)
- *     plus a dependency, so it is escalated to the QG rather than
- *     improvised here. Practical note: iOS Safari converts HEIC to
- *     JPEG on `<input type="file">` upload, so this allowlist does not
- *     actually lock iPhone owners out today.
+ *     plus a dependency. The QG has closed this for V1: HEIC/HEIF stay
+ *     unsupported and will be reconsidered with the real media
+ *     normalization work.
+ *
+ *     Note explicitly NOT relied upon: iOS Safari commonly converts
+ *     HEIC to JPEG on `<input type="file">` upload. That is browser
+ *     behaviour we neither control nor verify, so it is not an
+ *     architectural guarantee and nothing here is designed around it.
+ *     A HEIC file that does arrive is refused on its bytes, like any
+ *     other unsupported format.
  *   * image/avif, image/gif — same rule, no assumption. AVIF is an
  *     output format for Mission 047 to produce, not an input we must
  *     accept; GIF means animation, which is a different lifecycle.
@@ -148,17 +154,62 @@ export const CANONICAL_IMAGE_EXTENSION: Record<AllowedImageMimeType, string> = {
 export const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 
 /**
+ * How long Supabase Storage keeps a signed upload permission valid.
+ *
+ * Two hours, decided by the Storage service. `createSignedUploadUrl`
+ * accepts no expiry argument (see
+ * lib/adapters/media-object-store.ts), so this is an OBSERVED
+ * PROPERTY OF THE PLATFORM, not a setting HERITAGE chooses — it is
+ * recorded here only because MEDIA_PENDING_TTL_MS below has to be
+ * derived from it.
+ *
+ * If a future Storage version changes this, or exposes a real expiry
+ * argument, MEDIA_PENDING_TTL_MS must be re-derived rather than left
+ * as a number someone once wrote down.
+ */
+export const SIGNED_UPLOAD_PERMISSION_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
  * How long a reserved-but-never-finalized upload stays untouchable
  * before the sweep may reclaim it (lib/media/orphan-sweep.ts).
  *
- * One hour. It has to be comfortably longer than the slowest plausible
- * real upload — a 15 MiB photo over a bad mobile connection, with the
- * user switching apps halfway — because reclaiming a path while its
- * upload is still in flight would turn a slow success into a
- * mysterious failure. It also has to be short enough that an abandoned
- * attempt is not "eventually" cleaned but predictably cleaned.
+ * ## Three hours, and why it cannot be shorter
+ *
+ * This value is NOT a guess about user patience. It is bounded from
+ * below by the lifetime of the upload permission the reservation
+ * handed out, and getting that relationship wrong recreates precisely
+ * the orphan this foundation exists to prevent:
+ *
+ *     T0      reservation created, upload permission issued
+ *     T+1h    sweep deletes the pending row and its object
+ *     T+1h30  the permission is STILL VALID -> the browser completes
+ *             its upload -> an object exists that no row records
+ *
+ * An orphan of exactly the unrecoverable kind: nothing lists it, no
+ * memorial claims it, and it lives in the bucket forever. The first
+ * version of this constant was one hour and had this bug. It was
+ * caught in review, not by a test, because no test could see it: the
+ * two hours belong to Supabase and nothing in this repository declared
+ * them.
+ *
+ * So the rule is now explicit and machine-checked
+ * (config/media.test.ts): the sweep must never be able to reclaim a
+ * reservation whose permission could still be used. Three hours is
+ * that two-hour platform lifetime plus a one-hour margin — room for
+ * clock skew between our runtime and Storage, and for a permission
+ * issued a moment before the reservation row was timestamped.
+ *
+ * The margin also comfortably covers the original concern: a 15 MiB
+ * photograph over a bad mobile connection, with the user switching
+ * apps halfway through. Reclaiming a path while its upload is still in
+ * flight would turn a slow success into a mysterious failure.
+ *
+ * It stays short enough that an abandoned attempt is predictably
+ * cleaned rather than "eventually" cleaned — and nothing displays a
+ * pending media, so a reservation waiting out its TTL is inert, not
+ * visible.
  */
-export const PENDING_MEDIA_TTL_MS = 60 * 60 * 1000;
+export const MEDIA_PENDING_TTL_MS = 3 * 60 * 60 * 1000;
 
 /**
  * How long a read URL handed to a browser stays valid.
@@ -178,8 +229,8 @@ export const MEDIA_READ_URL_TTL_SECONDS = 300;
  * Supabase Storage's createSignedUploadUrl accepts no expiry argument —
  * the upload token's lifetime belongs to the Storage service. A
  * constant here would describe a setting HERITAGE cannot actually
- * apply. The bound that IS ours is PENDING_MEDIA_TTL_MS above: an
- * upload permission that outlives its reservation can only write into a
- * media the sweep is about to reclaim. See
- * lib/adapters/media-object-store.ts.
+ * apply. What IS ours is the RELATIONSHIP between that platform
+ * lifetime and MEDIA_PENDING_TTL_MS above: the sweep is deliberately
+ * slower than the permission, so a permission can never outlive the
+ * reservation it belongs to. See lib/adapters/media-object-store.ts.
  */

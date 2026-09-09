@@ -2010,22 +2010,43 @@ done
 
 # --- the sweep's view of an abandoned upload --------------------------
 #
-# The sweep looks for pending rows older than the TTL. What must be
-# impossible is for it to see a `ready` one — a finalized photograph
-# reclaimed as garbage would be the worst bug this foundation could
-# have.
-$DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, created_at) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/original.jpg','photo','image/jpeg','gallery','pending', now() - interval '3 hours');" >/dev/null
+# The sweep looks for pending rows older than MEDIA_PENDING_TTL_MS,
+# which is THREE HOURS (config/media.ts). That number is derived, not
+# chosen: Supabase keeps a signed upload permission valid for two hours
+# and offers no way to shorten it, so reclaiming sooner would delete a
+# row and its object while the browser could still complete its upload
+# — producing an object no row records. The queries below use the same
+# three-hour window the application does.
+#
+# What must also be impossible is for the sweep to see a `ready` row —
+# a finalized photograph reclaimed as garbage would be the worst bug
+# this foundation could have.
 
-SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '1 hour';")
-check "an abandoned reservation is visible to the sweep" "1" "$SWEEPABLE"
+# Older than the TTL: genuinely abandoned.
+$DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, created_at) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/original.jpg','photo','image/jpeg','gallery','pending', now() - interval '4 hours');" >/dev/null
 
-SWEEPABLE_READY=$($DB -t -A -c "select count(*) from media where status='ready' and created_at < now() - interval '1 hour';")
+SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '3 hours';")
+check "a reservation older than 3h is visible to the sweep" "1" "$SWEEPABLE"
+
+SWEEPABLE_READY=$($DB -t -A -c "select count(*) from media where status='ready' and created_at < now() - interval '3 hours';")
 check "no ready media is ever sweepable, however old" "0" "$SWEEPABLE_READY"
+
+# THE regression fixture for the bug the QG caught: 2h30 old, so the
+# upload permission may well still be valid. Under the old one-hour TTL
+# this row was sweepable, and completing its upload afterwards would
+# have left an orphan.
+$DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, created_at) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/11111111-2222-4333-8444-555555555555/original.jpg','photo','image/jpeg','gallery','pending', now() - interval '2 hours 30 minutes');" >/dev/null
+
+STILL_PERMITTED=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '3 hours';")
+check "a 2h30 reservation is NOT sweepable (its upload permission may still be valid)" "1" "$STILL_PERMITTED"
+
+OLD_TTL_WOULD_HAVE_TAKEN=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '1 hour';")
+check "the abandoned 1h window would have taken 2 rows — which is exactly the bug" "2" "$OLD_TTL_WOULD_HAVE_TAKEN"
 
 # A fresh reservation is protected: reclaiming a path while its upload
 # is still in flight would turn a slow success into a mystery failure.
 $DB -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M030_MEM_A','$M030_OWNER_A','$M030_MEM_A/ffffffff-ffff-4fff-8fff-ffffffffffff/original.jpg','photo','image/jpeg','gallery','pending');" >/dev/null
-FRESH_SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '1 hour';")
+FRESH_SWEEPABLE=$($DB -t -A -c "select count(*) from media where status='pending' and created_at < now() - interval '3 hours';")
 check "a reservation younger than the TTL is left alone" "1" "$FRESH_SWEEPABLE"
 
 # The partial index the sweep reads, and the fact that it covers only
