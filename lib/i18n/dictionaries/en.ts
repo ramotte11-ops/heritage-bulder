@@ -31,4 +31,22 @@ export const en: Record<TranslationKey, string> = {
   "preview.view": "View preview",
   "preview.hide": "Hide preview",
   "preview.backToCreation": "Back to creation",
+  "hero.identityTitle": "Who are we honoring?",
+  "hero.identitySubtitle":
+    "Enter the name exactly as it should appear. Birth and death dates are optional.",
+  "hero.displayNameLabel": "Name to display",
+  "hero.displayNameRequired": "Please enter a name to continue.",
+  "hero.birthLabel": "Born",
+  "hero.deathLabel": "Died",
+  "hero.dateModeYear": "Year only",
+  "hero.dateModeFull": "Full date",
+  "hero.dateInvalid": "This date doesn't look valid. Please check it.",
+  "hero.chronologyImpossible": "These dates don't seem possible together. Please check them.",
+  "hero.dataUnavailable": "We couldn't load this information right now. Please try again shortly.",
+  "hero.phraseTitleAnnouncement": "A few words, if you'd like",
+  "hero.phraseSubtitleAnnouncement":
+    "A short line the family would like to share alongside the announcement. Optional — you can continue without one.",
+  "hero.phraseTitleRemembrance": "A few words, if you'd like",
+  "hero.phraseSubtitleRemembrance":
+    "A short line that captures how they're remembered. Optional — you can continue without one.",
 };

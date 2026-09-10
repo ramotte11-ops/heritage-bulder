@@ -28,4 +28,23 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "preview.view": "Ver vista previa",
   "preview.hide": "Ocultar vista previa",
   "preview.backToCreation": "Volver a la creación",
+  "hero.identityTitle": "¿A quién desea honrar?",
+  "hero.identitySubtitle":
+    "Escriba el nombre exactamente como debe aparecer. Las fechas de nacimiento y fallecimiento son opcionales.",
+  "hero.displayNameLabel": "Nombre a mostrar",
+  "hero.displayNameRequired": "Por favor, escriba un nombre para continuar.",
+  "hero.birthLabel": "Nacimiento",
+  "hero.deathLabel": "Fallecimiento",
+  "hero.dateModeYear": "Solo el año",
+  "hero.dateModeFull": "Fecha completa",
+  "hero.dateInvalid": "Esta fecha no parece válida. Por favor, revísela.",
+  "hero.chronologyImpossible": "Estas fechas no parecen compatibles entre sí. Por favor, revíselas.",
+  "hero.dataUnavailable":
+    "No pudimos cargar esta información en este momento. Por favor, inténtelo de nuevo en unos instantes.",
+  "hero.phraseTitleAnnouncement": "Unas palabras, si lo desea",
+  "hero.phraseSubtitleAnnouncement":
+    "Una breve frase que la familia desea compartir junto al anuncio. Opcional: puede continuar sin escribir nada.",
+  "hero.phraseTitleRemembrance": "Unas palabras, si lo desea",
+  "hero.phraseSubtitleRemembrance":
+    "Una breve frase que refleje cómo la recuerdan. Opcional: puede continuar sin escribir nada.",
 };

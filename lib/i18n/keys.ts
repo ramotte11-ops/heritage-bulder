@@ -47,6 +47,22 @@
  * destination ("la création"), a concept `common.back` does not carry.
  * None of the three is named after a component, same convention as
  * every namespace above.
+ *
+ * Mission 032 adds a `hero` namespace for PAGE A (T03 nom affiché + T04
+ * dates) and PAGE B (T05 quelques mots) — one key per distinct piece of
+ * text, none named after a component. `identityTitle`/`identitySubtitle`
+ * are PAGE A's copy; `displayNameLabel`/`displayNameRequired`,
+ * `birthLabel`/`deathLabel` and `dateModeYear`/`dateModeFull` are its
+ * field-level labels. `dateInvalid`/`chronologyImpossible` are the two
+ * human, local date errors section 19 of the mission brief asks for —
+ * never a technical message. `dataUnavailable` is the one notice shown
+ * instead of the form when the stored Hero is corrupted (never silently
+ * treated as empty — mission brief section 10). PAGE B's title/subtitle
+ * each have an `Announcement`/`Remembrance` variant: the mission brief
+ * is explicit that only the WORDING may depend on editorial context
+ * (section 7), never the Hero's stored shape — both variants persist
+ * into the exact same `shortPhrase` field. PAGE B's own CTA reuses
+ * `common.continue`, same as PAGE A.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -70,6 +86,22 @@ export const TRANSLATION_KEYS = [
   "preview.view",
   "preview.hide",
   "preview.backToCreation",
+  // Mission 032 — PAGE A (T03 + T04) and PAGE B (T05).
+  "hero.identityTitle",
+  "hero.identitySubtitle",
+  "hero.displayNameLabel",
+  "hero.displayNameRequired",
+  "hero.birthLabel",
+  "hero.deathLabel",
+  "hero.dateModeYear",
+  "hero.dateModeFull",
+  "hero.dateInvalid",
+  "hero.chronologyImpossible",
+  "hero.dataUnavailable",
+  "hero.phraseTitleAnnouncement",
+  "hero.phraseSubtitleAnnouncement",
+  "hero.phraseTitleRemembrance",
+  "hero.phraseSubtitleRemembrance",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
