@@ -68,14 +68,17 @@ function dateErrorText(language: Language, kind: DateErrorKind): string | null {
  * empty Hero and silently persist it over real (if malformed) existing
  * data (mission brief section 10).
  *
- * ## T04's explicit skip (QG micro-correction)
+ * ## T04 only resolves on submit (QG final correction)
  *
- * With zero dates, submitting here is what records T04 as `"skipped"`
- * (via `commitPageA`) — never the mere absence of a date on its own. A
- * `displayName` that only got autosaved (the family closed the browser
- * before ever reaching this submit) leaves T04 unresolved, so
- * `needsPageA` correctly shows this page again on resume instead of
- * silently treating an untouched date field as a deliberate skip.
+ * Submitting here — via `commitPageA` — is the ONLY moment T04's real
+ * `StepRecord` gets written: `"completed"` if a date is present at that
+ * exact moment, `"skipped"` otherwise. Neither an autosaved
+ * `displayName` alone NOR one with an autosaved date resolves T04 by
+ * itself — a date sitting in the field is still just draft content
+ * until the family actually clicks Continue. So if the family closes
+ * the browser before ever reaching this submit, T04 stays unresolved
+ * regardless of what they typed, and `needsPageA` correctly shows this
+ * page again on resume rather than jumping ahead on an assumption.
  */
 export function HeroIdentityStep({
   language,
@@ -134,10 +137,11 @@ export function HeroIdentityStep({
       return;
     }
 
-    // The one moment T04's real "skipped" StepRecord gets written (only
-    // when there is genuinely no date) — never inferred later just from
-    // an empty date field. See hero-step.ts's own docstring for why
-    // that distinction matters on resume.
+    // The one moment T04's real StepRecord gets written — "completed"
+    // or "skipped" depending on whether a date is present right now —
+    // never inferred earlier from autosaved content alone. See
+    // hero-step.ts's own docstring for why that distinction matters on
+    // resume.
     const committed = commitPageA(content);
     if (!committed.ok) {
       setSubmitError(true);

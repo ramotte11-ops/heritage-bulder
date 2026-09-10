@@ -24,10 +24,17 @@ function heroContent(hero: Partial<HeroContent>): MemorialContent {
 }
 
 /** A displayName only, freshly autosaved — no date, no explicit
- * Continue click yet. This is deliberately NOT "PAGE A done": that is
- * exactly the QG micro-correction's scenario. */
+ * Continue click yet. */
 function autosavedNameOnly(name = "Jean Dupont"): MemorialContent {
   return heroContent({ displayName: name });
+}
+
+/** QG final correction: a displayName AND a date, both only ever
+ * autosaved while typing — the family never clicked Continue. This
+ * must NOT read as "PAGE A done" either: a date sitting in the field is
+ * draft content, not yet a decision. */
+function autosavedNameAndDate(name = "Jean Dupont"): MemorialContent {
+  return heroContent({ displayName: name, birth: { precision: "year", year: 1950 } });
 }
 
 /** PAGE A genuinely behind the family, with zero dates: name set, THEN
@@ -38,10 +45,13 @@ function pageADoneWithoutDate(name = "Jean Dupont"): MemorialContent {
   return committed.content;
 }
 
-/** PAGE A genuinely behind the family via a real date — completed by
- * derivation alone, no explicit commit required. */
+/** PAGE A genuinely behind the family, with a real date present AT THE
+ * MOMENT of the actual "Continue" click (`commitPageA`) — not merely
+ * autosaved. */
 function pageADoneWithDate(name = "Jean Dupont"): MemorialContent {
-  return heroContent({ displayName: name, birth: { precision: "year", year: 1950 } });
+  const committed = commitPageA(autosavedNameAndDate(name));
+  if (!committed.ok) throw new Error("test fixture: commitPageA unexpectedly failed");
+  return committed.content;
 }
 
 describe("readHeroForEditing — Hero existant relu, corruption jamais collapsée", () => {
@@ -165,14 +175,17 @@ describe("writeBirth / writeDeath — T04, dates, chronology", () => {
   });
 });
 
-describe("commitPageA — T04's explicit skip (QG micro-correction)", () => {
-  it("with at least one date, is a pure passthrough — nothing to persist, T04 is already derived", () => {
-    const content = pageADoneWithDate();
-    expect(commitPageA(content)).toEqual({ ok: true, content });
-    expect(readGuidedFlowState(content).T04).toBeUndefined();
+describe("commitPageA — T04 only resolves on an explicit Continue click (QG final correction)", () => {
+  it("with at least one date present at the click, records T04 as 'completed'", () => {
+    const content = autosavedNameAndDate();
+    const result = commitPageA(content);
+    expect(result).toEqual({
+      ok: true,
+      content: { ...content, guidedFlow: { T04: { status: "completed" } } },
+    });
   });
 
-  it("with zero dates, records T04 as 'skipped' — never a fabricated date to fake completion", () => {
+  it("with zero dates present at the click, records T04 as 'skipped' — never a fabricated date to fake completion", () => {
     const content = autosavedNameOnly();
     const result = commitPageA(content);
     expect(result).toEqual({
@@ -218,14 +231,14 @@ describe("resolveHeroFlowState — T03/T04, corrected semantics", () => {
     expect(resolveHeroFlowState(autosavedNameOnly("Ana Costa"), hero).T03).toEqual({ status: "completed" });
   });
 
-  it("T04 completes the instant a date is present, with no explicit action required", () => {
+  it("QG final correction: T04 stays UNRESOLVED for an autosaved name+date with no Continue click — a date alone is not a decision", () => {
     const hero: HeroContent = {
       ...EMPTY_HERO_CONTENT,
       displayName: "Ana Costa",
       birth: { precision: "year", year: 1960 },
     };
-    const content = heroContent({ displayName: "Ana Costa", birth: { precision: "year", year: 1960 } });
-    expect(resolveHeroFlowState(content, hero).T04).toEqual({ status: "completed" });
+    const content = autosavedNameAndDate("Ana Costa");
+    expect(resolveHeroFlowState(content, hero).T04).toBeUndefined();
   });
 
   it("T04 stays UNRESOLVED — never 'skipped' — for a name-only autosave with zero dates and no Continue click", () => {
@@ -234,13 +247,23 @@ describe("resolveHeroFlowState — T03/T04, corrected semantics", () => {
     expect(resolveHeroFlowState(content, hero).T04).toBeUndefined();
   });
 
-  it("T04 resolves to 'skipped' only once commitPageA actually recorded it", () => {
+  it("T04 resolves to 'completed' once commitPageA actually recorded it with a date present", () => {
+    const content = pageADoneWithDate("Ana Costa");
+    const hero: HeroContent = {
+      ...EMPTY_HERO_CONTENT,
+      displayName: "Ana Costa",
+      birth: { precision: "year", year: 1950 },
+    };
+    expect(resolveHeroFlowState(content, hero).T04).toEqual({ status: "completed" });
+  });
+
+  it("T04 resolves to 'skipped' only once commitPageA actually recorded it with zero dates", () => {
     const content = pageADoneWithoutDate("Ana Costa");
     const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Ana Costa" };
     expect(resolveHeroFlowState(content, hero).T04).toEqual({ status: "skipped" });
   });
 
-  it("a previously-skipped T04 flips to 'completed' the instant a date is (re)added — no un-skip step needed", () => {
+  it("a previously-skipped T04 flips to 'completed' the instant a date is (re)added — no second click needed", () => {
     const skipped = pageADoneWithoutDate("Ana Costa");
     const withDateAdded = writeBirth(skipped, { precision: "year", year: 1970 });
     expect(withDateAdded.ok).toBe(true);
@@ -256,9 +279,13 @@ describe("resolveHeroFlowState — T03/T04, corrected semantics", () => {
   it("T05 (and any other stored step) passes through unchanged", () => {
     const content: MemorialContent = {
       ...pageADoneWithDate(),
-      guidedFlow: { T05: { status: "completed" } },
+      guidedFlow: { ...readGuidedFlowState(pageADoneWithDate()), T05: { status: "completed" } },
     } as MemorialContent;
-    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont", birth: { precision: "year", year: 1950 } };
+    const hero: HeroContent = {
+      ...EMPTY_HERO_CONTENT,
+      displayName: "Jean Dupont",
+      birth: { precision: "year", year: 1950 },
+    };
     expect(resolveHeroFlowState(content, hero).T05).toEqual({ status: "completed" });
   });
 });
@@ -277,15 +304,19 @@ describe("needsPageA / needsPageB — page gates, corrected T04 semantics", () =
     expect(needsPageA(corrupted)).toBe(true);
   });
 
-  it("QG micro-correction: PAGE A is STILL needed for a display name that was only autosaved — zero dates, no Continue click yet (e.g. the browser was closed mid-visit)", () => {
+  it("QG micro-correction: PAGE A is STILL needed for a name-only autosave — zero dates, no Continue click yet", () => {
     expect(needsPageA(autosavedNameOnly())).toBe(true);
+  });
+
+  it("QG final correction: PAGE A is STILL needed for a name+date autosave — the date alone is not a decision, no Continue click yet", () => {
+    expect(needsPageA(autosavedNameAndDate())).toBe(true);
   });
 
   it("PAGE A is no longer needed once the family explicitly continues with zero dates", () => {
     expect(needsPageA(pageADoneWithoutDate())).toBe(false);
   });
 
-  it("PAGE A is no longer needed once a real date is present, with no Continue click required", () => {
+  it("PAGE A is no longer needed once the family explicitly continues with a real date", () => {
     expect(needsPageA(pageADoneWithDate())).toBe(false);
   });
 
@@ -299,11 +330,16 @@ describe("needsPageA / needsPageB — page gates, corrected T04 semantics", () =
     expect(needsPageA(autosavedNameOnly())).toBe(true);
   });
 
-  it("PAGE B is needed once PAGE A is genuinely done (explicit skip) but T05 has never been treated", () => {
+  it("PAGE B is never shown for a name+date autosave with no Continue click — PAGE A itself is still needed first", () => {
+    expect(needsPageB(autosavedNameAndDate())).toBe(false);
+    expect(needsPageA(autosavedNameAndDate())).toBe(true);
+  });
+
+  it("PAGE B is needed once PAGE A is genuinely done (explicit skip, zero dates) but T05 has never been treated", () => {
     expect(needsPageB(pageADoneWithoutDate())).toBe(true);
   });
 
-  it("PAGE B is needed once PAGE A is genuinely done (a real date) but T05 has never been treated", () => {
+  it("PAGE B is needed once PAGE A is genuinely done (explicit continue, a real date) but T05 has never been treated", () => {
     expect(needsPageB(pageADoneWithDate())).toBe(true);
   });
 
@@ -413,15 +449,23 @@ describe("heroStepProgress — real Mission 025 engine reuse", () => {
     expect(endProgress).toBeLessThanOrEqual(1);
   });
 
-  it("a name-only autosave (T04 unresolved) makes strictly less progress than an explicit T04 skip", () => {
-    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont" };
-    const autosaved = heroStepProgress("remembrance", autosavedNameOnly(), hero);
-    const explicitlySkipped = heroStepProgress("remembrance", pageADoneWithoutDate(), hero);
-    expect(explicitlySkipped).toBeGreaterThan(autosaved);
+  it("a name+date autosave with no Continue click makes strictly less progress than an explicit commit", () => {
+    const hero: HeroContent = {
+      ...EMPTY_HERO_CONTENT,
+      displayName: "Jean Dupont",
+      birth: { precision: "year", year: 1950 },
+    };
+    const autosaved = heroStepProgress("remembrance", autosavedNameAndDate(), hero);
+    const committed = heroStepProgress("remembrance", pageADoneWithDate(), hero);
+    expect(committed).toBeGreaterThan(autosaved);
   });
 
   it("never assumes announcement and remembrance share the same route length", () => {
-    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont" };
+    const hero: HeroContent = {
+      ...EMPTY_HERO_CONTENT,
+      displayName: "Jean Dupont",
+      birth: { precision: "year", year: 1950 },
+    };
     const announcementProgress = heroStepProgress("announcement", pageADoneWithDate(), hero);
     const remembranceProgress = heroStepProgress("remembrance", pageADoneWithDate(), hero);
     expect(announcementProgress).not.toBe(remembranceProgress);

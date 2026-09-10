@@ -24,42 +24,50 @@ import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from 
  * only the seam between the canonical Hero model (Mission 031) and the
  * canonical Guided Flow engine (Mission 025).
  *
- * ## Why T03 stays derived but T04 is only PARTLY derived (QG micro-
- * correction)
+ * ## Why T03 stays derived but T04 is a real, explicit `StepRecord`
+ * (QG final correction)
  *
  * T03 ("displayName is valid") is fully DERIVABLE from the Hero content
  * itself: it has no "skipped" outcome (non-skippable in human-steps.ts),
  * so a valid `displayName` is unambiguous proof it is done.
  *
- * T04 is NOT symmetric. "At least one date present" is unambiguous
- * proof of `"completed"` and stays derived. But "zero dates" is NOT by
- * itself proof of anything: it is structurally identical whether the
- * family (a) never reached PAGE A, (b) is mid-visit and simply hasn't
- * typed a date yet, or (c) deliberately continued past PAGE A with no
- * date at all — and only (c) is a real `"skipped"`. Collapsing (b) and
- * (c) together (the original Mission 032 shipped this bug: an
- * autosaved `displayName` with zero dates was read back as T04
- * `"skipped"` even if the family had never clicked Continue, e.g. after
- * closing the browser mid-visit) would resume the family straight past
- * PAGE A the moment ANY name gets autosaved, silently dropping their
- * still-open chance to add a date. So `"skipped"` for T04 is real,
- * persisted `StepRecord` data — written only by `commitPageA`, the
- * moment the family actually clicks Continue with no date — never
- * inferred from the mere absence of one. `"completed"` always wins over
- * any stored `"skipped"` the instant a date is (re)added, so a family
- * that skipped once and comes back to add a date needs no extra
- * bookkeeping to "un-skip" T04 (see `resolveT04Record`).
+ * T04 is NOT derivable from the Hero content alone, in EITHER direction.
+ * Two earlier QG passes narrowed this down:
  *
- * T05 needs the same real `StepRecord` treatment as T04's `"skipped"`
- * case, for the same underlying reason: a `shortPhrase` of `null` is
- * structurally identical whether the family has never seen PAGE B or
- * has already declined it, and the mission brief is explicit that a
- * fake non-empty phrase must never be written just to fake that
- * distinction (section 9). So T04's explicit skip and all of T05 use
- * the exact same mechanism: one real `StepRecord`, the type Mission 025
- * already defined for this purpose (mission brief section 9: "réutiliser
- * le mécanisme canonique de step facultative") — never a second,
- * bespoke flag.
+ *   1. "zero dates" is not by itself proof of a skip — it's structurally
+ *      identical whether the family never reached PAGE A, is mid-visit
+ *      and simply hasn't typed a date yet, or deliberately continued
+ *      with none. Only an explicit Continue click is real "skipped".
+ *   2. Symmetrically, "at least one date present" is not by itself
+ *      proof PAGE A was ever LEFT either — an autosaved date with the
+ *      browser closed before Continue must still resume on PAGE A, not
+ *      jump straight to PAGE B. So a date alone no longer derives
+ *      `"completed"` — that also now requires the explicit click.
+ *
+ * The ONE exception, and the reason `"completed"` still wins over a
+ * previously stored `"skipped"` without a second click: once T04 has
+ * ALREADY been resolved once (any stored record exists at all — PAGE A
+ * has genuinely been left, whichever way), a date later added while
+ * revisiting always flips it to `"completed"` live, no new commit
+ * required ("T04 précédemment skipped puis famille ajoute une date ->
+ * T04 completed"). Before that first resolution, dates are just draft
+ * content sitting on the page — see `resolveT04Record` for the exact
+ * rule.
+ *
+ * So T04 needs a real, persisted `StepRecord`, written exclusively by
+ * `commitPageA` at the moment of an actual Continue click — its
+ * presence or absence is itself the canonical "has PAGE A been left"
+ * marker; no second, separate page-visited flag is introduced.
+ *
+ * T05 needs the identical treatment, for the identical underlying
+ * reason: a `shortPhrase` of `null` is structurally identical whether
+ * the family has never seen PAGE B or has already declined it, and the
+ * mission brief is explicit that a fake non-empty phrase must never be
+ * written just to fake that distinction (section 9). T04 and T05 both
+ * use the exact same mechanism: one real `StepRecord`, the type Mission
+ * 025 already defined for this purpose (mission brief section 9:
+ * "réutiliser le mécanisme canonique de step facultative") — never a
+ * second, bespoke flag.
  *
  * ## Where that record actually lives
  *
@@ -134,28 +142,29 @@ function deriveT03Record(hero: HeroContent): StepRecord | undefined {
 }
 
 /**
- * T04's status. `undefined` until `displayName` is set (PAGE A hasn't
- * really started). Once it is:
+ * T04's status. `undefined` ("incomplete") whenever `displayName` is
+ * still null (PAGE A hasn't really started) OR no `T04` `StepRecord`
+ * has ever been persisted yet — the QG final correction: NEITHER "zero
+ * dates" NOR "a date is present" is, by itself, proof PAGE A was ever
+ * explicitly left. Only `commitPageA`'s own write (the real Continue
+ * click) creates that first record, whichever value it holds.
  *
- *  - at least one date present -> `"completed"`, derived, unconditional
- *    — the data itself is the proof, no explicit action required. This
- *    ALWAYS wins over a previously stored `"skipped"`: a family that
- *    skipped once and comes back to add a date needs no separate
- *    "un-skip" step (mission brief's canonical rule: "T04 précédemment
- *    skipped puis famille revient et ajoute une date -> T04 completed").
- *  - zero dates -> resolves ONLY from a real, persisted `"skipped"`
- *    record, written exclusively by `commitPageA` at the moment the
- *    family actually clicks Continue with no date. Absent that record,
- *    this returns `undefined` ("incomplete") even with a perfectly
- *    valid, already-autosaved `displayName` — an empty date field is
- *    never, by itself, proof the family chose to leave it empty (QG
- *    micro-correction; see this module's own docstring).
+ * Once that record exists, a date present ALWAYS resolves to
+ * `"completed"` live, overriding whatever was actually stored — so a
+ * family that clicked Continue with none, then comes back and adds one,
+ * needs no second click to "un-skip" T04 (mission brief's canonical
+ * rule: "T04 précédemment skipped puis famille ajoute une date -> T04
+ * completed"). With no date, the stored record itself is the answer
+ * (normally `"skipped"`, or `"completed"` if a date was present at the
+ * moment of that original commit and has since been removed again — an
+ * edge case with no separate rule of its own, so the last real decision
+ * simply stands rather than silently reverting to "incomplete").
  */
 function resolveT04Record(content: MemorialContent, hero: HeroContent): StepRecord | undefined {
   if (hero.displayName === null) return undefined;
-  if (hasAnyDate(hero)) return { status: "completed" };
   const stored = readGuidedFlowState(content).T04;
-  return stored?.status === "skipped" ? stored : undefined;
+  if (stored === undefined) return undefined;
+  return hasAnyDate(hero) ? { status: "completed" } : stored;
 }
 
 /**
@@ -232,12 +241,14 @@ export function readHeroForEditing(content: MemorialContent): HeroEditState {
 
 /**
  * PAGE A (T03 + T04) is shown whenever the Hero cannot be safely edited
- * from (corrupted), has no `displayName` yet, OR T04 is not yet
- * resolved — which, per `resolveT04Record`, means: zero dates AND no
- * explicit skip ever recorded via `commitPageA`. An autosaved
- * `displayName` with no date and no Continue click therefore still
- * routes back to PAGE A on resume (QG micro-correction): the family
- * never actually left the page, so nothing was ever "treated".
+ * from (corrupted), has no `displayName` yet, OR T04 has no persisted
+ * `StepRecord` at all — per `resolveT04Record`, that record's mere
+ * existence IS "PAGE A explicitly left", regardless of dates. So an
+ * autosaved `displayName` (with or without a date) but no Continue
+ * click yet still routes back to PAGE A on resume (QG final
+ * correction): the family never actually left the page, so nothing was
+ * ever "treated" — a date sitting in a field is draft content, not a
+ * decision.
  */
 export function needsPageA(content: MemorialContent): boolean {
   const read = readHeroForEditing(content);
@@ -310,28 +321,28 @@ export function writeShortPhrase(content: MemorialContent, value: string | null)
 }
 
 /**
- * PAGE A's own "Continue" — the one moment T04's real `"skipped"`
- * `StepRecord` gets written, and ONLY when it is actually needed: zero
- * dates present. With at least one date, `resolveT04Record` already
- * derives `"completed"` unconditionally, so there is nothing to persist
- * — this is a deliberate no-op content passthrough in that case, never
- * a redundant write that could later go stale. Rejects up front (before
- * any write) if `displayName` is still null: T03 is required, and
- * PAGE A's own Continue must never be reachable without it — this is a
- * defensive re-check, the same discipline `setHeroBirth`/`setHeroDeath`
- * already apply to chronology, not a trust boundary the UI is expected
- * to bypass.
+ * PAGE A's own "Continue" — the ONLY place T04's real `StepRecord` ever
+ * gets its first write (QG final correction): `"completed"` if at least
+ * one date is present at the moment of the click, `"skipped"` if none
+ * is — always ONE of the two, never a no-op, because the record's mere
+ * EXISTENCE is what `resolveT04Record` reads as "PAGE A has genuinely
+ * been left" (mission brief's own canonical rule: "aucun StepRecord T04
+ * -> PAGE A pas encore quittée explicitement ; T04 completed/skipped ->
+ * PAGE A déjà validée"). Neither an autosaved name alone nor an
+ * autosaved name-plus-date resolves T04 on its own — only this call
+ * does. Rejects up front (before any write) if `displayName` is still
+ * null: T03 is required, and PAGE A's own Continue must never be
+ * reachable without it — a defensive re-check, the same discipline
+ * `setHeroBirth`/`setHeroDeath` already apply to chronology, not a
+ * trust boundary the UI is expected to bypass.
  */
 export function commitPageA(content: MemorialContent): HeroFieldWriteResult {
   const inspected = inspectHero(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
   if (inspected.hero.displayName === null) return { ok: false, reason: "displayName" };
 
-  if (hasAnyDate(inspected.hero)) {
-    return { ok: true, content };
-  }
-
-  const nextFlow = { ...readGuidedFlowState(content), T04: { status: "skipped" as const } };
+  const t04: StepRecord = { status: hasAnyDate(inspected.hero) ? "completed" : "skipped" };
+  const nextFlow = { ...readGuidedFlowState(content), T04: t04 };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
 

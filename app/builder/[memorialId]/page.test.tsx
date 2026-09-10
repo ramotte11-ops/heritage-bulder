@@ -607,6 +607,23 @@ describe("BuilderMemorialPage — granted access", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
 
+    /** QG final correction fixture: a `displayName` AND a `birth` date,
+     * both only ever autosaved while typing — the family never clicked
+     * Continue. A date sitting in the field is draft content, not yet a
+     * decision, so this must NOT read as "PAGE A done" either. */
+    const DRAFT_WITH_NAME_AND_DATE_AUTOSAVED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
     /** T03 done (a real displayName), T04 genuinely resolved via an
      * explicit Continue click with zero dates (`commitPageA`'s own
      * write), T05 never treated — PAGE A behind the family for real,
@@ -614,6 +631,40 @@ describe("BuilderMemorialPage — granted access", () => {
     const DRAFT_WITH_NAME_AND_T04_SKIPPED: MemorialVersion = {
       content: {
         hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+        guidedFlow: { T04: { status: "skipped" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T04 genuinely resolved via an explicit Continue click WITH a
+     * real date present at that moment — "completed", T05 never
+     * treated — PAGE A behind the family for real, PAGE B still ahead. */
+    const DRAFT_WITH_NAME_AND_T04_COMPLETED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
+        guidedFlow: { T04: { status: "completed" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T04 explicitly skipped, THEN a date was added afterwards (e.g.
+     * the family came back and typed a birth year) without a second
+     * Continue click — T04 must flip to "completed" live. */
+    const DRAFT_WITH_T04_SKIPPED_THEN_DATE_ADDED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
         guidedFlow: { T04: { status: "skipped" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -710,6 +761,66 @@ describe("BuilderMemorialPage — granted access", () => {
       // deliberate skip they never made).
       expect(result.type).toBe(HeroIdentityStep);
       expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("QG final correction: STILL renders HeroIdentityStep (PAGE A) for a name+date autosave — a date alone is not a decision, no Continue click yet", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_DATE_AUTOSAVED,
+      });
+
+      const result = await callPage();
+
+      // An autosaved date is still just draft content — only an actual
+      // Continue click (commitPageA) resolves T04, so this must resume
+      // on PAGE A, not jump ahead to PAGE B.
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("resumes on PAGE B once the family clicked Continue on PAGE A WITH a date — T04 'completed'", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_COMPLETED,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+    });
+
+    it("resumes on PAGE B (not PAGE A) once T04 — previously skipped — flips to 'completed' after the family adds a date, with no second Continue click", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_T04_SKIPPED_THEN_DATE_ADDED,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
     });
 
     it("never renders HeroIdentityStep once T04 has been genuinely resolved (an explicit skip) — T03/T04 are never re-posed", async () => {
