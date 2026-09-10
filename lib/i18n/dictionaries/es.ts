@@ -47,4 +47,17 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "hero.phraseTitleRemembrance": "Unas palabras, si lo desea",
   "hero.phraseSubtitleRemembrance":
     "Una breve frase que refleje cómo la recuerdan. Opcional: puede continuar sin escribir nada.",
+  "hero.photoTitle": "Elija la foto principal",
+  "hero.photoSubtitle": "Es la primera imagen que la familia verá al descubrir este homenaje.",
+  "hero.photoAddLabel": "Añadir una foto",
+  "hero.photoChangeLabel": "Cambiar la foto",
+  "hero.photoCroppingNote":
+    "No se preocupe por el encuadre por ahora: podrá ajustarlo justo después.",
+  "hero.photoUploading": "Añadiendo la foto…",
+  "hero.photoAlt": "Foto elegida para el homenaje",
+  "hero.photoErrorTooLarge": "Esta foto es demasiado grande. Pruebe con otra.",
+  "hero.photoErrorUnsupportedFormat":
+    "Este formato de foto aún no es compatible. Elija una foto JPEG, PNG o WebP.",
+  "hero.photoErrorInvalidFile": "No pudimos usar esta foto. Pruebe con otra.",
+  "hero.photoErrorGeneric": "No pudimos añadir la foto en este momento. Puede volver a intentarlo.",
 };

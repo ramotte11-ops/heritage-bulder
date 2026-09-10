@@ -1,0 +1,154 @@
+/*
+ * Mission 033 — PAGE C (T06 photo Hero). Chrome lives in
+ * BuilderScreen.module.css; colors/typography/tokens reuse the exact
+ * T01/T02/PAGE A/PAGE B palette (mission brief section 24) — no new
+ * visual language, no decorative asset, no Hero composition.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-breathing);
+}
+
+/* The real control: kept in the accessibility tree and in tab order —
+   focusable, and triggerable by Enter/Space via its associated
+   <label> — just not painted. Never `display: none`, which would also
+   drop it from focus. Same technique ChoiceCard.module.css already
+   uses for its own hidden radio input. */
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The "grande zone Ajouter une photo" (mission brief section 2) — a big,
+   calm, tactile-comfortable target, never a plain unstyled div. */
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  padding: var(--heritage-space-xl);
+  border: 1px dashed var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background-color var(--heritage-motion-fast) var(--heritage-easing-standard),
+    border-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.dropzone[aria-disabled="true"] {
+  cursor: default;
+  background: var(--heritage-state-disabled-surface);
+  color: var(--heritage-state-disabled-text);
+}
+
+.dropzoneLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--heritage-accent-primary);
+}
+
+.dropzone[aria-disabled="true"] .dropzoneLabel {
+  color: var(--heritage-state-disabled-text);
+}
+
+/* Real, visible keyboard focus — keyed off the hidden input's own
+   native :focus-visible state via :has(), same technique
+   ChoiceCard.module.css already uses. */
+.dropzone:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-md);
+}
+
+.previewImage {
+  width: 100%;
+  max-width: 16rem;
+  max-height: 16rem;
+  object-fit: cover;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
+}
+
+.statusText {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+}
+
+.croppingNote {
+  margin: 0;
+  max-width: 22rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.changeLink {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.changeLink[aria-disabled="true"] {
+  cursor: default;
+  color: var(--heritage-state-disabled-text);
+}
+
+.changeLink:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}

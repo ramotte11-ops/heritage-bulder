@@ -10,9 +10,17 @@ import { LanguageStep } from "@/components/builder/LanguageStep";
 import { ContextStep } from "@/components/builder/ContextStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
-import { needsPageA, needsPageB } from "@/lib/builder/guided-flow/hero-step";
+import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
+import { needsPageA, needsPageB, needsPageC } from "@/lib/builder/guided-flow/hero-step";
+import { resolveHeroPhotoStepData } from "@/lib/builder/guided-flow/resolve-hero-photo-step";
+import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { translate } from "@/lib/i18n/translate";
 import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
+import {
+  reserveHeroPhotoUploadAction,
+  finalizeHeroPhotoUploadAction,
+  replaceHeroPhotoUploadAction,
+} from "./media-actions";
 import styles from "./page.module.css";
 
 /**
@@ -131,6 +139,26 @@ import styles from "./page.module.css";
  * exactly like `BuilderShell`'s own autosave `persist` — no second
  * persistence path. A memorial past both, with nothing else configured
  * yet, falls through to the same notice T02 already falls through to.
+ *
+ * ## Mission 033 — PAGE C (T06, the Hero photo) sits right after PAGE B
+ *
+ * Shown once PAGE A and PAGE B are both behind the family and T06 itself
+ * has not been explicitly completed (`needsPageC`,
+ * lib/builder/guided-flow/hero-step.ts). Its data is resolved through
+ * `resolveHeroPhotoStepData` (lib/builder/guided-flow/resolve-hero-photo-step.ts)
+ * rather than read directly off `resumed.draft.content`, because PAGE C
+ * alone needs the section-14 compensation pass — reconciling the Hero's
+ * photo against Storage/DB's own `"hero"`/`"ready"` media before
+ * deciding a photo is really missing — and a fresh, short-lived signed
+ * read URL for whatever it finds (Mission 030's private-read mechanism;
+ * never persisted). `reserveHeroPhotoUploadAction`/
+ * `finalizeHeroPhotoUploadAction`/`replaceHeroPhotoUploadAction`
+ * (./media-actions.ts) are bound to `access.memorialId` exactly like
+ * `saveDraftAction` above — the browser never holds a raw, unverified
+ * memorial id for any of these calls either. A memorial past PAGE C,
+ * with nothing else configured yet (T07's cropper is Mission 034's
+ * job), falls through to the same notice T02/PAGE A/PAGE B already fall
+ * through to.
  */
 export const dynamic = "force-dynamic";
 
@@ -271,12 +299,43 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // Mission 033 — PAGE C: T06, the Hero's photo. Shown only once PAGE A
+  // and PAGE B are genuinely behind the family (never before — see
+  // `needsPageC`'s own guard) and only until T06 itself has been
+  // explicitly completed via a real Continue click (mission brief
+  // section 18/19 — a ready, autosaved photo is not by itself proof the
+  // family left this page). `resolveHeroPhotoStepData` runs the
+  // section-14 compensation pass and resolves the one display URL this
+  // page needs before rendering — see this function's own docstring and
+  // this file's Mission 033 section above.
+  if (needsPageC(resumed.draft.content)) {
+    const photoStepData = await resolveHeroPhotoStepData(
+      { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+      actor,
+      access.memorialId,
+      resumed.draft.content,
+    );
+
+    return (
+      <HeroPhotoStep
+        language={resumed.memorial.language}
+        editorialContext={resumed.memorial.editorialContext}
+        content={photoStepData.content}
+        initialPhoto={photoStepData.initialPhoto}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+        reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
+        finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
+        replaceUpload={replaceHeroPhotoUploadAction.bind(null, access.memorialId)}
+      />
+    );
+  }
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
-  // later mission has built yet (T06 photo/T07 crop included — Mission
-  // 032 deliberately stops at T05), so — for now — a memorial past PAGE
-  // B but with nothing else configured gets a controlled notice rather
-  // than invented data or a Builder rendered against NULLs.
+  // later mission has built yet (T07 crop, Mission 034's job — this
+  // mission deliberately stops at T06), so — for now — a memorial past
+  // PAGE C but with nothing else configured gets a controlled notice
+  // rather than invented data or a Builder rendered against NULLs.
   // `resumed.memorial.language` is narrowed non-null by the earlier
   // `return`, so this notice can already speak the family's own
   // language rather than a hard-coded one.
