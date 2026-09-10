@@ -3,14 +3,23 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Mission 033 — T06's three Server Actions. Same discipline as
+ * Mission 033 — T06's four Server Actions. Same discipline as
  * actions.test.ts: proves this file wires `getHeritageActor()` and the
  * real media engine primitives correctly, in the right order, and never
  * builds a second ownership check of its own. The primitives'
- * (`reserveMediaUpload`/`finalizeMediaUpload`/`replaceMedia`) own
+ * (`reserveMediaUpload`/`finalizeMediaUpload`/`deleteMedia`) own
  * behaviour — including every ownership/cross-owner/format/size rule —
  * is already exhaustively proven in lib/media/*.test.ts; this file does
  * not re-prove it.
+ *
+ * QG micro-audit correction: there is deliberately no
+ * `replaceHeroPhotoUploadAction` / `replaceMedia` here anymore — see
+ * media-actions.ts's own docstring for why wiring `replaceMedia`
+ * directly would delete the previous Hero media before the Hero draft
+ * had adopted the new one. "Changer la photo" now composes
+ * `finalizeHeroPhotoUploadAction` (identical to a first upload) with
+ * `retireHeroPhotoUploadAction`, called by `HeroPhotoStep.tsx` only
+ * after the Hero draft's own adoption has genuinely persisted.
  */
 
 const { getHeritageActor } = vi.hoisted(() => ({ getHeritageActor: vi.fn() }));
@@ -27,13 +36,13 @@ const { reserveMediaUpload, finalizeMediaUpload } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/media/upload-lifecycle", () => ({ reserveMediaUpload, finalizeMediaUpload }));
 
-const { replaceMedia } = vi.hoisted(() => ({ replaceMedia: vi.fn() }));
-vi.mock("@/lib/media/replace-media", () => ({ replaceMedia }));
+const { deleteMedia } = vi.hoisted(() => ({ deleteMedia: vi.fn() }));
+vi.mock("@/lib/media/delete-media", () => ({ deleteMedia }));
 
 const {
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
-  replaceHeroPhotoUploadAction,
+  retireHeroPhotoUploadAction,
 } = await import("./media-actions");
 
 const MEMORIAL_ID = "memorial-abc";
@@ -49,7 +58,7 @@ beforeEach(() => {
   createServerMediaEngineDeps.mockClear();
   reserveMediaUpload.mockReset();
   finalizeMediaUpload.mockReset();
-  replaceMedia.mockReset();
+  deleteMedia.mockReset();
 });
 
 describe("reserveHeroPhotoUploadAction", () => {
@@ -124,34 +133,38 @@ describe("finalizeHeroPhotoUploadAction", () => {
   });
 });
 
-describe("replaceHeroPhotoUploadAction", () => {
-  it("resolves the actor and calls replaceMedia with memorialId + mediaId + previousMediaId", async () => {
+describe("retireHeroPhotoUploadAction", () => {
+  it("resolves the actor and calls deleteMedia with memorialId + mediaId", async () => {
     getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-    replaceMedia.mockResolvedValue({
-      ok: true,
-      value: { media: { id: "m2", status: "ready" }, previousRemoved: true },
-    });
+    deleteMedia.mockResolvedValue({ ok: true, value: { removed: true } });
 
-    const result = await replaceHeroPhotoUploadAction(MEMORIAL_ID, "m2", "m1");
+    const result = await retireHeroPhotoUploadAction(MEMORIAL_ID, "old-media-id");
 
-    expect(replaceMedia).toHaveBeenCalledExactlyOnceWith(
+    expect(deleteMedia).toHaveBeenCalledExactlyOnceWith(
       { fake: "media-engine-deps" },
       OWNER_ACTOR,
-      { memorialId: MEMORIAL_ID, mediaId: "m2", previousMediaId: "m1" },
+      { memorialId: MEMORIAL_ID, mediaId: "old-media-id" },
     );
-    expect(result).toEqual({
-      ok: true,
-      value: { media: { id: "m2", status: "ready" }, previousRemoved: true },
+    expect(result).toEqual({ ok: true, value: { removed: true } });
+  });
+
+  it("propagates a refusal exactly as the primitive reports it — a cleanup failure, never a lost photo", async () => {
+    getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+    deleteMedia.mockResolvedValue({ ok: false, code: "storage_unavailable" });
+
+    await expect(retireHeroPhotoUploadAction(MEMORIAL_ID, "old-media-id")).resolves.toEqual({
+      ok: false,
+      code: "storage_unavailable",
     });
   });
 
-  it("propagates a refusal exactly as the primitive reports it — the old media stays the Hero photo", async () => {
+  it("is idempotent — retiring an already-retired media reports 'removed: false', never an error", async () => {
     getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-    replaceMedia.mockResolvedValue({ ok: false, code: "file_too_large" });
+    deleteMedia.mockResolvedValue({ ok: true, value: { removed: false } });
 
-    await expect(replaceHeroPhotoUploadAction(MEMORIAL_ID, "m2", "m1")).resolves.toEqual({
-      ok: false,
-      code: "file_too_large",
+    await expect(retireHeroPhotoUploadAction(MEMORIAL_ID, "old-media-id")).resolves.toEqual({
+      ok: true,
+      value: { removed: false },
     });
   });
 });
@@ -187,5 +200,18 @@ describe("media-actions.ts — the shape of the boundary", () => {
   it("never builds a second ownership/authorization mechanism of its own", () => {
     expect(CODE).not.toMatch(/authorizeMemorialAccess/);
     expect(CODE).not.toMatch(/memorial-ownership-repository/);
+  });
+
+  // QG micro-audit correction's own durable guard: wiring
+  // lib/media/replace-media.ts's `replaceMedia` here would delete the
+  // previous Hero media before the Hero draft has adopted the new one
+  // (see this file's own docstring) — never reintroduced silently.
+  it("never imports replace-media.ts — retiring the old media is the CALLER's job, after draft adoption, not this file's", () => {
+    expect(CODE).not.toMatch(/replace-media/);
+    expect(CODE).not.toMatch(/replaceMedia/);
+  });
+
+  it("retires the old media through deleteMedia, never a second delete mechanism", () => {
+    expect(CODE).toMatch(/deleteMedia\(/);
   });
 });

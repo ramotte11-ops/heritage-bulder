@@ -11,9 +11,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  *
  * `next/navigation` and `@/lib/supabase/browser-client` are mocked so
  * this file needs neither a real router nor a real Supabase project;
- * `reserveUpload`/`finalizeUpload`/`replaceUpload`/`persist` are plain
+ * `reserveUpload`/`finalizeUpload`/`retireUpload`/`persist` are plain
  * props, mocked per test exactly like every other Guided Flow screen's
  * `persist` would be if it had its own DOM test.
+ *
+ * The "adopt before retiring" describe block below is the QG micro-audit
+ * correction's own regression coverage: the previous Hero media must
+ * never be retired before the Hero draft has durably adopted the new
+ * one, in either direction of failure.
  */
 
 const { useRouter, routerRefresh } = vi.hoisted(() => {
@@ -99,7 +104,7 @@ function baseProps(overrides: Partial<Parameters<typeof HeroPhotoStep>[0]> = {})
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),
     reserveUpload: vi.fn(),
     finalizeUpload: vi.fn(),
-    replaceUpload: vi.fn(),
+    retireUpload: vi.fn().mockResolvedValue({ ok: true, value: { removed: true } }),
     ...overrides,
   };
 }
@@ -306,7 +311,7 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
     expect(screen.queryByText(/invalid_file/)).toBeNull();
   });
 
-  it("on a failed replacement, the OLD photo stays visible — never a hole with no photo", async () => {
+  it("on a failed replacement (finalize refuses), the OLD photo stays visible — never a hole with no photo", async () => {
     const reserveUpload = vi.fn().mockResolvedValue({
       ok: true,
       value: {
@@ -316,7 +321,8 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
         uploadToken: "token-y",
       },
     });
-    const replaceUpload = vi.fn().mockResolvedValue({ ok: false, code: "storage_unavailable" });
+    const finalizeUpload = vi.fn().mockResolvedValue({ ok: false, code: "storage_unavailable" });
+    const retireUpload = vi.fn();
 
     render(
       <HeroPhotoStep
@@ -324,7 +330,8 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
           content: CONTENT_WITH_PHOTO,
           initialPhoto: { media: READY_MEDIA, readUrl: "https://storage.test/signed/original" },
           reserveUpload,
-          replaceUpload,
+          finalizeUpload,
+          retireUpload,
         })}
       />,
     );
@@ -342,6 +349,8 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
     expect(img.src).toContain("https://storage.test/signed/original");
     const button = screen.getByRole("button", { name: /continuer/i });
     expect(button).toHaveProperty("disabled", false);
+    // The old media was never even considered for retirement.
+    expect(retireUpload).not.toHaveBeenCalled();
   });
 
   it("errors are announced via role=alert for basic accessibility", async () => {
@@ -353,6 +362,133 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
     fireEvent.change(input, { target: { files: [pdf] } });
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
+});
+
+describe("HeroPhotoStep — QG micro-audit: adopt before retiring", () => {
+  function replacementProps(overrides: Partial<Parameters<typeof HeroPhotoStep>[0]> = {}) {
+    return baseProps({
+      content: CONTENT_WITH_PHOTO,
+      initialPhoto: { media: READY_MEDIA, readUrl: "https://storage.test/signed/original" },
+      reserveUpload: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          mediaId: "cccccccc-cccc-4ccc-8ccc-000000000002",
+          storagePath: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-8ccc-000000000002/original.jpg",
+          uploadUrl: "https://storage.test/upload/new",
+          uploadToken: "token-new",
+        },
+      }),
+      finalizeUpload: vi.fn().mockResolvedValue({
+        ok: true,
+        value: { ...READY_MEDIA, id: "cccccccc-cccc-4ccc-8ccc-000000000002" },
+      }),
+      ...overrides,
+    });
+  }
+
+  it("a successful replacement persists the draft's adoption BEFORE retiring the previous media", async () => {
+    const callOrder: string[] = [];
+    const persist = vi.fn().mockImplementation(async (content: { hero: { photo: { mediaId: string } } }) => {
+      callOrder.push(`persist:${content.hero.photo.mediaId}`);
+      return { updatedAt: "2026-01-01T00:00:00.000Z" };
+    });
+    const retireUpload = vi.fn().mockImplementation(async (mediaId: string) => {
+      callOrder.push(`retire:${mediaId}`);
+      return { ok: true, value: { removed: true } };
+    });
+
+    render(<HeroPhotoStep {...replacementProps({ persist, retireUpload })} />);
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [jpegFile("new.jpg")] } });
+
+    await waitFor(() => expect(retireUpload).toHaveBeenCalled());
+
+    expect(callOrder).toEqual([
+      "persist:cccccccc-cccc-4ccc-8ccc-000000000002",
+      "retire:cccccccc-cccc-4ccc-8ccc-000000000001",
+    ]);
+
+    const img = screen.getByAltText("Photo choisie pour l'hommage") as HTMLImageElement;
+    expect(img.src).toContain("blob:");
+    const button = screen.getByRole("button", { name: /continuer/i });
+    expect(button).toHaveProperty("disabled", false);
+  });
+
+  it("when the draft's own adoption (persist) fails, the previous media is NEVER retired and stays canonical", async () => {
+    const persist = vi.fn().mockRejectedValue(new Error("network reset"));
+    const retireUpload = vi.fn();
+
+    render(<HeroPhotoStep {...replacementProps({ persist, retireUpload })} />);
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [jpegFile("new.jpg")] } });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Nous n'avons pas pu ajouter la photo pour le moment. Vous pouvez réessayer."),
+      ).toBeTruthy(),
+    );
+
+    // The old media was never asked to be deleted — it remains the
+    // Hero's only real photo, in Storage and in the draft.
+    expect(retireUpload).not.toHaveBeenCalled();
+    const img = screen.getByAltText("Photo choisie pour l'hommage") as HTMLImageElement;
+    expect(img.src).toContain("https://storage.test/signed/original");
+    const button = screen.getByRole("button", { name: /continuer/i });
+    expect(button).toHaveProperty("disabled", false);
+  });
+
+  it("if retiring the old media fails AFTER adoption succeeded, the new photo stays canonical and no error is shown", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const retireUpload = vi.fn().mockResolvedValue({ ok: false, code: "storage_unavailable" });
+
+    render(<HeroPhotoStep {...replacementProps({ persist, retireUpload })} />);
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [jpegFile("new.jpg")] } });
+
+    await waitFor(() => expect(retireUpload).toHaveBeenCalledExactlyOnceWith(READY_MEDIA.id));
+
+    // The new photo is already the Hero's canonical one — a cleanup
+    // failure for the old, unreferenced media is never surfaced.
+    expect(screen.queryByRole("alert")).toBeNull();
+    const button = screen.getByRole("button", { name: /continuer/i });
+    expect(button).toHaveProperty("disabled", false);
+    expect(persist).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        hero: expect.objectContaining({
+          photo: { mediaId: "cccccccc-cccc-4ccc-8ccc-000000000002", crop: null },
+        }),
+      }),
+    );
+  });
+
+  it("a fresh (non-replacement) upload never calls retireUpload — there is nothing to retire", async () => {
+    const retireUpload = vi.fn();
+    const reserveUpload = vi.fn().mockResolvedValue({
+      ok: true,
+      value: {
+        mediaId: READY_MEDIA.id,
+        storagePath: READY_MEDIA.storagePath,
+        uploadUrl: "https://storage.test/upload/x",
+        uploadToken: "token-x",
+      },
+    });
+    const finalizeUpload = vi.fn().mockResolvedValue({ ok: true, value: READY_MEDIA });
+
+    render(<HeroPhotoStep {...baseProps({ reserveUpload, finalizeUpload, retireUpload })} />);
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [jpegFile()] } });
+
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: /continuer/i });
+      expect(button).toHaveProperty("disabled", false);
+    });
+
+    expect(retireUpload).not.toHaveBeenCalled();
   });
 });
 

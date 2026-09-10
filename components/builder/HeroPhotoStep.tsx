@@ -9,7 +9,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import type { MediaResult } from "@/lib/media/media-errors";
 import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
-import type { MediaReplacement } from "@/lib/media/replace-media";
+import type { MediaDeletion } from "@/lib/media/delete-media";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
 import { precheckHeroPhotoFile } from "@/lib/media/precheck-upload";
@@ -47,7 +47,12 @@ interface HeroPhotoStepProps {
    * holds a raw memorial id to misuse. */
   reserveUpload: (declaredMimeType: string) => Promise<MediaResult<ReservedUpload>>;
   finalizeUpload: (mediaId: string) => Promise<MediaResult<Media>>;
-  replaceUpload: (mediaId: string, previousMediaId: string) => Promise<MediaResult<MediaReplacement>>;
+  /** Retires a Hero media the draft no longer references — called ONLY
+   * after the Hero draft has genuinely adopted the new mediaId (see this
+   * component's own docstring on the ordering QG's micro-audit
+   * requires). Never called, and never blocks the family, on its own
+   * failure. */
+  retireUpload: (mediaId: string) => Promise<MediaResult<MediaDeletion>>;
 }
 
 type PhotoStatus = "empty" | "uploading" | "finalizing" | "ready" | "error";
@@ -98,20 +103,39 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
  * `null` through every path this component takes, by construction:
  * `writeHeroPhotoMedia`/`commitPageC` never touch it.
  *
- * ## The upload sequence
+ * ## The upload sequence, and the order QG's micro-audit corrected
  *
  * File chosen -> browser pre-check (UX only) -> `reserveUpload` (proves
  * ownership, reserves a `pending` row + a signed, single-object Storage
  * permission) -> the browser uploads the bytes DIRECTLY to Storage
  * (`lib/supabase/browser-client.ts`'s `uploadToSignedUrl` — never through
- * this component's own Server Actions) -> `finalizeUpload` (first photo)
- * or `replaceUpload` (mission brief section 15, once a photo already
- * exists) verifies the real stored bytes and marks the media `ready` ->
- * `writeHeroPhotoMedia` links it into the Hero -> that new `content` is
- * handed to `setContent`, which `useAutosave` picks up and persists on
- * its own debounce/retry schedule (Mission 010's loss protection covers
- * exactly the "ready, autosaved, browser closed before Continue" case —
- * mission brief section 18/19).
+ * this component's own Server Actions) -> `finalizeUpload` verifies the
+ * real stored bytes and marks the media `ready` (identical whether this
+ * is the first photo or a replacement) -> `writeHeroPhotoMedia` links it
+ * into the Hero -> an EXPLICIT, AWAITED `persist(...)` call — the actual
+ * moment the Hero draft durably adopts the new `mediaId`, never merely
+ * `setContent` handed to the debounced autosave — and only once THAT has
+ * genuinely resolved does `setContent` run and, if this was a
+ * replacement, `retireUpload` get called on the previous media, on a
+ * best-effort basis whose own failure is never surfaced to the family.
+ *
+ * That ordering is load-bearing (mission brief section 15's exact rule):
+ * the previous photo must stay the Hero's canonical one, in Storage AND
+ * in the draft, for every instant up to and including a successful
+ * adoption — never deleted merely because a new upload finalized. If the
+ * explicit `persist` call fails, `retireUpload` is never called at all:
+ * the old media and the old `mediaId` both remain exactly as they were,
+ * and the new, now-orphaned `ready` media is left for
+ * `resolveHeroPhotoStepData`'s own reconciliation
+ * (lib/builder/guided-flow/resolve-hero-photo-step.ts, mission brief
+ * section 14) to adopt on a later read — never this component's problem
+ * to solve by retrying anything itself.
+ *
+ * Mission 010's loss protection (the `beforeunload` guard `useAutosave`
+ * already arms) still covers every OTHER edit on this page exactly as
+ * it does on PAGE A/PAGE B — only this one write is deliberately taken
+ * out of the debounced path, because "did the adoption really succeed"
+ * is precisely the fact `retireUpload`'s timing depends on.
  *
  * A double-click / concurrent second upload is prevented structurally:
  * the add/change control is disabled whenever `status` is `"uploading"`
@@ -119,13 +143,14 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
  *
  * ## Errors
  *
- * Every refusal — from the browser pre-check, from either Server
- * Action, or from the direct Storage upload itself — is unified into one
+ * Every refusal — from the browser pre-check, from a Server Action, or
+ * from the direct Storage upload itself — is unified into one
  * `MediaActionError` and mapped through `mediaErrorTranslationKey`
  * (section 12): never a status code, never "MIME", never "Supabase".
- * On a failed REPLACEMENT, the previous ready photo is restored to view
- * exactly as it was — the mission brief's explicit "pas de trou où la
- * famille se retrouve sans photo" (section 15).
+ * On a failed REPLACEMENT (upload, finalize, OR the draft adoption
+ * itself), the previous ready photo is restored to view exactly as it
+ * was — the mission brief's explicit "pas de trou où la famille se
+ * retrouve sans photo" (section 15).
  *
  * ## Continue
  *
@@ -142,7 +167,7 @@ export function HeroPhotoStep({
   persist,
   reserveUpload,
   finalizeUpload,
-  replaceUpload,
+  retireUpload,
 }: HeroPhotoStepProps) {
   const router = useRouter();
 
@@ -190,23 +215,30 @@ export function HeroPhotoStep({
 
       setPhoto((current) => ({ ...current, status: "finalizing" }));
 
-      const finalizedMedia = previousMedia
-        ? await (async () => {
-            const replaced = await replaceUpload(reserved.value.mediaId, previousMedia.id);
-            if (!replaced.ok) throw new MediaActionError(replaced.code);
-            return replaced.value.media;
-          })()
-        : await (async () => {
-            const finalized = await finalizeUpload(reserved.value.mediaId);
-            if (!finalized.ok) throw new MediaActionError(finalized.code);
-            return finalized.value;
-          })();
+      const finalized = await finalizeUpload(reserved.value.mediaId);
+      if (!finalized.ok) throw new MediaActionError(finalized.code);
+      const finalizedMedia = finalized.value;
 
       const written = writeHeroPhotoMedia(content, finalizedMedia.id);
       if (!written.ok) throw new MediaActionError("storage_unavailable");
 
+      // THE ordering (see this component's own docstring): the Hero
+      // draft must durably adopt the new mediaId BEFORE the previous
+      // media is ever asked to be retired. An explicit, awaited call —
+      // never merely `setContent` handed to the debounced autosave —
+      // because only this gives a definite yes/no to gate the retire on.
+      await persist(written.content);
+
       setContent(written.content);
       setPhoto({ status: "ready", media: finalizedMedia, displayUrl: localPreviewUrl, errorMessage: null });
+
+      // Only now, and only best-effort: the new photo is already the
+      // Hero's canonical one, so a retire failure here is a stale row to
+      // clean up later, never a reason to tell the family anything went
+      // wrong (mission brief section 15).
+      if (previousMedia) {
+        retireUpload(previousMedia.id).catch(() => {});
+      }
     } catch (error) {
       const code = error instanceof MediaActionError ? error.code : "storage_unavailable";
       setPhoto({

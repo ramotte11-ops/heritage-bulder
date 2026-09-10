@@ -134,16 +134,16 @@ vi.mock("@/lib/media/server-media-engine", () => ({ createServerMediaEngineDeps 
 const {
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
-  replaceHeroPhotoUploadAction,
+  retireHeroPhotoUploadAction,
 } = vi.hoisted(() => ({
   reserveHeroPhotoUploadAction: vi.fn(),
   finalizeHeroPhotoUploadAction: vi.fn(),
-  replaceHeroPhotoUploadAction: vi.fn(),
+  retireHeroPhotoUploadAction: vi.fn(),
 }));
 vi.mock("./media-actions", () => ({
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
-  replaceHeroPhotoUploadAction,
+  retireHeroPhotoUploadAction,
 }));
 
 // Imported after every mock above is registered.
@@ -309,7 +309,7 @@ describe("BuilderMemorialPage — granted access", () => {
     createServerMediaEngineDeps.mockClear();
     reserveHeroPhotoUploadAction.mockClear();
     finalizeHeroPhotoUploadAction.mockClear();
-    replaceHeroPhotoUploadAction.mockClear();
+    retireHeroPhotoUploadAction.mockClear();
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
     saveLanguageAction.mockClear();
@@ -1075,7 +1075,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.editorialContext).toBe("remembrance");
     });
 
-    it("wires persist/reserveUpload/finalizeUpload/replaceUpload to the AUTHORIZED memorialId, never the raw URL segment", async () => {
+    it("wires persist/reserveUpload/finalizeUpload/retireUpload to the AUTHORIZED memorialId, never the raw URL segment", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1107,10 +1107,9 @@ describe("BuilderMemorialPage — granted access", () => {
         "some-media-id",
       );
 
-      await result.props.replaceUpload("new-media-id", "old-media-id");
-      expect(replaceHeroPhotoUploadAction).toHaveBeenCalledExactlyOnceWith(
+      await result.props.retireUpload("old-media-id");
+      expect(retireHeroPhotoUploadAction).toHaveBeenCalledExactlyOnceWith(
         "authorized-id",
-        "new-media-id",
         "old-media-id",
       );
     });

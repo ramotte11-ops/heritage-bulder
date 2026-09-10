@@ -19,7 +19,7 @@ import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from 
 import {
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
-  replaceHeroPhotoUploadAction,
+  retireHeroPhotoUploadAction,
 } from "./media-actions";
 import styles from "./page.module.css";
 
@@ -152,7 +152,7 @@ import styles from "./page.module.css";
  * deciding a photo is really missing — and a fresh, short-lived signed
  * read URL for whatever it finds (Mission 030's private-read mechanism;
  * never persisted). `reserveHeroPhotoUploadAction`/
- * `finalizeHeroPhotoUploadAction`/`replaceHeroPhotoUploadAction`
+ * `finalizeHeroPhotoUploadAction`/`retireHeroPhotoUploadAction`
  * (./media-actions.ts) are bound to `access.memorialId` exactly like
  * `saveDraftAction` above — the browser never holds a raw, unverified
  * memorial id for any of these calls either. A memorial past PAGE C,
@@ -325,7 +325,7 @@ export default async function BuilderMemorialPage({
         persist={saveDraftAction.bind(null, access.memorialId)}
         reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
         finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
-        replaceUpload={replaceHeroPhotoUploadAction.bind(null, access.memorialId)}
+        retireUpload={retireHeroPhotoUploadAction.bind(null, access.memorialId)}
       />
     );
   }
