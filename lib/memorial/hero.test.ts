@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  inspectHero,
   isHeroComplete,
   isHeroContentComplete,
   isHeroPhotoMediaUsable,
@@ -457,5 +458,48 @@ describe("draft JSON integration (section 13)", () => {
       birth: { precision: "date", date: "2026-02-31" },
     };
     expect(validateHero(invalid)).toEqual({ ok: false, reason: "birth" });
+  });
+});
+
+describe("inspectHero — absent vs. corrupted stays distinguishable (no silent overwrite)", () => {
+  it("an old draft with no hero key at all is status 'absent'", () => {
+    const content: MemorialContent = { story: { title: "x" } };
+    expect(inspectHero(content)).toEqual({ status: "absent", hero: EMPTY_HERO_CONTENT });
+  });
+
+  it("a valid hero is status 'valid'", () => {
+    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Marcel" };
+    const content = updateHero({}, hero);
+    expect(inspectHero(content)).toEqual({ status: "valid", hero });
+  });
+
+  it("a malformed hero is status 'corrupted', with the original raw value preserved untouched", () => {
+    const corruptedRaw = { displayName: 42, someUnrelatedGarbage: true };
+    const content = { hero: corruptedRaw } as unknown as MemorialContent;
+
+    expect(inspectHero(content)).toEqual({ status: "corrupted", raw: corruptedRaw });
+  });
+
+  it("'absent' and 'corrupted' are never collapsed into the same status", () => {
+    const absent = inspectHero({});
+    const corrupted = inspectHero({ hero: "not an object" } as unknown as MemorialContent);
+
+    expect(absent.status).toBe("absent");
+    expect(corrupted.status).toBe("corrupted");
+    expect(absent.status).not.toBe(corrupted.status);
+  });
+
+  it("readHero alone loses the distinction — this is exactly why a write path must use inspectHero instead", () => {
+    const absentContent: MemorialContent = {};
+    const corruptedContent = { hero: "not an object" } as unknown as MemorialContent;
+
+    // Both read as the same empty Hero via the display convenience...
+    expect(readHero(absentContent)).toEqual(EMPTY_HERO_CONTENT);
+    expect(readHero(corruptedContent)).toEqual(EMPTY_HERO_CONTENT);
+
+    // ...but inspectHero still tells them apart, which is what a save
+    // path is expected to check before ever calling updateHero().
+    expect(inspectHero(absentContent).status).toBe("absent");
+    expect(inspectHero(corruptedContent).status).toBe("corrupted");
   });
 });

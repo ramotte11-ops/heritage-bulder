@@ -321,18 +321,70 @@ export function validateHero(hero: HeroContent): HeroValidationResult {
 // ---------------------------------------------------------------------
 
 /**
+ * The three ways a draft's `content.hero` can actually be found, kept
+ * distinct on purpose:
+ *
+ *   - `"absent"`     no `hero` key at all — a brand-new or pre-Hero
+ *                    draft. Perfectly normal; safe to start fresh from.
+ *   - `"valid"`      parsed successfully.
+ *   - `"corrupted"`  a `hero` key exists but is NOT a well-formed
+ *                    `HeroContent` — this is real, existing data that
+ *                    failed validation, not an empty field. `raw` is
+ *                    the untouched original value, specifically so a
+ *                    write path can decide what to do with it (surface
+ *                    it, log it, refuse to save over it) instead of it
+ *                    silently vanishing.
+ *
+ * This is the primitive a future write/autosave path MUST branch on —
+ * see `readHero`'s docstring for why that function is NOT it.
+ */
+export type HeroReadResult =
+  | { status: "absent"; hero: HeroContent }
+  | { status: "valid"; hero: HeroContent }
+  | { status: "corrupted"; raw: unknown };
+
+/**
+ * Inspects `content.hero` without collapsing "absent" and "corrupted"
+ * into the same outcome (mission brief, section 12's "ne jamais caster
+ * aveuglément", read literally: a malformed value is a distinct fact,
+ * not a synonym for missing). This is what stands between a real data
+ * corruption and a future autosave silently overwriting it: a write
+ * path that calls this before saving can refuse to persist a fresh
+ * `EMPTY_HERO_CONTENT`-derived value over a `"corrupted"` one, instead
+ * of doing `readHero()` (which already defaulted it away) followed by
+ * an unconditional `updateHero()`.
+ */
+export function inspectHero(content: MemorialContent): HeroReadResult {
+  const raw = content.hero;
+  if (raw === null || raw === undefined) {
+    return { status: "absent", hero: { ...EMPTY_HERO_CONTENT } };
+  }
+
+  const result = parseHeroContent(raw);
+  return result.ok ? { status: "valid", hero: result.hero } : { status: "corrupted", raw };
+}
+
+/**
  * Reads the Hero out of a draft's content, fail-safe (mission brief,
  * section 12): a missing `hero` key reads as an incomplete-but-valid
  * empty Hero, and a malformed one reads the SAME way rather than
  * throwing or propagating a bad cast — a corrupt Hero must never take
- * down the rest of the draft. Call `parseHeroContent` directly instead
- * when the caller needs to distinguish "absent" from "malformed" (e.g.
- * to surface a genuine data problem rather than silently treating it as
- * an empty Hero).
+ * down the rest of the draft when the caller only wants something to
+ * DISPLAY or edit from.
+ *
+ * This is a display/edit-seed convenience, built on `inspectHero`
+ * above (which is where "absent" and "corrupted" are still told
+ * apart). It is deliberately the WRONG function to call right before a
+ * write: `readHero` then `updateHero` would silently replace a
+ * `"corrupted"` stored value with a fresh empty one and no record that
+ * anything was ever wrong. A future autosave/save path must use
+ * `inspectHero` instead, and decide explicitly what a `"corrupted"`
+ * status means for that write (e.g. refuse to save until resolved, or
+ * log it) rather than reaching for this function.
  */
 export function readHero(content: MemorialContent): HeroContent {
-  const result = parseHeroContent(content.hero);
-  return result.ok ? result.hero : { ...EMPTY_HERO_CONTENT };
+  const result = inspectHero(content);
+  return result.status === "corrupted" ? { ...EMPTY_HERO_CONTENT } : result.hero;
 }
 
 /**
