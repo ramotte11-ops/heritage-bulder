@@ -165,17 +165,19 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032 — PAGE A and PAGE B both already done (a real
- * `displayName` and T05 explicitly treated), so this draft, paired with
- * a memorial that has a language and an editorial context, resumes
- * straight past both new gates — exactly what every pre-032 test below
- * that expects to reach BuilderShell (or the T02/"not configured yet"
- * fallthrough) still needs. See the "Mission 032" describe block for
- * the drafts that deliberately do NOT satisfy these gates. */
+/** Mission 032 — PAGE A and PAGE B both genuinely done: a real
+ * `displayName`, T04 explicitly skipped (never just inferred from zero
+ * dates — QG micro-correction), and T05 explicitly treated too. Paired
+ * with a memorial that has a language and an editorial context, this
+ * draft resumes straight past both new gates — exactly what every
+ * pre-032 test below that expects to reach BuilderShell (or the
+ * T02/"not configured yet" fallthrough) still needs. See the "Mission
+ * 032" describe block for the drafts that deliberately do NOT satisfy
+ * these gates. */
 const REAL_DRAFT: MemorialVersion = {
   content: {
     hero: { displayName: "Real content", birth: null, death: null, shortPhrase: null, photo: null },
-    guidedFlow: { T05: { status: "skipped" } },
+    guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" } },
   } as MemorialVersion["content"],
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -593,11 +595,26 @@ describe("BuilderMemorialPage — granted access", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
 
-    /** T03 done (a real displayName), T04 left with zero dates, T05
-     * never treated — PAGE A behind the family, PAGE B still ahead. */
-    const DRAFT_WITH_NAME_ONLY: MemorialVersion = {
+    /** QG micro-correction fixture: a `displayName` that was only ever
+     * autosaved while typing — zero dates, and the family never clicked
+     * Continue on PAGE A (e.g. the browser was closed mid-visit). This
+     * must NOT read as "PAGE A done": T04 has genuinely not been
+     * resolved either way yet. */
+    const DRAFT_WITH_NAME_ONLY_AUTOSAVED: MemorialVersion = {
       content: {
         hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T03 done (a real displayName), T04 genuinely resolved via an
+     * explicit Continue click with zero dates (`commitPageA`'s own
+     * write), T05 never treated — PAGE A behind the family for real,
+     * PAGE B still ahead. */
+    const DRAFT_WITH_NAME_AND_T04_SKIPPED: MemorialVersion = {
+      content: {
+        hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+        guidedFlow: { T04: { status: "skipped" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -671,7 +688,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
     });
 
-    it("never renders HeroIdentityStep once a displayName is already set — T03/T04 are never re-posed", async () => {
+    it("QG micro-correction: STILL renders HeroIdentityStep (PAGE A) for a name-only autosave — zero dates, no Continue click yet", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -681,7 +698,31 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: DRAFT_WITH_NAME_ONLY,
+        draft: DRAFT_WITH_NAME_ONLY_AUTOSAVED,
+      });
+
+      const result = await callPage();
+
+      // A displayName alone is not proof T04 was ever treated — the
+      // family may have simply closed the browser before clicking
+      // Continue. Resuming must land them back on PAGE A, never on
+      // PAGE B (which would silently treat the empty date fields as a
+      // deliberate skip they never made).
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("never renders HeroIdentityStep once T04 has been genuinely resolved (an explicit skip) — T03/T04 are never re-posed", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
       });
 
       const result = await callPage();
@@ -690,7 +731,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).not.toBe(HeroIdentityStep);
     });
 
-    it("renders HeroPhraseStep (PAGE B) once a displayName is set but T05 has never been treated — absence of dates never blocks the way here", async () => {
+    it("renders HeroPhraseStep (PAGE B) once T04 was explicitly skipped and T05 has never been treated", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -700,7 +741,7 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: DRAFT_WITH_NAME_ONLY,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
       });
 
       const result = await callPage();
@@ -719,13 +760,13 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: DRAFT_WITH_NAME_ONLY,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
       });
 
       const result = await callPage();
       expect(result.props.language).toBe("es");
       expect(result.props.editorialContext).toBe("remembrance");
-      expect(result.props.content).toEqual(DRAFT_WITH_NAME_ONLY.content);
+      expect(result.props.content).toEqual(DRAFT_WITH_NAME_AND_T04_SKIPPED.content);
 
       const newContent = { hero: { displayName: "Jean Dupont", shortPhrase: "Un homme bon" } };
       await result.props.persist(newContent);

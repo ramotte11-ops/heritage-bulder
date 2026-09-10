@@ -24,22 +24,42 @@ import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from 
  * only the seam between the canonical Hero model (Mission 031) and the
  * canonical Guided Flow engine (Mission 025).
  *
- * ## Why T05 is the only step actually STORED here
+ * ## Why T03 stays derived but T04 is only PARTLY derived (QG micro-
+ * correction)
  *
- * T03 ("displayName is valid") and T04 ("the family left PAGE A, dates
- * or not") are both fully DERIVABLE from the Hero content itself — see
- * `deriveIdentityFlowRecords` below — so this module never persists a
- * second, potentially-stale flag for either of them (exactly the
- * discipline engine.ts's own docstring asks for: "the real data...
- * must remain the one source of truth, never a second, potentially-
- * stale index alongside it"). T05 cannot be derived the same way: a
- * `shortPhrase` of `null` is structurally identical whether the family
- * has never seen PAGE B or has already declined it, and the mission
- * brief is explicit that a fake non-empty phrase must never be written
- * just to fake that distinction (section 9). So — and only for T05 —
- * this module persists one real `StepRecord`, using the exact type
- * Mission 025 already defined for this purpose (mission brief section
- * 9: "réutiliser le mécanisme canonique de step facultative").
+ * T03 ("displayName is valid") is fully DERIVABLE from the Hero content
+ * itself: it has no "skipped" outcome (non-skippable in human-steps.ts),
+ * so a valid `displayName` is unambiguous proof it is done.
+ *
+ * T04 is NOT symmetric. "At least one date present" is unambiguous
+ * proof of `"completed"` and stays derived. But "zero dates" is NOT by
+ * itself proof of anything: it is structurally identical whether the
+ * family (a) never reached PAGE A, (b) is mid-visit and simply hasn't
+ * typed a date yet, or (c) deliberately continued past PAGE A with no
+ * date at all — and only (c) is a real `"skipped"`. Collapsing (b) and
+ * (c) together (the original Mission 032 shipped this bug: an
+ * autosaved `displayName` with zero dates was read back as T04
+ * `"skipped"` even if the family had never clicked Continue, e.g. after
+ * closing the browser mid-visit) would resume the family straight past
+ * PAGE A the moment ANY name gets autosaved, silently dropping their
+ * still-open chance to add a date. So `"skipped"` for T04 is real,
+ * persisted `StepRecord` data — written only by `commitPageA`, the
+ * moment the family actually clicks Continue with no date — never
+ * inferred from the mere absence of one. `"completed"` always wins over
+ * any stored `"skipped"` the instant a date is (re)added, so a family
+ * that skipped once and comes back to add a date needs no extra
+ * bookkeeping to "un-skip" T04 (see `resolveT04Record`).
+ *
+ * T05 needs the same real `StepRecord` treatment as T04's `"skipped"`
+ * case, for the same underlying reason: a `shortPhrase` of `null` is
+ * structurally identical whether the family has never seen PAGE B or
+ * has already declined it, and the mission brief is explicit that a
+ * fake non-empty phrase must never be written just to fake that
+ * distinction (section 9). So T04's explicit skip and all of T05 use
+ * the exact same mechanism: one real `StepRecord`, the type Mission 025
+ * already defined for this purpose (mission brief section 9: "réutiliser
+ * le mécanisme canonique de step facultative") — never a second,
+ * bespoke flag.
  *
  * ## Where that record actually lives
  *
@@ -105,35 +125,66 @@ function hasAnyDate(hero: HeroContent): boolean {
   return hero.birth !== null || hero.death !== null;
 }
 
+/** T03's status, derived live from the Hero content every time — never
+ * read back from storage. `undefined` (rather than an "incomplete"
+ * record — engine.ts's own convention, see `stepRuntimeStatus`) means
+ * `displayName` hasn't been set yet. */
+function deriveT03Record(hero: HeroContent): StepRecord | undefined {
+  return hero.displayName !== null ? { status: "completed" } : undefined;
+}
+
 /**
- * T03 and T04's status, derived live from the Hero content every time
- * — never read back from storage. `displayName === null` means neither
- * has been reached yet (both stay absent from the returned bag, i.e.
- * "incomplete" once merged into a `HumanFlowState`). Once a
- * `displayName` is set, T03 is unconditionally `"completed"` and T04
- * resolves in the same instant: `"completed"` if the family entered
- * at least one date, `"skipped"` if they left PAGE A with zero dates —
- * exactly the mission brief's "T04 est considérée traitée lorsque la
- * famille quitte volontairement PAGE A, même avec zéro date" (section
- * 8), true by construction here because PAGE A's own gate (see
- * `needsPageA` below) requires a valid `displayName` before it can be
- * left at all.
+ * T04's status. `undefined` until `displayName` is set (PAGE A hasn't
+ * really started). Once it is:
+ *
+ *  - at least one date present -> `"completed"`, derived, unconditional
+ *    — the data itself is the proof, no explicit action required. This
+ *    ALWAYS wins over a previously stored `"skipped"`: a family that
+ *    skipped once and comes back to add a date needs no separate
+ *    "un-skip" step (mission brief's canonical rule: "T04 précédemment
+ *    skipped puis famille revient et ajoute une date -> T04 completed").
+ *  - zero dates -> resolves ONLY from a real, persisted `"skipped"`
+ *    record, written exclusively by `commitPageA` at the moment the
+ *    family actually clicks Continue with no date. Absent that record,
+ *    this returns `undefined` ("incomplete") even with a perfectly
+ *    valid, already-autosaved `displayName` — an empty date field is
+ *    never, by itself, proof the family chose to leave it empty (QG
+ *    micro-correction; see this module's own docstring).
  */
-export function deriveIdentityFlowRecords(hero: HeroContent): Partial<Record<"T03" | "T04", StepRecord>> {
-  if (hero.displayName === null) return {};
-  const t04: StepRecord = hasAnyDate(hero) ? { status: "completed" } : { status: "skipped" };
-  return { T03: { status: "completed" }, T04: t04 };
+function resolveT04Record(content: MemorialContent, hero: HeroContent): StepRecord | undefined {
+  if (hero.displayName === null) return undefined;
+  if (hasAnyDate(hero)) return { status: "completed" };
+  const stored = readGuidedFlowState(content).T04;
+  return stored?.status === "skipped" ? stored : undefined;
 }
 
 /**
  * The full `HumanFlowState` this mission's steps contribute: whatever
- * was actually persisted (T05, plus anything a future mission already
- * wrote) with T03/T04 always recomputed fresh from `hero` on top —
- * derived facts win over any stale stored copy, though none is ever
- * written for those two ids in the first place.
+ * was actually persisted (T04's explicit skip, T05, and anything a
+ * future mission already wrote), with T03 and T04 always recomputed
+ * fresh on top — `resolveT04Record`'s own resolution wins over
+ * whatever raw record happens to be stored for T04, in both directions
+ * (a stale/malformed one is ignored; a genuinely stored skip is kept
+ * only while it is still the correct answer).
  */
 export function resolveHeroFlowState(content: MemorialContent, hero: HeroContent): HumanFlowState {
-  return { ...readGuidedFlowState(content), ...deriveIdentityFlowRecords(hero) };
+  const result: HumanFlowState = { ...readGuidedFlowState(content) };
+
+  const t03 = deriveT03Record(hero);
+  if (t03) {
+    result.T03 = t03;
+  } else {
+    delete result.T03;
+  }
+
+  const t04 = resolveT04Record(content, hero);
+  if (t04) {
+    result.T04 = t04;
+  } else {
+    delete result.T04;
+  }
+
+  return result;
 }
 
 /**
@@ -179,11 +230,20 @@ export function readHeroForEditing(content: MemorialContent): HeroEditState {
 // `editorialContext === null`.
 // ---------------------------------------------------------------------
 
-/** PAGE A (T03 + T04) is shown whenever the Hero cannot be safely
- * edited from (corrupted) or has no `displayName` yet. */
+/**
+ * PAGE A (T03 + T04) is shown whenever the Hero cannot be safely edited
+ * from (corrupted), has no `displayName` yet, OR T04 is not yet
+ * resolved — which, per `resolveT04Record`, means: zero dates AND no
+ * explicit skip ever recorded via `commitPageA`. An autosaved
+ * `displayName` with no date and no Continue click therefore still
+ * routes back to PAGE A on resume (QG micro-correction): the family
+ * never actually left the page, so nothing was ever "treated".
+ */
 export function needsPageA(content: MemorialContent): boolean {
   const read = readHeroForEditing(content);
-  return read.status !== "ready" || read.hero.displayName === null;
+  if (read.status !== "ready") return true;
+  if (read.hero.displayName === null) return true;
+  return resolveT04Record(content, read.hero) === undefined;
 }
 
 /** T05's real persisted outcome: has the family ever left PAGE B,
@@ -247,6 +307,32 @@ export function writeShortPhrase(content: MemorialContent, value: string | null)
   const inspected = inspectHero(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
   return { ok: true, content: updateHero(content, setHeroShortPhrase(inspected.hero, value)) };
+}
+
+/**
+ * PAGE A's own "Continue" — the one moment T04's real `"skipped"`
+ * `StepRecord` gets written, and ONLY when it is actually needed: zero
+ * dates present. With at least one date, `resolveT04Record` already
+ * derives `"completed"` unconditionally, so there is nothing to persist
+ * — this is a deliberate no-op content passthrough in that case, never
+ * a redundant write that could later go stale. Rejects up front (before
+ * any write) if `displayName` is still null: T03 is required, and
+ * PAGE A's own Continue must never be reachable without it — this is a
+ * defensive re-check, the same discipline `setHeroBirth`/`setHeroDeath`
+ * already apply to chronology, not a trust boundary the UI is expected
+ * to bypass.
+ */
+export function commitPageA(content: MemorialContent): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (inspected.hero.displayName === null) return { ok: false, reason: "displayName" };
+
+  if (hasAnyDate(inspected.hero)) {
+    return { ok: true, content };
+  }
+
+  const nextFlow = { ...readGuidedFlowState(content), T04: { status: "skipped" as const } };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
 
 /**

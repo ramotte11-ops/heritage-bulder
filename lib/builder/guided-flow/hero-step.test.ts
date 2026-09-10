@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_HERO_CONTENT, type HeroContent } from "@/types/hero";
 import {
+  commitPageA,
   commitPageB,
-  deriveIdentityFlowRecords,
   heroStepProgress,
   isPageBComplete,
   needsPageA,
@@ -21,6 +21,27 @@ const EMPTY_CONTENT: MemorialContent = {};
 
 function heroContent(hero: Partial<HeroContent>): MemorialContent {
   return { hero: { ...EMPTY_HERO_CONTENT, ...hero } };
+}
+
+/** A displayName only, freshly autosaved — no date, no explicit
+ * Continue click yet. This is deliberately NOT "PAGE A done": that is
+ * exactly the QG micro-correction's scenario. */
+function autosavedNameOnly(name = "Jean Dupont"): MemorialContent {
+  return heroContent({ displayName: name });
+}
+
+/** PAGE A genuinely behind the family, with zero dates: name set, THEN
+ * `commitPageA` actually called (the real "Continue" click). */
+function pageADoneWithoutDate(name = "Jean Dupont"): MemorialContent {
+  const committed = commitPageA(autosavedNameOnly(name));
+  if (!committed.ok) throw new Error("test fixture: commitPageA unexpectedly failed");
+  return committed.content;
+}
+
+/** PAGE A genuinely behind the family via a real date — completed by
+ * derivation alone, no explicit commit required. */
+function pageADoneWithDate(name = "Jean Dupont"): MemorialContent {
+  return heroContent({ displayName: name, birth: { precision: "year", year: 1950 } });
 }
 
 describe("readHeroForEditing — Hero existant relu, corruption jamais collapsée", () => {
@@ -144,40 +165,105 @@ describe("writeBirth / writeDeath — T04, dates, chronology", () => {
   });
 });
 
-describe("deriveIdentityFlowRecords — T03/T04 stay distinct while sharing PAGE A", () => {
-  it("neither T03 nor T04 exists before a display name is set", () => {
-    expect(deriveIdentityFlowRecords(EMPTY_HERO_CONTENT)).toEqual({});
+describe("commitPageA — T04's explicit skip (QG micro-correction)", () => {
+  it("with at least one date, is a pure passthrough — nothing to persist, T04 is already derived", () => {
+    const content = pageADoneWithDate();
+    expect(commitPageA(content)).toEqual({ ok: true, content });
+    expect(readGuidedFlowState(content).T04).toBeUndefined();
   });
 
-  it("T03 completes and T04 is treated as skipped when the family leaves PAGE A with zero dates", () => {
-    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Ana Costa" };
-    expect(deriveIdentityFlowRecords(hero)).toEqual({
-      T03: { status: "completed" },
-      T04: { status: "skipped" },
+  it("with zero dates, records T04 as 'skipped' — never a fabricated date to fake completion", () => {
+    const content = autosavedNameOnly();
+    const result = commitPageA(content);
+    expect(result).toEqual({
+      ok: true,
+      content: { ...content, guidedFlow: { T04: { status: "skipped" } } },
     });
   });
 
-  it("T04 completes once at least one date is present", () => {
+  it("refuses when displayName is still null — T03 is required, Continue must never write past it", () => {
+    expect(commitPageA(EMPTY_CONTENT)).toEqual({ ok: false, reason: "displayName" });
+  });
+
+  it("refuses to commit over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(commitPageA(corrupted)).toEqual({ ok: false, reason: "corrupted" });
+  });
+
+  it("preserves any other guidedFlow entry already stored", () => {
+    const content: MemorialContent = {
+      ...autosavedNameOnly(),
+      guidedFlow: { T05: { status: "completed" } },
+    } as MemorialContent;
+    const result = commitPageA(content);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(readGuidedFlowState(result.content)).toEqual({
+        T05: { status: "completed" },
+        T04: { status: "skipped" },
+      });
+    }
+  });
+});
+
+describe("resolveHeroFlowState — T03/T04, corrected semantics", () => {
+  it("neither T03 nor T04 resolves before a display name is set", () => {
+    const state = resolveHeroFlowState(EMPTY_CONTENT, EMPTY_HERO_CONTENT);
+    expect(state.T03).toBeUndefined();
+    expect(state.T04).toBeUndefined();
+  });
+
+  it("T03 completes the instant a display name is set, with no explicit action required", () => {
+    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Ana Costa" };
+    expect(resolveHeroFlowState(autosavedNameOnly("Ana Costa"), hero).T03).toEqual({ status: "completed" });
+  });
+
+  it("T04 completes the instant a date is present, with no explicit action required", () => {
     const hero: HeroContent = {
       ...EMPTY_HERO_CONTENT,
       displayName: "Ana Costa",
       birth: { precision: "year", year: 1960 },
     };
-    expect(deriveIdentityFlowRecords(hero)).toEqual({
-      T03: { status: "completed" },
-      T04: { status: "completed" },
-    });
+    const content = heroContent({ displayName: "Ana Costa", birth: { precision: "year", year: 1960 } });
+    expect(resolveHeroFlowState(content, hero).T04).toEqual({ status: "completed" });
   });
 
-  it("absence of dates never blocks progression — T04 is 'skipped', never 'incomplete', once T03 is done", () => {
+  it("T04 stays UNRESOLVED — never 'skipped' — for a name-only autosave with zero dates and no Continue click", () => {
+    const content = autosavedNameOnly("Ana Costa");
     const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Ana Costa" };
-    const records = deriveIdentityFlowRecords(hero);
-    expect(records.T04?.status).not.toBe(undefined);
-    expect(["completed", "skipped"]).toContain(records.T04?.status);
+    expect(resolveHeroFlowState(content, hero).T04).toBeUndefined();
+  });
+
+  it("T04 resolves to 'skipped' only once commitPageA actually recorded it", () => {
+    const content = pageADoneWithoutDate("Ana Costa");
+    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Ana Costa" };
+    expect(resolveHeroFlowState(content, hero).T04).toEqual({ status: "skipped" });
+  });
+
+  it("a previously-skipped T04 flips to 'completed' the instant a date is (re)added — no un-skip step needed", () => {
+    const skipped = pageADoneWithoutDate("Ana Costa");
+    const withDateAdded = writeBirth(skipped, { precision: "year", year: 1970 });
+    expect(withDateAdded.ok).toBe(true);
+    if (withDateAdded.ok) {
+      const hero = readHeroForEditing(withDateAdded.content);
+      expect(hero.status).toBe("ready");
+      if (hero.status === "ready") {
+        expect(resolveHeroFlowState(withDateAdded.content, hero.hero).T04).toEqual({ status: "completed" });
+      }
+    }
+  });
+
+  it("T05 (and any other stored step) passes through unchanged", () => {
+    const content: MemorialContent = {
+      ...pageADoneWithDate(),
+      guidedFlow: { T05: { status: "completed" } },
+    } as MemorialContent;
+    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont", birth: { precision: "year", year: 1950 } };
+    expect(resolveHeroFlowState(content, hero).T05).toEqual({ status: "completed" });
   });
 });
 
-describe("needsPageA / needsPageB — page gates", () => {
+describe("needsPageA / needsPageB — page gates, corrected T04 semantics", () => {
   it("PAGE A is needed when the hero is absent", () => {
     expect(needsPageA(EMPTY_CONTENT)).toBe(true);
   });
@@ -191,8 +277,16 @@ describe("needsPageA / needsPageB — page gates", () => {
     expect(needsPageA(corrupted)).toBe(true);
   });
 
-  it("PAGE A is no longer needed once a display name is set", () => {
-    expect(needsPageA(heroContent({ displayName: "Jean Dupont" }))).toBe(false);
+  it("QG micro-correction: PAGE A is STILL needed for a display name that was only autosaved — zero dates, no Continue click yet (e.g. the browser was closed mid-visit)", () => {
+    expect(needsPageA(autosavedNameOnly())).toBe(true);
+  });
+
+  it("PAGE A is no longer needed once the family explicitly continues with zero dates", () => {
+    expect(needsPageA(pageADoneWithoutDate())).toBe(false);
+  });
+
+  it("PAGE A is no longer needed once a real date is present, with no Continue click required", () => {
+    expect(needsPageA(pageADoneWithDate())).toBe(false);
   });
 
   it("PAGE B is never shown before PAGE A is done, even with a corrupted hero", () => {
@@ -200,25 +294,34 @@ describe("needsPageA / needsPageB — page gates", () => {
     expect(needsPageB(corrupted)).toBe(false);
   });
 
-  it("PAGE B is needed once PAGE A is done but T05 has never been treated", () => {
-    expect(needsPageB(heroContent({ displayName: "Jean Dupont" }))).toBe(true);
+  it("PAGE B is never shown for a name-only autosave — PAGE A itself is still needed first", () => {
+    expect(needsPageB(autosavedNameOnly())).toBe(false);
+    expect(needsPageA(autosavedNameOnly())).toBe(true);
+  });
+
+  it("PAGE B is needed once PAGE A is genuinely done (explicit skip) but T05 has never been treated", () => {
+    expect(needsPageB(pageADoneWithoutDate())).toBe(true);
+  });
+
+  it("PAGE B is needed once PAGE A is genuinely done (a real date) but T05 has never been treated", () => {
+    expect(needsPageB(pageADoneWithDate())).toBe(true);
   });
 
   it("PAGE B is no longer needed once T05 is completed", () => {
-    const written = writeShortPhrase(heroContent({ displayName: "Jean Dupont" }), "Un homme bon");
+    const written = writeShortPhrase(pageADoneWithDate(), "Un homme bon");
     expect(written.ok).toBe(true);
-    const content = written.ok ? written.content : heroContent({ displayName: "Jean Dupont" });
+    const content = written.ok ? written.content : pageADoneWithDate();
     const committed = commitPageB(content);
     expect(committed.ok).toBe(true);
     expect(needsPageB(committed.ok ? committed.content : content)).toBe(false);
   });
 
   it("PAGE B is no longer needed once T05 is explicitly skipped (blank phrase)", () => {
-    const content = heroContent({ displayName: "Jean Dupont" });
+    const content = pageADoneWithoutDate();
     const committed = commitPageB(content);
     expect(committed).toEqual({
       ok: true,
-      content: { ...content, guidedFlow: { T05: { status: "skipped" } } },
+      content: { ...content, guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" } } },
     });
     expect(needsPageB(committed.ok ? committed.content : content)).toBe(false);
   });
@@ -287,23 +390,11 @@ describe("readGuidedFlowState — defensive parsing, fail-safe", () => {
   });
 });
 
-describe("resolveHeroFlowState / heroStepProgress — real Mission 025 engine reuse", () => {
-  it("derived T03/T04 always override any stale stored copy of the same ids", () => {
-    const content: MemorialContent = {
-      ...heroContent({ displayName: "Jean Dupont" }),
-      guidedFlow: { T03: { status: "skipped" } },
-    } as MemorialContent;
-    const hero = readHeroForEditing(content);
-    expect(hero.status).toBe("ready");
-    if (hero.status === "ready") {
-      expect(resolveHeroFlowState(content, hero.hero).T03).toEqual({ status: "completed" });
-    }
-  });
-
+describe("heroStepProgress — real Mission 025 engine reuse", () => {
   it("progress is 0 before anything is touched and grows as T03/T04/T05 resolve", () => {
     const before = heroStepProgress("remembrance", EMPTY_CONTENT, EMPTY_HERO_CONTENT);
 
-    const afterPageA = heroContent({ displayName: "Jean Dupont" });
+    const afterPageA = pageADoneWithDate();
     const heroA = readHeroForEditing(afterPageA);
     expect(heroA.status).toBe("ready");
     const midProgress =
@@ -322,10 +413,17 @@ describe("resolveHeroFlowState / heroStepProgress — real Mission 025 engine re
     expect(endProgress).toBeLessThanOrEqual(1);
   });
 
+  it("a name-only autosave (T04 unresolved) makes strictly less progress than an explicit T04 skip", () => {
+    const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont" };
+    const autosaved = heroStepProgress("remembrance", autosavedNameOnly(), hero);
+    const explicitlySkipped = heroStepProgress("remembrance", pageADoneWithoutDate(), hero);
+    expect(explicitlySkipped).toBeGreaterThan(autosaved);
+  });
+
   it("never assumes announcement and remembrance share the same route length", () => {
     const hero: HeroContent = { ...EMPTY_HERO_CONTENT, displayName: "Jean Dupont" };
-    const announcementProgress = heroStepProgress("announcement", heroContent({ displayName: "Jean Dupont" }), hero);
-    const remembranceProgress = heroStepProgress("remembrance", heroContent({ displayName: "Jean Dupont" }), hero);
+    const announcementProgress = heroStepProgress("announcement", pageADoneWithDate(), hero);
+    const remembranceProgress = heroStepProgress("remembrance", pageADoneWithDate(), hero);
     expect(announcementProgress).not.toBe(remembranceProgress);
   });
 });
