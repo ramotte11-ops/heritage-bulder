@@ -8,6 +8,9 @@ import { isConfiguredMemorial } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
 import { ContextStep } from "@/components/builder/ContextStep";
+import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
+import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
+import { needsPageA, needsPageB } from "@/lib/builder/guided-flow/hero-step";
 import { translate } from "@/lib/i18n/translate";
 import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
 import styles from "./page.module.css";
@@ -110,6 +113,24 @@ import styles from "./page.module.css";
  * `language` and `editorialContext` but still not fully configured (a
  * Guided Flow step no later mission has built yet) falls through to the
  * existing notice, shown in the family's own language.
+ *
+ * ## Mission 032 — PAGE A (T03 + T04) and PAGE B (T05) sit right after T02
+ *
+ * Unlike T01/T02, these two gates read `resumed.draft.content` — the
+ * Hero (Mission 031's canonical model) lives at `draft.content.hero`,
+ * not on a `memorials` column — through `needsPageA`/`needsPageB`
+ * (lib/builder/guided-flow/hero-step.ts), which are the single source
+ * of truth for "has this been done" (never a second, redundant flag
+ * this route tracks itself). PAGE A (`HeroIdentityStep`) is T03's
+ * `displayName` and T04's optional `birth`/`death` sharing one visible
+ * page — two distinct Guided Flow steps (Mission 025) resolved from the
+ * SAME Hero read, never a separate screen per step. PAGE B
+ * (`HeroPhraseStep`) is T05's optional `shortPhrase`, shown once PAGE A
+ * is behind the family and until T05 itself has been treated once
+ * (completed or explicitly left blank). Both bind `saveDraftAction`
+ * exactly like `BuilderShell`'s own autosave `persist` — no second
+ * persistence path. A memorial past both, with nothing else configured
+ * yet, falls through to the same notice T02 already falls through to.
  */
 export const dynamic = "force-dynamic";
 
@@ -214,14 +235,51 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // Mission 032 — PAGE A: T03 (nom affiché, obligatoire) and T04
+  // (dates, facultatives) sharing one visible page, gated on the Hero
+  // itself (draft.content.hero) rather than on a memorial column — the
+  // same "read the one real fact, nothing else" discipline as T01/T02's
+  // own gates just above, applied to `draft.content` instead of
+  // `memorials`. `needsPageA` is also what a corrupted stored Hero
+  // routes through: HeroIdentityStep detects that itself and shows a
+  // calm notice instead of a form, rather than this route trying to
+  // tell the two cases apart.
+  if (needsPageA(resumed.draft.content)) {
+    return (
+      <HeroIdentityStep
+        language={resumed.memorial.language}
+        editorialContext={resumed.memorial.editorialContext}
+        content={resumed.draft.content}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />
+    );
+  }
+
+  // Mission 032 — PAGE B: T05, a short optional personal line. Shown
+  // only once PAGE A is genuinely behind the family (never before —
+  // see `needsPageB`'s own guard) and only until T05 itself has been
+  // treated once, whichever way (mission brief section 9: absence of a
+  // phrase must never re-trigger this page forever).
+  if (needsPageB(resumed.draft.content)) {
+    return (
+      <HeroPhraseStep
+        language={resumed.memorial.language}
+        editorialContext={resumed.memorial.editorialContext}
+        content={resumed.draft.content}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />
+    );
+  }
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
-  // later mission has built yet, so — for now — a memorial with a
-  // language and an editorial context but nothing else configured gets
-  // a controlled notice rather than invented data or a Builder rendered
-  // against NULLs. `resumed.memorial.language` is narrowed non-null by
-  // the earlier `return`, so this notice can already speak the family's
-  // own language rather than a hard-coded one.
+  // later mission has built yet (T06 photo/T07 crop included — Mission
+  // 032 deliberately stops at T05), so — for now — a memorial past PAGE
+  // B but with nothing else configured gets a controlled notice rather
+  // than invented data or a Builder rendered against NULLs.
+  // `resumed.memorial.language` is narrowed non-null by the earlier
+  // `return`, so this notice can already speak the family's own
+  // language rather than a hard-coded one.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return (
       <main className={styles.main}>

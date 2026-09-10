@@ -96,6 +96,19 @@ vi.mock("@/components/builder/LanguageStep", () => ({ LanguageStep }));
 const { ContextStep } = vi.hoisted(() => ({ ContextStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/ContextStep", () => ({ ContextStep }));
 
+// Mission 032 — PAGE A / PAGE B, mocked the same way as LanguageStep/
+// ContextStep above: this file only proves the ROUTE wires them
+// correctly (gate condition, props, persist binding), never their own
+// rendering — that is hero-step.test.ts's and each component's own
+// concern. Mocking them also keeps this suite out of next/font
+// (components/builder/fonts.ts), which BuilderScreen — and therefore
+// these two components — pulls in transitively.
+const { HeroIdentityStep } = vi.hoisted(() => ({ HeroIdentityStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/HeroIdentityStep", () => ({ HeroIdentityStep }));
+
+const { HeroPhraseStep } = vi.hoisted(() => ({ HeroPhraseStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/HeroPhraseStep", () => ({ HeroPhraseStep }));
+
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
 
@@ -152,8 +165,20 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
+/** Mission 032 — PAGE A and PAGE B both genuinely done: a real
+ * `displayName`, T04 explicitly skipped (never just inferred from zero
+ * dates — QG micro-correction), and T05 explicitly treated too. Paired
+ * with a memorial that has a language and an editorial context, this
+ * draft resumes straight past both new gates — exactly what every
+ * pre-032 test below that expects to reach BuilderShell (or the
+ * T02/"not configured yet" fallthrough) still needs. See the "Mission
+ * 032" describe block for the drafts that deliberately do NOT satisfy
+ * these gates. */
 const REAL_DRAFT: MemorialVersion = {
-  content: { hero: { title: "Real content" } },
+  content: {
+    hero: { displayName: "Real content", birth: null, death: null, shortPhrase: null, photo: null },
+    guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" } },
+  } as MemorialVersion["content"],
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
@@ -229,6 +254,8 @@ describe("BuilderMemorialPage — granted access", () => {
     BuilderShell.mockClear();
     LanguageStep.mockClear();
     ContextStep.mockClear();
+    HeroIdentityStep.mockClear();
+    HeroPhraseStep.mockClear();
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
     saveLanguageAction.mockClear();
@@ -557,6 +584,327 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(Object.keys(result.props)).toEqual(["language", "persist"]);
+    });
+  });
+
+  describe("Mission 032 — PAGE A (T03 + T04) and PAGE B (T05)", () => {
+    /** Language + editorial context both chosen (T01/T02 done), but the
+     * Hero has no displayName yet — the normal state right after T02. */
+    const DRAFT_WITHOUT_HERO: MemorialVersion = {
+      content: {},
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** QG micro-correction fixture: a `displayName` that was only ever
+     * autosaved while typing — zero dates, and the family never clicked
+     * Continue on PAGE A (e.g. the browser was closed mid-visit). This
+     * must NOT read as "PAGE A done": T04 has genuinely not been
+     * resolved either way yet. */
+    const DRAFT_WITH_NAME_ONLY_AUTOSAVED: MemorialVersion = {
+      content: {
+        hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** QG final correction fixture: a `displayName` AND a `birth` date,
+     * both only ever autosaved while typing — the family never clicked
+     * Continue. A date sitting in the field is draft content, not yet a
+     * decision, so this must NOT read as "PAGE A done" either. */
+    const DRAFT_WITH_NAME_AND_DATE_AUTOSAVED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T03 done (a real displayName), T04 genuinely resolved via an
+     * explicit Continue click with zero dates (`commitPageA`'s own
+     * write), T05 never treated — PAGE A behind the family for real,
+     * PAGE B still ahead. */
+    const DRAFT_WITH_NAME_AND_T04_SKIPPED: MemorialVersion = {
+      content: {
+        hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+        guidedFlow: { T04: { status: "skipped" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T04 genuinely resolved via an explicit Continue click WITH a
+     * real date present at that moment — "completed", T05 never
+     * treated — PAGE A behind the family for real, PAGE B still ahead. */
+    const DRAFT_WITH_NAME_AND_T04_COMPLETED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
+        guidedFlow: { T04: { status: "completed" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** T04 explicitly skipped, THEN a date was added afterwards (e.g.
+     * the family came back and typed a birth year) without a second
+     * Continue click — T04 must flip to "completed" live. */
+    const DRAFT_WITH_T04_SKIPPED_THEN_DATE_ADDED: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: { precision: "year", year: 1950 },
+          death: null,
+          shortPhrase: null,
+          photo: null,
+        },
+        guidedFlow: { T04: { status: "skipped" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** A `content.hero` that fails Mission 031's own validation —
+     * real, existing data that is malformed, not merely empty. */
+    const DRAFT_WITH_CORRUPTED_HERO: MemorialVersion = {
+      content: { hero: "not an object" } as unknown as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    it("renders HeroIdentityStep (PAGE A) once T01/T02 are done but the Hero has no displayName yet", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITHOUT_HERO,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders HeroIdentityStep (PAGE A) for a corrupted stored Hero too — never silently skipped", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_CORRUPTED_HERO,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(result.props.content).toEqual(DRAFT_WITH_CORRUPTED_HERO.content);
+    });
+
+    it("wires HeroIdentityStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId, and passes the real editorialContext/content", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITHOUT_HERO,
+      });
+
+      const result = await callPage();
+      expect(result.props.language).toBe("es");
+      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props.content).toEqual(DRAFT_WITHOUT_HERO.content);
+
+      const newContent = { hero: { displayName: "Edited" } };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
+    });
+
+    it("QG micro-correction: STILL renders HeroIdentityStep (PAGE A) for a name-only autosave — zero dates, no Continue click yet", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_ONLY_AUTOSAVED,
+      });
+
+      const result = await callPage();
+
+      // A displayName alone is not proof T04 was ever treated — the
+      // family may have simply closed the browser before clicking
+      // Continue. Resuming must land them back on PAGE A, never on
+      // PAGE B (which would silently treat the empty date fields as a
+      // deliberate skip they never made).
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("QG final correction: STILL renders HeroIdentityStep (PAGE A) for a name+date autosave — a date alone is not a decision, no Continue click yet", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_DATE_AUTOSAVED,
+      });
+
+      const result = await callPage();
+
+      // An autosaved date is still just draft content — only an actual
+      // Continue click (commitPageA) resolves T04, so this must resume
+      // on PAGE A, not jump ahead to PAGE B.
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("resumes on PAGE B once the family clicked Continue on PAGE A WITH a date — T04 'completed'", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_COMPLETED,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+    });
+
+    it("resumes on PAGE B (not PAGE A) once T04 — previously skipped — flips to 'completed' after the family adds a date, with no second Continue click", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_T04_SKIPPED_THEN_DATE_ADDED,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+    });
+
+    it("never renders HeroIdentityStep once T04 has been genuinely resolved (an explicit skip) — T03/T04 are never re-posed", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
+      });
+
+      const result = await callPage();
+
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+      expect(result.type).not.toBe(HeroIdentityStep);
+    });
+
+    it("renders HeroPhraseStep (PAGE B) once T04 was explicitly skipped and T05 has never been treated", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("wires HeroPhraseStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId, and passes the real editorialContext/content", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_NAME_AND_T04_SKIPPED,
+      });
+
+      const result = await callPage();
+      expect(result.props.language).toBe("es");
+      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props.content).toEqual(DRAFT_WITH_NAME_AND_T04_SKIPPED.content);
+
+      const newContent = { hero: { displayName: "Jean Dupont", shortPhrase: "Un homme bon" } };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
+    });
+
+    it("never renders HeroPhraseStep once T05 has already been treated — resumes straight to the next gate", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // slug still null
+        draft: REAL_DRAFT, // T03 + T05 both already done
+      });
+
+      const result = await callPage();
+
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+      // Falls through to the existing T02-era notice — no later Guided
+      // Flow step (T06 photo included) is built by this mission.
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
     });
   });
 
