@@ -63,4 +63,13 @@ export const fr: Partial<Record<TranslationKey, string>> = {
     "Ce format de photo n'est pas encore pris en charge. Choisissez une photo JPEG, PNG ou WebP.",
   "hero.photoErrorInvalidFile": "Nous n'avons pas pu utiliser cette photo. Essayez-en une autre.",
   "hero.photoErrorGeneric": "Nous n'avons pas pu ajouter la photo pour le moment. Vous pouvez réessayer.",
+  "hero.cropTitle": "Ajustez votre photo",
+  "hero.cropSubtitle": "Déplacez et zoomez pour la cadrer comme vous le souhaitez.",
+  "hero.cropZoomLabel": "Zoom",
+  "hero.cropMoveUp": "Déplacer la photo vers le haut",
+  "hero.cropMoveDown": "Déplacer la photo vers le bas",
+  "hero.cropMoveLeft": "Déplacer la photo vers la gauche",
+  "hero.cropMoveRight": "Déplacer la photo vers la droite",
+  "hero.cropReset": "Réinitialiser",
+  "hero.cropChangePhoto": "Changer la photo",
 };

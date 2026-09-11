@@ -114,6 +114,10 @@ vi.mock("@/components/builder/HeroPhraseStep", () => ({ HeroPhraseStep }));
 const { HeroPhotoStep } = vi.hoisted(() => ({ HeroPhotoStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/HeroPhotoStep", () => ({ HeroPhotoStep }));
 
+// Mission 034 — PAGE D, mocked the same way again.
+const { HeroCropStep } = vi.hoisted(() => ({ HeroCropStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/HeroCropStep", () => ({ HeroCropStep }));
+
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
 // builds its real MediaEngineDeps. Both compose real Mission 030
@@ -136,6 +140,13 @@ vi.mock("@/lib/builder/guided-flow/resolve-hero-photo-step", () => ({
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
 }));
+
+// Mission 034 — PAGE D's own server-side data resolution (the one
+// signed read URL it needs, against the already-reconciled content).
+// This file only proves the ROUTE calls it correctly and renders what
+// it returns; resolve-hero-crop-step.test.ts proves its own behaviour.
+const { resolveHeroCropStepData } = vi.hoisted(() => ({ resolveHeroCropStepData: vi.fn() }));
+vi.mock("@/lib/builder/guided-flow/resolve-hero-crop-step", () => ({ resolveHeroCropStepData }));
 
 const { createServerMediaEngineDeps } = vi.hoisted(() => ({
   createServerMediaEngineDeps: vi.fn().mockReturnValue({ fake: "media-engine-deps" }),
@@ -213,16 +224,17 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032/033 — PAGE A, PAGE B and PAGE C all genuinely done: a
- * real `displayName`, T04 explicitly skipped (never just inferred from
- * zero dates — QG micro-correction), T05 explicitly treated, and T06
- * explicitly completed with a real photo reference. Paired with a
- * memorial that has a language and an editorial context, this draft
- * resumes straight past all three gates — exactly what every pre-033
- * test below that expects to reach BuilderShell (or the T02/"not
- * configured yet" fallthrough) still needs. See the "Mission 032"/
- * "Mission 033" describe blocks for the drafts that deliberately do NOT
- * satisfy these gates. */
+/** Mission 032/033/034 — PAGE A, PAGE B, PAGE C and PAGE D all genuinely
+ * done: a real `displayName`, T04 explicitly skipped (never just
+ * inferred from zero dates — QG micro-correction), T05 explicitly
+ * treated, T06 explicitly completed with a real photo reference, and
+ * T07 explicitly completed with a real crop attached to that exact
+ * photo. Paired with a memorial that has a language and an editorial
+ * context, this draft resumes straight past all four gates — exactly
+ * what every pre-034 test below that expects to reach BuilderShell (or
+ * the T02/"not configured yet" fallthrough) still needs. See the
+ * "Mission 032"/"Mission 033"/"Mission 034" describe blocks for the
+ * drafts that deliberately do NOT satisfy these gates. */
 const REAL_DRAFT: MemorialVersion = {
   content: {
     hero: {
@@ -230,12 +242,16 @@ const REAL_DRAFT: MemorialVersion = {
       birth: null,
       death: null,
       shortPhrase: null,
-      photo: { mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001", crop: null },
+      photo: {
+        mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001",
+        crop: { focalX: 0.5, focalY: 0.5, zoom: 1 },
+      },
     },
     guidedFlow: {
       T04: { status: "skipped" },
       T05: { status: "skipped" },
       T06: { status: "completed" },
+      T07: { status: "completed" },
     },
   } as MemorialVersion["content"],
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -316,7 +332,9 @@ describe("BuilderMemorialPage — granted access", () => {
     HeroIdentityStep.mockClear();
     HeroPhraseStep.mockClear();
     HeroPhotoStep.mockClear();
+    HeroCropStep.mockClear();
     resolveHeroPhotoStepData.mockReset();
+    resolveHeroCropStepData.mockReset();
     reconcileHeroMediaOnResume.mockReset();
     reconcileHeroMediaOnResume.mockImplementation(
       (_deps: unknown, _actor: unknown, _memorialId: string, content: unknown) => Promise.resolve(content),
@@ -963,7 +981,7 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // slug still null
-        draft: REAL_DRAFT, // T03 + T05 + T06 all already done
+        draft: REAL_DRAFT, // T03 + T05 + T06 + T07 all already done
       });
 
       const result = await callPage();
@@ -971,9 +989,11 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(HeroPhraseStep).not.toHaveBeenCalled();
       expect(HeroIdentityStep).not.toHaveBeenCalled();
       expect(HeroPhotoStep).not.toHaveBeenCalled();
+      expect(HeroCropStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
       // Falls through to the existing T02-era notice — no later Guided
-      // Flow step (T07 crop, Mission 034's job) is built by this mission.
+      // Flow step exists past T07 (Mission 034's own final trunk steps
+      // — P01/V02/... — are a later mission's job, not built here).
       expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
     });
   });
@@ -1139,16 +1159,20 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // slug still null
-        draft: REAL_DRAFT, // T03 + T05 + T06 all already done
+        draft: REAL_DRAFT, // T03 + T05 + T06 + T07 all already done
       });
 
       const result = await callPage();
 
       expect(HeroPhotoStep).not.toHaveBeenCalled();
       expect(resolveHeroPhotoStepData).not.toHaveBeenCalled();
+      // T07 is also already done on REAL_DRAFT (Mission 034) — PAGE D
+      // is skipped straight past too.
+      expect(HeroCropStep).not.toHaveBeenCalled();
+      expect(resolveHeroCropStepData).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
-      // Falls through to the existing T02-era notice — T07 (crop) is
-      // Mission 034's job, not built by this mission.
+      // Falls through to the existing T02-era notice — no later Guided
+      // Flow step exists past T07 that this codebase has built yet.
       expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
       // QG follow-up: T06 being completed does NOT stop the durable
       // retire retry — a stale, non-canonical ready hero media must
@@ -1179,6 +1203,8 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(BuilderShell);
       expect(HeroPhotoStep).not.toHaveBeenCalled();
       expect(resolveHeroPhotoStepData).not.toHaveBeenCalled();
+      expect(HeroCropStep).not.toHaveBeenCalled();
+      expect(resolveHeroCropStepData).not.toHaveBeenCalled();
       // QG follow-up: the durable retire retry still runs on this load
       // too, past T06, exactly like the notice-branch test above.
       expect(reconcileHeroMediaOnResume).toHaveBeenCalledExactlyOnceWith(
@@ -1231,6 +1257,232 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.memorial.draft.content).not.toBe(REAL_DRAFT.content);
       // Everything else about the draft (its updatedAt) survives.
       expect(result.props.memorial.draft.updatedAt).toBe(REAL_DRAFT.updatedAt);
+    });
+  });
+
+  describe("Mission 034 — PAGE D (T07 photo crop)", () => {
+    /** PAGE A, PAGE B and PAGE C (T06) all genuinely done — a real hero
+     * photo linked and confirmed — but T07 has never been treated. The
+     * normal state right after PAGE C's own Continue click. */
+    const DRAFT_WITH_PAGE_C_DONE_NO_CROP: MemorialVersion = {
+      content: {
+        hero: {
+          displayName: "Jean Dupont",
+          birth: null,
+          death: null,
+          shortPhrase: null,
+          photo: { mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001", crop: null },
+        },
+        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const RESOLVED_CROP_DATA = {
+      media: { id: "cccccccc-cccc-4ccc-8ccc-000000000001", purpose: "hero", status: "ready" },
+      readUrl: "https://storage.test/signed/crop",
+    };
+
+    it("never calls resolveHeroCropStepData while PAGE A/PAGE B/PAGE C are still ahead of the family", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: { content: {}, updatedAt: "2026-01-01T00:00:00.000Z" }, // T03 not even started
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(resolveHeroCropStepData).not.toHaveBeenCalled();
+      expect(HeroCropStep).not.toHaveBeenCalled();
+    });
+
+    it("renders HeroCropStep (PAGE D) once PAGE A/PAGE B/PAGE C are done and T07 has never been treated", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroCropStep);
+      expect(HeroIdentityStep).not.toHaveBeenCalled();
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+      expect(HeroPhotoStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("resolves PAGE D's data with the real actor, the AUTHORIZED memorialId and the RECONCILED content", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
+
+      await callPage();
+
+      expect(resolveHeroCropStepData).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mediaEngine: { fake: "media-engine-deps" } }),
+        OWNER_ACTOR,
+        "authorized-id",
+        DRAFT_WITH_PAGE_C_DONE_NO_CROP.content, // the passthrough reconcileHeroMediaOnResume default.
+      );
+    });
+
+    it("renders HeroCropStep with the content/photo resolveHeroCropStepData returned", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
+
+      const result = await callPage();
+
+      expect(result.props.content).toBe(DRAFT_WITH_PAGE_C_DONE_NO_CROP.content);
+      expect(result.props.photo).toBe(RESOLVED_CROP_DATA);
+      expect(result.props.language).toBe("es");
+      expect(result.props.editorialContext).toBe("remembrance");
+    });
+
+    it("wires HeroCropStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
+
+      const result = await callPage("claimed-id");
+
+      const newContent = { hero: { displayName: "Jean Dupont" } };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
+    });
+
+    it("falls through to the notice when resolveHeroCropStepData finds no usable photo, rather than crashing", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      resolveHeroCropStepData.mockResolvedValue(null);
+
+      const result = await callPage();
+
+      expect(HeroCropStep).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+
+    it("never renders HeroCropStep once T07 has already been explicitly completed — resumes straight to the next gate", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // slug still null
+        draft: REAL_DRAFT, // T03 + T05 + T06 + T07 all already done
+      });
+
+      const result = await callPage();
+
+      expect(HeroCropStep).not.toHaveBeenCalled();
+      expect(resolveHeroCropStepData).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+
+    it("renders BuilderShell once T07 is completed and the memorial is otherwise fully configured", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL, // has a real slug
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(BuilderShell);
+      expect(HeroCropStep).not.toHaveBeenCalled();
+      expect(resolveHeroCropStepData).not.toHaveBeenCalled();
+    });
+
+    it("PAGE D is resolved against the RECONCILED content, never the raw pre-reconciliation draft", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: DRAFT_WITH_PAGE_C_DONE_NO_CROP,
+      });
+      const reconciledContent = {
+        hero: { ...DRAFT_WITH_PAGE_C_DONE_NO_CROP.content.hero, photo: { mediaId: "adopted-later", crop: null } },
+        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
+      };
+      reconcileHeroMediaOnResume.mockResolvedValue(reconciledContent);
+      resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroCropStep);
+      expect(result.props.content).toBe(reconciledContent);
+      expect(resolveHeroCropStepData).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mediaEngine: { fake: "media-engine-deps" } }),
+        OWNER_ACTOR,
+        MEMORIAL_ID,
+        reconciledContent,
+      );
     });
   });
 

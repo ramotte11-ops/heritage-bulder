@@ -6,19 +6,24 @@ import {
   commitPageA,
   commitPageB,
   commitPageC,
+  commitPageD,
   heroStepProgress,
   isPageBComplete,
   isPageCComplete,
+  isPageDComplete,
   needsPageA,
   needsPageB,
   needsPageC,
+  needsPageD,
   reconcileHeroPhotoMedia,
   readGuidedFlowState,
   readHeroForEditing,
+  reopenPageC,
   resolveHeroFlowState,
   writeBirth,
   writeDeath,
   writeDisplayName,
+  writeHeroCrop,
   writeHeroPhotoMedia,
   writeShortPhrase,
 } from "./hero-step";
@@ -80,6 +85,19 @@ function pageADoneWithoutDate(name = "Jean Dupont"): MemorialContent {
 function pageADoneWithDate(name = "Jean Dupont"): MemorialContent {
   const committed = commitPageA(autosavedNameAndDate(name));
   if (!committed.ok) throw new Error("test fixture: commitPageA unexpectedly failed");
+  return committed.content;
+}
+
+/** PAGE A, PAGE B and PAGE C (T06) all genuinely behind the family, with
+ * a real ready hero photo linked and confirmed — the normal starting
+ * point for PAGE D (T07) tests. */
+function pageCDone(name = "Jean Dupont", mediaId = MEDIA_ID_A): MemorialContent {
+  const afterPageB = commitPageB(pageADoneWithoutDate(name));
+  if (!afterPageB.ok) throw new Error("test fixture: commitPageB unexpectedly failed");
+  const withPhoto = writeHeroPhotoMedia(afterPageB.content, mediaId);
+  if (!withPhoto.ok) throw new Error("test fixture: writeHeroPhotoMedia unexpectedly failed");
+  const committed = commitPageC(withPhoto.content, heroMedia({ id: mediaId }));
+  if (!committed.ok) throw new Error("test fixture: commitPageC unexpectedly failed");
   return committed.content;
 }
 
@@ -749,5 +767,305 @@ describe("reconcileHeroPhotoMedia — Mission 033 section 14 compensation path",
   it("refuses to reconcile over a corrupted stored hero", () => {
     const corrupted = { hero: "garbage" } as unknown as MemorialContent;
     expect(reconcileHeroPhotoMedia(corrupted, [heroMedia()])).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+const NEUTRAL_CROP = { focalX: 0.5, focalY: 0.5, zoom: 1 };
+const OFFSET_CROP = { focalX: 0.2, focalY: 0.8, zoom: 1.6 };
+
+describe("writeHeroCrop — T07, an ordinary autosaved field write", () => {
+  it("sets the crop for the currently-referenced photo", () => {
+    const content = pageCDone();
+    const result = writeHeroCrop(content, OFFSET_CROP);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: OFFSET_CROP } });
+    }
+  });
+
+  it("never touches T07's own StepRecord", () => {
+    const content = pageCDone();
+    const result = writeHeroCrop(content, OFFSET_CROP);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(readGuidedFlowState(result.content).T07).toBeUndefined();
+    }
+  });
+
+  it("a no-op when there is no photo at all — a crop can never exist without a photo", () => {
+    const result = writeHeroCrop(EMPTY_CONTENT, OFFSET_CROP);
+    expect(result).toEqual({ ok: true, content: { hero: { ...EMPTY_HERO_CONTENT } } });
+  });
+
+  it("rejects a structurally invalid crop (out-of-range focal point)", () => {
+    const content = pageCDone();
+    const result = writeHeroCrop(content, { focalX: 2, focalY: 0.5, zoom: 1 });
+    expect(result).toEqual({ ok: false, reason: "photo" });
+  });
+
+  it("refuses to write over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(writeHeroCrop(corrupted, OFFSET_CROP)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("isPageDComplete — Mission 034, T07 re-checks the crop still belongs to the current photo", () => {
+  it("is false before T07 has ever been recorded", () => {
+    expect(isPageDComplete(pageCDone())).toBe(false);
+  });
+
+  it("is true once T07 is completed for a photo that still carries its crop", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (committed.ok) {
+      expect(isPageDComplete(committed.content)).toBe(true);
+    }
+  });
+
+  it("is NOT true for a stored 'skipped' — T07 has no skip outcome, unlike T04/T05", () => {
+    const content = { ...pageCDone(), guidedFlow: { ...readGuidedFlowState(pageCDone()), T07: { status: "skipped" } } };
+    expect(isPageDComplete(content as MemorialContent)).toBe(false);
+  });
+
+  it("goes back to false once the photo changes — the old crop is never reused (mission brief section 15)", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    expect(isPageDComplete(committed.content)).toBe(true);
+
+    // The photo changes — via the exact same primitive PAGE C itself
+    // uses — resetting crop to null, per Mission 031's own guarantee.
+    const changedPhoto = writeHeroPhotoMedia(committed.content, MEDIA_ID_B);
+    expect(changedPhoto.ok).toBe(true);
+    if (!changedPhoto.ok) return;
+    // The raw T07 StepRecord is still "completed" (nothing deleted it),
+    // yet isPageDComplete must now read false.
+    expect(readGuidedFlowState(changedPhoto.content).T07?.status).toBe("completed");
+    expect(isPageDComplete(changedPhoto.content)).toBe(false);
+  });
+});
+
+describe("needsPageD — page gate", () => {
+  it("is false while PAGE A is still ahead of the family", () => {
+    expect(needsPageD(EMPTY_CONTENT)).toBe(false);
+  });
+
+  it("is false while PAGE C (T06) is still ahead of the family", () => {
+    const afterPageB = commitPageB(pageADoneWithoutDate());
+    expect(afterPageB.ok).toBe(true);
+    if (afterPageB.ok) {
+      expect(needsPageD(afterPageB.content)).toBe(false);
+    }
+  });
+
+  it("is true once PAGE A/B/C are all done but T07 has never been treated", () => {
+    expect(needsPageD(pageCDone())).toBe(true);
+  });
+
+  it("is false once T07 has been explicitly completed for the current photo", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (committed.ok) {
+      expect(needsPageD(committed.content)).toBe(false);
+    }
+  });
+
+  it("a crop ready+autosaved but no Continue click yet still needs PAGE D — mission brief section 14", () => {
+    const withCrop = writeHeroCrop(pageCDone(), OFFSET_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    // The crop is linked (writeHeroCrop already ran), but T07's own
+    // StepRecord was never written — no commitPageD call happened.
+    expect(needsPageD(withCrop.content)).toBe(true);
+  });
+
+  it("becomes true again once the photo changes after T07 was already completed", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    expect(needsPageD(committed.content)).toBe(false);
+
+    const changedPhoto = writeHeroPhotoMedia(committed.content, MEDIA_ID_B);
+    expect(changedPhoto.ok).toBe(true);
+    if (!changedPhoto.ok) return;
+    expect(needsPageD(changedPhoto.content)).toBe(true);
+  });
+});
+
+describe("commitPageD — T07 is OBLIGATOIRE/NON PASSABLE: only a proven-usable photo WITH a real crop commits", () => {
+  it("refuses when there is no photo reference at all", () => {
+    expect(commitPageD(EMPTY_CONTENT, null)).toEqual({ ok: false, reason: "photo" });
+  });
+
+  it("refuses when the crop is still null — never fabricates the neutral crop itself", () => {
+    const content = pageCDone();
+    expect(commitPageD(content, heroMedia({ id: MEDIA_ID_A }))).toEqual({ ok: false, reason: "photo" });
+  });
+
+  it("refuses when the media handed in does not match the Hero's own referenced mediaId", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    expect(commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_B }))).toEqual({
+      ok: false,
+      reason: "photo",
+    });
+  });
+
+  it("refuses when the media is still pending — never verified, never usable", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    expect(commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A, status: "pending" }))).toEqual({
+      ok: false,
+      reason: "photo",
+    });
+  });
+
+  it("records 'completed' — the only outcome T07 ever has — once a real crop is attached to a proven-usable photo", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const result = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(readGuidedFlowState(result.content).T07).toEqual({ status: "completed" });
+    }
+  });
+
+  it("commits the exact NEUTRAL crop when that is what the family accepted without moving anything", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const result = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: NEUTRAL_CROP } });
+    }
+  });
+
+  it("preserves any other guidedFlow entry already stored", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const result = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const flow = readGuidedFlowState(result.content);
+      expect(flow.T06).toEqual({ status: "completed" });
+      expect(flow.T07).toEqual({ status: "completed" });
+    }
+  });
+
+  it("refuses to commit over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(commitPageD(corrupted, heroMedia())).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("reopenPageC — T07's 'Retour -> Changer la photo', never a second upload engine", () => {
+  it("un-marks T06 as done, making needsPageC true again", () => {
+    const content = pageCDone();
+    expect(needsPageC(content)).toBe(false);
+
+    const reopened = reopenPageC(content);
+    expect(reopened.ok).toBe(true);
+    if (reopened.ok) {
+      expect(needsPageC(reopened.content)).toBe(true);
+    }
+  });
+
+  it("leaves the Hero's photo/crop completely untouched", () => {
+    const withCrop = writeHeroCrop(pageCDone(), OFFSET_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+
+    const reopened = reopenPageC(withCrop.content);
+    expect(reopened.ok).toBe(true);
+    if (reopened.ok) {
+      expect(reopened.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: OFFSET_CROP } });
+    }
+  });
+
+  it("preserves every other guidedFlow entry already stored", () => {
+    const content = pageCDone();
+    const reopened = reopenPageC(content);
+    expect(reopened.ok).toBe(true);
+    if (reopened.ok) {
+      expect(readGuidedFlowState(reopened.content)).toEqual({ T04: { status: "skipped" }, T05: { status: "skipped" } });
+    }
+  });
+
+  it("if the family changes nothing and re-confirms PAGE C, an already-completed T07 is skipped straight past again", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const t07Done = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(t07Done.ok).toBe(true);
+    if (!t07Done.ok) return;
+
+    const reopened = reopenPageC(t07Done.content);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+    expect(needsPageD(reopened.content)).toBe(false); // T07 still counts — crop untouched.
+
+    // Re-confirming the SAME photo on PAGE C (no change made).
+    const reconfirmed = commitPageC(reopened.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(reconfirmed.ok).toBe(true);
+    if (reconfirmed.ok) {
+      expect(needsPageD(reconfirmed.content)).toBe(false);
+    }
+  });
+
+  it("refuses to write over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(reopenPageC(corrupted)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("resolveHeroFlowState — T07 dynamically re-derived on top of whatever is stored", () => {
+  it("includes T07 as completed once isPageDComplete is true, even without re-reading storage twice", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const resolved = resolveHeroFlowState(committed.content, read.hero);
+    expect(resolved.T07).toEqual({ status: "completed" });
+  });
+
+  it("drops a stale stored T07 'completed' once the photo has changed", () => {
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP);
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const committed = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    const changedPhoto = writeHeroPhotoMedia(committed.content, MEDIA_ID_B);
+    expect(changedPhoto.ok).toBe(true);
+    if (!changedPhoto.ok) return;
+
+    const read = readHeroForEditing(changedPhoto.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const resolved = resolveHeroFlowState(changedPhoto.content, read.hero);
+    expect(resolved.T07).toBeUndefined();
   });
 });
