@@ -60,4 +60,13 @@ export const es: Partial<Record<TranslationKey, string>> = {
     "Este formato de foto aún no es compatible. Elija una foto JPEG, PNG o WebP.",
   "hero.photoErrorInvalidFile": "No pudimos usar esta foto. Pruebe con otra.",
   "hero.photoErrorGeneric": "No pudimos añadir la foto en este momento. Puede volver a intentarlo.",
+  "hero.cropTitle": "Ajuste su foto",
+  "hero.cropSubtitle": "Mueva y haga zoom para encuadrarla como desee.",
+  "hero.cropZoomLabel": "Zoom",
+  "hero.cropMoveUp": "Mover la foto hacia arriba",
+  "hero.cropMoveDown": "Mover la foto hacia abajo",
+  "hero.cropMoveLeft": "Mover la foto hacia la izquierda",
+  "hero.cropMoveRight": "Mover la foto hacia la derecha",
+  "hero.cropReset": "Restablecer",
+  "hero.cropChangePhoto": "Cambiar la foto",
 };

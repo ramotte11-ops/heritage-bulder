@@ -61,4 +61,13 @@ export const en: Record<TranslationKey, string> = {
     "This photo format isn't supported yet. Please choose a JPEG, PNG or WebP photo.",
   "hero.photoErrorInvalidFile": "We couldn't use this photo. Please try another one.",
   "hero.photoErrorGeneric": "We couldn't add the photo right now. You can try again.",
+  "hero.cropTitle": "Adjust your photo",
+  "hero.cropSubtitle": "Move and zoom to frame it the way you'd like.",
+  "hero.cropZoomLabel": "Zoom",
+  "hero.cropMoveUp": "Move photo up",
+  "hero.cropMoveDown": "Move photo down",
+  "hero.cropMoveLeft": "Move photo left",
+  "hero.cropMoveRight": "Move photo right",
+  "hero.cropReset": "Reset",
+  "hero.cropChangePhoto": "Change photo",
 };

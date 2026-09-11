@@ -80,6 +80,22 @@
  * this dictionary. PAGE C's own CTA reuses `common.continue`, same as
  * PAGE A/PAGE B; its corrupted-Hero notice reuses the existing
  * `hero.dataUnavailable`, same as both of them too.
+ *
+ * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
+ * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
+ * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
+ * is the zoom slider's accessible label; `cropMoveUp`/`Down`/`Left`/
+ * `Right` label the four directional nudge buttons that give the focal
+ * point a keyboard/pointer-independent path (mission brief section 23);
+ * `cropReset` is the discreet secondary "Réinitialiser" action (section
+ * 10); `cropChangePhoto` is PAGE D's own "Retour -> Changer la photo"
+ * link (section 11) — a distinct key from `hero.photoChangeLabel`
+ * because its destination context differs (it reads as a navigation
+ * back to PAGE C, not PAGE C's own inline replace control), even though
+ * both ultimately trigger the same underlying photo-change path. PAGE
+ * D's own CTA reuses `common.continue`, same as every other Guided Flow
+ * screen; its corrupted-Hero/no-photo notice reuses the existing
+ * `hero.dataUnavailable`.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -131,6 +147,16 @@ export const TRANSLATION_KEYS = [
   "hero.photoErrorUnsupportedFormat",
   "hero.photoErrorInvalidFile",
   "hero.photoErrorGeneric",
+  // Mission 034 — PAGE D (T07 photo crop).
+  "hero.cropTitle",
+  "hero.cropSubtitle",
+  "hero.cropZoomLabel",
+  "hero.cropMoveUp",
+  "hero.cropMoveDown",
+  "hero.cropMoveLeft",
+  "hero.cropMoveRight",
+  "hero.cropReset",
+  "hero.cropChangePhoto",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

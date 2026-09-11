@@ -70,6 +70,27 @@ import type { MemorialContent } from "@/types/memorial";
  * this controller hasn't guaranteed persisted", which
  * lib/builder/use-autosave.ts uses to scope a `beforeunload` guard to
  * exactly the moments a real risk exists.
+ *
+ * ## Mission 034 QG micro-audit — `flush()`
+ *
+ * A caller sometimes needs a STRONGER guarantee than "eventually
+ * persisted": HeroCropStep's Continue click needs to be certain that
+ * whatever this controller already knows about (a debounced pan/zoom
+ * edit, still pending or already mid-flight) is DURABLY saved before it
+ * issues its own, separate, order-sensitive write (committing T07's
+ * `StepRecord`) — otherwise a stale debounced save, still in flight or
+ * about to fire, could land AFTER that write and silently revert it
+ * (whole-content, last-write-wins persistence has no other guard against
+ * that). `flush()` is that guarantee: it cancels any pending debounce
+ * timer (so nothing NEW can fire once it returns), forces an
+ * already-queued (`"pending"`) save to start immediately rather than
+ * wait out its window, and returns a promise that resolves only once
+ * this controller is fully idle again (`"saved"`) — or rejects if the
+ * final attempt failed, so a caller can refuse to build on unconfirmed
+ * content rather than race ahead of it anyway. It reuses `attemptSave()`
+ * and the same generation/`retryRequested` machinery every other path
+ * already relies on — no second save mechanism, no new concurrency
+ * rule.
  */
 export interface AutosaveControllerOptions {
   /** Persists one full content snapshot. Resolves with the new
@@ -123,6 +144,18 @@ export interface AutosaveController {
    * second, parallel save path, and every existing generation/in-flight
    * guard applies identically regardless of what triggered it. */
   retry(): void;
+  /** Mission 034 QG micro-audit — drains this controller to durable
+   * quiescence: cancels any pending debounce timer, forces an
+   * already-queued save to start now instead of waiting out its window,
+   * and awaits whatever save (that one, or one already in flight) is
+   * currently the controller's responsibility. Resolves once status is
+   * `"saved"`; rejects with the failure once status is `"error"` with
+   * nothing left in flight (a caller should treat that as "not durably
+   * saved", never proceed past it as if it were). A no-op resolving
+   * immediately when there is nothing to drain (`"idle"`/already
+   * `"saved"`). See this file's own docstring, "Mission 034 QG
+   * micro-audit". */
+  flush(): Promise<void>;
 }
 
 export function createAutosaveController(
@@ -252,5 +285,45 @@ export function createAutosaveController(
     persist = next;
   }
 
-  return { notifyContentChanged, getState, subscribe, destroy, setPersist, retry };
+  function flush(): Promise<void> {
+    if (destroyed) return Promise.resolve();
+
+    // Nothing new can fire once this returns — the only save left able
+    // to run afterward is the one this call itself drives to completion
+    // below (or the one already in flight, which it only ever waits on).
+    clearDebounceTimer();
+
+    if (state.status === "error") {
+      // The same "error -> pending" transition retry() applies — so the
+      // block below starts it right away, exactly once, rather than
+      // giving up on a failure that happened before this call.
+      setState(markContentChanged(state));
+    }
+
+    if (state.status === "pending") {
+      // attemptSave()'s own guard already does the right thing whether
+      // or not a save happens to be in flight right now (sets
+      // retryRequested and returns if so) — no second branch needed.
+      attemptSave();
+    }
+
+    if (state.status === "idle" || state.status === "saved") {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const unsubscribe = subscribe(() => {
+        if (state.status === "saved") {
+          unsubscribe();
+          resolve();
+        } else if (state.status === "error" && inFlightGeneration === null) {
+          unsubscribe();
+          reject(new Error(state.lastError ?? "autosave failed"));
+        }
+        // "pending"/"saving" — still draining, keep waiting.
+      });
+    });
+  }
+
+  return { notifyContentChanged, getState, subscribe, destroy, setPersist, retry, flush };
 }

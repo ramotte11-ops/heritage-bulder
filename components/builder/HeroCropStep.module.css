@@ -1,0 +1,191 @@
+/*
+ * Mission 034 — PAGE D (T07 photo crop). Chrome lives in
+ * BuilderScreen.module.css; colors/typography/tokens reuse the exact
+ * T01/T02/PAGE A/PAGE B/PAGE C palette (mission brief section 24) — no
+ * new visual language, no Hero composition, no Light/Dark variant.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-breathing);
+}
+
+/*
+ * The 4:5 crop window itself (mission brief section 2/3) — the ONLY
+ * ratio this mission ever renders, fixed via `aspect-ratio`, identical
+ * on mobile and desktop. `touch-action: none` stops the browser's own
+ * touch scroll/pan gesture from fighting the pointer handlers inside
+ * this box specifically; nothing outside it is affected, so the page's
+ * own scroll stays free everywhere else (mission brief section 23).
+ */
+.cropWindow {
+  position: relative;
+  width: 100%;
+  max-width: 18rem;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.cropWindow:active {
+  cursor: grabbing;
+}
+
+.image {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  pointer-events: none; /* dragging is handled by .cropWindow, never the <img> itself (no native image drag). */
+}
+
+/* A compact directional pad — an accessible, keyboard/pointer-independent
+   path to move the focal point (mission brief section 23), never the
+   only way to pan. */
+.moveControls {
+  display: grid;
+  grid-template-columns: repeat(3, 2.5rem);
+  grid-template-rows: repeat(3, 2.5rem);
+  gap: var(--heritage-space-xs);
+  justify-content: center;
+}
+
+.moveButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
+  color: var(--heritage-text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.moveButton:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+  background: var(--heritage-state-disabled-surface);
+}
+
+.moveButton:not(:disabled):hover {
+  background: var(--heritage-surface-selected);
+}
+
+.moveButton:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.moveUp {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.moveLeft {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.moveRight {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.moveDown {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.zoomControl {
+  width: 100%;
+  max-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+.zoomLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.zoomInput {
+  width: 100%;
+  accent-color: var(--heritage-accent-primary);
+}
+
+.zoomInput:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.secondaryActions {
+  width: 100%;
+  max-width: 18rem;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--heritage-space-md);
+}
+
+.secondaryLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.secondaryLink:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.secondaryLink:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}

@@ -1,12 +1,13 @@
 import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
-import type { HeroContent, HeroDate } from "@/types/hero";
+import type { HeroContent, HeroCrop, HeroDate } from "@/types/hero";
 import {
   inspectHero,
   updateHero,
   isHeroPhotoMediaUsable,
   setHeroBirth,
+  setHeroCrop,
   setHeroDeath,
   setHeroDisplayName,
   setHeroPhotoMedia,
@@ -88,6 +89,41 @@ import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from 
  * pure, and given the caller's own I/O result, so a finalize that
  * succeeded but whose draft write then failed can never leave a `ready`
  * media invisibly orphaned — see its own docstring.
+ *
+ * ## Mission 034 — PAGE D (T07 crop)
+ *
+ * Same StepRecord treatment as T06, for the identical structural reason
+ * (`human-steps.ts` declares T07 `required: true, skippable: false` too):
+ * a `crop` sitting in the stored Hero is NOT by itself proof the family
+ * left PAGE D — exactly T06's "a value present is not proof the page was
+ * left" problem (mission brief section 14) — so `commitPageD` is the one
+ * place T07's record is ever written, at an actual Continue click.
+ *
+ * The one genuine difference from T06: `isPageDComplete` does not trust
+ * a stored `"completed"` record forever the way `isPageCComplete` does.
+ * It also re-checks that `hero.photo.crop` is still non-null — nested
+ * inside `hero.photo` exactly per Mission 031's own contract, so a
+ * DIFFERENT photo (crop reset to `null` by `setHeroPhotoMedia`, whether
+ * through PAGE C's own "Changer la photo" or through Mission 033's
+ * section-14 reconciliation running silently after T06 is already
+ * behind the family) is what makes a stale T07 `"completed"` record
+ * stop counting, with no separate mediaId bookkeeping of its own needed
+ * (mission brief section 15/16: "crop appartient au même mediaId" falls
+ * out of the existing nesting, not a new check). T06 needs no equivalent
+ * correction: its own completion means "a confirmed usable Hero photo
+ * exists", which silent reconciliation never invalidates the way it
+ * invalidates a specific crop.
+ *
+ * `writeHeroCrop` mirrors `writeHeroPhotoMedia`: an ordinary autosaved
+ * field write, touching nothing about T07's own `StepRecord`. `reopenPageC`
+ * is PAGE D's own "Retour -> Changer la photo" (mission brief section
+ * 11): it does not duplicate T06's upload engine at all, it simply
+ * un-marks T06 as done (deletes its `StepRecord`) so `needsPageC` is
+ * true again on the very next read — the family lands back on the exact
+ * same `HeroPhotoStep` screen T06 already built, with "Changer la photo"
+ * already on it. If the photo genuinely changes there, `setHeroPhotoMedia`
+ * nulls the crop, and `isPageDComplete`'s own re-check makes PAGE D
+ * necessary again automatically, with no new state to track.
  *
  * ## Where that record actually lives
  *
@@ -189,12 +225,12 @@ function resolveT04Record(content: MemorialContent, hero: HeroContent): StepReco
 
 /**
  * The full `HumanFlowState` this mission's steps contribute: whatever
- * was actually persisted (T04's explicit skip, T05, and anything a
- * future mission already wrote), with T03 and T04 always recomputed
- * fresh on top — `resolveT04Record`'s own resolution wins over
- * whatever raw record happens to be stored for T04, in both directions
- * (a stale/malformed one is ignored; a genuinely stored skip is kept
- * only while it is still the correct answer).
+ * was actually persisted (T04's explicit skip, T05, T06, and anything a
+ * future mission already wrote), with T03, T04 and T07 always recomputed
+ * fresh on top — each one's own resolution wins over whatever raw record
+ * happens to be stored, in both directions (a stale/malformed one is
+ * ignored; a genuinely stored value is kept only while it is still the
+ * correct answer).
  */
 export function resolveHeroFlowState(content: MemorialContent, hero: HeroContent): HumanFlowState {
   const result: HumanFlowState = { ...readGuidedFlowState(content) };
@@ -211,6 +247,12 @@ export function resolveHeroFlowState(content: MemorialContent, hero: HeroContent
     result.T04 = t04;
   } else {
     delete result.T04;
+  }
+
+  if (isPageDComplete(content)) {
+    result.T07 = { status: "completed" };
+  } else {
+    delete result.T07;
   }
 
   return result;
@@ -514,4 +556,111 @@ export function reconcileHeroPhotoMedia(
   const result = setHeroPhotoMedia(hero, mostRecent.id);
   if (!result.ok) return { ok: false, reason: result.reason };
   return { ok: true, content: updateHero(content, result.hero) };
+}
+
+// ---------------------------------------------------------------------
+// PAGE D — T07 (Hero photo crop, Mission 034). OBLIGATOIRE, NON
+// PASSABLE, exactly like T06 — see this file's own "Mission 034"
+// docstring section for the one structural difference from T06's own
+// treatment (isPageDComplete re-checks the crop is still attached to
+// the CURRENT photo, T06's isPageCComplete does not need to).
+// ---------------------------------------------------------------------
+
+/**
+ * T07's real persisted outcome: has the family ever clicked Continue on
+ * PAGE D, for a crop that is STILL attached to the currently-referenced
+ * photo? A stored `"completed"` record alone is not enough — unlike
+ * `isPageCComplete`, this also requires `hero.photo.crop` to still be
+ * non-null, which `setHeroPhotoMedia` (Mission 031) already nulls the
+ * instant the referenced `mediaId` changes, whether through PAGE C's
+ * own "Changer la photo" or through the section-14 reconciliation that
+ * keeps running after T06 is already behind the family
+ * (lib/builder/guided-flow/resolve-hero-photo-step.ts). No separate
+ * mediaId bookkeeping is needed here: the crop's own nesting inside
+ * `hero.photo` (Mission 031's structural guarantee) is what makes "crop
+ * belongs to the same mediaId" true by construction.
+ */
+export function isPageDComplete(content: MemorialContent): boolean {
+  if (readGuidedFlowState(content).T07?.status !== "completed") return false;
+  const read = readHeroForEditing(content);
+  if (read.status !== "ready") return false;
+  return read.hero.photo !== null && read.hero.photo.crop !== null;
+}
+
+/** PAGE D (T07) is shown once PAGE A, PAGE B and PAGE C are all behind
+ * the family (never before) and T07 itself has not been explicitly
+ * completed for the CURRENT photo yet. */
+export function needsPageD(content: MemorialContent): boolean {
+  if (needsPageA(content)) return false;
+  if (needsPageB(content)) return false;
+  if (needsPageC(content)) return false;
+  return !isPageDComplete(content);
+}
+
+/**
+ * T07 — sets the crop for the Hero's currently-referenced photo, guarded
+ * by `inspectHero` like every other Hero write in this file. An ordinary
+ * autosaved field write: touches nothing about T07's own `StepRecord`
+ * (mirrors `writeHeroPhotoMedia`'s own relationship to `commitPageC`).
+ * Delegates the actual field update to Mission 031's own `setHeroCrop` —
+ * no second crop-writing rule is invented here.
+ */
+export function writeHeroCrop(content: MemorialContent, crop: HeroCrop | null): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  const result = setHeroCrop(inspected.hero, crop);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return { ok: true, content: updateHero(content, result.hero) };
+}
+
+/**
+ * PAGE D's own "Continue" — the ONLY place T07's real `StepRecord` ever
+ * gets written, and always `"completed"`: T07 is not skippable (mission
+ * brief section 1 — "obligatoire, non passable"). Refuses unless `media`
+ * proves the referenced photo is genuinely usable (the same
+ * `isHeroPhotoMediaUsable` re-check `commitPageC` already applies — the
+ * caller's own resolved lookup of `hero.photo.mediaId` IS that proof,
+ * mission brief section 16) AND a real crop is already attached to that
+ * photo. Never fabricates a crop itself: if the family accepted the
+ * neutral framing without ever touching it, the CALLER is expected to
+ * have already called `writeHeroCrop` with the neutral crop before this
+ * (mission brief section 8 — "le clic Continuer doit alors enregistrer
+ * explicitement ce crop neutre comme crop validé"); this function only
+ * verifies that happened, it does not do it silently on its own.
+ */
+export function commitPageD(content: MemorialContent, media: Media | null): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (!isHeroPhotoMediaUsable(inspected.hero, media)) return { ok: false, reason: "photo" };
+  if (inspected.hero.photo === null || inspected.hero.photo.crop === null) {
+    return { ok: false, reason: "photo" };
+  }
+
+  const t07: StepRecord = { status: "completed" };
+  const nextFlow = { ...readGuidedFlowState(content), T07: t07 };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/**
+ * PAGE D's "Retour -> Changer la photo" (mission brief section 11): NOT
+ * a second upload engine, and NOT itself a T06/T07 field write — it only
+ * un-marks T06 as done by deleting its `StepRecord`, which is exactly
+ * what makes `needsPageC` true again on the very next read. The family
+ * lands back on the exact same `HeroPhotoStep` screen Mission 033
+ * already built, "Changer la photo" included. The Hero's `photo`/`crop`
+ * are left completely untouched here — if the family actually changes
+ * the photo from there, `writeHeroPhotoMedia` (via `setHeroPhotoMedia`)
+ * nulls the crop on its own, and `isPageDComplete`'s own re-check is
+ * what makes PAGE D necessary again; if they change nothing and simply
+ * click Continue on PAGE C again, `commitPageC` just re-confirms the
+ * same photo and PAGE D is skipped straight past, exactly as it should
+ * be for a photo that never actually changed.
+ */
+export function reopenPageC(content: MemorialContent): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const nextFlow = { ...readGuidedFlowState(content) };
+  delete nextFlow.T06;
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
