@@ -12,7 +12,10 @@ import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
 import { needsPageA, needsPageB, needsPageC } from "@/lib/builder/guided-flow/hero-step";
-import { resolveHeroPhotoStepData } from "@/lib/builder/guided-flow/resolve-hero-photo-step";
+import {
+  resolveHeroPhotoStepData,
+  reconcileHeroMediaOnResume,
+} from "@/lib/builder/guided-flow/resolve-hero-photo-step";
 import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { translate } from "@/lib/i18n/translate";
 import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
@@ -159,6 +162,20 @@ import styles from "./page.module.css";
  * with nothing else configured yet (T07's cropper is Mission 034's
  * job), falls through to the same notice T02/PAGE A/PAGE B already fall
  * through to.
+ *
+ * ## Mission 033 QG follow-up — cleanup keeps retrying after T06 too
+ *
+ * `resolveHeroPhotoStepData` only runs while `needsPageC` is true, i.e.
+ * before the family's Continue click — a retire that fails on their
+ * very last replacement would otherwise never be retried again once T06
+ * is `"completed"`. So every path REACHED PAST the PAGE C gate below
+ * (the notice above and `BuilderShell` alike) first calls
+ * `reconcileHeroMediaOnResume` — the exact same reconciliation +
+ * durable-retry pass, minus PAGE C's own signed read URL — on every
+ * single Builder load, for as long as any stale, non-canonical `"hero"`-
+ * purpose `"ready"` media remains for this memorial. `BuilderShell`
+ * receives that reconciled content, never the raw, pre-reconciliation
+ * one.
  */
 export const dynamic = "force-dynamic";
 
@@ -330,6 +347,24 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // Mission 033 QG follow-up — reachable only once PAGE A, PAGE B and
+  // T06 are ALL genuinely behind the family (every earlier `return`
+  // above has been passed): the one Builder loading path that already
+  // runs after T06, and therefore the durable retry for a "Changer la
+  // photo" retire that failed on the family's very last replacement,
+  // right before their Continue click — see
+  // lib/builder/guided-flow/resolve-hero-photo-step.ts's own docstring
+  // on why cleanup must outlive T06 itself. Reuses the exact same
+  // reconciliation `resolveHeroPhotoStepData` runs (adopt-and-persist an
+  // eventual still-unadopted `ready` media FIRST, only then retire what
+  // is left over) — never a second mechanism, never a sweep or a cron.
+  const heroReconciledContent = await reconcileHeroMediaOnResume(
+    { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+    actor,
+    access.memorialId,
+    resumed.draft.content,
+  );
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
   // later mission has built yet (T07 crop, Mission 034's job — this
@@ -352,6 +387,9 @@ export default async function BuilderMemorialPage({
   // The draft is passed alongside the configuration rather than grafted
   // into it: resumeBuilderSession read it once, through DraftRepository,
   // and that is the single authoritative copy (see BuilderMemorial).
+  // `content` reflects `heroReconciledContent` above rather than the
+  // raw `resumed.draft.content` — the same reconciled truth the retry
+  // above just confirmed and, if it changed, already persisted.
   //
   // `persist` is a BOUND SERVER ACTION, never a closure over `supabase`
   // or `draftRepository` above: a Client Component cannot receive a live
@@ -360,7 +398,7 @@ export default async function BuilderMemorialPage({
   // the decision this render made. See ./actions.ts.
   return (
     <BuilderShell
-      memorial={{ ...resumed.memorial, draft: resumed.draft }}
+      memorial={{ ...resumed.memorial, draft: { ...resumed.draft, content: heroReconciledContent } }}
       persist={saveDraftAction.bind(null, access.memorialId)}
     />
   );

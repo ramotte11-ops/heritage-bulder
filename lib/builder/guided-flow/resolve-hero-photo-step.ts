@@ -16,16 +16,20 @@ import { reconcileHeroPhotoMedia, readHeroForEditing } from "./hero-step";
  * testable with the same in-memory fakes `lib/media/test-fixtures.ts`
  * already provides for Mission 030.
  *
- * Three things happen here, in order, every time PAGE A and PAGE B are
- * already behind the family (the caller's job to check, via
- * `needsPageC` — see page.tsx):
+ * `resolveHeroPhotoStepData` (PAGE C's own full data resolution) and
+ * `reconcileHeroMediaOnResume` (the QG follow-up below) both build on
+ * the SAME `reconcileAndRetireHeroMedia` — one reconciliation, one
+ * cleanup pass, two callers, never two implementations.
+ *
+ * Three things happen inside `reconcileAndRetireHeroMedia`, in order,
+ * every time it runs:
  *
  *   1. the section 14 compensation path — `reconcileHeroPhotoMedia`
  *      against every `"hero"`-purpose `"ready"` media this memorial
  *      actually has in Storage/DB, persisted immediately if it changed
  *      anything, so a media that finalized successfully but never got
  *      linked (a lost connection right after the response) is adopted
- *      back into the Hero the very next time this page is read;
+ *      back into the Hero the very next time this runs;
  *   2. QG follow-up — the DURABLE retry for a "Changer la photo" retire
  *      that failed AFTER the new mediaId was already adopted (see
  *      `retireStaleHeroMedia`'s own docstring below): once, and only
@@ -35,11 +39,34 @@ import { reconcileHeroPhotoMedia, readHeroForEditing } from "./hero-step";
  *      holds is a stale replacement retry never finished, and this
  *      best-effort retries retiring each one. Nothing here is a new
  *      engine: it reuses `lib/media/delete-media.ts`'s `deleteMedia`,
- *      the exact primitive `retireHeroPhotoUploadAction` already calls;
+ *      the exact primitive `retireHeroPhotoUploadAction` already calls.
+ *
+ * `resolveHeroPhotoStepData` (PAGE C only) additionally mints:
+ *
  *   3. a short-lived signed read URL for whatever photo the (now
  *      reconciled) Hero references, if any — Mission 030's own private-
  *      read mechanism (`lib/media/read-media.ts`), minted fresh here and
  *      never persisted anywhere (mission brief section 16).
+ *
+ * ## QG follow-up #2 — cleanup must outlive T06 itself
+ *
+ * `page.tsx` only calls `resolveHeroPhotoStepData` while `needsPageC` is
+ * true — i.e. before the family's Continue click on PAGE C. A retire
+ * that fails on the VERY LAST replacement, right before that click,
+ * would otherwise never be retried again: once T06 is `"completed"`,
+ * PAGE C is never shown again, so nothing would ever call
+ * `resolveHeroPhotoStepData` for that memorial again.
+ *
+ * `reconcileHeroMediaOnResume` is the fix: the same reconciliation +
+ * cleanup pass, with no PAGE C data (no read URL) to build, called from
+ * `page.tsx` on EVERY Builder load once PAGE A, PAGE B and T06 are all
+ * genuinely behind the family — the one Builder loading path that
+ * already runs after T06, reused rather than a new sweep/cron. It is
+ * durable (retried on every such load), idempotent (`deleteMedia`
+ * converges regardless of how many times it runs), and preserves the
+ * exact same ordering guarantee: reconcile-and-persist an eventual
+ * still-unadopted `ready` media FIRST, only then retire what is left
+ * over — see `reconcileAndRetireHeroMedia`.
  */
 export interface HeroPhotoStepData {
   /** The draft content PAGE C should actually render from — identical to
@@ -110,12 +137,35 @@ async function retireStaleHeroMedia(
   }
 }
 
-export async function resolveHeroPhotoStepData(
+interface ReconciledHeroMedia {
+  /** The draft content, identical to the one passed in unless
+   * reconciliation changed and persisted it. */
+  content: MemorialContent;
+  /** Every `"hero"`-purpose `"ready"` media this memorial holds AT THE
+   * MOMENT this ran — already-retired stale ones removed by side
+   * effect, so a caller that lists again would see fewer. Returned so
+   * `resolveHeroPhotoStepData` can find the canonical one's row without
+   * a second `listMemorialMedia` call. */
+  readyHeroMedia: readonly Media[];
+  /** The canonical media, when one could be confirmed — `null` for an
+   * absent/corrupted Hero or one whose stored mediaId matches no real
+   * ready media (still pending, foreign, or simply none exist). */
+  canonical: Media | null;
+}
+
+/**
+ * THE shared reconciliation + durable cleanup pass — see this module's
+ * own docstring for the full ordering rationale. Both
+ * `resolveHeroPhotoStepData` (PAGE C) and `reconcileHeroMediaOnResume`
+ * (every Builder load once T06 is behind the family) call this and
+ * this alone; neither re-implements any part of it.
+ */
+async function reconcileAndRetireHeroMedia(
   deps: ResolveHeroPhotoStepDeps,
   actor: HeritageActor,
   memorialId: string,
   content: MemorialContent,
-): Promise<HeroPhotoStepData> {
+): Promise<ReconciledHeroMedia> {
   const heroMedia = await listMemorialMedia(deps.mediaEngine, actor, {
     memorialId,
     purpose: "hero",
@@ -128,6 +178,8 @@ export async function resolveHeroPhotoStepData(
   // before ever reaching this function.
   const readyHeroMedia = heroMedia.ok ? heroMedia.value : [];
 
+  // Step 1 — reconcile and PERSIST an eventual still-unadopted `ready`
+  // media BEFORE anything below ever considers cleaning anything up.
   let resolvedContent = content;
   const reconciled = reconcileHeroPhotoMedia(content, readyHeroMedia);
   if (reconciled.ok && reconciled.content !== content) {
@@ -142,27 +194,43 @@ export async function resolveHeroPhotoStepData(
     // adoption is not yet resolved must never be touched by cleanup
     // (QG rule): this early return is what guarantees that structurally,
     // not merely by convention.
-    return { content: resolvedContent, initialPhoto: null };
+    return { content: resolvedContent, readyHeroMedia, canonical: null };
   }
 
   const canonicalMediaId = read.hero.photo.mediaId;
-  const media = readyHeroMedia.find((candidate) => candidate.id === canonicalMediaId) ?? null;
+  const canonical = readyHeroMedia.find((candidate) => candidate.id === canonicalMediaId) ?? null;
 
-  // Only once a REAL, ready media backs the canonical mediaId do we
-  // retry retiring the others — never on the strength of a stored
+  // Step 2 — only once a REAL, ready media backs the canonical mediaId
+  // do we retry retiring the others — never on the strength of a stored
   // mediaId alone (which could reference a still-pending or foreign
   // media `reconcileHeroPhotoMedia` deliberately left untouched).
-  if (media !== null) {
+  if (canonical !== null) {
     await retireStaleHeroMedia(deps, actor, memorialId, readyHeroMedia, canonicalMediaId);
   }
 
-  if (media === null) {
+  return { content: resolvedContent, readyHeroMedia, canonical };
+}
+
+export async function resolveHeroPhotoStepData(
+  deps: ResolveHeroPhotoStepDeps,
+  actor: HeritageActor,
+  memorialId: string,
+  content: MemorialContent,
+): Promise<HeroPhotoStepData> {
+  const { content: resolvedContent, canonical } = await reconcileAndRetireHeroMedia(
+    deps,
+    actor,
+    memorialId,
+    content,
+  );
+
+  if (canonical === null) {
     return { content: resolvedContent, initialPhoto: null };
   }
 
   const displayable = await createMediaReadUrl(deps.mediaEngine, actor, {
     memorialId,
-    mediaId: media.id,
+    mediaId: canonical.id,
   });
   if (!displayable.ok) {
     return { content: resolvedContent, initialPhoto: null };
@@ -170,6 +238,31 @@ export async function resolveHeroPhotoStepData(
 
   return {
     content: resolvedContent,
-    initialPhoto: { media, readUrl: displayable.value.readUrl },
+    initialPhoto: { media: canonical, readUrl: displayable.value.readUrl },
   };
+}
+
+/**
+ * QG follow-up #2 — see this module's own docstring section on why
+ * cleanup must outlive T06. Identical reconciliation + durable retry as
+ * `resolveHeroPhotoStepData`, minus the PAGE C-only signed read URL:
+ * called from `page.tsx` on every Builder load once PAGE A, PAGE B and
+ * T06 are all genuinely behind the family (i.e. exactly where
+ * `needsPageC` would now return `false`), so a retire that failed on
+ * the family's very last replacement — right before their Continue
+ * click — still gets retried on their next visit, instead of being
+ * abandoned the moment T06 became `"completed"`.
+ *
+ * Returns the (possibly reconciled) content so the caller can feed the
+ * up-to-date draft onward (e.g. into `BuilderShell`) rather than the
+ * raw, pre-reconciliation one it was handed.
+ */
+export async function reconcileHeroMediaOnResume(
+  deps: ResolveHeroPhotoStepDeps,
+  actor: HeritageActor,
+  memorialId: string,
+  content: MemorialContent,
+): Promise<MemorialContent> {
+  const { content: resolvedContent } = await reconcileAndRetireHeroMedia(deps, actor, memorialId, content);
+  return resolvedContent;
 }

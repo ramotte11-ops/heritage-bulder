@@ -14,7 +14,7 @@ import {
   ownerActor,
 } from "@/lib/media/test-fixtures";
 import { isPageCComplete } from "./hero-step";
-import { resolveHeroPhotoStepData } from "./resolve-hero-photo-step";
+import { resolveHeroPhotoStepData, reconcileHeroMediaOnResume } from "./resolve-hero-photo-step";
 
 /** A minimal, in-memory DraftRepository double — this module only ever
  * calls `saveDraftContent`, so that is the only method exercised. */
@@ -363,6 +363,144 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
     );
 
     expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+  });
+});
+
+describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T06", () => {
+  /** A Hero already fully done, T06 included — the exact shape a
+   * memorial has once the family has clicked Continue on PAGE C. */
+  function contentWithT06Completed(mediaId: string): MemorialContent {
+    return {
+      hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId, crop: null } },
+      guidedFlow: { T06: { status: "completed" } },
+    } as MemorialContent;
+  }
+
+  it("retries retiring a stale ready hero media even though T06 is already completed", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    // A later replacement whose retire never succeeded — T06 was
+    // completed regardless (the family clicked Continue right after).
+    const stale = await readyHeroMedia(engine);
+
+    const content = contentWithT06Completed(canonical.id);
+
+    const result = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    // The canonical mediaId in the draft is exactly what it was.
+    expect((result.hero as { photo: { mediaId: string } }).photo.mediaId).toBe(canonical.id);
+    expect(isPageCComplete(result)).toBe(true); // T06 stays completed — untouched.
+    // The stale one is gone; the canonical one survives.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).toBeNull();
+    expect(
+      await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: canonical.id }),
+    ).not.toBeNull();
+  });
+
+  it("a retire that fails after T06 is completed is retried on the NEXT resume/reload — durable, not one-shot", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const stale = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+
+    engine.objectStore.failOn.removeByPrefix = new Error("storage unavailable");
+    const firstLoad = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+    // Still there after the failed attempt.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).not.toBeNull();
+
+    // A later Builder reload/resume — the retry mechanism this function
+    // itself IS, called again exactly as page.tsx calls it on every load.
+    engine.objectStore.failOn.removeByPrefix = undefined as unknown as Error;
+    const secondLoad = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      firstLoad,
+    );
+
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).toBeNull();
+    expect(
+      await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: canonical.id }),
+    ).not.toBeNull();
+    expect((secondLoad.hero as { photo: { mediaId: string } }).photo.mediaId).toBe(canonical.id);
+  });
+
+  it("a still-unadopted new ready media is reconciled and PERSISTED before any cleanup runs — even after T06 is completed", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    // T06 completed and linked to `canonical` — but a LATER upload
+    // finished and became ready, and its own draft-adoption write never
+    // happened (the section 14 scenario), leaving it orphaned.
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const orphanedReady = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+
+    const result = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    // `reconcileHeroPhotoMedia`'s own rule: an already-linked mediaId is
+    // left alone — it does NOT jump to "most recent" just because a
+    // newer ready media exists. So `canonical` remains canonical here,
+    // and `orphanedReady` — now provably not referenced by the draft —
+    // is exactly what gets retired, only AFTER that (non-)adoption was
+    // resolved.
+    expect((result.hero as { photo: { mediaId: string } }).photo.mediaId).toBe(canonical.id);
+    expect(
+      await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: orphanedReady.id }),
+    ).toBeNull();
+  });
+
+  it("never deletes the media currently canonical in the draft", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+
+    await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    expect(
+      await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: canonical.id }),
+    ).not.toBeNull();
+  });
+
+  it("is a pure passthrough (no persistence, no cleanup) when there is no ready hero media at all", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const content: MemorialContent = { hero: { ...EMPTY_HERO_CONTENT } } as MemorialContent;
+
+    const result = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    expect(result).toBe(content);
+    expect(draftRepository.saved).toEqual([]);
   });
 });
 
