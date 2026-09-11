@@ -180,7 +180,11 @@ describe("HeroCropStep — Continue (commitPageD)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
 
-    await vi.waitFor(() => expect(persist).toHaveBeenCalled());
+    // Two persist calls land here (see the "durability" describe block
+    // below for why: the pending autosave of the slider change is
+    // flushed FIRST, then the explicit T07 commit) — wait for the whole
+    // sequence to finish, not just the first call.
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
     const persistedContent = persist.mock.calls.at(-1)?.[0];
     expect(persistedContent.hero.photo.crop.zoom).toBe(2);
     expect(persistedContent.guidedFlow.T07).toEqual({ status: "completed" });
@@ -212,6 +216,74 @@ describe("HeroCropStep — Continue (commitPageD)", () => {
   });
 });
 
+/**
+ * Mission 034 QG micro-audit — proves, against the REAL (unmocked)
+ * useAutosave/autosave-controller, that T07's `StepRecord` can never
+ * become durable before the crop it corresponds to is itself durable.
+ * See HeroCropStep.tsx's own "Durability invariant" comment and
+ * autosave-controller.ts's `flush` docstring for the mechanism this
+ * exercises end to end, not in isolation.
+ */
+describe("HeroCropStep — durability: crop persisted before T07 completed (Mission 034 QG micro-audit)", () => {
+  it("adjust crop/zoom then click Continue IMMEDIATELY: the pending autosave lands FIRST, the T07 commit lands LAST — never the reverse", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    render(<HeroCropStep {...baseProps({ persist })} />);
+
+    // Arms a pending, debounced autosave (real AUTOSAVE_DEBOUNCE_MS —
+    // nowhere near elapsed by the time Continue is clicked below).
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+
+    // Exactly two persist calls: the flushed pending autosave (crop
+    // only), THEN the explicit T07 commit — in that exact order.
+    expect(persist).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = persist.mock.calls.map((call) => call[0]);
+    expect(firstCall.hero.photo.crop.zoom).toBe(2);
+    expect(firstCall.guidedFlow?.T07).toBeUndefined();
+    expect(secondCall.hero.photo.crop.zoom).toBe(2);
+    expect(secondCall.guidedFlow.T07).toEqual({ status: "completed" });
+  });
+
+  it("crop = null, no adjustment, click Continue: the neutral crop and T07 completed land TOGETHER in one atomic write — nothing durable in between could ever be missing the other", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    render(<HeroCropStep {...baseProps({ persist })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+
+    // No prior interaction ever armed the autosave, so flush() is a
+    // no-op and there is exactly ONE write — crop and T07 arrive in the
+    // very same persisted document, never one without the other.
+    expect(persist).toHaveBeenCalledTimes(1);
+    const [content] = persist.mock.calls[0];
+    expect(content.hero.photo.crop).toEqual({ focalX: 0.5, focalY: 0.5, zoom: 1 });
+    expect(content.guidedFlow.T07).toEqual({ status: "completed" });
+  });
+
+  it("if flushing the pending crop autosave itself fails, T07 is NEVER committed — human error shown, the family stays on T07", async () => {
+    // Only the flush-triggered write is mocked to fail — if the
+    // component incorrectly proceeded to commit T07 anyway, a SECOND
+    // call would follow it, which this test also checks never happens.
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    render(<HeroCropStep {...baseProps({ persist })} />);
+
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+
+    await vi.waitFor(() => expect(screen.getByText(/une erreur est survenue/i)).toBeTruthy());
+
+    // The failed flush is the ONLY call — commitPageD's own explicit
+    // persist was never even attempted on top of unconfirmed content.
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(persist.mock.calls[0][0].guidedFlow?.T07).toBeUndefined();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+});
+
 describe("HeroCropStep — Changer la photo (reopenPageC, never a second upload engine)", () => {
   it("persists T06 un-marked and refreshes, without touching the crop", async () => {
     const contentWithCrop = {
@@ -223,11 +295,10 @@ describe("HeroCropStep — Changer la photo (reopenPageC, never a second upload 
 
     fireEvent.click(screen.getByRole("button", { name: "Changer la photo" }));
 
-    await vi.waitFor(() => expect(persist).toHaveBeenCalled());
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
     const persistedContent = persist.mock.calls.at(-1)?.[0];
     expect(persistedContent.guidedFlow.T06).toBeUndefined();
     expect(persistedContent.hero.photo.crop).toEqual({ focalX: 0.3, focalY: 0.7, zoom: 1.5 });
-    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
   it("shows an error and never refreshes when persist rejects", async () => {
@@ -238,6 +309,30 @@ describe("HeroCropStep — Changer la photo (reopenPageC, never a second upload 
 
     await vi.waitFor(() => expect(screen.getByText(/une erreur est survenue/i)).toBeTruthy());
     expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("durability: flushes a pending crop autosave BEFORE reopening PAGE C — the same ordering guarantee as Continue", async () => {
+    const contentWithCrop = {
+      ...CONTENT_NO_CROP,
+      hero: { ...CONTENT_NO_CROP.hero, photo: { mediaId: MEDIA_ID, crop: { focalX: 0.5, focalY: 0.5, zoom: 1 } } },
+    };
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    render(<HeroCropStep {...baseProps({ content: contentWithCrop, persist })} />);
+
+    // Arms a pending autosave (a pan, via the directional button).
+    fireEvent.click(screen.getByLabelText("Déplacer la photo vers la droite"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Changer la photo" }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+
+    expect(persist).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = persist.mock.calls.map((call) => call[0]);
+    // The flushed pan lands first, T06 still completed (untouched by it).
+    expect(firstCall.guidedFlow.T06).toEqual({ status: "completed" });
+    expect(firstCall.hero.photo.crop.focalX).not.toBe(0.5);
+    // The explicit reopen lands last, T06 now removed.
+    expect(secondCall.guidedFlow.T06).toBeUndefined();
   });
 });
 

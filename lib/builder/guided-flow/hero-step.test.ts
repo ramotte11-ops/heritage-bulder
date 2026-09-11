@@ -1033,6 +1033,53 @@ describe("reopenPageC — T07's 'Retour -> Changer la photo', never a second upl
     const corrupted = { hero: "garbage" } as unknown as MemorialContent;
     expect(reopenPageC(corrupted)).toEqual({ ok: false, reason: "corrupted" });
   });
+
+  it("Mission 034 QG micro-audit — the REAL round trip: photo A + T07 completed, family replaces with photo B via PAGE C, T07 must become the active step again and T08 must stay unreachable", () => {
+    // photo A + crop A + T07 completed — exactly PAGE D's own "Continue".
+    const withCrop = writeHeroCrop(pageCDone(), NEUTRAL_CROP); // pageCDone()'s own default mediaId is MEDIA_ID_A.
+    expect(withCrop.ok).toBe(true);
+    if (!withCrop.ok) return;
+    const t07Done = commitPageD(withCrop.content, heroMedia({ id: MEDIA_ID_A }));
+    expect(t07Done.ok).toBe(true);
+    if (!t07Done.ok) return;
+    expect(needsPageD(t07Done.content)).toBe(false); // the normal "done" state before any of this.
+
+    // The family goes back — PAGE D's own "Changer la photo" link,
+    // reopening PAGE C exactly the way HeroCropStep really calls it.
+    const reopened = reopenPageC(t07Done.content);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+
+    // PAGE C's own real primitive for a finalized replacement upload —
+    // the exact call HeroPhotoStep.tsx makes once the new photo is
+    // ready (never a hand-rolled shortcut). This is what actually resets
+    // crop to null, per Mission 031's own guarantee.
+    const withPhotoB = writeHeroPhotoMedia(reopened.content, MEDIA_ID_B);
+    expect(withPhotoB.ok).toBe(true);
+    if (!withPhotoB.ok) return;
+    expect(withPhotoB.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_B, crop: null } });
+
+    // PAGE C's own real "Continue" — T06 completed again, this time for
+    // photo B. The STALE T07 "completed" record from photo A is still
+    // sitting in guidedFlow, untouched by any of the calls above.
+    const t06DoneAgain = commitPageC(withPhotoB.content, heroMedia({ id: MEDIA_ID_B }));
+    expect(t06DoneAgain.ok).toBe(true);
+    if (!t06DoneAgain.ok) return;
+    expect(readGuidedFlowState(t06DoneAgain.content).T07).toEqual({ status: "completed" }); // the stale record, proven still present.
+
+    // THE invariant: the real progression gates, not isPageDComplete in
+    // isolation. PAGE A/B/C must all read "behind the family" (nothing
+    // regressed), while PAGE D must be the one gate demanding attention
+    // again — which is also, structurally, the only way T08 (or
+    // whatever comes after PAGE D) stays unreachable: page.tsx renders
+    // PAGE D and returns the instant needsPageD is true, before it ever
+    // reaches the isConfiguredMemorial/BuilderShell branch further down.
+    expect(needsPageA(t06DoneAgain.content)).toBe(false);
+    expect(needsPageB(t06DoneAgain.content)).toBe(false);
+    expect(needsPageC(t06DoneAgain.content)).toBe(false);
+    expect(isPageDComplete(t06DoneAgain.content)).toBe(false);
+    expect(needsPageD(t06DoneAgain.content)).toBe(true);
+  });
 });
 
 describe("resolveHeroFlowState — T07 dynamically re-derived on top of whatever is stored", () => {

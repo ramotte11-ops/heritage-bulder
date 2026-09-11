@@ -84,6 +84,14 @@ export interface UseAutosaveResult {
    * current state is `error`, and a no-op entirely in persist-less
    * (demo) mode. */
   retry: () => void;
+  /** Mission 034 QG micro-audit — drains any pending/in-flight autosave
+   * to durable completion (cancelling its debounce, awaiting whatever is
+   * already in flight) before a caller issues its own separate,
+   * order-sensitive write. See `AutosaveController.flush`'s own
+   * docstring (autosave-controller.ts) for the full guarantee and why it
+   * exists. Resolves immediately, doing nothing, in persist-less (demo)
+   * mode — there is no controller, and therefore nothing to drain. */
+  flush: () => Promise<void>;
 }
 
 function noopSubscribe(): () => void {
@@ -95,6 +103,10 @@ function getNoopState(): AutosaveState {
 }
 
 function noopRetry(): void {}
+
+function noopFlush(): Promise<void> {
+  return Promise.resolve();
+}
 
 /**
  * The DOM-facing core of the Mission 010 `beforeunload` guard, pulled out
@@ -176,5 +188,9 @@ export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosa
     return () => window.removeEventListener("online", handleOnline);
   }, [controller]);
 
-  return { state, retry: controller ? controller.retry : noopRetry };
+  return {
+    state,
+    retry: controller ? controller.retry : noopRetry,
+    flush: controller ? controller.flush : noopFlush,
+  };
 }

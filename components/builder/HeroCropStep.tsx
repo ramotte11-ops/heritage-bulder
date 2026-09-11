@@ -94,6 +94,29 @@ const UNRESOLVED_IMAGE_SIZE: HeroCropImageSize = { naturalWidth: 0, naturalHeigh
  * writes `NEUTRAL_HERO_CROP` first — the neutral framing becomes the
  * family's real, recorded decision, never silently assumed.
  *
+ * ## Durability (Mission 034 QG micro-audit)
+ *
+ * T07's `StepRecord` must never become durable before the crop it
+ * corresponds to is itself durably persisted. A React state update
+ * followed by a debounced autosave is NOT that guarantee on its own: a
+ * drag/zoom edit right before clicking Continue leaves a pending (or
+ * already in-flight) autosave of the OLDER, crop-only content that a
+ * whole-content, last-write-wins draft save could otherwise apply AFTER
+ * this screen's own commit, silently reverting T07. `handleSubmit` (and
+ * `handleChangePhoto`, which has the identical exposure for T06) both
+ * call `flush()` — `useAutosave`'s own drain-to-quiescence primitive
+ * (see lib/builder/autosave-controller.ts's `flush` docstring for the
+ * full mechanism) — BEFORE their own explicit `persist(...)` call, and
+ * only after disabling every control that could arm a new one in the
+ * meantime. If that drain itself fails, the explicit write is never
+ * attempted either: a human error is shown and the family stays on this
+ * exact screen, never advanced toward T08 on unconfirmed content. The
+ * neutral-crop path needs no separate ordering at all — when nothing was
+ * ever autosaved, the neutral crop and T07's completion are written
+ * together in ONE atomic call, which is strictly stronger than two
+ * sequential writes: there is no instant where either could be durable
+ * without the other.
+ *
  * ## Image dimensions (mission brief section 17)
  *
  * `Media.width`/`Media.height` are never populated by Mission 030 (see
@@ -122,7 +145,7 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
 
-  useAutosave({ content, persist });
+  const { flush } = useAutosave({ content, persist });
 
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
@@ -186,7 +209,23 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
       return;
     }
 
+    // Disabled FIRST — before flush() ever awaits anything — so no new
+    // drag/zoom/nudge can arm a further debounce while this drains (see
+    // this component's own docstring, "Durability", and
+    // autosave-controller.ts's `flush` docstring for the full
+    // invariant this closes: a stale, still-pending/in-flight autosave
+    // of an EARLIER content snapshot must never be able to land AFTER
+    // this write and silently resurrect T06 as completed for the photo
+    // the family is about to replace).
     setIsReturning(true);
+    try {
+      await flush();
+    } catch {
+      setSubmitError(true);
+      setIsReturning(false);
+      return;
+    }
+
     try {
       await persist(reopened.content);
     } catch {
@@ -214,13 +253,42 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
       toCommit = written.content;
     }
 
-    const committed = commitPageD(toCommit, photo.media);
-    if (!committed.ok) {
+    // Disabled FIRST — before flush() ever awaits anything — so nothing
+    // else can arm a NEW debounce in the window below (same reasoning as
+    // handleChangePhoto above).
+    setIsSubmitting(true);
+
+    // ## Durability invariant (Mission 034 QG micro-audit)
+    //
+    // T07's `StepRecord` must never become durable before the crop it
+    // corresponds to is itself durably persisted — a whole-content,
+    // last-write-wins draft save has no version guard of its own, so a
+    // STALE autosave (still pending, or already mid-flight, from a drag
+    // or zoom that just happened) landing AFTER this commit would
+    // silently revert it. `flush()` drains the autosave controller to
+    // durable quiescence FIRST — cancelling any pending debounce timer
+    // and awaiting whatever save is already in flight — so by the time
+    // `commitPageD`'s own write goes out below, the controller is idle
+    // and nothing stale is left that could ever land after it. If that
+    // drain itself fails, T07 must never be considered completed either:
+    // fail the same way persist's own failure already does (an error
+    // notice, isSubmitting cleared, the family stays on this exact
+    // screen — never advanced toward T08 on unconfirmed data).
+    try {
+      await flush();
+    } catch {
       setSubmitError(true);
+      setIsSubmitting(false);
       return;
     }
 
-    setIsSubmitting(true);
+    const committed = commitPageD(toCommit, photo.media);
+    if (!committed.ok) {
+      setSubmitError(true);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       await persist(committed.content);
     } catch {

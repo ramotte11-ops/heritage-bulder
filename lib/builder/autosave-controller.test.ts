@@ -409,3 +409,142 @@ describe("subscribe/getState", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("flush — Mission 034 QG micro-audit: durable drain before an order-sensitive write", () => {
+  it("is a no-op resolving immediately while idle — nothing was ever queued", async () => {
+    const persist = vi.fn();
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    await controller.flush();
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe("idle");
+  });
+
+  it("is a no-op resolving immediately once already saved", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("saved");
+
+    await controller.flush();
+
+    expect(persist).toHaveBeenCalledTimes(1); // unchanged — no redundant save
+  });
+
+  it("bypasses the debounce wait entirely — a pending edit saves right away, not after AUTOSAVE_DEBOUNCE_MS", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    expect(persist).not.toHaveBeenCalled();
+
+    await controller.flush();
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledWith(CONTENT_A);
+    expect(controller.getState().status).toBe("saved");
+  });
+
+  it("cancels the pending debounce timer, so it never fires a redundant save afterward", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await controller.flush();
+    expect(persist).toHaveBeenCalledTimes(1);
+
+    // If the original timer were still armed, it would fire here and
+    // call persist a second time with the same content.
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 2);
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("THE race this exists to close: an already in-flight save is awaited before flush resolves — never abandoned mid-air", async () => {
+    const saveA = deferred<{ updatedAt: string }>();
+    const persist = vi.fn().mockReturnValueOnce(saveA.promise);
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS); // the debounce fires on its own — save A now in flight.
+    expect(controller.getState().status).toBe("saving");
+
+    let flushResolved = false;
+    const flushPromise = controller.flush().then(() => {
+      flushResolved = true;
+    });
+
+    // flush() must not resolve while A is still in flight.
+    await Promise.resolve();
+    expect(flushResolved).toBe(false);
+
+    saveA.resolve({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await flushPromise;
+
+    expect(flushResolved).toBe(true);
+    expect(controller.getState().status).toBe("saved");
+  });
+
+  it("the caller's own later write can only ever land AFTER flush resolves — proving the ordering guarantee end to end", async () => {
+    const landingOrder: string[] = [];
+    const persist = vi.fn(async (content: MemorialContent) => {
+      // The autosave's own write "lands" only once its promise resolves.
+      landingOrder.push(JSON.stringify(content));
+      return { updatedAt: "2026-01-01T00:00:00.000Z" };
+    });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    // A drag/zoom edit arms the debounce (the exact HeroCropStep scenario).
+    controller.notifyContentChanged(CONTENT_A);
+
+    // Continue is clicked immediately — flush BEFORE the caller's own
+    // separate, order-sensitive write (never issued through this
+    // controller at all, exactly like HeroCropStep's explicit commitPageD
+    // persist call).
+    await controller.flush();
+    landingOrder.push("COMMIT"); // stands in for the caller's own explicit persist(committed.content).
+
+    expect(landingOrder).toEqual([JSON.stringify(CONTENT_A), "COMMIT"]);
+
+    // And nothing stale fires afterward to reorder it.
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 2);
+    expect(landingOrder).toEqual([JSON.stringify(CONTENT_A), "COMMIT"]);
+  });
+
+  it("retries exactly once from a prior error, and resolves once that retry succeeds", async () => {
+    const persist = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("error");
+
+    persist.mockResolvedValueOnce({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await controller.flush();
+
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(controller.getState().status).toBe("saved");
+  });
+
+  it("rejects when the (retried) save still fails — the caller must never treat this as durable", async () => {
+    const persist = vi.fn().mockRejectedValue(new Error("still down"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("error");
+
+    await expect(controller.flush()).rejects.toThrow("still down");
+    expect(controller.getState().status).toBe("error");
+  });
+
+  it("is a no-op resolving immediately after destroy", async () => {
+    const persist = vi.fn();
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    controller.destroy();
+
+    await expect(controller.flush()).resolves.toBeUndefined();
+  });
+});
