@@ -129,6 +129,22 @@ const SERVER_ONLY_MODULES = [
   "lib/integration/etsy/provision-order-for-support.ts",
   "lib/integration/etsy/etsy-session.ts",
   "lib/integration/etsy/support-session.ts",
+  // Mission 033: wires Mission 030's media primitives to the
+  // service-role client (see its own docstring) — the same shape as
+  // etsy-session.ts/admin-session.ts above. A client can only ever
+  // reach it through app/builder/[memorialId]/page.tsx (a Server
+  // Component) or media-actions.ts (a Server Action) — neither bundled
+  // to the browser.
+  //
+  // lib/builder/guided-flow/resolve-hero-photo-step.ts is deliberately
+  // NOT listed here, same reasoning as lib/media/read-media.ts and
+  // lib/builder/resume-session.ts (also absent): it takes its
+  // `MediaEngineDeps`/`DraftRepository` as injected parameters and
+  // imports no service-role client or secret-holding module itself — a
+  // client component importing it would drag in nothing dangerous. The
+  // real boundary is where those deps get CONSTRUCTED, which is this
+  // file, and that is what is guarded.
+  "lib/media/server-media-engine.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

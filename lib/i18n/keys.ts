@@ -63,6 +63,23 @@
  * (section 7), never the Hero's stored shape — both variants persist
  * into the exact same `shortPhrase` field. PAGE B's own CTA reuses
  * `common.continue`, same as PAGE A.
+ *
+ * Mission 033 adds `hero.photo*` for PAGE C (T06, the Hero photo
+ * upload) — one key per distinct piece of text, none named after a
+ * component. `photoTitle`/`photoSubtitle` are the page's own copy;
+ * `photoAddLabel`/`photoChangeLabel` label the add/replace control;
+ * `photoCroppingNote` is the exact QG-validated reassurance shown once a
+ * photo is selected (mission brief section 3 — deliberately NOT a
+ * promise about the final crop, which Mission 034 alone decides);
+ * `photoUploading` is the one in-flight status text (section 11 — no
+ * invented percentage); `photoAlt` is the selected photo's alt text
+ * (section 23). The four `photoError*` keys are section 12's closed,
+ * human error vocabulary — `lib/media/media-error-copy.ts` is the one
+ * place a `MediaErrorCode` resolves to one of them, so no technical
+ * detail (a status code, "MIME", "Supabase", a stack) can ever reach
+ * this dictionary. PAGE C's own CTA reuses `common.continue`, same as
+ * PAGE A/PAGE B; its corrupted-Hero notice reuses the existing
+ * `hero.dataUnavailable`, same as both of them too.
  */
 export const TRANSLATION_KEYS = [
   "common.continue",
@@ -102,6 +119,18 @@ export const TRANSLATION_KEYS = [
   "hero.phraseSubtitleAnnouncement",
   "hero.phraseTitleRemembrance",
   "hero.phraseSubtitleRemembrance",
+  // Mission 033 — PAGE C (T06 photo Hero).
+  "hero.photoTitle",
+  "hero.photoSubtitle",
+  "hero.photoAddLabel",
+  "hero.photoChangeLabel",
+  "hero.photoCroppingNote",
+  "hero.photoUploading",
+  "hero.photoAlt",
+  "hero.photoErrorTooLarge",
+  "hero.photoErrorUnsupportedFormat",
+  "hero.photoErrorInvalidFile",
+  "hero.photoErrorGeneric",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

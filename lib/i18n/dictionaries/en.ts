@@ -49,4 +49,16 @@ export const en: Record<TranslationKey, string> = {
   "hero.phraseTitleRemembrance": "A few words, if you'd like",
   "hero.phraseSubtitleRemembrance":
     "A short line that captures how they're remembered. Optional — you can continue without one.",
+  "hero.photoTitle": "Choose the main photo",
+  "hero.photoSubtitle": "This is the first image the family will see when discovering this tribute.",
+  "hero.photoAddLabel": "Add a photo",
+  "hero.photoChangeLabel": "Change photo",
+  "hero.photoCroppingNote": "Don't worry about the framing for now — you'll be able to adjust it right after.",
+  "hero.photoUploading": "Adding the photo…",
+  "hero.photoAlt": "Photo chosen for the tribute",
+  "hero.photoErrorTooLarge": "This photo is too large. Please try another one.",
+  "hero.photoErrorUnsupportedFormat":
+    "This photo format isn't supported yet. Please choose a JPEG, PNG or WebP photo.",
+  "hero.photoErrorInvalidFile": "We couldn't use this photo. Please try another one.",
+  "hero.photoErrorGeneric": "We couldn't add the photo right now. You can try again.",
 };

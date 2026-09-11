@@ -10,9 +10,20 @@ import { LanguageStep } from "@/components/builder/LanguageStep";
 import { ContextStep } from "@/components/builder/ContextStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
-import { needsPageA, needsPageB } from "@/lib/builder/guided-flow/hero-step";
+import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
+import { needsPageA, needsPageB, needsPageC } from "@/lib/builder/guided-flow/hero-step";
+import {
+  resolveHeroPhotoStepData,
+  reconcileHeroMediaOnResume,
+} from "@/lib/builder/guided-flow/resolve-hero-photo-step";
+import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { translate } from "@/lib/i18n/translate";
 import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
+import {
+  reserveHeroPhotoUploadAction,
+  finalizeHeroPhotoUploadAction,
+  retireHeroPhotoUploadAction,
+} from "./media-actions";
 import styles from "./page.module.css";
 
 /**
@@ -131,6 +142,40 @@ import styles from "./page.module.css";
  * exactly like `BuilderShell`'s own autosave `persist` — no second
  * persistence path. A memorial past both, with nothing else configured
  * yet, falls through to the same notice T02 already falls through to.
+ *
+ * ## Mission 033 — PAGE C (T06, the Hero photo) sits right after PAGE B
+ *
+ * Shown once PAGE A and PAGE B are both behind the family and T06 itself
+ * has not been explicitly completed (`needsPageC`,
+ * lib/builder/guided-flow/hero-step.ts). Its data is resolved through
+ * `resolveHeroPhotoStepData` (lib/builder/guided-flow/resolve-hero-photo-step.ts)
+ * rather than read directly off `resumed.draft.content`, because PAGE C
+ * alone needs the section-14 compensation pass — reconciling the Hero's
+ * photo against Storage/DB's own `"hero"`/`"ready"` media before
+ * deciding a photo is really missing — and a fresh, short-lived signed
+ * read URL for whatever it finds (Mission 030's private-read mechanism;
+ * never persisted). `reserveHeroPhotoUploadAction`/
+ * `finalizeHeroPhotoUploadAction`/`retireHeroPhotoUploadAction`
+ * (./media-actions.ts) are bound to `access.memorialId` exactly like
+ * `saveDraftAction` above — the browser never holds a raw, unverified
+ * memorial id for any of these calls either. A memorial past PAGE C,
+ * with nothing else configured yet (T07's cropper is Mission 034's
+ * job), falls through to the same notice T02/PAGE A/PAGE B already fall
+ * through to.
+ *
+ * ## Mission 033 QG follow-up — cleanup keeps retrying after T06 too
+ *
+ * `resolveHeroPhotoStepData` only runs while `needsPageC` is true, i.e.
+ * before the family's Continue click — a retire that fails on their
+ * very last replacement would otherwise never be retried again once T06
+ * is `"completed"`. So every path REACHED PAST the PAGE C gate below
+ * (the notice above and `BuilderShell` alike) first calls
+ * `reconcileHeroMediaOnResume` — the exact same reconciliation +
+ * durable-retry pass, minus PAGE C's own signed read URL — on every
+ * single Builder load, for as long as any stale, non-canonical `"hero"`-
+ * purpose `"ready"` media remains for this memorial. `BuilderShell`
+ * receives that reconciled content, never the raw, pre-reconciliation
+ * one.
  */
 export const dynamic = "force-dynamic";
 
@@ -271,12 +316,61 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // Mission 033 — PAGE C: T06, the Hero's photo. Shown only once PAGE A
+  // and PAGE B are genuinely behind the family (never before — see
+  // `needsPageC`'s own guard) and only until T06 itself has been
+  // explicitly completed via a real Continue click (mission brief
+  // section 18/19 — a ready, autosaved photo is not by itself proof the
+  // family left this page). `resolveHeroPhotoStepData` runs the
+  // section-14 compensation pass and resolves the one display URL this
+  // page needs before rendering — see this function's own docstring and
+  // this file's Mission 033 section above.
+  if (needsPageC(resumed.draft.content)) {
+    const photoStepData = await resolveHeroPhotoStepData(
+      { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+      actor,
+      access.memorialId,
+      resumed.draft.content,
+    );
+
+    return (
+      <HeroPhotoStep
+        language={resumed.memorial.language}
+        editorialContext={resumed.memorial.editorialContext}
+        content={photoStepData.content}
+        initialPhoto={photoStepData.initialPhoto}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+        reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
+        finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
+        retireUpload={retireHeroPhotoUploadAction.bind(null, access.memorialId)}
+      />
+    );
+  }
+
+  // Mission 033 QG follow-up — reachable only once PAGE A, PAGE B and
+  // T06 are ALL genuinely behind the family (every earlier `return`
+  // above has been passed): the one Builder loading path that already
+  // runs after T06, and therefore the durable retry for a "Changer la
+  // photo" retire that failed on the family's very last replacement,
+  // right before their Continue click — see
+  // lib/builder/guided-flow/resolve-hero-photo-step.ts's own docstring
+  // on why cleanup must outlive T06 itself. Reuses the exact same
+  // reconciliation `resolveHeroPhotoStepData` runs (adopt-and-persist an
+  // eventual still-unadopted `ready` media FIRST, only then retire what
+  // is left over) — never a second mechanism, never a sweep or a cron.
+  const heroReconciledContent = await reconcileHeroMediaOnResume(
+    { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+    actor,
+    access.memorialId,
+    resumed.draft.content,
+  );
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
-  // later mission has built yet (T06 photo/T07 crop included — Mission
-  // 032 deliberately stops at T05), so — for now — a memorial past PAGE
-  // B but with nothing else configured gets a controlled notice rather
-  // than invented data or a Builder rendered against NULLs.
+  // later mission has built yet (T07 crop, Mission 034's job — this
+  // mission deliberately stops at T06), so — for now — a memorial past
+  // PAGE C but with nothing else configured gets a controlled notice
+  // rather than invented data or a Builder rendered against NULLs.
   // `resumed.memorial.language` is narrowed non-null by the earlier
   // `return`, so this notice can already speak the family's own
   // language rather than a hard-coded one.
@@ -293,6 +387,9 @@ export default async function BuilderMemorialPage({
   // The draft is passed alongside the configuration rather than grafted
   // into it: resumeBuilderSession read it once, through DraftRepository,
   // and that is the single authoritative copy (see BuilderMemorial).
+  // `content` reflects `heroReconciledContent` above rather than the
+  // raw `resumed.draft.content` — the same reconciled truth the retry
+  // above just confirmed and, if it changed, already persisted.
   //
   // `persist` is a BOUND SERVER ACTION, never a closure over `supabase`
   // or `draftRepository` above: a Client Component cannot receive a live
@@ -301,7 +398,7 @@ export default async function BuilderMemorialPage({
   // the decision this render made. See ./actions.ts.
   return (
     <BuilderShell
-      memorial={{ ...resumed.memorial, draft: resumed.draft }}
+      memorial={{ ...resumed.memorial, draft: { ...resumed.draft, content: heroReconciledContent } }}
       persist={saveDraftAction.bind(null, access.memorialId)}
     />
   );

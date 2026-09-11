@@ -1,12 +1,15 @@
 import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
+import type { Media } from "@/types/media";
 import type { HeroContent, HeroDate } from "@/types/hero";
 import {
   inspectHero,
   updateHero,
+  isHeroPhotoMediaUsable,
   setHeroBirth,
   setHeroDeath,
   setHeroDisplayName,
+  setHeroPhotoMedia,
   setHeroShortPhrase,
   type HeroValidationReason,
 } from "@/lib/memorial/hero";
@@ -68,6 +71,23 @@ import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from 
  * 025 already defined for this purpose (mission brief section 9:
  * "réutiliser le mécanisme canonique de step facultative") — never a
  * second, bespoke flag.
+ *
+ * ## Mission 033 — PAGE C (T06 photo Hero)
+ *
+ * T06 gets the same StepRecord treatment as T04/T05, for a related but
+ * stricter reason: `human-steps.ts` already declares it
+ * `required: true, skippable: false`, so its stored record only ever
+ * legally holds `"completed"`. A `mediaId` sitting in the stored Hero is
+ * NOT by itself proof the family left PAGE C — exactly T04's "a value
+ * present is not proof the page was left" problem — so `commitPageC`
+ * is the one place T06's record is ever written, at an actual Continue
+ * click, and only once the referenced media is proven `"hero"`-purpose
+ * and `"ready"` (never merely a `mediaId` string — mission brief section
+ * 2: "aucun mémorial ne peut poursuivre sans photo Hero valide").
+ * `reconcileHeroPhotoMedia` below is the section 14 compensation path:
+ * pure, and given the caller's own I/O result, so a finalize that
+ * succeeded but whose draft write then failed can never leave a `ready`
+ * media invisibly orphaned — see its own docstring.
  *
  * ## Where that record actually lives
  *
@@ -361,4 +381,137 @@ export function commitPageB(content: MemorialContent): HeroFieldWriteResult {
   const t05: StepRecord = { status: inspected.hero.shortPhrase !== null ? "completed" : "skipped" };
   const nextFlow = { ...readGuidedFlowState(content), T05: t05 };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+// ---------------------------------------------------------------------
+// PAGE C — T06 (photo Hero, Mission 033). OBLIGATOIRE, NON PASSABLE
+// (mission brief section 2): unlike T04/T05, its own `HeroContent` write
+// (`writeHeroPhotoMedia`) never rejects on an empty value the way
+// `writeDisplayName`/`writeShortPhrase` don't either, but its Guided
+// Flow *commit* additionally refuses unless the referenced media is
+// genuinely usable — see `commitPageC`.
+// ---------------------------------------------------------------------
+
+/** T06's real persisted outcome: has the family ever clicked Continue on
+ * PAGE C? Mirrors `isPageBComplete`, but T06 being `skippable: false`
+ * (human-steps.ts) means `"skipped"` is never a legitimate stored value
+ * here — only `"completed"` counts, so a corrupted/stale `"skipped"`
+ * record reads as not-yet-done rather than as a pass, exactly what
+ * `stepRuntimeStatus`'s own fail-safe already does for the engine at
+ * large (engine.ts's docstring). */
+export function isPageCComplete(content: MemorialContent): boolean {
+  return readGuidedFlowState(content).T06?.status === "completed";
+}
+
+/** PAGE C (T06) is shown once PAGE A and PAGE B are both behind the
+ * family (never before) and T06 itself has not been explicitly
+ * completed yet. */
+export function needsPageC(content: MemorialContent): boolean {
+  if (needsPageA(content)) return false;
+  if (needsPageB(content)) return false;
+  return !isPageCComplete(content);
+}
+
+/**
+ * T06 — links the Hero's photo to a media id, guarded by `inspectHero`
+ * like every other Hero write in this file. Deliberately does NOT check
+ * the media is `"ready"` — that would need I/O this pure function
+ * cannot perform, and a caller only ever calls this right after its own
+ * successful finalize/replace (mission brief section 13: "la nouvelle
+ * photo ne doit être liée au Hero qu'après finalisation réussie du
+ * média" — the caller's own finalize/replace result IS that proof, this
+ * function only records it). Writing this is intentionally NOT the same
+ * moment T06's `StepRecord` is written (see `commitPageC`) — the mission
+ * brief's own resume rule (section 18/19) needs the photo visible on
+ * resume even if the family closes the browser before ever clicking
+ * Continue, so this write must happen the instant a photo becomes ready,
+ * not deferred to the Continue click.
+ */
+export function writeHeroPhotoMedia(content: MemorialContent, mediaId: string): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  const result = setHeroPhotoMedia(inspected.hero, mediaId);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return { ok: true, content: updateHero(content, result.hero) };
+}
+
+/**
+ * PAGE C's own "Continue" — the ONLY place T06's real `StepRecord` ever
+ * gets written, and always `"completed"`: T06 is not skippable, so there
+ * is no `"skipped"` outcome for this page the way PAGE A/PAGE B have one
+ * (mission brief section 2 — "OBLIGATOIRE, NON PASSABLE"). Refuses to
+ * write anything at all unless `media` — the caller's own lookup of
+ * `hero.photo.mediaId`, exactly `isHeroComplete`'s existing contract in
+ * lib/memorial/hero.ts — proves the referenced media is really a
+ * `"hero"`-purpose, `"ready"` upload. A `mediaId` alone, or a media that
+ * is still `"pending"`, or one belonging to another purpose, is refused
+ * with reason `"photo"` — the same defensive re-check discipline
+ * `commitPageA` already applies to `displayName`, not a trust boundary
+ * the UI is expected to uphold on its own.
+ */
+export function commitPageC(content: MemorialContent, media: Media | null): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (!isHeroPhotoMediaUsable(inspected.hero, media)) return { ok: false, reason: "photo" };
+
+  const t06: StepRecord = { status: "completed" };
+  const nextFlow = { ...readGuidedFlowState(content), T06: t06 };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/**
+ * Mission 033 section 14 — the compensation path for "finalize/replace
+ * succeeded, the draft write that should have linked it (`writeHeroPhotoMedia`)
+ * then failed" (a lost connection right after the response, a browser
+ * closed mid-autosave-retry, ...). Reused every time PAGE A and PAGE B
+ * are already behind the family, whether or not PAGE C turns out to
+ * still be needed — see `resolveHeroPhotoStepData` (the one caller).
+ *
+ * Pure and I/O-free: `readyHeroMedia` must already be every `"hero"`-
+ * purpose, `"ready"` media belonging to THIS memorial, newest first —
+ * exactly what `lib/media/read-media.ts`'s `listMemorialMedia` already
+ * returns (`MediaRepository.listForMemorial` orders by `created_at
+ * desc`). The caller performs that one read; this function only decides
+ * what the Hero should do with it.
+ *
+ * If the stored Hero already references one of them, this is a no-op —
+ * the ordinary case on every single render, and it must stay cheap. If
+ * it references none of them (no photo yet, or a stale/foreign/still-
+ * pending id) and at least one ready hero media exists, the Hero adopts
+ * the MOST RECENTLY CREATED one: Mission 030's own selection doctrine
+ * (lib/media/replace-media.ts's docstring — "whoever consumes a hero
+ * takes the most recently created ready one"), reused here rather than
+ * reinvented. This is what turns an orphaned `ready` upload back into
+ * the family's visible T06 photo the very next time the page is read,
+ * with no separate cleanup job and no `ready` media ever silently
+ * forgotten forever (mission brief section 14's own requirement).
+ *
+ * Never marks T06 `"completed"` by itself — only `commitPageC`'s own
+ * explicit Continue click does that (mission brief section 18/19: a
+ * photo becoming visible again on resume is not, on its own, the
+ * family's decision to move on).
+ */
+export function reconcileHeroPhotoMedia(
+  content: MemorialContent,
+  readyHeroMedia: readonly Media[],
+): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const hero = inspected.hero;
+  const currentMediaId = hero.photo?.mediaId ?? null;
+  const alreadyLinked =
+    currentMediaId !== null && readyHeroMedia.some((media) => media.id === currentMediaId);
+
+  if (alreadyLinked || readyHeroMedia.length === 0) {
+    return { ok: true, content };
+  }
+
+  // Newest first is the caller's contract (see this function's own
+  // docstring) — the first entry IS "the most recently created ready
+  // hero media".
+  const [mostRecent] = readyHeroMedia;
+  const result = setHeroPhotoMedia(hero, mostRecent.id);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return { ok: true, content: updateHero(content, result.hero) };
 }

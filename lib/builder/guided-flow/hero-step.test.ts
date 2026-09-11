@@ -1,21 +1,50 @@
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
+import type { Media } from "@/types/media";
 import { EMPTY_HERO_CONTENT, type HeroContent } from "@/types/hero";
 import {
   commitPageA,
   commitPageB,
+  commitPageC,
   heroStepProgress,
   isPageBComplete,
+  isPageCComplete,
   needsPageA,
   needsPageB,
+  needsPageC,
+  reconcileHeroPhotoMedia,
   readGuidedFlowState,
   readHeroForEditing,
   resolveHeroFlowState,
   writeBirth,
   writeDeath,
   writeDisplayName,
+  writeHeroPhotoMedia,
   writeShortPhrase,
 } from "./hero-step";
+
+const MEDIA_ID_A = "cccccccc-cccc-4ccc-8ccc-000000000001";
+const MEDIA_ID_B = "cccccccc-cccc-4ccc-8ccc-000000000002";
+
+function heroMedia(overrides: Partial<Media> = {}): Media {
+  return {
+    id: MEDIA_ID_A,
+    memorialId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    ownerId: "11111111-1111-4111-8111-111111111111",
+    storagePath: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-8ccc-000000000001/original.jpg",
+    mediaType: "photo",
+    purpose: "hero",
+    status: "ready",
+    mimeType: "image/jpeg",
+    originalFilename: null,
+    sizeBytes: 12345,
+    width: null,
+    height: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 const EMPTY_CONTENT: MemorialContent = {};
 
@@ -480,5 +509,245 @@ describe("isPageBComplete", () => {
   it("is true once T05 is either completed or skipped", () => {
     expect(isPageBComplete({ guidedFlow: { T05: { status: "completed" } } } as MemorialContent)).toBe(true);
     expect(isPageBComplete({ guidedFlow: { T05: { status: "skipped" } } } as MemorialContent)).toBe(true);
+  });
+});
+
+describe("isPageCComplete — Mission 033, T06 is non-skippable", () => {
+  it("is false before T06 has ever been recorded", () => {
+    expect(isPageCComplete(EMPTY_CONTENT)).toBe(false);
+  });
+
+  it("is true once T06 is completed", () => {
+    expect(isPageCComplete({ guidedFlow: { T06: { status: "completed" } } } as MemorialContent)).toBe(true);
+  });
+
+  it("is NOT true for a stored 'skipped' — T06 has no skip outcome, unlike T04/T05", () => {
+    expect(isPageCComplete({ guidedFlow: { T06: { status: "skipped" } } } as MemorialContent)).toBe(false);
+  });
+});
+
+describe("needsPageC — page gate", () => {
+  it("is false while PAGE A is still ahead of the family", () => {
+    expect(needsPageC(EMPTY_CONTENT)).toBe(false);
+  });
+
+  it("is false while PAGE B is still ahead of the family", () => {
+    expect(needsPageC(pageADoneWithoutDate())).toBe(false);
+  });
+
+  it("is true once PAGE A and PAGE B are both done but T06 has never been treated", () => {
+    const committed = commitPageB(pageADoneWithoutDate());
+    expect(committed.ok).toBe(true);
+    if (committed.ok) {
+      expect(needsPageC(committed.content)).toBe(true);
+    }
+  });
+
+  it("is false once T06 has been explicitly completed", () => {
+    const afterPageB = commitPageB(pageADoneWithoutDate());
+    expect(afterPageB.ok).toBe(true);
+    if (!afterPageB.ok) return;
+    const withPhoto = writeHeroPhotoMedia(afterPageB.content, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const committed = commitPageC(withPhoto.content, heroMedia());
+    expect(committed.ok).toBe(true);
+    if (committed.ok) {
+      expect(needsPageC(committed.content)).toBe(false);
+    }
+  });
+
+  it("a photo ready+autosaved but no Continue click yet still needs PAGE C — mission brief section 18/19", () => {
+    const afterPageB = commitPageB(pageADoneWithoutDate());
+    expect(afterPageB.ok).toBe(true);
+    if (!afterPageB.ok) return;
+    const withPhoto = writeHeroPhotoMedia(afterPageB.content, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+
+    // The photo is linked (writeHeroPhotoMedia already ran), but T06's
+    // own StepRecord was never written — no commitPageC call happened,
+    // exactly the "browser closed before Continue" scenario.
+    expect(needsPageC(withPhoto.content)).toBe(true);
+  });
+});
+
+describe("writeHeroPhotoMedia — T06, links the Hero's photo without touching crop", () => {
+  it("links a mediaId with crop:null", () => {
+    const result = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(result).toEqual({
+      ok: true,
+      content: { hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId: MEDIA_ID_A, crop: null } } },
+    });
+  });
+
+  it("changing to a DIFFERENT mediaId always resets crop to null", () => {
+    const withCrop = heroContent({
+      photo: { mediaId: MEDIA_ID_A, crop: { focalX: 0.5, focalY: 0.5, zoom: 1.4 } },
+    });
+    const result = writeHeroPhotoMedia(withCrop, MEDIA_ID_B);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_B, crop: null } });
+    }
+  });
+
+  it("re-setting the SAME mediaId is a no-op that preserves any existing crop", () => {
+    const crop = { focalX: 0.5, focalY: 0.5, zoom: 1.4 };
+    const withCrop = heroContent({ photo: { mediaId: MEDIA_ID_A, crop } });
+    const result = writeHeroPhotoMedia(withCrop, MEDIA_ID_A);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop } });
+    }
+  });
+
+  it("refuses to write over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(writeHeroPhotoMedia(corrupted, MEDIA_ID_A)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("commitPageC — T06 is OBLIGATOIRE/NON PASSABLE: only a proven-usable photo commits", () => {
+  it("refuses when there is no photo reference at all", () => {
+    expect(commitPageC(EMPTY_CONTENT, null)).toEqual({ ok: false, reason: "photo" });
+  });
+
+  it("refuses when the media handed in does not match the Hero's own referenced mediaId", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    expect(commitPageC(withPhoto.content, heroMedia({ id: MEDIA_ID_B }))).toEqual({
+      ok: false,
+      reason: "photo",
+    });
+  });
+
+  it("refuses when the media is still pending — never verified, never usable", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    expect(commitPageC(withPhoto.content, heroMedia({ status: "pending" }))).toEqual({
+      ok: false,
+      reason: "photo",
+    });
+  });
+
+  it("refuses when the media's purpose is not 'hero' (e.g. a future gallery media)", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    expect(commitPageC(withPhoto.content, heroMedia({ purpose: "gallery" }))).toEqual({
+      ok: false,
+      reason: "photo",
+    });
+  });
+
+  it("records 'completed' — the only outcome T06 ever has — once the referenced media is proven ready and hero-purpose", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const result = commitPageC(withPhoto.content, heroMedia());
+    expect(result).toEqual({
+      ok: true,
+      content: { ...withPhoto.content, guidedFlow: { T06: { status: "completed" } } },
+    });
+  });
+
+  it("never writes a crop — T07 remains entirely untouched", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const result = commitPageC(withPhoto.content, heroMedia());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: null } });
+    }
+  });
+
+  it("preserves any other guidedFlow entry already stored", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const content: MemorialContent = {
+      ...withPhoto.content,
+      guidedFlow: { T04: { status: "skipped" } },
+    } as MemorialContent;
+    const result = commitPageC(content, heroMedia());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(readGuidedFlowState(result.content)).toEqual({
+        T04: { status: "skipped" },
+        T06: { status: "completed" },
+      });
+    }
+  });
+
+  it("refuses to commit over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(commitPageC(corrupted, heroMedia())).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("reconcileHeroPhotoMedia — Mission 033 section 14 compensation path", () => {
+  it("is a no-op when there is no ready hero media to reconcile against", () => {
+    const result = reconcileHeroPhotoMedia(EMPTY_CONTENT, []);
+    expect(result).toEqual({ ok: true, content: EMPTY_CONTENT });
+  });
+
+  it("is a no-op when the Hero already references one of the ready hero media", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_A);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const result = reconcileHeroPhotoMedia(withPhoto.content, [heroMedia({ id: MEDIA_ID_A })]);
+    expect(result).toEqual({ ok: true, content: withPhoto.content });
+  });
+
+  it("adopts the most recently created ready hero media when the Hero has no photo yet — the orphaned-ready-upload recovery case", () => {
+    const older = heroMedia({ id: MEDIA_ID_A, createdAt: "2026-01-01T00:00:00.000Z" });
+    const newer = heroMedia({ id: MEDIA_ID_B, createdAt: "2026-01-02T00:00:00.000Z" });
+    // Caller's contract: newest first (see the function's own docstring
+    // — exactly what listMemorialMedia already returns).
+    const result = reconcileHeroPhotoMedia(EMPTY_CONTENT, [newer, older]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_B, crop: null } });
+    }
+  });
+
+  it("adopts a ready hero media when the Hero references a stale/foreign mediaId instead", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, "cccccccc-cccc-4ccc-8ccc-0000000000ff");
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    const result = reconcileHeroPhotoMedia(withPhoto.content, [heroMedia({ id: MEDIA_ID_A })]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: null } });
+    }
+  });
+
+  it("adopts a ready hero media when the Hero's referenced media is still pending (not in the ready list)", () => {
+    const withPhoto = writeHeroPhotoMedia(EMPTY_CONTENT, MEDIA_ID_B);
+    expect(withPhoto.ok).toBe(true);
+    if (!withPhoto.ok) return;
+    // MEDIA_ID_B is still pending, so it never appears in readyHeroMedia.
+    const result = reconcileHeroPhotoMedia(withPhoto.content, [heroMedia({ id: MEDIA_ID_A })]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.content.hero).toMatchObject({ photo: { mediaId: MEDIA_ID_A, crop: null } });
+    }
+  });
+
+  it("never marks T06 completed by itself — only an explicit Continue click (commitPageC) does that", () => {
+    const result = reconcileHeroPhotoMedia(EMPTY_CONTENT, [heroMedia()]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(isPageCComplete(result.content)).toBe(false);
+    }
+  });
+
+  it("refuses to reconcile over a corrupted stored hero", () => {
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+    expect(reconcileHeroPhotoMedia(corrupted, [heroMedia()])).toEqual({ ok: false, reason: "corrupted" });
   });
 });
