@@ -191,6 +191,181 @@ describe("resolveHeroPhotoStepData", () => {
   });
 });
 
+describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed retire", () => {
+  it("adopts the newest ready hero media as canonical AND retires the other stale ready ones in the same read", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const newer = await readyHeroMedia(engine);
+
+    const content: MemorialContent = { hero: { ...EMPTY_HERO_CONTENT } } as MemorialContent;
+
+    const result = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    expect(result.initialPhoto?.media.id).toBe(newer.id);
+    // The stale, superseded media is gone — both the row and the object.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).toBeNull();
+    expect(engine.objectStore.objects.has(older.storagePath)).toBe(false);
+    // The canonical one is untouched.
+    expect(
+      await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id }),
+    ).not.toBeNull();
+  });
+
+  it("never deletes the media currently canonical in the draft, even when it is not the most recently created one", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const newer = await readyHeroMedia(engine);
+
+    // The draft already, deliberately, points at the OLDER media — a
+    // legitimate state (e.g. `newer` finished after this exact read
+    // started). Reconciliation must leave an already-linked mediaId
+    // alone rather than second-guessing it toward "most recent".
+    const content: MemorialContent = {
+      hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId: older.id, crop: null } },
+    } as MemorialContent;
+
+    const result = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    expect(result.initialPhoto?.media.id).toBe(older.id);
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+    // The one NOT referenced by the draft is the one retired.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id })).toBeNull();
+  });
+
+  it("a retire that fails leaves the stale media in place and the canonical untouched — the NEXT read retries and succeeds", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const newer = await readyHeroMedia(engine);
+
+    const content: MemorialContent = { hero: { ...EMPTY_HERO_CONTENT } } as MemorialContent;
+
+    // Simulate a transient Storage failure on the retire attempt.
+    engine.objectStore.failOn.removeByPrefix = new Error("storage unavailable");
+
+    const first = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    // The read itself still succeeds — a cleanup failure is never the
+    // caller's problem — and the canonical is already adopted+persisted.
+    expect(first.initialPhoto?.media.id).toBe(newer.id);
+    expect(first.content).not.toBe(content); // reconciliation persisted
+    // The stale media SURVIVED the failed retry.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+
+    // The next "resume" reads the now-persisted, already-linked content.
+    engine.objectStore.failOn.removeByPrefix = undefined as unknown as Error;
+    const second = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      first.content,
+    );
+
+    expect(second.initialPhoto?.media.id).toBe(newer.id);
+    // The retry succeeded this time.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).toBeNull();
+    // The canonical one was never at risk, through either read.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id })).not.toBeNull();
+  });
+
+  it("a retry that fails again does no damage — content/initialPhoto still resolve normally", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const newer = await readyHeroMedia(engine);
+    engine.objectStore.failOn.removeByPrefix = new Error("storage unavailable");
+
+    const content: MemorialContent = {
+      hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId: newer.id, crop: null } },
+    } as MemorialContent;
+
+    // Two consecutive reads, both hitting the same failure.
+    const first = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+    const second = await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      first.content,
+    );
+
+    expect(first.initialPhoto?.media.id).toBe(newer.id);
+    expect(second.initialPhoto?.media.id).toBe(newer.id);
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+  });
+
+  it("never touches a ready hero media belonging to a different memorial while retiring stale ones", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const newer = await readyHeroMedia(engine);
+    const otherMemorialMedia = await readyHeroMedia(engine, MEMORIAL_B, OWNER_B);
+
+    const content: MemorialContent = { hero: { ...EMPTY_HERO_CONTENT } } as MemorialContent;
+
+    await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      content,
+    );
+
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).toBeNull();
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id })).not.toBeNull();
+    expect(
+      await engine.mediaRepository.findById({
+        memorialId: MEMORIAL_B,
+        mediaId: otherMemorialMedia.id,
+      }),
+    ).not.toBeNull();
+  });
+
+  it("never retires anything when the Hero itself is corrupted — no canonical could be confirmed", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const older = await readyHeroMedia(engine);
+    engine.advance(1000);
+    await readyHeroMedia(engine);
+
+    const corrupted = { hero: "garbage" } as unknown as MemorialContent;
+
+    await resolveHeroPhotoStepData(
+      { mediaEngine: engine, draftRepository },
+      ownerActor(OWNER_A),
+      MEMORIAL_A,
+      corrupted,
+    );
+
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+  });
+});
+
 describe("resolveHeroPhotoStepData — MemorialVersion's own content shape", () => {
   it("takes exactly the content of a MemorialVersion, unwrapped by the caller", async () => {
     const engine = createTestEngine();
