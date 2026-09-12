@@ -171,6 +171,7 @@ export function HeroRevealStep({
           hero={read.hero}
           photo={photo}
           skinVariant={previewVariant}
+          editorialContext={editorialContext}
           language={language}
         />
       </div>

@@ -60,11 +60,34 @@ export interface HeroRuntimeMasterSpec {
   photoWindowLocalSizePx: readonly [number, number];
   /** The window's center point, in the master's own pixel space. */
   photoWindowCenterPx: readonly [number, number];
-  /** The window's own rotation — the family PHOTO itself never rotates
-   * (Mission 034's own invariant, unchanged); this is the window it
-   * must be placed and clipped into, which the Studio's art director
-   * did rotate. */
+  /** The window's own rotation, in degrees — kept for reference/
+   * documentation only. Mission 035 v3's own audit (section 2) found
+   * that applying this as a CSS `transform: rotate()` on an ancestor of
+   * the photo `<img>` visually rotates the photo's own pixels too (a
+   * child's `rotate(0deg)` does not cancel a parent's rotation — CSS
+   * transforms are not additive/cancelling across the DOM tree the way
+   * `color` inherits). The family's crop model (`focalX`/`focalY`/
+   * `zoom`) has no rotation dimension and must never visually appear
+   * to have one, so `HeroIntemporel.tsx` does NOT use this value in any
+   * `transform`. It masks the window with `photoWindowPolygonPx`
+   * instead (a `clip-path`, which shapes visible area without rotating
+   * the coordinate space of anything painted inside it) — this field
+   * stays for provenance/documentation and is what `photoWindowPolygonPx`
+   * is: that exact rectangle, rotated by this exact angle, about its
+   * own center. */
   photoWindowRotationDeg: number;
+  /**
+   * The photo window's four corners, in the master's own pixel space,
+   * exactly as the Studio's `photo_window_polygon_px` gives them — the
+   * SAME rotated rectangle `photoWindowCenterPx`/`photoWindowLocalSizePx`/
+   * `photoWindowRotationDeg` describe parametrically, but given as
+   * concrete points so the render can clip to it directly with no
+   * rotation transform anywhere (see `photoWindowRotationDeg`'s own
+   * docstring above for why that distinction matters). Order: as given
+   * by the Studio — `HeroIntemporel.tsx` only derives a bounding box and
+   * per-point percentages from it, never assumes a particular winding.
+   */
+  photoWindowPolygonPx: readonly [number, number][];
   /** `[x, y, width, height]`, each a fraction (0..1) of the master's own
    * canvas — where the family's name/dates/shortPhrase are injected.
    * Identical between Light and Dark at a given breakpoint (the
@@ -83,6 +106,12 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
       photoWindowLocalSizePx: [420.1, 525.1],
       photoWindowCenterPx: [458.9, 455.3],
       photoWindowRotationDeg: -6.674,
+      photoWindowPolygonPx: [
+        [280.9, 740.5],
+        [219.8, 218.9],
+        [637.0, 170.1],
+        [698.1, 691.6],
+      ],
       textZoneNormalized: [0.515, 0.235, 0.335, 0.56],
     },
     mobile: {
@@ -90,6 +119,12 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
       photoWindowLocalSizePx: [395.0, 493.8],
       photoWindowCenterPx: [463.7, 427.8],
       photoWindowRotationDeg: -6.34,
+      photoWindowPolygonPx: [
+        [294.7, 694.9],
+        [240.1, 204.2],
+        [632.7, 160.6],
+        [687.3, 651.3],
+      ],
       textZoneNormalized: [0.12, 0.545, 0.76, 0.38],
     },
   },
@@ -99,6 +134,12 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
       photoWindowLocalSizePx: [414.5, 518.1],
       photoWindowCenterPx: [462.8, 454.4],
       photoWindowRotationDeg: -5.492,
+      photoWindowPolygonPx: [
+        [281.3, 732.1],
+        [231.8, 216.3],
+        [644.3, 176.7],
+        [693.9, 692.4],
+      ],
       textZoneNormalized: [0.515, 0.235, 0.335, 0.56],
     },
     mobile: {
@@ -106,17 +147,38 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
       photoWindowLocalSizePx: [415.2, 519.0],
       photoWindowCenterPx: [485.3, 464.7],
       photoWindowRotationDeg: -6.52,
+      photoWindowPolygonPx: [
+        [308.5, 746.0],
+        [249.6, 230.4],
+        [662.1, 183.3],
+        [721.0, 698.9],
+      ],
       textZoneNormalized: [0.12, 0.545, 0.76, 0.38],
     },
   },
 };
 
 export const HERO_INTEMPOREL_TYPOGRAPHY = {
+  contextLabel: {
+    desktopPx: 15,
+    mobilePx: 13,
+    lineHeight: 1.2,
+    letterSpacingEm: 0.34,
+    uppercase: true,
+  },
   displayedName: {
     desktopPx: 86,
     mobilePx: 72,
     lineHeight: 0.95,
     letterSpacingEm: -0.02,
+    /** Mission 035 v3 section 3 — the name-fitting floor: never shrink
+     * past this size, in either direction, however long the name.
+     * "1 ligne si possible, 2 lignes maximum, réduction progressive de
+     * taille" — see `useFitDisplayName` in HeroIntemporel.tsx for the
+     * algorithm this bounds. */
+    minDesktopPx: 56,
+    minMobilePx: 48,
+    maxLines: 2,
   },
   dates: {
     desktopPx: 30,
@@ -140,6 +202,6 @@ export const HERO_INTEMPOREL_TYPOGRAPHY = {
  * has no token here at all (Mission 035's whole point).
  */
 export const HERO_INTEMPOREL_INK = {
-  light: { primary: "#3D3A2B", accent: "#6F7255" },
-  dark: { primary: "#F0E1CD", accent: "#707052" },
+  light: { primary: "#3D3A2B", secondary: "#6B6256", accent: "#6F7255" },
+  dark: { primary: "#F0E1CD", secondary: "#C8B8A4", accent: "#707052" },
 } as const;

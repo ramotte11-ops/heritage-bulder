@@ -22,11 +22,13 @@
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
   --hero-ink-primary: #3d3a2b;
+  --hero-ink-secondary: #6b6256;
   --hero-ink-accent: #6f7255;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
   --hero-ink-primary: #f0e1cd;
+  --hero-ink-secondary: #c8b8a4;
   --hero-ink-accent: #707052;
 }
 
@@ -68,36 +70,48 @@
   }
 }
 
-/* --- Photo window (mission section 4) --------------------------------
-   A rotated box, centered at the master's own window center, sized to
-   the window's own local (un-rotated) width/height, BEHIND the master
-   (z-index 0 < 10) so the master's genuinely-transparent cut shows it
-   through exactly where the Studio placed it. */
+/* --- Photo window (mission section 2/4) --------------------------------
+   Two axis-aligned wrappers (one per breakpoint, only one ever visible
+   — same switching mechanism as .masterDesktop/.masterMobile above),
+   each `clip-path`-masked to the Studio's own rotated polygon
+   (HeroIntemporel.tsx's `photoMask()`). NEITHER wrapper, NOR anything
+   inside it, ever carries a `transform: rotate()` — the family photo's
+   pixels stay exactly as focalX/focalY/zoom place them; only the
+   VISIBLE CUT is shaped like the Studio's rotated window. BEHIND the
+   master (z-index 0 < 10) so the master's genuinely-transparent cut
+   shows it through exactly where the Studio placed it. */
 
-.photoWindow {
+.photoWindowDesktop,
+.photoWindowMobile {
   position: absolute;
-  left: var(--win-xm);
-  top: var(--win-ym);
-  width: var(--win-wm);
-  height: var(--win-hm);
-  transform: translate(-50%, -50%) rotate(var(--win-rotm));
-  overflow: hidden;
   z-index: 0;
 }
 
+.photoWindowDesktop {
+  display: none;
+}
+
+.photoWindowMobile {
+  display: block;
+}
+
 @media (min-width: 960px) {
-  .photoWindow {
-    left: var(--win-xd);
-    top: var(--win-yd);
-    width: var(--win-wd);
-    height: var(--win-hd);
-    transform: translate(-50%, -50%) rotate(var(--win-rotd));
+  .photoWindowDesktop {
+    display: block;
   }
+
+  .photoWindowMobile {
+    display: none;
+  }
+}
+
+.photoInner {
+  position: absolute;
+  overflow: hidden;
 }
 
 .photoImage {
   position: absolute;
-  transform: rotate(0deg); /* the family photo itself never rotates */
   max-width: none;
 }
 
@@ -132,11 +146,32 @@
   }
 }
 
+.contextLabel {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--hero-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .contextLabel {
+    font-size: 15px;
+  }
+}
+
 .displayedName {
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 500;
-  font-size: clamp(2.6rem, 11vw, 72px);
+  /* This is only the SSR/no-JS fallback (the Studio's nominal max size)
+   * — `HeroIntemporel.tsx`'s `useFitDisplayName` overrides it with an
+   * inline `font-size` once the real text has been measured against the
+   * real font, per mission section 3's fitting strategy. */
+  font-size: 72px;
   line-height: 0.95;
   letter-spacing: -0.02em;
   color: var(--hero-ink-primary);
@@ -145,7 +180,7 @@
 
 @media (min-width: 960px) {
   .displayedName {
-    font-size: clamp(3.2rem, 6vw, 86px);
+    font-size: 86px;
   }
 }
 
