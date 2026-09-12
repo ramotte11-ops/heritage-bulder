@@ -1,0 +1,305 @@
+/*
+ * Mission 035 — Hero Intemporel. Colors per `data-heritage-skin-variant`
+ * (lib/memorial/skin-runtime.ts's own scope attribute), never
+ * `prefers-color-scheme`. Values transcribed from
+ * config/hero-intemporel-tokens.ts (itself transcribed from the Studio
+ * handoff) — see that file's own docstring.
+ */
+
+.hero {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--hero-bg);
+  color: var(--hero-ink-primary);
+  /* Mobile-first aspect ratio — roughly the validated mobile reference's
+     own proportions. Desktop overrides below. */
+  aspect-ratio: 0.64;
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
+  --hero-bg: #f2e9dc;
+  --hero-paper-main: #f6f0e6;
+  --hero-paper-secondary: #e4d6c1;
+  --hero-accent: #6f7255;
+  --hero-ink-primary: #3d3a2b;
+  --hero-ink-secondary: #6b6256;
+  --hero-metal: #a47b48;
+  --hero-line: #91866a;
+  --hero-shadow: rgba(56, 44, 32, 0.18);
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+  --hero-bg: #25231d;
+  --hero-paper-main: #2e2a23;
+  --hero-paper-secondary: #3a342a;
+  --hero-accent: #707052;
+  --hero-ink-primary: #f0e1cd;
+  --hero-ink-secondary: #c8b8a4;
+  --hero-metal: #b1874d;
+  --hero-line: #c09961;
+  --hero-shadow: rgba(0, 0, 0, 0.36);
+}
+
+@media (min-width: 960px) {
+  .hero {
+    aspect-ratio: 1.5;
+  }
+}
+
+.background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+/* --- Shared positioning mechanics ----------------------------------- */
+/* Mobile values by default; the 960px breakpoint (the Studio's own
+   canonical one — config/hero-intemporel-tokens.ts) switches every
+   positioned element over to its desktop counterpart in one place. */
+.collage,
+.identity,
+.photoWindow,
+.frame,
+.paperclip,
+.paperMain,
+.seal,
+.botanicalCorner {
+  position: absolute;
+  left: var(--xm);
+  top: var(--ym);
+  width: var(--wm);
+  transform: rotate(var(--rotm));
+  transform-origin: center;
+}
+
+.collage,
+.identity,
+.paperMain {
+  height: var(--hm);
+}
+
+@media (min-width: 960px) {
+  .collage,
+  .identity,
+  .photoWindow,
+  .frame,
+  .paperclip,
+  .paperMain,
+  .seal,
+  .botanicalCorner {
+    left: var(--xd);
+    top: var(--yd);
+    width: var(--wd);
+    transform: rotate(var(--rotd));
+  }
+
+  .collage,
+  .identity,
+  .paperMain {
+    height: var(--hd);
+  }
+}
+
+/* --- Collage --------------------------------------------------------- */
+
+.collage {
+  z-index: 10; /* the collage's own stack starts at paperDepth (10) */
+}
+
+.paperDepth {
+  position: absolute;
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  z-index: 10;
+}
+
+.deckled1 {
+  top: 2%;
+  left: 4%;
+  transform: rotate(-6deg);
+}
+
+.deckled2 {
+  top: 4%;
+  left: 0%;
+  transform: rotate(4deg);
+}
+
+.postcard {
+  position: absolute;
+  top: 6%;
+  left: -14%;
+  width: 46%;
+  height: auto;
+  transform: rotate(-9deg);
+  z-index: 20;
+  filter: drop-shadow(0 6px 10px var(--hero-shadow));
+}
+
+.accentPaper {
+  position: absolute;
+  top: -4%;
+  left: 30%;
+  width: 62%;
+  height: auto;
+  transform: rotate(4deg);
+  z-index: 30;
+}
+
+.photoWindow {
+  z-index: 50;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+}
+
+.photoImage {
+  position: absolute;
+  transform: rotate(0deg); /* the family photo itself never rotates */
+  max-width: none;
+}
+
+.frame {
+  height: auto;
+  z-index: 60;
+  filter: drop-shadow(0 10px 16px var(--hero-shadow));
+}
+
+.paperclip {
+  height: auto;
+  z-index: 70;
+}
+
+.botanicalMain {
+  position: absolute;
+  bottom: -8%;
+  left: -10%;
+  width: 62%;
+  height: auto;
+  z-index: 80;
+  pointer-events: none;
+}
+
+/* --- Identity block's own paper backing ------------------------------ */
+
+.paperMain {
+  z-index: 40;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 12px 30px var(--hero-shadow);
+}
+
+/* --- Identity ---------------------------------------------------------
+   A conditional vertical flow (mission brief section 11) — never a
+   rigid, absolutely-positioned pile: every child is a normal block in
+   document order, present only when its own content exists. */
+
+.identity {
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.6em;
+  padding: 1em 1.2em;
+  text-align: left;
+}
+
+.contextLabel {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--hero-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .contextLabel {
+    font-size: 15px;
+  }
+}
+
+.displayedName {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: clamp(2.6rem, 11vw, 72px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: var(--hero-ink-primary);
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 960px) {
+  .displayedName {
+    font-size: clamp(3.2rem, 6vw, 86px);
+  }
+}
+
+.dates {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--hero-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .dates {
+    font-size: 30px;
+  }
+}
+
+.shortPhrase {
+  margin: 0;
+  font-family: var(--font-heritage-hero-script, "Brush Script MT", cursive);
+  font-weight: 400;
+  font-size: clamp(34px, 6vw, 42px);
+  line-height: 1.15;
+  color: var(--hero-accent);
+  max-width: 100%;
+}
+
+.heartDivider,
+.leafDivider {
+  height: 1em;
+  width: auto;
+  opacity: 0.8;
+}
+
+/* --- Seal + corner botanical ------------------------------------------ */
+
+.seal {
+  z-index: 120;
+  height: auto;
+  filter: drop-shadow(0 4px 8px var(--hero-shadow));
+}
+
+.botanicalCorner {
+  z-index: 120;
+  height: auto;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* --- Accessibility ----------------------------------------------------
+   No motion is used anywhere in this component (mission brief section
+   21 — "Hero statique excellent"), so `prefers-reduced-motion` has
+   nothing to disable; this rule stays as a structural guarantee that a
+   future addition of a decorative animation is opt-out by construction. */
+@media (prefers-reduced-motion: reduce) {
+  .hero * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

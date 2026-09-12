@@ -12,7 +12,8 @@ import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
 import { HeroCropStep } from "@/components/builder/HeroCropStep";
-import { needsPageA, needsPageB, needsPageC, needsPageD } from "@/lib/builder/guided-flow/hero-step";
+import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
+import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -26,6 +27,7 @@ import {
   finalizeHeroPhotoUploadAction,
   retireHeroPhotoUploadAction,
 } from "./media-actions";
+import { saveSkinVariantAction } from "./hero-reveal-actions";
 import styles from "./page.module.css";
 
 /**
@@ -419,9 +421,44 @@ export default async function BuilderMemorialPage({
     }
   }
 
+  // Mission 035 — PAGE E: T08, the Hero's first real reveal. Shown only
+  // once PAGE A, PAGE B, PAGE C and PAGE D are all genuinely behind the
+  // family (never before — see `needsPageE`'s own guard) and only until
+  // T08 itself has been explicitly completed for a still-complete Hero
+  // (mission brief section 20). Reuses `resolveHeroCropStepData` as-is
+  // (the exact same "current photo + a fresh signed read URL" this
+  // screen needs to actually RENDER the Hero, not merely crop it — no
+  // second, near-identical resolver) against the already-reconciled
+  // content from the retry above.
+  if (needsPageE(heroReconciledContent)) {
+    const revealStepData = await resolveHeroCropStepData(
+      { mediaEngine: createServerMediaEngineDeps() },
+      actor,
+      access.memorialId,
+      heroReconciledContent,
+    );
+
+    // Defensive only, exactly like PAGE D's own equivalent guard above:
+    // `needsPageE` being true already implies T07 is complete, which
+    // requires a real, usable hero photo.
+    if (revealStepData !== null) {
+      return (
+        <HeroRevealStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          photo={revealStepData}
+          initialSkinVariant={resumed.memorial.skinVariant}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+          saveSkinVariant={saveSkinVariantAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+  }
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
-  // later mission has built yet, so — for now — a memorial past PAGE D
+  // later mission has built yet, so — for now — a memorial past PAGE E
   // but with nothing else configured gets a controlled notice rather
   // than invented data or a Builder rendered against NULLs.
   // `resumed.memorial.language` is narrowed non-null by the earlier

@@ -157,6 +157,11 @@ export const TRANSLATION_KEYS = [
   "hero.cropMoveRight",
   "hero.cropReset",
   "hero.cropChangePhoto",
+  // Mission 035 — PAGE E (T08, Hero reveal).
+  "hero.revealTitle",
+  "hero.revealToggleToDark",
+  "hero.revealToggleToLight",
+  "hero.revealConfirm",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

@@ -70,4 +70,8 @@ export const en: Record<TranslationKey, string> = {
   "hero.cropMoveRight": "Move photo right",
   "hero.cropReset": "Reset",
   "hero.cropChangePhoto": "Change photo",
+  "hero.revealTitle": "Your Hero",
+  "hero.revealToggleToDark": "View in dark ambiance",
+  "hero.revealToggleToLight": "View in light ambiance",
+  "hero.revealConfirm": "Continue with this ambiance",
 };

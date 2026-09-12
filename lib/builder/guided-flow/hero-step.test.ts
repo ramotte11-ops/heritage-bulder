@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import { EMPTY_HERO_CONTENT, type HeroContent } from "@/types/hero";
+import { firstIncompleteStep } from "./engine";
+import { humanFlowDefinition } from "./human-steps";
 import {
   commitPageA,
   commitPageB,
   commitPageC,
   commitPageD,
+  commitPageE,
   heroStepProgress,
   isPageBComplete,
   isPageCComplete,
   isPageDComplete,
+  isPageEComplete,
   needsPageA,
   needsPageB,
   needsPageC,
   needsPageD,
+  needsPageE,
   reconcileHeroPhotoMedia,
   readGuidedFlowState,
   readHeroForEditing,
@@ -1114,5 +1119,139 @@ describe("resolveHeroFlowState — T07 dynamically re-derived on top of whatever
     if (read.status !== "ready") return;
     const resolved = resolveHeroFlowState(changedPhoto.content, read.hero);
     expect(resolved.T07).toBeUndefined();
+  });
+});
+
+/** PAGE A through PAGE D (T03-T07) all genuinely behind the family —
+ * the normal starting point for PAGE E (T08) tests. */
+function pageDDone(name = "Jean Dupont", mediaId = MEDIA_ID_A): MemorialContent {
+  const withCrop = writeHeroCrop(pageCDone(name, mediaId), NEUTRAL_CROP);
+  if (!withCrop.ok) throw new Error("test fixture: writeHeroCrop unexpectedly failed");
+  const committed = commitPageD(withCrop.content, heroMedia({ id: mediaId }));
+  if (!committed.ok) throw new Error("test fixture: commitPageD unexpectedly failed");
+  return committed.content;
+}
+
+describe("needsPageE / isPageEComplete — T08, obligatoire, non passable (Mission 035)", () => {
+  it("is never needed before PAGE A-D are all genuinely behind the family", () => {
+    expect(needsPageE(EMPTY_CONTENT)).toBe(false);
+    expect(needsPageE(pageADoneWithoutDate())).toBe(false);
+    expect(needsPageE(pageCDone())).toBe(false);
+  });
+
+  it("is needed the instant PAGE D is genuinely behind the family and T08 untouched", () => {
+    expect(needsPageE(pageDDone())).toBe(true);
+    expect(isPageEComplete(pageDDone())).toBe(false);
+  });
+
+  it("commitPageE refuses a Hero whose photo is not a real, ready, hero-purpose media", () => {
+    const content = pageDDone();
+    expect(commitPageE(content, null).ok).toBe(false);
+    expect(commitPageE(content, heroMedia({ status: "pending" })).ok).toBe(false);
+    expect(commitPageE(content, heroMedia({ purpose: "gallery" })).ok).toBe(false);
+    expect(commitPageE(content, heroMedia({ id: MEDIA_ID_B })).ok).toBe(false);
+    // None of the refusals above ever wrote a T08 record.
+    expect(readGuidedFlowState(content).T08).toBeUndefined();
+  });
+
+  it("commitPageE completes T08 once a real, ready, matching hero media is proven", () => {
+    const content = pageDDone();
+    const committed = commitPageE(content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    expect(readGuidedFlowState(committed.content).T08).toEqual({ status: "completed" });
+    expect(isPageEComplete(committed.content)).toBe(true);
+    expect(needsPageE(committed.content)).toBe(false);
+  });
+
+  it("never marks T08 completed on a corrupted stored Hero", () => {
+    const corrupted = { hero: "not-an-object" } as unknown as MemorialContent;
+    expect(commitPageE(corrupted, heroMedia()).ok).toBe(false);
+  });
+
+  it("section 20 — a Hero that stops being structurally complete un-does a stored T08 completion", () => {
+    const content = pageDDone();
+    const committed = commitPageE(content, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    expect(isPageEComplete(committed.content)).toBe(true);
+
+    // The family goes back and changes the photo — the same structural
+    // fact that already un-does T07 (crop nulled) also un-does T08: the
+    // Hero is no longer complete for the CURRENT photo, and the family
+    // must be routed back, never allowed to sit on a fabricated T08.
+    const changedPhoto = writeHeroPhotoMedia(committed.content, MEDIA_ID_B);
+    expect(changedPhoto.ok).toBe(true);
+    if (!changedPhoto.ok) return;
+    expect(isPageEComplete(changedPhoto.content)).toBe(false);
+    expect(needsPageE(changedPhoto.content)).toBe(false); // T07 (crop) is now the first thing to revisit again.
+    expect(needsPageD(changedPhoto.content)).toBe(true);
+  });
+});
+
+describe("resolveHeroFlowState — T08 dynamically re-derived on top of whatever is stored (Mission 035)", () => {
+  it("includes T08 as completed once isPageEComplete is true", () => {
+    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    expect(resolveHeroFlowState(committed.content, read.hero).T08).toEqual({ status: "completed" });
+  });
+
+  it("drops a stale stored T08 'completed' once the Hero is no longer structurally complete", () => {
+    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+    const changedPhoto = writeHeroPhotoMedia(committed.content, MEDIA_ID_B);
+    expect(changedPhoto.ok).toBe(true);
+    if (!changedPhoto.ok) return;
+
+    const read = readHeroForEditing(changedPhoto.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    expect(resolveHeroFlowState(changedPhoto.content, read.hero).T08).toBeUndefined();
+  });
+});
+
+describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission 035 section 19)", () => {
+  it("resolves the engine's next incomplete step to A01 once T08 is completed, for announcement", () => {
+    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const state = resolveHeroFlowState(committed.content, read.hero);
+
+    const next = firstIncompleteStep(humanFlowDefinition("announcement"), state);
+    expect(next?.id).toBe("A01");
+  });
+
+  it("resolves the engine's next incomplete step to M01 once T08 is completed, for remembrance", () => {
+    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const state = resolveHeroFlowState(committed.content, read.hero);
+
+    const next = firstIncompleteStep(humanFlowDefinition("remembrance"), state);
+    expect(next?.id).toBe("M01");
+  });
+
+  it("never resolves past T08 while it is still incomplete", () => {
+    const read = readHeroForEditing(pageDDone());
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const state = resolveHeroFlowState(pageDDone(), read.hero);
+
+    expect(firstIncompleteStep(humanFlowDefinition("announcement"), state)?.id).toBe("T08");
+    expect(firstIncompleteStep(humanFlowDefinition("remembrance"), state)?.id).toBe("T08");
   });
 });

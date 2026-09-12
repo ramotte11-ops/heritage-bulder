@@ -5,6 +5,8 @@ import type { HeroContent, HeroCrop, HeroDate } from "@/types/hero";
 import {
   inspectHero,
   updateHero,
+  isHeroComplete,
+  isHeroContentComplete,
   isHeroPhotoMediaUsable,
   setHeroBirth,
   setHeroCrop,
@@ -253,6 +255,12 @@ export function resolveHeroFlowState(content: MemorialContent, hero: HeroContent
     result.T07 = { status: "completed" };
   } else {
     delete result.T07;
+  }
+
+  if (isPageEComplete(content)) {
+    result.T08 = { status: "completed" };
+  } else {
+    delete result.T08;
   }
 
   return result;
@@ -662,5 +670,91 @@ export function reopenPageC(content: MemorialContent): HeroFieldWriteResult {
 
   const nextFlow = { ...readGuidedFlowState(content) };
   delete nextFlow.T06;
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+// ---------------------------------------------------------------------
+// PAGE E — T08 (Hero reveal + Light/Dark confirmation, Mission 035).
+// OBLIGATOIRE, NON PASSABLE (human-steps.ts), exactly like T06/T07 — but
+// unlike either, its own "Continue" (the family's "Continuer avec cette
+// ambiance") does not by itself finish writing everything T08 needs: the
+// chosen `skin_variant` lives on `memorials`, a column this pure,
+// I/O-free module never touches (see this file's own top docstring on
+// where `draft.content` stops and a real Supabase write starts). The
+// ORDER that makes T08's own completion durable — persist skin_variant
+// FIRST, wait for that to actually succeed, only THEN write T08's own
+// `StepRecord` — is therefore composed one level up, in
+// app/builder/[memorialId]/actions.ts's `confirmHeroRevealAction`, which
+// calls `MemorialConfigRepository.saveSkinVariant` and then this
+// module's own `commitPageE`, never the reverse (QG decision, Mission
+// 035 section 6: "si skin_variant échoue, T08 reste incomplete; si
+// skin_variant réussit mais T08 completed échoue, T08 reste incomplete,
+// reprise idempotente" — both halves fall out for free from that
+// ordering plus `commitPageE` never marking anything until it is
+// actually called).
+//
+// The family's LOCAL Light/Dark preview toggle (mission brief section
+// 16) is not modeled here at all — it touches neither `content` nor
+// `memorials.skin_variant`, and never should: it is `HeroRevealStep`'s
+// own transient React state, gone on refresh, exactly per that section's
+// "état local uniquement, ne persiste rien" rule.
+// ---------------------------------------------------------------------
+
+/**
+ * T08's real persisted outcome: has the family ever clicked "Continuer
+ * avec cette ambiance" on PAGE E, for a Hero that is STILL genuinely
+ * complete? Mirrors `isPageDComplete`'s own re-check discipline
+ * (mission brief section 20 — "ne jamais rendre T08 validable si le
+ * Hero n'est plus réellement complet"), using `isHeroContentComplete`'s
+ * structural half (displayName + a photo reference + a non-null crop
+ * for it) rather than the fuller `isHeroComplete`: exactly like
+ * `isPageDComplete`, this is a synchronous, I/O-free re-check, so it can
+ * only ever re-verify facts already sitting in `content` — never
+ * whether the referenced media is STILL `"ready"` (that would need a
+ * fresh read). `commitPageE` below closes that gap at the one moment it
+ * actually matters — the family's own Continue click — by requiring the
+ * caller's freshly-looked-up `Media` there, the same discipline
+ * `commitPageC`/`commitPageD` already apply.
+ */
+export function isPageEComplete(content: MemorialContent): boolean {
+  if (readGuidedFlowState(content).T08?.status !== "completed") return false;
+  const read = readHeroForEditing(content);
+  if (read.status !== "ready") return false;
+  return isHeroContentComplete(read.hero);
+}
+
+/** PAGE E (T08) is shown once PAGE A, PAGE B, PAGE C and PAGE D are all
+ * behind the family (never before) and T08 itself has not been
+ * explicitly completed for a still-complete Hero yet. */
+export function needsPageE(content: MemorialContent): boolean {
+  if (needsPageA(content)) return false;
+  if (needsPageB(content)) return false;
+  if (needsPageC(content)) return false;
+  if (needsPageD(content)) return false;
+  return !isPageEComplete(content);
+}
+
+/**
+ * PAGE E's own content-side half of "Continuer avec cette ambiance" —
+ * the ONLY place T08's real `StepRecord` ever gets written, and always
+ * `"completed"`: T08 is not skippable (human-steps.ts). Refuses unless
+ * `media` proves the Hero's referenced photo is genuinely usable RIGHT
+ * NOW (`isHeroComplete` — the same `"hero"`-purpose, `"ready"` re-check
+ * `commitPageC`/`commitPageD` already apply), so a photo that somehow
+ * stopped being ready between PAGE D and this click can never let T08
+ * complete over a broken Hero.
+ *
+ * Deliberately knows nothing about `skin_variant` — see this section's
+ * own docstring for why that half lives one level up, in the Server
+ * Action that calls this ONLY after that other write has already
+ * succeeded.
+ */
+export function commitPageE(content: MemorialContent, media: Media | null): HeroFieldWriteResult {
+  const inspected = inspectHero(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (!isHeroComplete(inspected.hero, media)) return { ok: false, reason: "photo" };
+
+  const t08: StepRecord = { status: "completed" };
+  const nextFlow = { ...readGuidedFlowState(content), T08: t08 };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }

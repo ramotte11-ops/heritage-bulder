@@ -1,0 +1,72 @@
+/*
+ * Mission 035 — PAGE E (T08, Hero reveal). Chrome lives in
+ * BuilderScreen.module.css and always stays the light Studio look
+ * (mission brief section 15) — only `.stage` below ever renders under a
+ * `data-heritage-skin-variant="dark"` scope, via HeroIntemporel's own
+ * `SkinScope`.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+/* The real Hero, full width, contained but never cropped/scaled down to
+ * a "miniature" (mission brief section 15). */
+.stage {
+  width: 100%;
+  border-radius: var(--heritage-radius-control);
+  overflow: hidden;
+  box-shadow: 0 1px 0 var(--heritage-border-soft);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-breathing);
+}
+
+.toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.toggle:disabled {
+  color: var(--heritage-state-disabled-text);
+  cursor: not-allowed;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--heritage-state-error-text);
+  font-size: 0.875rem;
+  text-align: center;
+}

@@ -1,6 +1,7 @@
 import type { StoredMemorialConfig } from "@/types/memorial";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
+import type { SkinVariant } from "@/config/skins";
 
 /**
  * Mission 021B (audit correction) — the narrowest possible contract for
@@ -93,4 +94,28 @@ export interface MemorialConfigRepository {
    * second representation of "announcement vs remembrance".
    */
   saveEditorialContext(memorialId: string, editorialContext: EditorialContext): Promise<void>;
+
+  /**
+   * Mission 035 (QG-authorized section 18 audit) — persists the
+   * family's Light/Dark ambiance choice for T08 ("Continuer avec cette
+   * ambiance"). Same contract as `saveLanguage`/`saveEditorialContext`
+   * in every respect — whole-value, last-write-wins, never a false
+   * success on zero affected rows — over `skin_variant` instead.
+   *
+   * Unlike `language`/`editorial_context`, `skin_variant` is never NULL
+   * (Mission 029B: set once, unconditionally, at redemption) — this is
+   * the first write path that ever CHANGES it after that. The mission
+   * brief is explicit that this stays true even after publication
+   * (section 7 — "Light/Dark reste réversible après publication"): this
+   * port places no status check of its own here, and none should ever
+   * be added just because a memorial happens to be published — that
+   * would need a deliberate, separate decision, never a side effect of
+   * this method's own contract.
+   *
+   * Requires the `authenticated` role to hold `UPDATE (skin_variant)` on
+   * `memorials` — the column-level grant
+   * `supabase/migrations/20260910100000_builder_skin_variant_access.sql`
+   * prepared, not yet applied to any real project (see that file).
+   */
+  saveSkinVariant(memorialId: string, skinVariant: SkinVariant): Promise<void>;
 }
