@@ -1,49 +1,115 @@
 /**
- * Mission 035 — the Hero Intemporel design tokens, transcribed verbatim
- * from the Studio handoff package's own source of truth
- * (`HANDOFF/hero-master-tokens.json`,
- * `HERITAGE_HERO_MISSION_035_INPUT_FINAL_QG.zip`, QG-validated). Every
- * number below is copied, not invented or re-measured from a screenshot
- * — "Claude assemble, Claude ne redessine pas" (the package's own
- * README_QG_FINAL.txt).
+ * Mission 035 (QG strategy change, section "NOUVELLE RÈGLE ABSOLUE") —
+ * the Hero Intemporel RUNTIME MASTER tokens.
  *
- * This is `scope: "intemporel"` only (mission section 5) — a future
- * skin (musulman/juif/hindou/pet) gets its own token file the day it is
- * actually built, never a branch added to this one.
+ * This file replaced an earlier version of itself that held the
+ * asset-by-asset composition tokens (individual papers/botanicals/
+ * postcard/seal/frame coordinates, a 14-level z-index table). The QG
+ * and PO refused that reconstruction strategy: the Studio now delivers
+ * ~95% of the artistic render as one near-complete PNG per
+ * (skin_variant × breakpoint) — a "runtime master" — and the code's
+ * only remaining job is to inject the three dynamic pieces of family
+ * content (photo, name+dates, shortPhrase) into the exact zones the
+ * Studio specifies. See `README_QG.txt` and `runtime-master-specs.json`
+ * in `HERITAGE_HERO_RUNTIME_MASTERS_V1.zip` (QG-validated) — every
+ * number below is transcribed verbatim from that specs file, never
+ * re-measured from a screenshot.
  *
- * Every `xPct`/`yPct`/`widthPct`/`heightPct` is a percentage of the
- * Hero's OWN container box (never the viewport, never a sub-box like
- * `collage` or `identity`) — the JSON's flat percentages are internally
- * consistent only under that one reading (e.g. `photo.desktop.xPct`
- * (16.0) sits inside `layout.desktop.collage.xPct` (2.0) plus some
- * margin, which only holds if both share the same coordinate space).
- * `HeroIntemporel.tsx` is the one place these are turned into CSS.
+ * `components/memorial/hero/HeroIntemporel.tsx` is the one place these
+ * are turned into CSS/positioning — see that file's own docstring for
+ * the "master + photo + text, nothing else" doctrine this data serves.
  */
+
+import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
-export const HERO_INTEMPOREL_PHOTO = {
-  desktop: { xPct: 16.0, yPct: 18.4, widthPct: 28.5 },
-  mobile: { xPct: 27.0, yPct: 10.8, widthPct: 46.0 },
-} as const;
-
-export const HERO_INTEMPOREL_FRAME = {
-  desktop: { xPct: 13.6, yPct: 14.2, widthPct: 32.2, rotationDeg: -3.2 },
-  mobile: { xPct: 22.0, yPct: 8.2, widthPct: 56.0, rotationDeg: -2.8 },
-} as const;
-
-export const HERO_INTEMPOREL_LAYOUT = {
-  desktop: {
-    collage: { xPct: 2.0, yPct: 10.5, widthPct: 47.0, heightPct: 77.0 },
-    identity: { xPct: 51.5, yPct: 23.5, widthPct: 33.5, heightPct: 56.0 },
-    seal: { centerXPct: 90.5, centerYPct: 66.0, widthPct: 8.3 },
+/** Where the 4 runtime masters actually live — copied verbatim (same
+ * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
+ * `public/`, nothing else under the old per-asset directories remains
+ * referenced. */
+export const HERO_INTEMPOREL_RUNTIME_MASTER_SRC: Record<SkinVariant, { desktop: string; mobile: string }> = {
+  light: {
+    desktop: "/assets/hero/intemporel/runtime/hero-runtime-light-desktop.png",
+    mobile: "/assets/hero/intemporel/runtime/hero-runtime-light-mobile.png",
   },
-  mobile: {
-    collage: { xPct: 6.0, yPct: 6.5, widthPct: 82.0, heightPct: 46.0 },
-    identity: { xPct: 12.0, yPct: 54.5, widthPct: 76.0, heightPct: 38.0 },
-    seal: { centerXPct: 83.5, centerYPct: 87.5, widthPct: 14.5 },
+  dark: {
+    desktop: "/assets/hero/intemporel/runtime/hero-runtime-dark-desktop.png",
+    mobile: "/assets/hero/intemporel/runtime/hero-runtime-dark-mobile.png",
   },
-} as const;
+};
+
+/**
+ * One master's own geometry, exactly as `runtime-master-specs.json`
+ * describes it — pixel space is that master's own canvas
+ * (`dimensions_px`), never a shared/normalized space across masters
+ * (light and dark do NOT share identical photo-window geometry, even
+ * at the same breakpoint — the manifest gives each of the 4 masters its
+ * own center/size/rotation).
+ */
+export interface HeroRuntimeMasterSpec {
+  /** The master's own canvas size, in pixels — every other field below
+   * is a pixel coordinate in this exact space, converted to a percentage
+   * of it by `HeroIntemporel.tsx` (so it scales with the rendered
+   * master regardless of viewport width). */
+  dimensionsPx: readonly [number, number];
+  /** The transparent photo window's un-rotated local size, in pixels —
+   * ratio is always 4:5 portrait (`photo_window_ratio: 0.8`), per the
+   * package's own `photo_rule`: "Ratio applies to inner visible photo
+   * opening, not support/canvas." */
+  photoWindowLocalSizePx: readonly [number, number];
+  /** The window's center point, in the master's own pixel space. */
+  photoWindowCenterPx: readonly [number, number];
+  /** The window's own rotation — the family PHOTO itself never rotates
+   * (Mission 034's own invariant, unchanged); this is the window it
+   * must be placed and clipped into, which the Studio's art director
+   * did rotate. */
+  photoWindowRotationDeg: number;
+  /** `[x, y, width, height]`, each a fraction (0..1) of the master's own
+   * canvas — where the family's name/dates/shortPhrase are injected.
+   * Identical between Light and Dark at a given breakpoint (the
+   * manifest's own `text_zone_px` confirms this), so this mission keys
+   * it by breakpoint only, not by variant. */
+  textZoneNormalized: readonly [number, number, number, number];
+}
+
+export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
+  SkinVariant,
+  { desktop: HeroRuntimeMasterSpec; mobile: HeroRuntimeMasterSpec }
+> = {
+  light: {
+    desktop: {
+      dimensionsPx: [1536, 1024],
+      photoWindowLocalSizePx: [420.1, 525.1],
+      photoWindowCenterPx: [458.9, 455.3],
+      photoWindowRotationDeg: -6.674,
+      textZoneNormalized: [0.515, 0.235, 0.335, 0.56],
+    },
+    mobile: {
+      dimensionsPx: [887, 1774],
+      photoWindowLocalSizePx: [395.0, 493.8],
+      photoWindowCenterPx: [463.7, 427.8],
+      photoWindowRotationDeg: -6.34,
+      textZoneNormalized: [0.12, 0.545, 0.76, 0.38],
+    },
+  },
+  dark: {
+    desktop: {
+      dimensionsPx: [1536, 1024],
+      photoWindowLocalSizePx: [414.5, 518.1],
+      photoWindowCenterPx: [462.8, 454.4],
+      photoWindowRotationDeg: -5.492,
+      textZoneNormalized: [0.515, 0.235, 0.335, 0.56],
+    },
+    mobile: {
+      dimensionsPx: [887, 1774],
+      photoWindowLocalSizePx: [415.2, 519.0],
+      photoWindowCenterPx: [485.3, 464.7],
+      photoWindowRotationDeg: -6.52,
+      textZoneNormalized: [0.12, 0.545, 0.76, 0.38],
+    },
+  },
+};
 
 export const HERO_INTEMPOREL_TYPOGRAPHY = {
   displayedName: {
@@ -51,13 +117,6 @@ export const HERO_INTEMPOREL_TYPOGRAPHY = {
     mobilePx: 72,
     lineHeight: 0.95,
     letterSpacingEm: -0.02,
-  },
-  contextLabel: {
-    desktopPx: 15,
-    mobilePx: 13,
-    lineHeight: 1.2,
-    letterSpacingEm: 0.34,
-    uppercase: true,
   },
   dates: {
     desktopPx: 30,
@@ -74,49 +133,13 @@ export const HERO_INTEMPOREL_TYPOGRAPHY = {
   },
 } as const;
 
-export const HERO_INTEMPOREL_COLORS = {
-  light: {
-    bg: "#F2E9DC",
-    paperMain: "#F6F0E6",
-    paperSecondary: "#E4D6C1",
-    accent: "#6F7255",
-    inkPrimary: "#3D3A2B",
-    inkSecondary: "#6B6256",
-    metal: "#A47B48",
-    line: "#91866A",
-    shadow: "rgba(56,44,32,0.18)",
-  },
-  dark: {
-    bg: "#25231D",
-    paperMain: "#2E2A23",
-    paperSecondary: "#3A342A",
-    accent: "#707052",
-    inkPrimary: "#F0E1CD",
-    inkSecondary: "#C8B8A4",
-    metal: "#B1874D",
-    line: "#C09961",
-    shadow: "rgba(0,0,0,0.36)",
-  },
-} as const;
-
 /**
- * Mission 035 section 14 — the exact z-index doctrine the mission brief
- * itself hands down (and the handoff JSON's own `zIndex` block mirrors
- * verbatim): never reordered to "fix" a composition problem.
+ * Text-only ink colors, still needed because the master's own paper
+ * tone differs Light/Dark — everything else (papers, botanicals,
+ * seal, frame, textures, shadows) is now baked into the master and
+ * has no token here at all (Mission 035's whole point).
  */
-export const HERO_INTEMPOREL_Z = {
-  background: 0,
-  paperDepth: 10,
-  postcard: 20,
-  accentPaper: 30,
-  intermediatePaper: 40,
-  familyPhoto: 50,
-  photoFrame: 60,
-  paperclip: 70,
-  botanical: 80,
-  decorativeNotes: 90,
-  identity: 100,
-  ornaments: 110,
-  seal: 120,
-  ui: 200,
+export const HERO_INTEMPOREL_INK = {
+  light: { primary: "#3D3A2B", accent: "#6F7255" },
+  dark: { primary: "#F0E1CD", accent: "#707052" },
 } as const;

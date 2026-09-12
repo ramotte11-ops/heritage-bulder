@@ -1,9 +1,14 @@
 /*
- * Mission 035 — Hero Intemporel. Colors per `data-heritage-skin-variant`
- * (lib/memorial/skin-runtime.ts's own scope attribute), never
- * `prefers-color-scheme`. Values transcribed from
- * config/hero-intemporel-tokens.ts (itself transcribed from the Studio
- * handoff) — see that file's own docstring.
+ * Mission 035 (QG strategy change) — Hero Intemporel, runtime-master
+ * strategy. Replaces the earlier asset-by-asset stylesheet entirely:
+ * no paper/botanical/postcard/seal/paperclip/texture/shadow rules exist
+ * here any more — see HeroIntemporel.tsx's own docstring.
+ *
+ * Ink colors are the one thing still tokenized per
+ * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own
+ * scope attribute — never `prefers-color-scheme`): the master's own
+ * paper tone differs Light/Dark, so the injected text needs its own
+ * matching ink.
  */
 
 .hero {
@@ -11,151 +16,83 @@
   width: 100%;
   overflow: hidden;
   isolation: isolate;
-  background: var(--hero-bg);
-  color: var(--hero-ink-primary);
-  /* Mobile-first aspect ratio — roughly the validated mobile reference's
-     own proportions. Desktop overrides below. */
-  aspect-ratio: 0.64;
+  /* Mobile-first: the mobile master's own intrinsic ratio (887×1774). */
+  aspect-ratio: 887 / 1774;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
-  --hero-bg: #f2e9dc;
-  --hero-paper-main: #f6f0e6;
-  --hero-paper-secondary: #e4d6c1;
-  --hero-accent: #6f7255;
   --hero-ink-primary: #3d3a2b;
-  --hero-ink-secondary: #6b6256;
-  --hero-metal: #a47b48;
-  --hero-line: #91866a;
-  --hero-shadow: rgba(56, 44, 32, 0.18);
+  --hero-ink-accent: #6f7255;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
-  --hero-bg: #25231d;
-  --hero-paper-main: #2e2a23;
-  --hero-paper-secondary: #3a342a;
-  --hero-accent: #707052;
   --hero-ink-primary: #f0e1cd;
-  --hero-ink-secondary: #c8b8a4;
-  --hero-metal: #b1874d;
-  --hero-line: #c09961;
-  --hero-shadow: rgba(0, 0, 0, 0.36);
+  --hero-ink-accent: #707052;
 }
 
 @media (min-width: 960px) {
   .hero {
-    aspect-ratio: 1.5;
+    /* The desktop master's own intrinsic ratio (1536×1024). */
+    aspect-ratio: 1536 / 1024;
   }
 }
 
-.background {
+/* --- The Studio's own runtime masters — the entire composition ------- */
+
+.masterDesktop,
+.masterMobile {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: 0;
+  z-index: 10;
+  pointer-events: none;
 }
 
-/* --- Shared positioning mechanics ----------------------------------- */
-/* Mobile values by default; the 960px breakpoint (the Studio's own
-   canonical one — config/hero-intemporel-tokens.ts) switches every
-   positioned element over to its desktop counterpart in one place. */
-.collage,
-.identity,
-.photoWindow,
-.frame,
-.paperclip,
-.paperMain,
-.seal,
-.botanicalCorner {
-  position: absolute;
-  left: var(--xm);
-  top: var(--ym);
-  width: var(--wm);
-  transform: rotate(var(--rotm));
-  transform-origin: center;
+.masterDesktop {
+  display: none;
 }
 
-.collage,
-.identity,
-.paperMain {
-  height: var(--hm);
+.masterMobile {
+  display: block;
 }
 
 @media (min-width: 960px) {
-  .collage,
-  .identity,
-  .photoWindow,
-  .frame,
-  .paperclip,
-  .paperMain,
-  .seal,
-  .botanicalCorner {
-    left: var(--xd);
-    top: var(--yd);
-    width: var(--wd);
-    transform: rotate(var(--rotd));
+  .masterDesktop {
+    display: block;
   }
 
-  .collage,
-  .identity,
-  .paperMain {
-    height: var(--hd);
+  .masterMobile {
+    display: none;
   }
 }
 
-/* --- Collage --------------------------------------------------------- */
-
-.collage {
-  z-index: 10; /* the collage's own stack starts at paperDepth (10) */
-}
-
-.paperDepth {
-  position: absolute;
-  width: 92%;
-  height: 92%;
-  object-fit: contain;
-  z-index: 10;
-}
-
-.deckled1 {
-  top: 2%;
-  left: 4%;
-  transform: rotate(-6deg);
-}
-
-.deckled2 {
-  top: 4%;
-  left: 0%;
-  transform: rotate(4deg);
-}
-
-.postcard {
-  position: absolute;
-  top: 6%;
-  left: -14%;
-  width: 46%;
-  height: auto;
-  transform: rotate(-9deg);
-  z-index: 20;
-  filter: drop-shadow(0 6px 10px var(--hero-shadow));
-}
-
-.accentPaper {
-  position: absolute;
-  top: -4%;
-  left: 30%;
-  width: 62%;
-  height: auto;
-  transform: rotate(4deg);
-  z-index: 30;
-}
+/* --- Photo window (mission section 4) --------------------------------
+   A rotated box, centered at the master's own window center, sized to
+   the window's own local (un-rotated) width/height, BEHIND the master
+   (z-index 0 < 10) so the master's genuinely-transparent cut shows it
+   through exactly where the Studio placed it. */
 
 .photoWindow {
-  z-index: 50;
-  aspect-ratio: 4 / 5;
+  position: absolute;
+  left: var(--win-xm);
+  top: var(--win-ym);
+  width: var(--win-wm);
+  height: var(--win-hm);
+  transform: translate(-50%, -50%) rotate(var(--win-rotm));
   overflow: hidden;
+  z-index: 0;
+}
+
+@media (min-width: 960px) {
+  .photoWindow {
+    left: var(--win-xd);
+    top: var(--win-yd);
+    width: var(--win-wd);
+    height: var(--win-hd);
+    transform: translate(-50%, -50%) rotate(var(--win-rotd));
+  }
 }
 
 .photoImage {
@@ -164,66 +101,34 @@
   max-width: none;
 }
 
-.frame {
-  height: auto;
-  z-index: 60;
-  filter: drop-shadow(0 10px 16px var(--hero-shadow));
-}
+/* --- Text zone (mission section 5) ------------------------------------
+   A plain conditional vertical flow inside the master's own text box —
+   never a rigid, absolutely-positioned pile. On top of the master
+   (z-index 20). */
 
-.paperclip {
-  height: auto;
-  z-index: 70;
-}
-
-.botanicalMain {
+.textZone {
   position: absolute;
-  bottom: -8%;
-  left: -10%;
-  width: 62%;
-  height: auto;
-  z-index: 80;
-  pointer-events: none;
-}
-
-/* --- Identity block's own paper backing ------------------------------ */
-
-.paperMain {
-  z-index: 40;
-  object-fit: cover;
-  border-radius: 2px;
-  box-shadow: 0 12px 30px var(--hero-shadow);
-}
-
-/* --- Identity ---------------------------------------------------------
-   A conditional vertical flow (mission brief section 11) — never a
-   rigid, absolutely-positioned pile: every child is a normal block in
-   document order, present only when its own content exists. */
-
-.identity {
-  z-index: 100;
+  left: var(--tz-xm);
+  top: var(--tz-ym);
+  width: var(--tz-wm);
+  height: var(--tz-hm);
+  z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 0.6em;
-  padding: 1em 1.2em;
+  gap: 0.5em;
+  padding: 0 1.2em;
   text-align: left;
-}
-
-.contextLabel {
-  margin: 0;
-  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
-  font-weight: 500;
-  font-size: 13px;
-  line-height: 1.2;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: var(--hero-ink-secondary);
+  overflow: hidden;
 }
 
 @media (min-width: 960px) {
-  .contextLabel {
-    font-size: 15px;
+  .textZone {
+    left: var(--tz-xd);
+    top: var(--tz-yd);
+    width: var(--tz-wd);
+    height: var(--tz-hd);
   }
 }
 
@@ -266,33 +171,11 @@
   font-weight: 400;
   font-size: clamp(34px, 6vw, 42px);
   line-height: 1.15;
-  color: var(--hero-accent);
+  color: var(--hero-ink-accent);
   max-width: 100%;
 }
 
-.heartDivider,
-.leafDivider {
-  height: 1em;
-  width: auto;
-  opacity: 0.8;
-}
-
-/* --- Seal + corner botanical ------------------------------------------ */
-
-.seal {
-  z-index: 120;
-  height: auto;
-  filter: drop-shadow(0 4px 8px var(--hero-shadow));
-}
-
-.botanicalCorner {
-  z-index: 120;
-  height: auto;
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-/* --- Accessibility ----------------------------------------------------
+/* --- Accessibility -----------------------------------------------------
    No motion is used anywhere in this component (mission brief section
    21 — "Hero statique excellent"), so `prefers-reduced-motion` has
    nothing to disable; this rule stays as a structural guarantee that a
