@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
@@ -25,98 +25,95 @@ import { cormorantGaramond, laBelleAurore } from "@/components/builder/fonts";
 import styles from "./HeroIntemporel.module.css";
 
 /**
- * Mission 035 v3 (QG micro-audit before visual validation) — the real
- * Hero Intemporel renderer, on the Studio's "runtime master" strategy
- * (README_QG.txt, HERITAGE_HERO_RUNTIME_MASTERS_V1.zip): one near-
- * complete PNG per (skin_variant × breakpoint); the code injects only
- * the family's photo and text into the zones the Studio specifies.
+ * Mission 035 v4 (Studio V3 FINAL runtime masters) — the real Hero
+ * Intemporel renderer.
  *
- * v3 corrects three things the QG's micro-audit found in v2, none of
- * them a change of strategy:
+ * ## What changed from v3 (the QG micro-audit pass) to v4 (this pass)
  *
- *   1. The context label ("Mémoire & Hommage" / "Annonce & Hommage")
- *      is back — it was wrongly dropped in v2 on an overly literal
- *      reading of "le code injecte uniquement photo/nom/dates/phrase".
- *      It is not a new family field: it is HERITAGE system copy already
- *      approved at Mission 024 (`context.announcementTitle`/
- *      `context.remembranceTitle`, `lib/i18n/dictionaries/*.ts`),
- *      derived purely from `editorialContext`, in all three languages.
- *   2. The photo window's rotation is no longer a `transform: rotate()`
- *      applied to an ancestor of the photo `<img>` — see "Photo
- *      placement" below for why that was a real defect, not just an
- *      unclear comment, and what replaced it.
- *   3. `displayedName` now actually FITS its zone: a real client-side
- *      fitting algorithm (`useFitDisplayName` below), not a CSS
- *      `clamp()` that quietly lets an outlier name overflow four or
- *      five lines.
+ * The Studio's new masters (`HERITAGE_HERO_RUNTIME_MASTERS_V3_FINAL.zip`)
+ * carry NO raster text and NO raster UI at all
+ * (`contains_raster_text_or_ui: false` on every one), and — the
+ * significant simplification — every photo window is now a plain,
+ * AXIS-ALIGNED rectangle (`config/hero-intemporel-tokens.ts`'s
+ * `photoWindowPx`; no rotation field exists anywhere in the new
+ * manifest). v3's entire `photoMask()`/`clip-path`/bounding-box
+ * machinery existed ONLY to fit a family photo into a ROTATED window
+ * without rotating the photo's own pixels — with no rotation left to
+ * counteract, that whole mechanism is gone. A window that was never
+ * rotated cannot suffer v2's original defect (a parent's
+ * `transform: rotate()` visually rotating the photo inside it) by
+ * construction, not by a masking trick — this file now contains no
+ * `transform` of any kind on the photo or its ancestors, which is
+ * strictly stronger than v3's proof that none of the transforms it did
+ * use carried a rotation.
  *
- * ## Photo placement — the v2 defect and the v3 fix (mission section 2)
+ * The doctrine otherwise carries forward unchanged: this component
+ * renders exactly the Studio's own master PNG (one per skin_variant ×
+ * breakpoint), the family photo (positioned into the master's own
+ * transparent photo window), and the family's text (context label,
+ * name, dates, shortPhrase — positioned into the master's own text
+ * zone). No paper, botanical, postcard, seal, paperclip, frame, texture
+ * or shadow is drawn by this component — all of it is pixels inside the
+ * master.
  *
- * v2 positioned a box at the window's center and applied
- * `transform: rotate(photoWindowRotationDeg)` to it, with the photo
- * `<img>` inside carrying its own `transform: rotate(0deg)` — on the
- * theory that an explicit `0deg` on the child kept the FAMILY PHOTO
- * itself unrotated. That reasoning was wrong: CSS `transform` does not
- * cascade/accumulate the way `color` does, but a rotated ancestor still
- * rotates everything painted inside it on screen — a child's own
- * `rotate(0deg)` contributes zero ADDITIONAL rotation on top of what it
- * already inherits from its ancestor's transformed rendering, it does
- * not cancel that ancestor's rotation. `HeroIntemporel.test.tsx`'s new
- * "photo pixels are never rotated" suite renders the real component and
- * asserts, from actual computed styles, that no element in the photo
- * `<img>`'s ancestor chain carries any rotation — a geometric proof,
- * not a comment.
+ * ## Photo placement (mission section 4)
  *
- * The fix reuses the exact rotated rectangle the Studio gives
- * (`photoWindowPolygonPx` — the same rectangle `photoWindowCenterPx`/
- * `photoWindowLocalSizePx`/`photoWindowRotationDeg` describe
- * parametrically, mission section 2's own "réutiliser... le polygon
- * fourni") as a `clip-path: polygon(...)`, on an AXIS-ALIGNED,
- * never-rotated wrapper sized to that polygon's own bounding box:
+ * `photoWindowPx` (`{x, y, width, height}`, in the master's own pixel
+ * space) becomes one axis-aligned, absolutely-positioned box —
+ * left/top/width/height as a percentage of the master canvas, exactly
+ * like the text zone below it, no different mechanism. Inside it,
+ * Mission 034's own `resolveHeroCropGeometry` runs completely
+ * unchanged: the window's 4:5 ratio IS the crop engine's own fixed
+ * ratio, so nothing new is computed, and there is still no second crop
+ * engine anywhere in this codebase. T07 and T08 render the identical
+ * geometry for the identical `HeroCrop` — the crop the family confirmed
+ * at T07 is exactly what they see at T08.
  *
- *   1. `photoMask()` computes the polygon's bounding box in the
- *      master's own pixel space, and expresses the wrapper's
- *      left/top/width/height as a percentage of the master canvas —
- *      exactly like every other zone in this file, no rotation.
- *   2. Each polygon point is re-expressed as a percentage of THAT
- *      wrapper's own box (not the master canvas) and joined into a
- *      `clip-path: polygon(...)` — a shape, not a coordinate-space
- *      transform, so nothing painted inside the wrapper is rotated by
- *      it, and the visible cut still lands exactly on the Studio's real
- *      rotated rectangle (proven by the wrapper's bounding-box math
- *      reproducing the given polygon's own center/size to the sub-pixel
- *      — see this module's own test suite).
- *   3. Inside the wrapper, a second, smaller, ALSO axis-aligned box
- *      (`photoWindowLocalSizePx`, i.e. the rectangle BEFORE the Studio
- *      rotated it — always 4:5) is centered — the wrapper's bounding
- *      box and this inner box share the same center by construction
- *      (a rectangle's bounding box, rotated about its own center, stays
- *      centered on that same point). This inner box is Mission 034's
- *      own crop window: `resolveHeroCropGeometry` runs against it
- *      completely unchanged, with no rotation concept added to it at
- *      any point — no second crop engine.
+ * ## Text zone + context label (mission sections 1, 5, 10)
  *
- * There are two such (wrapper, inner box, photo `<img>`) triples, one
- * per breakpoint, shown/hidden by the same CSS media query that already
- * switches the two master `<img>`s — the same "one DOM tree, CSS-driven
- * breakpoint" discipline as everywhere else in this file, extended
- * rather than special-cased for the photo.
+ * `text_zone_normalized` lays out a plain conditional vertical flow —
+ * context label ("Mémoire & Hommage" / "Annonce & Hommage", Mission
+ * 024's own approved copy in `context.announcementTitle`/
+ * `context.remembranceTitle`, EN/FR/ES via the existing i18n system,
+ * never hardcoded), name, dates (if any, joined by an en dash — never
+ * an orphaned separator when only one is present), shortPhrase (if
+ * any) — nothing rendered, and no space reserved, for a field that has
+ * no content.
  *
- * ## Text zone (mission section 5, unchanged in spirit) — now WITH the
- * context label restored, and the name given a real fitting strategy.
+ * ## Name fitting (mission section 6, QG-locked three-tier rule)
  *
- * `text_zone_normalized` still lays out a plain conditional vertical
- * flow — context label, name, dates (if any), shortPhrase (if any) —
- * nothing rendered for a field that has no content, still no rigid
- * absolutely-positioned pile.
+ * See `useFitDisplayName` below and
+ * `HERO_INTEMPOREL_TYPOGRAPHY.displayedName`'s own docstring for the
+ * exact tiers. Never truncates, ellipsizes, or drops a word at any
+ * tier — only the font-size ever changes.
  *
- * `useFitDisplayName` (below) is what makes `displayedName` obey the
- * Studio's real rule ("1 ligne si possible, 2 lignes maximum, réduction
- * progressive de taille, minimum 56px desktop / 48px mobile") instead
- * of a `clamp()` that only bounds font-size, never line count. It never
- * truncates, ellipsizes, or drops a word — see its own docstring for
- * exactly what it does when even the floor size still wraps past 2
- * lines (mission section 3's own escape hatch).
+ * ## Responsive (mission section 8) and Light/Dark (section 9)
+ *
+ * `skinVariant` alone picks WHICH of the 4 masters' own numbers apply;
+ * the `960px` breakpoint picks desktop vs. mobile within that variant —
+ * never `prefers-color-scheme`, never a mechanically-rescaled desktop
+ * master standing in for mobile. Both the photo window and the text
+ * zone carry their own desktop/mobile percentages as CSS custom
+ * properties, switched together with the two master `<img>`s
+ * themselves (only one of which is ever visible) in
+ * `HeroIntemporel.module.css` — one DOM tree, CSS-driven breakpoint.
+ *
+ * ## Header/UI (mission section 7)
+ *
+ * The Studio's masters carry no logo, language indicator or CTA at all
+ * now (by design — "le master ne porte plus l'UI"). This component
+ * still renders none of its own: the HERITAGE logo header is already
+ * real, live HTML surrounding every Guided Flow screen including this
+ * one (`components/builder/BuilderScreen.tsx`, reused unchanged — the
+ * mission's own "réutiliser les composants existants du Builder"), and
+ * the actual "Continuer avec cette ambiance" CTA is
+ * `HeroRevealStep.tsx`'s own real, accessible, keyboard-focusable
+ * `<button type="submit">` (never a decorative fake one). Every
+ * rendered string already goes through `translate(language, ...)`, so
+ * "langue" is live in the sense that matters — the content itself is in
+ * the family's own chosen language — rather than a second, redundant
+ * language-switcher UI this Builder has no existing pattern for
+ * (T01/`LanguageStep` is the one and only place language is chosen).
  */
 export interface HeroIntemporelProps {
   hero: HeroContent;
@@ -135,171 +132,143 @@ interface PctBox {
   heightPct: number;
 }
 
-interface PhotoMask {
-  /** The polygon's own bounding box, as a percentage of the MASTER
-   * canvas — this is the never-rotated wrapper's own position/size. */
-  wrapper: PctBox;
-  /** The un-rotated 4:5 crop window, as a percentage of the WRAPPER's
-   * own box (not the master canvas) — centered inside it, per this
-   * module's own docstring. */
-  inner: PctBox;
-  /** Each polygon point re-expressed as a percentage of the wrapper's
-   * own box, ready to join into a `clip-path: polygon(...)`. */
-  clipPath: string;
-}
-
-/**
- * See this module's own docstring, "Photo placement" — the ONE place
- * the Studio's rotated photo-window polygon is turned into an
- * axis-aligned wrapper + a `clip-path`, never a `transform: rotate()`.
- * Pure arithmetic, independent of any actual image — testable, and
- * tested, without rendering anything.
- */
-export function photoMask(spec: HeroRuntimeMasterSpec): PhotoMask {
+function photoWindowBox(spec: HeroRuntimeMasterSpec): PctBox {
   const [canvasW, canvasH] = spec.dimensionsPx;
-  const xs = spec.photoWindowPolygonPx.map(([x]) => x);
-  const ys = spec.photoWindowPolygonPx.map(([, y]) => y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const bboxWidthPx = maxX - minX;
-  const bboxHeightPx = maxY - minY;
-
-  const wrapper: PctBox = {
-    leftPct: (minX / canvasW) * 100,
-    topPct: (minY / canvasH) * 100,
-    widthPct: (bboxWidthPx / canvasW) * 100,
-    heightPct: (bboxHeightPx / canvasH) * 100,
-  };
-
-  const clipPoints = spec.photoWindowPolygonPx.map(([x, y]) => {
-    const xPct = ((x - minX) / bboxWidthPx) * 100;
-    const yPct = ((y - minY) / bboxHeightPx) * 100;
-    return `${xPct.toFixed(3)}% ${yPct.toFixed(3)}%`;
-  });
-
-  const [localW, localH] = spec.photoWindowLocalSizePx;
-  const innerWidthPct = (localW / bboxWidthPx) * 100;
-  const innerHeightPct = (localH / bboxHeightPx) * 100;
-  const inner: PctBox = {
-    leftPct: (100 - innerWidthPct) / 2,
-    topPct: (100 - innerHeightPct) / 2,
-    widthPct: innerWidthPct,
-    heightPct: innerHeightPct,
-  };
-
-  return { wrapper, inner, clipPath: `polygon(${clipPoints.join(", ")})` };
-}
-
-function boxStyle(box: PctBox): CSSProperties {
+  const { x, y, width, height } = spec.photoWindowPx;
   return {
-    left: `${box.leftPct}%`,
-    top: `${box.topPct}%`,
-    width: `${box.widthPct}%`,
-    height: `${box.heightPct}%`,
+    leftPct: (x / canvasW) * 100,
+    topPct: (y / canvasH) * 100,
+    widthPct: (width / canvasW) * 100,
+    heightPct: (height / canvasH) * 100,
   };
 }
 
-/** The text zone's box, as CSS custom properties for both breakpoints —
- * mission section 5. */
-function textZoneStyle(desktop: HeroRuntimeMasterSpec, mobile: HeroRuntimeMasterSpec): CSSProperties {
-  const [xd, yd, wd, hd] = desktop.textZoneNormalized;
-  const [xm, ym, wm, hm] = mobile.textZoneNormalized;
+function textZoneBox(spec: HeroRuntimeMasterSpec): PctBox {
+  const [xFrac, yFrac, wFrac, hFrac] = spec.textZoneNormalized;
+  return { leftPct: xFrac * 100, topPct: yFrac * 100, widthPct: wFrac * 100, heightPct: hFrac * 100 };
+}
+
+/** Both breakpoints' geometry as CSS custom properties, switched by the
+ * 960px media query in HeroIntemporel.module.css. */
+function boxStyleVars(prefix: string, desktop: PctBox, mobile: PctBox): CSSProperties {
   return {
-    "--tz-xd": `${xd * 100}%`,
-    "--tz-yd": `${yd * 100}%`,
-    "--tz-wd": `${wd * 100}%`,
-    "--tz-hd": `${hd * 100}%`,
-    "--tz-xm": `${xm * 100}%`,
-    "--tz-ym": `${ym * 100}%`,
-    "--tz-wm": `${wm * 100}%`,
-    "--tz-hm": `${hm * 100}%`,
+    [`--${prefix}-xd`]: `${desktop.leftPct}%`,
+    [`--${prefix}-yd`]: `${desktop.topPct}%`,
+    [`--${prefix}-wd`]: `${desktop.widthPct}%`,
+    [`--${prefix}-hd`]: `${desktop.heightPct}%`,
+    [`--${prefix}-xm`]: `${mobile.leftPct}%`,
+    [`--${prefix}-ym`]: `${mobile.topPct}%`,
+    [`--${prefix}-wm`]: `${mobile.widthPct}%`,
+    [`--${prefix}-hm`]: `${mobile.heightPct}%`,
   } as CSSProperties;
 }
 
 /**
  * Counts the ACTUAL visual lines an element's text currently wraps
- * into, by asking a `Range` over its text content for its client rects
- * — one rect per visual line for wrapped inline content, the standard
- * DOM technique for this (an element's OWN `getClientRects()` would
- * just return its single border box, which is not what's needed here).
+ * into, via a `Range` over its text content — one client rect per
+ * visual line for wrapped inline content (the standard DOM technique;
+ * the element's OWN `getClientRects()` would just return its single
+ * border box). Environments with no real layout engine (jsdom in
+ * tests) simply don't implement `Range.getClientRects` — this fails
+ * safe to "1 line" there rather than throwing, so this hook can never
+ * crash a render, only skip fitting where real measurement isn't
+ * possible.
  */
 function countVisualLines(el: HTMLElement): number {
   const range = document.createRange();
   range.selectNodeContents(el);
-  // `Range.getClientRects` needs a real layout engine — environments
-  // without one (jsdom in tests) simply don't implement it. Fail safe
-  // to "1 line" rather than throwing: this hook must never crash the
-  // render, only skip fitting where real measurement isn't possible.
   if (typeof range.getClientRects !== "function") return 1;
   const rects = range.getClientRects();
   return rects.length || 1;
 }
 
+export interface FitDisplayNameResult {
+  ref: RefObject<HTMLHeadingElement | null>;
+  fontSizePx: number | null;
+  lines: number | null;
+  /** True only once the algorithm has gone below the Studio's normal
+   * minimum — mission section 6's documented "fallback extrême", never
+   * silently indistinguishable from an ordinary tier-2 shrink. */
+  usedExtremeFallback: boolean;
+}
+
 /**
- * Mission 035 v3 section 3 — "construire une vraie stratégie de
- * fitting": 1 line if it fits at the nominal size, otherwise shrink in
- * 1px steps until it wraps into at most `maxLines`, never going below
- * `minPx`, NEVER truncating/ellipsizing/dropping a word (the full name
- * is always rendered — only its font-size ever changes).
+ * Mission 035 v4 section 6 (QG-locked) — the three-tier fitting
+ * strategy; see `HERO_INTEMPOREL_TYPOGRAPHY.displayedName`'s own
+ * docstring for the exact rule this implements. Runs client-side only
+ * (`useLayoutEffect`, after the browser has laid out the real text
+ * against the real font): the initial render (and any
+ * server-rendered/no-JS view) shows the name at the nominal size —
+ * `HeroIntemporel.module.css`'s own fallback — so there is no flash of
+ * unstyled/invisible text, only a possible one-time downward adjustment
+ * once real measurement is possible.
  *
- * Runs client-side only (`useLayoutEffect`, after the browser has laid
- * out the real text against the real font — Cormorant Garamond, once
- * `next/font` has it available): the initial render (and any
- * server-rendered/no-JS view) shows the name at `maxPx`, exactly the
- * Studio's own nominal size, so there is no flash of unstyled/invisible
- * text — only a possible one-time downward adjustment once real
- * measurement is possible.
- *
- * If even `minPx` still wraps past `maxLines` (mission section 3's own
- * anticipated case — a name too long for this column at any allowed
- * size), this hook does NOT invent a further rule (no smaller floor, no
- * 3-line allowance, no truncation): it settles at `minPx` and reports
- * `linesAtFloor > maxLines` back to the caller, which is what
- * `HeroIntemporel`'s own docstring and the Mission 035 report surface
- * to the QG rather than silently shipping an invented fix.
+ * NEVER truncates, ellipsizes, or drops a word at any tier — the full
+ * name is always the element's `textContent`; only `fontSizePx` ever
+ * changes.
  */
-export function useFitDisplayName(
-  text: string,
-  maxPxDesktop: number,
-  minPxDesktop: number,
-  maxPxMobile: number,
-  minPxMobile: number,
-  maxLines: number,
-): { ref: RefObject<HTMLHeadingElement | null>; fontSizePx: number | null; linesAtFloor: number | null } {
+export function useFitDisplayName(text: string): FitDisplayNameResult {
   const ref = useRef<HTMLHeadingElement | null>(null);
-  const [result, setResult] = useState<{ fontSizePx: number | null; linesAtFloor: number | null }>({
-    fontSizePx: null,
-    linesAtFloor: null,
-  });
+  const [result, setResult] = useState<{ fontSizePx: number | null; lines: number | null; usedExtremeFallback: boolean }>(
+    { fontSizePx: null, lines: null, usedExtremeFallback: false },
+  );
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
 
+    const t = HERO_INTEMPOREL_TYPOGRAPHY.displayedName;
+
     function fit() {
       if (!el) return;
       const isDesktop = window.innerWidth >= HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX;
-      const maxPx = isDesktop ? maxPxDesktop : maxPxMobile;
-      const minPx = isDesktop ? minPxDesktop : minPxMobile;
+      const maxPx = isDesktop ? t.desktopPx : t.mobilePx;
+      const normalMinPx = isDesktop ? t.minNormalDesktopPx : t.minNormalMobilePx;
 
+      const setSize = (px: number) => {
+        el.style.fontSize = `${px}px`;
+      };
+
+      // Tier 1/2 — nominal size, then shrink (never below the NORMAL
+      // floor) until it wraps into <= maxLinesNormal. A name that
+      // already fits in 1 line at nominal never enters the loop at all
+      // — "cible normale: 1 ligne" falls out of this for free.
       let size = maxPx;
-      el.style.fontSize = `${size}px`;
+      setSize(size);
       let lines = countVisualLines(el);
-      while (lines > maxLines && size > minPx) {
+      while (lines > t.maxLinesNormal && size > normalMinPx) {
         size -= 1;
-        el.style.fontSize = `${size}px`;
+        setSize(size);
         lines = countVisualLines(el);
       }
 
-      setResult({ fontSizePx: size, linesAtFloor: size <= minPx ? lines : null });
+      if (lines <= t.maxLinesNormal) {
+        setResult({ fontSizePx: size, lines, usedExtremeFallback: false });
+        return;
+      }
+
+      // Tier 3 — still over the normal cap at the normal floor: allow
+      // one more line (mission's own "exception extrême: maximum 3
+      // lignes") WITHOUT shrinking further yet.
+      if (lines <= t.maxLinesExtreme) {
+        setResult({ fontSizePx: normalMinPx, lines, usedExtremeFallback: false });
+        return;
+      }
+
+      // Tier 4 — the documented fallback extrême: still over even the
+      // 3-line allowance at the normal floor. Shrink further, the
+      // smallest amount needed, down to (never past) extremeFallbackMinPx.
+      while (lines > t.maxLinesExtreme && size > t.extremeFallbackMinPx) {
+        size -= 1;
+        setSize(size);
+        lines = countVisualLines(el);
+      }
+      setResult({ fontSizePx: size, lines, usedExtremeFallback: size < normalMinPx });
     }
 
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fit whenever the name itself changes; the size bounds are stable config constants.
   }, [text]);
 
   return { ref, ...result };
@@ -320,69 +289,50 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
     editorialContext === "announcement" ? "context.announcementTitle" : "context.remembranceTitle",
   );
 
-  const nameTypography = HERO_INTEMPOREL_TYPOGRAPHY.displayedName;
-  const {
-    ref: nameRef,
-    fontSizePx: nameFontSizePx,
-    linesAtFloor,
-  } = useFitDisplayName(
-    hero.displayName ?? "",
-    nameTypography.desktopPx,
-    nameTypography.minDesktopPx,
-    nameTypography.mobilePx,
-    nameTypography.minMobilePx,
-    nameTypography.maxLines,
-  );
+  const { ref: nameRef, fontSizePx: nameFontSizePx } = useFitDisplayName(hero.displayName ?? "");
 
-  useEffect(() => {
-    if (nameRef.current) nameRef.current.setAttribute("data-lines-at-floor", String(linesAtFloor ?? ""));
-  }, [linesAtFloor, nameRef]);
-
-  const desktopMask = photoMask(desktop);
-  const mobileMask = photoMask(mobile);
-
-  function renderPhoto(mask: PhotoMask, breakpointClassName: string) {
-    if (photo === null) return null;
-    return (
-      <div className={breakpointClassName} style={{ ...boxStyle(mask.wrapper), clipPath: mask.clipPath }}>
-        <div className={styles.photoInner} style={boxStyle(mask.inner)}>
-          {/* Never a static asset next/image can optimize, and never
-              persisted — Mission 030's short-lived signed read URL. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photo.readUrl}
-            alt={translate(language, "hero.photoAlt")}
-            className={styles.photoImage}
-            draggable={false}
-            onLoad={(event) => {
-              const img = event.currentTarget;
-              setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
-            }}
-            style={{
-              left: `${geometry.leftPercent}%`,
-              top: `${geometry.topPercent}%`,
-              width: `${geometry.widthPercent}%`,
-              height: `${geometry.heightPercent}%`,
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
+  const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
+  const textZoneVars = boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile));
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.hero} ${cormorantGaramond.variable} ${laBelleAurore.variable}`}>
-        {renderPhoto(desktopMask, styles.photoWindowDesktop)}
-        {renderPhoto(mobileMask, styles.photoWindowMobile)}
+        {photo !== null && (
+          <div className={styles.photoWindow} style={photoWindowVars}>
+            {/* Never a static asset next/image can optimize, and never
+                persisted — Mission 030's short-lived signed read URL. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.readUrl}
+              alt={translate(language, "hero.photoAlt")}
+              className={styles.photoImage}
+              draggable={false}
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+              }}
+              style={{
+                left: `${geometry.leftPercent}%`,
+                top: `${geometry.topPercent}%`,
+                width: `${geometry.widthPercent}%`,
+                height: `${geometry.heightPercent}%`,
+              }}
+            />
+          </div>
+        )}
 
         {/* The Studio's own runtime masters — the whole artistic
-            composition. Only one is ever visible at a time (this
-            module's own CSS, switched at the 960px breakpoint). */}
+            composition, no raster text or UI (V3 FINAL). Only one is
+            ever visible at a time (this module's own CSS, switched at
+            the 960px breakpoint). Never `next/image`: these are fixed,
+            pre-optimized static assets shipped from `public/`, not
+            per-request content worth its optimization pipeline. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.desktop} alt="" aria-hidden="true" className={styles.masterDesktop} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterMobile} />
 
-        <div className={styles.textZone} style={textZoneStyle(desktop, mobile)}>
+        <div className={styles.textZone} style={textZoneVars}>
           <p className={styles.contextLabel}>{contextLabel}</p>
           <h1
             ref={nameRef}

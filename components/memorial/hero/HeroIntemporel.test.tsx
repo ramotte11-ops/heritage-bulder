@@ -8,14 +8,13 @@ import type { Media } from "@/types/media";
 import { HERO_INTEMPOREL_RUNTIME_MASTER_SPECS } from "@/config/hero-intemporel-tokens";
 
 /**
- * Mission 035 v3 (QG micro-audit) — contract tests for the runtime-
- * master Hero Intemporel renderer. Same discipline as every other
- * Guided Flow component test in this codebase: state/render contracts,
- * never computed CSS/pixel layout from the real browser engine — except
- * where the QG explicitly asked for a GEOMETRIC proof (section 2), which
- * this file gives via `photoMask()` (a pure function, testable without
- * any rendering) plus a source-level guard that no `rotate(` exists
- * anywhere in the photo's own stylesheet.
+ * Mission 035 v4 (Studio V3 FINAL runtime masters) — contract tests for
+ * the runtime-master Hero Intemporel renderer. Same discipline as every
+ * other Guided Flow component test in this codebase: state/render
+ * contracts, never computed CSS/pixel layout from the real browser
+ * engine — except where a geometric proof is warranted (the "no
+ * rotation anywhere" guard below), which stays a pure source-level check
+ * rather than a real-browser measurement.
  */
 
 vi.mock("next/font/google", () => ({
@@ -25,7 +24,7 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
-const { HeroIntemporel, photoMask } = await import("./HeroIntemporel");
+const { HeroIntemporel } = await import("./HeroIntemporel");
 
 afterEach(cleanup);
 
@@ -98,7 +97,56 @@ describe("HeroIntemporel — the Studio's own runtime masters, nothing recompose
   });
 });
 
-describe("HeroIntemporel — restored context label (mission 035 v3, section 1)", () => {
+describe("HeroIntemporel — photo window geometry (mission 035 v4, section 4)", () => {
+  it.each(["light", "dark"] as const)(
+    "positions the %s desktop photo window from the manifest's own photoWindowPx, as a percentage of the master canvas",
+    (variant) => {
+      const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[variant].desktop;
+      const { container } = renderHero({ skinVariant: variant });
+
+      const window_ = container.querySelector('[class*="photoWindow"]') as HTMLElement;
+      expect(window_).toBeTruthy();
+
+      const [canvasW, canvasH] = spec.dimensionsPx;
+      const expectedLeftPct = (spec.photoWindowPx.x / canvasW) * 100;
+      const expectedTopPct = (spec.photoWindowPx.y / canvasH) * 100;
+      const expectedWidthPct = (spec.photoWindowPx.width / canvasW) * 100;
+      const expectedHeightPct = (spec.photoWindowPx.height / canvasH) * 100;
+
+      expect(window_.style.getPropertyValue("--win-xd")).toBe(`${expectedLeftPct}%`);
+      expect(window_.style.getPropertyValue("--win-yd")).toBe(`${expectedTopPct}%`);
+      expect(window_.style.getPropertyValue("--win-wd")).toBe(`${expectedWidthPct}%`);
+      expect(window_.style.getPropertyValue("--win-hd")).toBe(`${expectedHeightPct}%`);
+    },
+  );
+
+  it("carries the mobile window's own (different) geometry alongside the desktop one, switched by CSS alone", () => {
+    const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS.light.mobile;
+    const { container } = renderHero({ skinVariant: "light" });
+
+    const window_ = container.querySelector('[class*="photoWindow"]') as HTMLElement;
+    const [canvasW, canvasH] = spec.dimensionsPx;
+    const expectedWidthPct = (spec.photoWindowPx.width / canvasW) * 100;
+    const expectedHeightPct = (spec.photoWindowPx.height / canvasH) * 100;
+
+    expect(window_.style.getPropertyValue("--win-wm")).toBe(`${expectedWidthPct}%`);
+    expect(window_.style.getPropertyValue("--win-hm")).toBe(`${expectedHeightPct}%`);
+    // Desktop and mobile geometry differ — both live on the same element,
+    // only the 960px breakpoint (in CSS, not here) picks which applies.
+    expect(canvasH).not.toBe(HERO_INTEMPOREL_RUNTIME_MASTER_SPECS.light.desktop.dimensionsPx[1]);
+  });
+
+  it("every photo window is 4:5, matching the Studio's own ratio for all 4 masters", () => {
+    for (const variant of ["light", "dark"] as const) {
+      for (const format of ["desktop", "mobile"] as const) {
+        const { width, height } = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[variant][format].photoWindowPx;
+        expect(width / height).toBeCloseTo(4 / 5, 2);
+      }
+    }
+  });
+});
+
+describe("HeroIntemporel — restored context label (mission 035, section 1/10)", () => {
   it("renders the remembrance context label in French", () => {
     renderHero({ editorialContext: "remembrance", language: "fr" });
     expect(screen.getByText("Mémoire & Hommage")).toBeTruthy();
@@ -126,7 +174,7 @@ describe("HeroIntemporel — restored context label (mission 035 v3, section 1)"
   });
 });
 
-describe("HeroIntemporel — Light/Dark scoping (mission section 8)", () => {
+describe("HeroIntemporel — Light/Dark scoping (mission section 9)", () => {
   it("scopes the render under data-heritage-skin / data-heritage-skin-variant, never prefers-color-scheme", () => {
     const { container } = renderHero({ skinVariant: "dark" });
 
@@ -174,10 +222,8 @@ describe("HeroIntemporel — accessibility", () => {
     }
 
     const photoImgs = images.filter((img) => img.getAttribute("src") === PHOTO.readUrl);
-    expect(photoImgs.length).toBe(2); // one per breakpoint wrapper
-    for (const img of photoImgs) {
-      expect(img.getAttribute("alt")).not.toBe("");
-    }
+    expect(photoImgs.length).toBe(1); // one single photo window, no per-breakpoint duplicate
+    expect(photoImgs[0].getAttribute("alt")).not.toBe("");
   });
 });
 
@@ -192,72 +238,13 @@ describe("HeroIntemporel — a missing photo degrades cleanly, never crashes", (
 });
 
 /**
- * Mission 035 v3 section 2 — the geometric audit the QG explicitly
- * asked for: not a CSS string check, a proof of the actual
- * transformation architecture. `photoMask()` is pure and exported
- * specifically so this can be verified without rendering anything —
- * see HeroIntemporel.tsx's own docstring, "Photo placement".
+ * Mission 035 v4 — the photo's pixels are never rotated. V3 FINAL's
+ * masters give an axis-aligned window (no rotation anywhere in the
+ * manifest), and this component now declares no `transform` at all —
+ * this guard stays as a structural guarantee against that v2 defect
+ * class ever recurring, whatever future masters this component renders.
  */
-describe("photoMask() — the rotated window, WITHOUT any rotation transform (mission 035 v3, section 2)", () => {
-  it.each(["light", "dark"] as const)(
-    "reproduces the Studio's own window center for %s desktop, from the bounding box of the real polygon alone",
-    (variant) => {
-      const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[variant].desktop;
-      const mask = photoMask(spec);
-
-      const [canvasW, canvasH] = spec.dimensionsPx;
-      const wrapperCenterXPx = (mask.wrapper.leftPct + mask.wrapper.widthPct / 2) * (canvasW / 100);
-      const wrapperCenterYPx = (mask.wrapper.topPct + mask.wrapper.heightPct / 2) * (canvasH / 100);
-
-      // The bounding box of a rectangle rotated about its own center is
-      // itself centered on that same point — this is what makes the
-      // inner (un-rotated) crop window and the clip-path share one
-      // center with no separate bookkeeping.
-      expect(wrapperCenterXPx).toBeCloseTo(spec.photoWindowCenterPx[0], 0);
-      expect(wrapperCenterYPx).toBeCloseTo(spec.photoWindowCenterPx[1], 0);
-    },
-  );
-
-  it("produces a clip-path polygon with exactly the 4 given corners, expressed relative to the wrapper's own box", () => {
-    const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS.light.desktop;
-    const mask = photoMask(spec);
-
-    expect(mask.clipPath.startsWith("polygon(")).toBe(true);
-    const pointCount = mask.clipPath.split(",").length;
-    expect(pointCount).toBe(spec.photoWindowPolygonPx.length);
-
-    // Every point must fall within [0, 100]% of the wrapper's own box —
-    // by construction (the wrapper IS the polygon's bounding box), any
-    // point outside that range would mean the wrapper was sized wrong.
-    const pairs = mask.clipPath
-      .slice("polygon(".length, -1)
-      .split(",")
-      .map((pair) => pair.trim().split(" ").map((v) => Number.parseFloat(v)));
-    for (const [x, y] of pairs) {
-      expect(x).toBeGreaterThanOrEqual(-0.01);
-      expect(x).toBeLessThanOrEqual(100.01);
-      expect(y).toBeGreaterThanOrEqual(-0.01);
-      expect(y).toBeLessThanOrEqual(100.01);
-    }
-  });
-
-  it("sizes the inner (un-rotated) 4:5 crop window to the window's own local size, centered in the wrapper", () => {
-    const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS.dark.mobile;
-    const mask = photoMask(spec);
-
-    // Centered: left margin equals right margin.
-    expect(mask.inner.leftPct).toBeCloseTo(100 - mask.inner.widthPct - mask.inner.leftPct, 5);
-    expect(mask.inner.topPct).toBeCloseTo(100 - mask.inner.heightPct - mask.inner.topPct, 5);
-
-    // The inner box IS smaller than the wrapper on both axes (the
-    // wrapper is the ROTATED rectangle's bounding box, always larger
-    // than the un-rotated rectangle it bounds, for any non-zero angle).
-    expect(mask.inner.widthPct).toBeLessThan(100);
-    expect(mask.inner.heightPct).toBeLessThan(100);
-  });
-});
-
-describe("HeroIntemporel — the photo's pixels are never rotated (mission 035 v3, section 2, geometric proof)", () => {
+describe("HeroIntemporel — the photo's pixels are never rotated", () => {
   const CSS_SOURCE = readFileSync(
     path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
     "utf8",
@@ -268,7 +255,7 @@ describe("HeroIntemporel — the photo's pixels are never rotated (mission 035 v
   // prose), which must never look identical to actually declaring it.
   const CSS_RULES_ONLY = CSS_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "");
 
-  it("the stylesheet defines no `rotate(` anywhere at all — the v2 defect's exact signature", () => {
+  it("the stylesheet defines no `rotate(` anywhere at all", () => {
     expect(CSS_RULES_ONLY).not.toMatch(/rotate\(/);
   });
 
@@ -288,22 +275,22 @@ describe("HeroIntemporel — the photo's pixels are never rotated (mission 035 v
     }
   });
 
-  it("the source itself uses clip-path (a shape), never transform, to fit the Studio's rotated window", () => {
+  it("the component source itself declares no `transform` of any kind on the photo or its ancestors", () => {
     const SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.tsx"), "utf8");
     const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    expect(CODE).toMatch(/clipPath/);
-    expect(CODE).not.toMatch(/transform:\s*["'`]?rotate/);
+    expect(CODE).not.toMatch(/transform:/);
   });
 });
 
 /**
- * Mission 035 v3 section 3 — the name-fitting strategy. jsdom performs
- * no real text layout, so `Range.getClientRects()` cannot report a real
- * line count on its own; these tests install a controlled stand-in for
- * it to exercise `useFitDisplayName`'s actual shrink loop deterministically,
- * rather than skip the behaviour entirely.
+ * Mission 035 v4 section 6 — the QG-locked three-tier (plus documented
+ * fallback extrême) name-fitting strategy. jsdom performs no real text
+ * layout, so `Range.getClientRects()` cannot report a real line count on
+ * its own; these tests install a controlled stand-in for it to exercise
+ * `useFitDisplayName`'s actual shrink loop deterministically, rather
+ * than skip the behaviour entirely.
  */
-describe("HeroIntemporel — displayedName fitting (mission 035 v3, section 3)", () => {
+describe("HeroIntemporel — displayedName fitting (mission 035 v4, section 6)", () => {
   let originalGetClientRects: typeof Range.prototype.getClientRects;
 
   beforeEach(() => {
@@ -330,18 +317,20 @@ describe("HeroIntemporel — displayedName fitting (mission 035 v3, section 3)",
     };
   }
 
-  it("keeps the nominal Studio size when the name already fits in 1 line", () => {
+  // jsdom's default `window.innerWidth` (1024) is >= the 960px
+  // breakpoint, so every case below exercises the DESKTOP bounds
+  // (nominal 86, normal floor 56, extreme fallback floor 40) — see
+  // HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX.
+
+  it("tier 1 — keeps the nominal Studio size when the name already fits in 1 line", () => {
     stubLineCountByFontSize(() => 1);
     const { container } = renderHero({ hero: { ...FULL_HERO, displayName: "Ana Vives" } });
 
     const h1 = container.querySelector("h1") as HTMLElement;
-    // jsdom's default `window.innerWidth` (1024) is >= the 960px
-    // breakpoint, so this exercises the DESKTOP bounds (nominal 86,
-    // floor 56) — see HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX.
     expect(Number.parseFloat(h1.style.fontSize)).toBe(86);
   });
 
-  it("shrinks progressively, in whole steps, never below the Studio floor, until it fits in <= 2 lines", () => {
+  it("tier 2 — shrinks progressively, in whole steps, never below the normal floor, until it fits in <= 2 lines", () => {
     // 3 lines above 70px, 2 lines at 70px and below.
     stubLineCountByFontSize((px) => (px > 70 ? 3 : 2));
     const { container } = renderHero({
@@ -351,20 +340,50 @@ describe("HeroIntemporel — displayedName fitting (mission 035 v3, section 3)",
     const h1 = container.querySelector("h1") as HTMLElement;
     const finalSize = Number.parseFloat(h1.style.fontSize);
     expect(finalSize).toBe(70);
-    expect(finalSize).toBeGreaterThanOrEqual(56); // never below the desktop floor
+    expect(finalSize).toBeGreaterThanOrEqual(56); // never below the desktop normal floor
     // The full name is still there — never truncated, never ellipsized.
     expect(h1.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau");
   });
 
-  it("never shrinks past the floor even if the name still wraps past 2 lines there — no invented rule, name stays whole", () => {
-    stubLineCountByFontSize(() => 4); // never fits, at any size
+  it("tier 3 — allows a 3rd line AT the normal floor, without shrinking further, before any extreme fallback", () => {
+    // Never fits in <= 2 lines at any size, but fits in exactly 3 lines
+    // once it reaches the normal floor (56px) or below.
+    stubLineCountByFontSize((px) => (px <= 56 ? 3 : 4));
     const { container } = renderHero({
       hero: { ...FULL_HERO, displayName: "Marie-Alexandrine de Beaumont-Rousseau" },
     });
 
     const h1 = container.querySelector("h1") as HTMLElement;
     const finalSize = Number.parseFloat(h1.style.fontSize);
-    expect(finalSize).toBe(56); // settles exactly at the desktop floor, no lower
+    expect(finalSize).toBe(56); // settles exactly at the normal floor, no extreme fallback needed
+    expect(h1.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau"); // never truncated
+  });
+
+  it("tier 4 — the documented fallback extrême: shrinks below the normal floor, the smallest amount needed, down to (never past) extremeFallbackMinPx, once still > 3 lines at the floor", () => {
+    // Never fits in <= 3 lines above 45px; fits in exactly 3 lines at
+    // 45px and below (well within the extreme floor of 40px).
+    stubLineCountByFontSize((px) => (px <= 45 ? 3 : 4));
+    const { container } = renderHero({
+      hero: { ...FULL_HERO, displayName: "Marie-Alexandrine de Beaumont-Rousseau" },
+    });
+
+    const h1 = container.querySelector("h1") as HTMLElement;
+    const finalSize = Number.parseFloat(h1.style.fontSize);
+    expect(finalSize).toBe(45);
+    expect(finalSize).toBeLessThan(56); // genuinely below the normal floor — this IS the fallback extrême
+    expect(finalSize).toBeGreaterThanOrEqual(40); // never past the documented extreme floor
+    expect(h1.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau"); // never truncated
+  });
+
+  it("never shrinks past the extreme floor even if the name still wraps past 3 lines there — no invented rule, name stays whole", () => {
+    stubLineCountByFontSize(() => 5); // never fits, at any size
+    const { container } = renderHero({
+      hero: { ...FULL_HERO, displayName: "Marie-Alexandrine de Beaumont-Rousseau" },
+    });
+
+    const h1 = container.querySelector("h1") as HTMLElement;
+    const finalSize = Number.parseFloat(h1.style.fontSize);
+    expect(finalSize).toBe(40); // settles exactly at the extreme floor, no lower
     expect(h1.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau"); // never truncated
   });
 });

@@ -1,14 +1,21 @@
 /*
- * Mission 035 (QG strategy change) — Hero Intemporel, runtime-master
- * strategy. Replaces the earlier asset-by-asset stylesheet entirely:
- * no paper/botanical/postcard/seal/paperclip/texture/shadow rules exist
- * here any more — see HeroIntemporel.tsx's own docstring.
+ * Mission 035 v4 (Studio V3 FINAL runtime masters) — Hero Intemporel.
+ *
+ * v3's `.photoWindowDesktop`/`.photoWindowMobile`/`.photoInner` +
+ * `clip-path` machinery existed only to fit the family photo into a
+ * ROTATED window without rotating the photo's own pixels. V3 FINAL's
+ * masters give a plain axis-aligned photo window (no rotation, no
+ * polygon, at all) — see HeroIntemporel.tsx's own docstring — so that
+ * whole mechanism is gone. `.photoWindow` below is now exactly the same
+ * kind of box as `.textZone`: one absolutely-positioned rectangle, sized
+ * from CSS custom properties, switched desktop/mobile by the same
+ * 960px breakpoint as the two master images. No rule in this file
+ * declares a `transform` of any kind.
  *
  * Ink colors are the one thing still tokenized per
- * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own
- * scope attribute — never `prefers-color-scheme`): the master's own
- * paper tone differs Light/Dark, so the injected text needs its own
- * matching ink.
+ * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own scope
+ * attribute — never `prefers-color-scheme`): the master's own paper tone
+ * differs Light/Dark, so the injected text needs its own matching ink.
  */
 
 .hero {
@@ -16,8 +23,8 @@
   width: 100%;
   overflow: hidden;
   isolation: isolate;
-  /* Mobile-first: the mobile master's own intrinsic ratio (887×1774). */
-  aspect-ratio: 887 / 1774;
+  /* Mobile-first: the mobile master's own intrinsic ratio (941×1672). */
+  aspect-ratio: 941 / 1672;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
@@ -70,44 +77,32 @@
   }
 }
 
-/* --- Photo window (mission section 2/4) --------------------------------
-   Two axis-aligned wrappers (one per breakpoint, only one ever visible
-   — same switching mechanism as .masterDesktop/.masterMobile above),
-   each `clip-path`-masked to the Studio's own rotated polygon
-   (HeroIntemporel.tsx's `photoMask()`). NEITHER wrapper, NOR anything
-   inside it, ever carries a `transform: rotate()` — the family photo's
-   pixels stay exactly as focalX/focalY/zoom place them; only the
-   VISIBLE CUT is shaped like the Studio's rotated window. BEHIND the
-   master (z-index 0 < 10) so the master's genuinely-transparent cut
-   shows it through exactly where the Studio placed it. */
+/* --- Photo window (mission section 4) ---------------------------------
+   One axis-aligned box, sized/positioned from the manifest's own
+   `photo_opening_runtime_px_exact` (HeroIntemporel.tsx's `photoWindowBox`),
+   switched desktop/mobile by the same breakpoint as the two master
+   images above. BEHIND the master (z-index 0 < 10) so the master's
+   genuinely-transparent cut shows it through exactly where the Studio
+   placed it. No rotation anywhere — the window IS the visible crop, no
+   masking trick needed. */
 
-.photoWindowDesktop,
-.photoWindowMobile {
+.photoWindow {
   position: absolute;
+  left: var(--win-xm);
+  top: var(--win-ym);
+  width: var(--win-wm);
+  height: var(--win-hm);
+  overflow: hidden;
   z-index: 0;
 }
 
-.photoWindowDesktop {
-  display: none;
-}
-
-.photoWindowMobile {
-  display: block;
-}
-
 @media (min-width: 960px) {
-  .photoWindowDesktop {
-    display: block;
+  .photoWindow {
+    left: var(--win-xd);
+    top: var(--win-yd);
+    width: var(--win-wd);
+    height: var(--win-hd);
   }
-
-  .photoWindowMobile {
-    display: none;
-  }
-}
-
-.photoInner {
-  position: absolute;
-  overflow: hidden;
 }
 
 .photoImage {
@@ -130,7 +125,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5em;
   padding: 0 1.2em;
   text-align: left;
@@ -170,7 +165,7 @@
   /* This is only the SSR/no-JS fallback (the Studio's nominal max size)
    * — `HeroIntemporel.tsx`'s `useFitDisplayName` overrides it with an
    * inline `font-size` once the real text has been measured against the
-   * real font, per mission section 3's fitting strategy. */
+   * real font, per mission section 6's fitting strategy. */
   font-size: 72px;
   line-height: 0.95;
   letter-spacing: -0.02em;
