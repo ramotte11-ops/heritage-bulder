@@ -81,7 +81,7 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
     mobile: {
       dimensionsPx: [941, 1672],
       photoWindowPx: { x: 259, y: 124, width: 412, height: 515 },
-      textZoneNormalized: [0.04, 0.52, 0.92, 0.22],
+      textZoneNormalized: [0.04, 0.52, 0.92, 0.44],
     },
   },
   dark: {
@@ -93,7 +93,7 @@ export const HERO_INTEMPOREL_RUNTIME_MASTER_SPECS: Record<
     mobile: {
       dimensionsPx: [941, 1672],
       photoWindowPx: { x: 262, y: 138, width: 412, height: 515 },
-      textZoneNormalized: [0.04, 0.52, 0.92, 0.22],
+      textZoneNormalized: [0.04, 0.52, 0.92, 0.44],
     },
   },
 };

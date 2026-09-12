@@ -126,7 +126,11 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 0.5em;
+  /* Tighter than desktop's 0.5em — mobile's own blank field is shorter,
+   * and every mobile-only px here is one fewer px the identity block
+   * spends dipping toward the master's bottom botanicals/seal (mission
+   * 035 v4, mobile micro-contrôle). */
+  gap: 0.3em;
   padding: 0 1.2em;
   text-align: left;
   overflow: hidden;
@@ -138,6 +142,7 @@
     top: var(--tz-yd);
     width: var(--tz-wd);
     height: var(--tz-hd);
+    gap: 0.5em;
   }
 }
 
