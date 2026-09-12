@@ -37,6 +37,9 @@ vi.mock("next/navigation", () => ({ useRouter }));
 vi.mock("next/font/google", () => ({
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
+  // Mission 035 — components/builder/fonts.ts also exports these two now.
+  Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
+  La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
 }));
 
 const { uploadToSignedUrl, getBrowserSupabaseClient } = vi.hoisted(() => {

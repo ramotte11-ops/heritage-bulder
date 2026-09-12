@@ -138,4 +138,23 @@ export class SupabaseMemorialConfigRepository implements MemorialConfigRepositor
 
     if (error) throw error;
   }
+
+  /**
+   * Mission 035 — same contract and same reasoning as `saveLanguage`/
+   * `saveEditorialContext` above, over `skin_variant` instead. Requires
+   * the `authenticated` role to hold `UPDATE (skin_variant)` on
+   * `memorials` — a column-level grant this mission prepared in
+   * `supabase/migrations/20260910100000_builder_skin_variant_access.sql`,
+   * not yet applied to any real project.
+   */
+  async saveSkinVariant(memorialId: string, skinVariant: SkinVariant): Promise<void> {
+    const { error } = await this.client
+      .from("memorials")
+      .update({ skin_variant: skinVariant })
+      .eq("id", memorialId)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+  }
 }

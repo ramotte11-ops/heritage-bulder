@@ -1,4 +1,4 @@
-import { Inter, Playfair_Display } from "next/font/google";
+import { Cormorant_Garamond, Inter, La_Belle_Aurore, Playfair_Display } from "next/font/google";
 
 /**
  * Mission 023 — the two typefaces the Studio's T01 design specifies
@@ -32,5 +32,32 @@ export const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-heritage-sans",
+  display: "swap",
+});
+
+/**
+ * Mission 035 — the two typefaces the Hero Intemporel handoff's own
+ * `hero-master-tokens.json` specifies (`typography.displayedName`/
+ * `contextLabel`/`dates`: Cormorant Garamond 500; `typography.shortPhrase`:
+ * La Belle Aurore 400) and that no earlier mission had integrated yet.
+ * Section 13's own rule: "si les fontes exactes ne sont pas déjà
+ * intégrées, les intégrer proprement via le système Next existant" —
+ * this is that integration, via the exact same `next/font/google`
+ * mechanism `playfairDisplay`/`inter` above already use, never a
+ * substituted look-alike. Scoped locally to `HeroIntemporel.module.css`
+ * via each font's own `.variable`, exactly like every other font in
+ * this file — nothing outside the Hero renderer's own scope changes.
+ */
+export const cormorantGaramond = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500"],
+  variable: "--font-heritage-hero-serif",
+  display: "swap",
+});
+
+export const laBelleAurore = La_Belle_Aurore({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-heritage-hero-script",
   display: "swap",
 });

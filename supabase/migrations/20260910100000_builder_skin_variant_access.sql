@@ -1,0 +1,64 @@
+-- Mission 035 (QG-authorized, section 18 audit): opens exactly the one
+-- more write privilege T08 (confirmation d'ambiance Light/Dark) needs,
+-- and not one more.
+--
+-- ---------------------------------------------------------------------
+-- WHY THIS MIGRATION EXISTS
+-- ---------------------------------------------------------------------
+--
+-- 20260906120000_builder_language_access.sql (Mission 023) opened
+-- `UPDATE (language)` on `memorials` for `authenticated`, and
+-- 20260906130000_builder_context_access.sql (Mission 024) opened
+-- `UPDATE (editorial_context)` the same way — both named exactly what
+-- they left closed. `skin_variant` (Mission 029B) has been writable
+-- only once, at redemption (`redeem_entitlement` /
+-- `redeem_entitlement_with_activation_key`, both SECURITY INVOKER,
+-- `service_role` only) — no client-facing UPDATE path has ever existed
+-- for it.
+--
+-- Mission 035 wires T08 (the family confirming their Hero's Light/Dark
+-- ambiance) through a new `saveSkinVariant` method on the same
+-- `MemorialConfigRepository` port `saveLanguage`/`saveEditorialContext`
+-- already use. This is that later mission, for `skin_variant` only.
+--
+-- ---------------------------------------------------------------------
+-- WHY A COLUMN-LEVEL GRANT, NOT A BLANKET `UPDATE ON memorials`
+-- ---------------------------------------------------------------------
+--
+-- `saveSkinVariant` sets `skin_variant` and nothing else — the same
+-- discipline Missions 023/024 already established for `language` and
+-- `editorial_context`. A column-level grant makes that the enforced
+-- ceiling, not just the current code's intent: even a future bug in
+-- that one write path could not silently reach `status`, `owner_id`,
+-- `entitlement_id`, `skin_id`, `enabled_sections`, `language`,
+-- `editorial_context` or `slug` through this privilege.
+--
+-- The existing row-level policy `memorials_update_own`
+-- (supabase/migrations/20260829154000_memorials.sql) already scopes any
+-- update this privilege makes reachable to the caller's own memorial
+-- (`owner_id = current_owner_id()`, both USING and WITH CHECK) — no RLS
+-- policy change here at all; the existing one already suffices (audited
+-- against this exact requirement before this migration was written —
+-- see the Mission 035 QG report).
+--
+-- The existing CHECK constraint `memorials_skin_variant_check`
+-- (`skin_variant in ('light', 'dark')`, 20260909130000) is untouched by
+-- this migration and keeps doing its job: a GRANT decides WHO may write
+-- the column, never WHAT values are legal — that stays the database's
+-- job exactly as it already was for every other write path onto this
+-- column.
+--
+-- ---------------------------------------------------------------------
+-- STATUS
+-- ---------------------------------------------------------------------
+--
+-- NOT YET APPLIED to any real Supabase project. Prepared here per the
+-- Mission 035 QG decision (section 3: a minimal column-level grant
+-- only, same principle as Missions 023/024, no RLS policy change, no
+-- RPC, no SECURITY DEFINER, no service-role write for this flow, no
+-- anon access, no other column widened) for the QG to review and apply
+-- through its own process. Safely re-runnable: a bare column-level
+-- GRANT, no DDL, no data — re-issuing it against a database that
+-- already has it is a no-op, exactly like Missions 023/024's own.
+
+grant update (skin_variant) on table memorials to authenticated;

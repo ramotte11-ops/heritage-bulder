@@ -397,6 +397,33 @@ for t in owners entitlements media messages; do
   done
 done
 
+# --- Mission 035: exactly ONE more column-level grant, nothing wider --
+#
+# 20260910100000_builder_skin_variant_access.sql opens
+# `UPDATE (skin_variant)` on `memorials` for `authenticated`, mirroring
+# Missions 023/024's own `language`/`editorial_context` grants exactly.
+# `has_table_privilege` above already proved `authenticated` holds no
+# TABLE-WIDE UPDATE on `memorials` (line ~370) — this measures the
+# COLUMN grant itself, before this script's own TEST-ONLY blanket UPDATE
+# (below) would mask it. `language`/`editorial_context` are re-asserted
+# here too, so a regression on either of Mission 023/024's own grants
+# fails exactly where this mission's own grant is proved.
+expect_column() {
+  local role="$1"; local table="$2"; local column="$3"; local privilege="$4"; local expected="$5"
+  local has
+  has=$($DB -t -A -c "select has_column_privilege('$role','public.$table','$column','$privilege');")
+  check "$role $privilege on $table.$column" "$expected" "$has"
+}
+
+expect_column authenticated memorials skin_variant UPDATE t
+expect_column anon memorials skin_variant UPDATE f
+expect_column authenticated memorials language UPDATE t
+expect_column authenticated memorials editorial_context UPDATE t
+# No other column widened by this mission's migration.
+for col in owner_id entitlement_id memorial_type skin_id status slug enabled_sections created_at updated_at; do
+  expect_column authenticated memorials "$col" UPDATE f
+done
+
 # --- Mission 019B: the Etsy seller credential store -------------------
 #
 # The strongest statement this harness can make about that table is that
@@ -656,6 +683,43 @@ check "owner A's visible memorial is their own" "$MEM_A" "$RESULT"
 as_owner "$AUTH_UID_A" "update memorials set language = 'fr' where id = '$MEM_B';" >/dev/null
 UPDATED=$($DB -t -A -c "select language from memorials where id = '$MEM_B';")
 check "owner A's update to owner B's memorial silently affects 0 rows" "en" "$UPDATED"
+
+# Mission 035 — the same `memorials_update_own` policy, exercised over
+# `skin_variant` instead of `language`. Uses the same test-only blanket
+# UPDATE grant as the block above (line ~545): the structural proof that
+# ONLY `skin_variant` (plus the pre-existing `language`/
+# `editorial_context`) is actually grantable already ran, before that
+# blanket grant, in the "Mission 035" privilege block. This is the
+# POLICY's own isolation, not the grant's shape.
+as_owner "$AUTH_UID_A" "update memorials set skin_variant = 'dark' where id = '$MEM_A';" >/dev/null
+UPDATED_VARIANT_A=$($DB -t -A -c "select skin_variant from memorials where id = '$MEM_A';")
+check "owner A can update their own memorial's skin_variant" "dark" "$UPDATED_VARIANT_A"
+
+as_owner "$AUTH_UID_A" "update memorials set skin_variant = 'dark' where id = '$MEM_B';" >/dev/null
+UPDATED_VARIANT_B=$($DB -t -A -c "select skin_variant from memorials where id = '$MEM_B';")
+check "owner A's update to owner B's skin_variant silently affects 0 rows" "light" "$UPDATED_VARIANT_B"
+
+# anon holds no UPDATE privilege on memorials at all (proved structurally
+# above, before any grant) — confirmed here as an outright permission
+# error, never a silent no-op, for the exact column T08 writes.
+as_anon "update memorials set skin_variant = 'dark' where id = '$MEM_A';" >"$PGDATA_DIR/anon_skin_variant_out" 2>&1 && {
+  echo "  [FAIL] anon cannot UPDATE memorials.skin_variant at all (statement unexpectedly succeeded)"
+  FAIL=$((FAIL + 1))
+} || {
+  if grep -q "permission denied" "$PGDATA_DIR/anon_skin_variant_out"; then
+    echo "  [PASS] anon cannot UPDATE memorials.skin_variant at all"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] anon cannot UPDATE memorials.skin_variant at all (errored, but not with 'permission denied': $(tr '\n' ' ' <"$PGDATA_DIR/anon_skin_variant_out"))"
+    FAIL=$((FAIL + 1))
+  fi
+}
+ANON_LEFT_VARIANT=$($DB -t -A -c "select skin_variant from memorials where id = '$MEM_A';")
+check "anon's refused attempt left skin_variant untouched" "dark" "$ANON_LEFT_VARIANT"
+
+# Reset MEM_A back to 'light' — later assertions in this script (e.g.
+# the seeded-fixture shape checks) assume the original seeded value.
+$DB -c "update memorials set skin_variant = 'light' where id = '$MEM_A';" >/dev/null
 
 RESULT=$(as_owner "$AUTH_UID_A" "select count(*) from memorial_drafts;")
 check "owner A sees exactly their own 1 draft (not owner B's)" "1" "$RESULT"

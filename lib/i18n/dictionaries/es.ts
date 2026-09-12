@@ -69,4 +69,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "hero.cropMoveRight": "Mover la foto hacia la derecha",
   "hero.cropReset": "Restablecer",
   "hero.cropChangePhoto": "Cambiar la foto",
+  "hero.revealTitle": "Su Hero",
+  "hero.revealToggleToDark": "Ver en versión oscura",
+  "hero.revealToggleToLight": "Ver en versión clara",
+  "hero.revealConfirm": "Continuar con esta ambientación",
 };

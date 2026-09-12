@@ -1,0 +1,223 @@
+/*
+ * Mission 035 v4 (Studio V3 FINAL runtime masters) — Hero Intemporel.
+ *
+ * v3's `.photoWindowDesktop`/`.photoWindowMobile`/`.photoInner` +
+ * `clip-path` machinery existed only to fit the family photo into a
+ * ROTATED window without rotating the photo's own pixels. V3 FINAL's
+ * masters give a plain axis-aligned photo window (no rotation, no
+ * polygon, at all) — see HeroIntemporel.tsx's own docstring — so that
+ * whole mechanism is gone. `.photoWindow` below is now exactly the same
+ * kind of box as `.textZone`: one absolutely-positioned rectangle, sized
+ * from CSS custom properties, switched desktop/mobile by the same
+ * 960px breakpoint as the two master images. No rule in this file
+ * declares a `transform` of any kind.
+ *
+ * Ink colors are the one thing still tokenized per
+ * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own scope
+ * attribute — never `prefers-color-scheme`): the master's own paper tone
+ * differs Light/Dark, so the injected text needs its own matching ink.
+ */
+
+.hero {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  /* Mobile-first: the mobile master's own intrinsic ratio (941×1672). */
+  aspect-ratio: 941 / 1672;
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
+  --hero-ink-primary: #3d3a2b;
+  --hero-ink-secondary: #6b6256;
+  --hero-ink-accent: #6f7255;
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+  --hero-ink-primary: #f0e1cd;
+  --hero-ink-secondary: #c8b8a4;
+  --hero-ink-accent: #707052;
+}
+
+@media (min-width: 960px) {
+  .hero {
+    /* The desktop master's own intrinsic ratio (1536×1024). */
+    aspect-ratio: 1536 / 1024;
+  }
+}
+
+/* --- The Studio's own runtime masters — the entire composition ------- */
+
+.masterDesktop,
+.masterMobile {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.masterDesktop {
+  display: none;
+}
+
+.masterMobile {
+  display: block;
+}
+
+@media (min-width: 960px) {
+  .masterDesktop {
+    display: block;
+  }
+
+  .masterMobile {
+    display: none;
+  }
+}
+
+/* --- Photo window (mission section 4) ---------------------------------
+   One axis-aligned box, sized/positioned from the manifest's own
+   `photo_opening_runtime_px_exact` (HeroIntemporel.tsx's `photoWindowBox`),
+   switched desktop/mobile by the same breakpoint as the two master
+   images above. BEHIND the master (z-index 0 < 10) so the master's
+   genuinely-transparent cut shows it through exactly where the Studio
+   placed it. No rotation anywhere — the window IS the visible crop, no
+   masking trick needed. */
+
+.photoWindow {
+  position: absolute;
+  left: var(--win-xm);
+  top: var(--win-ym);
+  width: var(--win-wm);
+  height: var(--win-hm);
+  overflow: hidden;
+  z-index: 0;
+}
+
+@media (min-width: 960px) {
+  .photoWindow {
+    left: var(--win-xd);
+    top: var(--win-yd);
+    width: var(--win-wd);
+    height: var(--win-hd);
+  }
+}
+
+.photoImage {
+  position: absolute;
+  max-width: none;
+}
+
+/* --- Text zone (mission section 5) ------------------------------------
+   A plain conditional vertical flow inside the master's own text box —
+   never a rigid, absolutely-positioned pile. On top of the master
+   (z-index 20). */
+
+.textZone {
+  position: absolute;
+  left: var(--tz-xm);
+  top: var(--tz-ym);
+  width: var(--tz-wm);
+  height: var(--tz-hm);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  /* Tighter than desktop's 0.5em — mobile's own blank field is shorter,
+   * and every mobile-only px here is one fewer px the identity block
+   * spends dipping toward the master's bottom botanicals/seal (mission
+   * 035 v4, mobile micro-contrôle). */
+  gap: 0.3em;
+  padding: 0 1.2em;
+  text-align: left;
+  overflow: hidden;
+}
+
+@media (min-width: 960px) {
+  .textZone {
+    left: var(--tz-xd);
+    top: var(--tz-yd);
+    width: var(--tz-wd);
+    height: var(--tz-hd);
+    gap: 0.5em;
+  }
+}
+
+.contextLabel {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--hero-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .contextLabel {
+    font-size: 15px;
+  }
+}
+
+.displayedName {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  /* This is only the SSR/no-JS fallback (the Studio's nominal max size)
+   * — `HeroIntemporel.tsx`'s `useFitDisplayName` overrides it with an
+   * inline `font-size` once the real text has been measured against the
+   * real font, per mission section 6's fitting strategy. */
+  font-size: 72px;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: var(--hero-ink-primary);
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 960px) {
+  .displayedName {
+    font-size: 86px;
+  }
+}
+
+.dates {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--hero-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .dates {
+    font-size: 30px;
+  }
+}
+
+.shortPhrase {
+  margin: 0;
+  font-family: var(--font-heritage-hero-script, "Brush Script MT", cursive);
+  font-weight: 400;
+  font-size: clamp(34px, 6vw, 42px);
+  line-height: 1.15;
+  color: var(--hero-ink-accent);
+  max-width: 100%;
+}
+
+/* --- Accessibility -----------------------------------------------------
+   No motion is used anywhere in this component (mission brief section
+   21 — "Hero statique excellent"), so `prefers-reduced-motion` has
+   nothing to disable; this rule stays as a structural guarantee that a
+   future addition of a decorative animation is opt-out by construction. */
+@media (prefers-reduced-motion: reduce) {
+  .hero * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
