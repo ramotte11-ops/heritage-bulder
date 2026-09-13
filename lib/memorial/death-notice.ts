@@ -102,6 +102,30 @@ function parseOptionalText(raw: unknown): Parsed<string | null> {
   return normalizeOptionalText(raw);
 }
 
+/**
+ * QG closure — the canonical model is CLOSED to the keys named below,
+ * both top-level and inside `precisions`. This is the runtime boundary
+ * that actually enforces "no unknown property" (mission brief's own
+ * correction: `[key: string]: unknown` on `DeathNoticeContent`/
+ * `DeathNoticePrecisions`, types/death-notice.ts, is a TypeScript
+ * assignability device only — it grants no runtime permission for an
+ * arbitrary key to exist, and this function is what makes that true in
+ * practice, not the type). Used by both `parseDeathNoticeContent` and
+ * `parsePrecisions` below so the rule is stated exactly once.
+ */
+function hasOnlyKnownKeys(raw: Record<string, unknown>, knownKeys: ReadonlySet<string>): boolean {
+  return Object.keys(raw).every((key) => knownKeys.has(key));
+}
+
+const DEATH_NOTICE_KEYS: ReadonlySet<string> = new Set(["announcementText", "precisions"]);
+const DEATH_NOTICE_PRECISION_KEYS: ReadonlySet<string> = new Set([
+  "generalLocation",
+  "familyMessage",
+  "thought",
+  "quote",
+  "other",
+]);
+
 // ---------------------------------------------------------------------
 // A02 — precisions
 // ---------------------------------------------------------------------
@@ -125,14 +149,17 @@ type ParsedPrecisions = Parsed<DeathNoticePrecisions>;
  * fully skipped yet" state, and parses to `EMPTY_DEATH_NOTICE_PRECISIONS`
  * — the same "absent" outcome as every field individually being absent
  * (types/death-notice.ts's own docstring on why `precisions` is never
- * itself nullable). Anything else must be a plain object; each of the
- * five known fields is parsed with the same optional-text rule, and any
- * other shape (not an object; a known field holding a non-string) is
- * rejected rather than silently dropped.
+ * itself nullable). Anything else must be a plain object holding ONLY the
+ * five known precision keys (`hasOnlyKnownKeys` — QG closure); each of
+ * them is then parsed with the same optional-text rule. Any other shape
+ * (not an object; ANY key besides the five known ones, whichever value it
+ * holds; a known field holding a non-string) is rejected — never silently
+ * dropped, never silently accepted as if it were canonical.
  */
 function parsePrecisions(raw: unknown): ParsedPrecisions {
   if (raw === null || raw === undefined) return { ...EMPTY_DEATH_NOTICE_PRECISIONS };
   if (!isPlainObject(raw)) return INVALID;
+  if (!hasOnlyKnownKeys(raw, DEATH_NOTICE_PRECISION_KEYS)) return INVALID;
 
   const generalLocation = parseOptionalText(raw.generalLocation);
   if (generalLocation === INVALID) return INVALID;
@@ -157,8 +184,15 @@ function parsePrecisions(raw: unknown): ParsedPrecisions {
 // ---------------------------------------------------------------------
 
 /** Which part of a `DeathNoticeContent` candidate failed. Mirrors
- * lib/memorial/hero.ts's `HeroValidationReason`. */
-export type DeathNoticeValidationReason = "not_an_object" | "announcementText" | DeathNoticePrecisionReason;
+ * lib/memorial/hero.ts's `HeroValidationReason`, plus `"unknownKey"` — the
+ * QG closure rule this model's own reason vocabulary needed that Hero's
+ * never has (Hero has no facultative-precisions-style nested bag whose
+ * openness had to be explicitly closed). */
+export type DeathNoticeValidationReason =
+  | "not_an_object"
+  | "unknownKey"
+  | "announcementText"
+  | DeathNoticePrecisionReason;
 
 export type DeathNoticeValidationResult =
   | { ok: true; deathNotice: DeathNoticeContent }
@@ -187,6 +221,24 @@ export type DeathNoticeValidationResult =
  * `EMPTY_DEATH_NOTICE_CONTENT`. Any other non-object input (a stray
  * string, a number, an array) is rejected as `"not_an_object"` rather
  * than treated as absent — that only arises from real corruption.
+ *
+ * ## QG closure — the model is CLOSED to unknown keys (not silently
+ * dropped)
+ *
+ * An earlier revision reconstructed `{ announcementText, precisions }` as
+ * a fresh object literal and simply never copied any OTHER key `raw`
+ * might carry — which kept them out of the canonical shape, but did so by
+ * silently discarding them, with no trace they had ever existed. The QG
+ * correctly rejected that: an unknown key might be an old field, a future
+ * one, foreign data, or real corruption — a parser has no way to tell
+ * which, so it must never guess by quietly dropping it. `hasOnlyKnownKeys`
+ * below makes ANY key besides `announcementText`/`precisions` a rejection
+ * (`reason: "unknownKey"`) — the same treatment as a wrong TYPE for a
+ * known field, not a softer one. Rejection here means `parseDeathNoticeContent`
+ * returns `ok: false`, which is exactly what turns `inspectDeathNotice`'s
+ * status into `"corrupted"` with `raw` preserved byte-for-byte (see that
+ * function below) — never a `"valid"` result quietly missing a key that
+ * was actually there.
  */
 export function parseDeathNoticeContent(raw: unknown): DeathNoticeValidationResult {
   if (raw === null || raw === undefined) {
@@ -194,6 +246,9 @@ export function parseDeathNoticeContent(raw: unknown): DeathNoticeValidationResu
   }
   if (!isPlainObject(raw)) {
     return { ok: false, reason: "not_an_object" };
+  }
+  if (!hasOnlyKnownKeys(raw, DEATH_NOTICE_KEYS)) {
+    return { ok: false, reason: "unknownKey" };
   }
 
   const announcementText = parseOptionalText(raw.announcementText);
@@ -240,14 +295,32 @@ export function validateDeathNotice(deathNotice: DeathNoticeContent): DeathNotic
  *   - `"valid"`      parsed successfully.
  *   - `"corrupted"`  a `deathNotice` key exists but is NOT a well-formed
  *                    `DeathNoticeContent` — real, existing data that
- *                    failed validation, not an empty field. `raw` is the
- *                    untouched original value, specifically so a write
- *                    path can decide what to do with it instead of it
- *                    silently vanishing.
+ *                    failed validation, not an empty field. This INCLUDES
+ *                    an otherwise well-formed object that carries any key
+ *                    beyond `announcementText`/`precisions` (or, inside
+ *                    `precisions`, beyond its own five known ones) — the
+ *                    QG closure rule (`parseDeathNoticeContent`'s own
+ *                    docstring): an unknown key is never silently dropped
+ *                    nor silently accepted as canonical, it makes the
+ *                    WHOLE value `"corrupted"`. `raw` is the untouched
+ *                    original value — the unknown key included, exactly
+ *                    as it was — specifically so a write path can decide
+ *                    what to do with it instead of it silently vanishing.
  *
- * This is the primitive a future write/autosave path (Mission 039) MUST
- * branch on — see `readDeathNotice`'s docstring for why that function is
- * NOT it.
+ * This is the primitive Mission 039's future write/autosave path MUST
+ * branch on, imperatively, before ever calling `writeDeathNotice`:
+ *
+ *   1. `inspectDeathNotice(content)`
+ *   2. if `status === "corrupted"` → refuse the write (surface it, log
+ *      it, or offer an explicit repair — never proceed silently)
+ *   3. otherwise (`"absent"` or `"valid"`) → modify `.deathNotice` and
+ *      call `writeDeathNotice`
+ *
+ * No future A01/A02 screen may EVER be built on `readDeathNotice(content)`
+ * followed by `writeDeathNotice(content, edited)` — that composition is
+ * exactly what silently destroys a `"corrupted"` block (see
+ * `writeDeathNotice`'s own docstring, which proves this with a test).
+ * `readDeathNotice`, below, is for display/edit-seeding ONLY.
  */
 export type DeathNoticeReadResult =
   | { status: "absent"; deathNotice: DeathNoticeContent }

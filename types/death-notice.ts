@@ -98,6 +98,14 @@
  *     ones above, still never a second general-purpose field replacing
  *     them (mission brief, section 4's "pas de gros champ générique" —
  *     this is one specific, named overflow, not a catch-all).
+ *
+ * Its own `[key: string]: unknown` index signature is the identical
+ * TypeScript-only necessity documented on `DeathNoticeContent` below —
+ * NOT a runtime license for a sixth property. `lib/memorial/death-notice.ts`'s
+ * `parsePrecisions` is the actual, strict boundary: any key besides these
+ * five, whatever value it holds, makes the enclosing `DeathNoticeContent`
+ * `"corrupted"` as a whole (never silently dropped, never silently
+ * accepted as canonical).
  */
 export interface DeathNoticePrecisions {
   [key: string]: unknown;
@@ -137,10 +145,30 @@ export const EMPTY_DEATH_NOTICE_PRECISIONS: DeathNoticePrecisions = {
  * state (`EMPTY_DEATH_NOTICE_PRECISIONS`), never a third nullable outer
  * layer to account for.
  *
- * The index signature (`[key: string]: unknown`) is what makes this type
- * structurally assignable into `MemorialSectionContent`
+ * ## The index signature is a TypeScript-only necessity — NOT a runtime
+ * permission (QG closure)
+ *
+ * The index signature (`[key: string]: unknown`) exists SOLELY so this
+ * type is structurally assignable into `MemorialSectionContent`
  * (`Record<string, unknown>`, types/memorial.ts) — the same pattern
  * `HeroContent` (types/hero.ts) already uses for the identical reason.
+ * Proven necessary, not merely assumed: removing it makes
+ * `lib/memorial/death-notice.ts`'s `writeDeathNotice` fail to compile
+ * with exactly `Index signature for type 'string' is missing in type
+ * 'DeathNoticeContent'`.
+ *
+ * This is a compile-time fact about TYPE COMPATIBILITY only. It grants NO
+ * runtime license for an arbitrary property to exist on a real
+ * `DeathNoticeContent` value. The actual, strict boundary — which keys a
+ * `content.deathNotice` may ever legally carry — is enforced entirely at
+ * RUNTIME, by `lib/memorial/death-notice.ts`'s `parseDeathNoticeContent`
+ * (top-level: only `announcementText`/`precisions`) and `parsePrecisions`
+ * (only its own five named fields): any other key, however the type
+ * system might tolerate it structurally, makes the whole value
+ * `"corrupted"`, never a silently-accepted or silently-dropped extra. The
+ * type's openness and the parser's strictness are two different layers on
+ * purpose — the type only has to satisfy the compiler; the parser is what
+ * actually decides what is canonical.
  */
 export interface DeathNoticeContent {
   [key: string]: unknown;
