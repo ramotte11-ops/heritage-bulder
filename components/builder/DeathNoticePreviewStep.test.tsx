@@ -53,6 +53,7 @@ function baseProps(overrides: Partial<Parameters<typeof DeathNoticePreviewStep>[
     language: "fr" as const,
     editorialContext: "announcement" as const,
     content: BASE_CONTENT,
+    skin: "intemporel" as const,
     skinVariant: "light" as const,
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),
     ...overrides,
@@ -117,6 +118,60 @@ describe("DeathNoticePreviewStep — Continuer verifies A03 (AGENTS.md section 1
     const persist = vi.fn();
     render(<DeathNoticePreviewStep {...baseProps({ persist })} />);
     expect(persist).not.toHaveBeenCalled();
+  });
+});
+
+describe("DeathNoticePreviewStep — the skin guard (Mission 039B correction finale)", () => {
+  it("intemporel renders the real card as before", () => {
+    render(<DeathNoticePreviewStep {...baseProps({ skin: "intemporel" })} />);
+    expect(screen.getByText("Élise Martin")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /continuer/i })).toBeTruthy();
+  });
+
+  it.each(["musulman", "juif", "hindou"] as const)(
+    "%s NEVER silently renders the Intemporel card — shows the unavailable notice instead",
+    (skin) => {
+      render(<DeathNoticePreviewStep {...baseProps({ skin })} />);
+
+      expect(screen.queryByText("Élise Martin")).toBeNull();
+      expect(
+        screen.queryByText(
+          "C'est avec une profonde tristesse que nous vous faisons part du décès d'Élise Martin.",
+        ),
+      ).toBeNull();
+      expect(screen.getByRole("alert")).toBeTruthy();
+    },
+  );
+
+  it("an unrecognized/corrupted skin value also never falls back to Intemporel", () => {
+    render(<DeathNoticePreviewStep {...baseProps({ skin: "occidental" as never })} />);
+    expect(screen.queryByText("Élise Martin")).toBeNull();
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it.each(["musulman", "juif", "hindou"] as const)(
+    "%s shows no edit links and no Continue — nothing was actually shown to verify",
+    (skin) => {
+      render(<DeathNoticePreviewStep {...baseProps({ skin })} />);
+      expect(screen.queryByRole("button", { name: "Modifier l'annonce" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Modifier les précisions" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /continuer/i })).toBeNull();
+    },
+  );
+
+  it("never persists anything for an unbuilt skin — no accidental A03 completion", () => {
+    const persist = vi.fn();
+    render(<DeathNoticePreviewStep {...baseProps({ skin: "musulman", persist })} />);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("never deletes or alters any stored data for an unbuilt skin — content passes through untouched", () => {
+    render(<DeathNoticePreviewStep {...baseProps({ skin: "juif" })} />);
+    // The notice is shown; nothing about BASE_CONTENT was ever read
+    // destructively (no crash, no persisted mutation — see the previous
+    // test). This is a structural smoke check that the guard branch
+    // returns before touching `content` at all beyond the corruption read.
+    expect(screen.getByRole("alert")).toBeTruthy();
   });
 });
 

@@ -1998,12 +1998,43 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.content).toBe(DRAFT_WITH_A02_RESOLVED_NO_A03.content);
       expect(result.props.language).toBe("fr");
       expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props.skin).toBe(CONFIGURED_MEMORIAL.skin);
       expect(result.props.skinVariant).toBe(CONFIGURED_MEMORIAL.skinVariant);
 
       const newContent = { guidedFlow: { A03: { status: "completed", answer: "x" } } };
       await result.props.persist(newContent);
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
+
+    /**
+     * Mission 039B "correction finale" — the QG micro-audit's skin
+     * guard. This route itself never branches on `skin`: it passes the
+     * memorial's REAL, unmodified `skin` straight through, RAW, and it
+     * is `DeathNoticePreviewStep` (its own test suite) that decides what
+     * to do with a non-`intemporel` value. This test only proves the
+     * ROUTE never substitutes, defaults, or drops that value.
+     */
+    it.each(["musulman", "juif", "hindou"] as const)(
+      "passes a %s memorial's REAL skin through to DeathNoticePreviewStep — never silently defaulted to intemporel",
+      async (skin) => {
+        getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+        authorizeMemorialForRequest.mockResolvedValue({
+          status: "granted",
+          ownerId: "owner-a",
+          memorialId: MEMORIAL_ID,
+        });
+        resumeBuilderSession.mockResolvedValue({
+          status: "resumable",
+          memorial: { ...CONFIGURED_MEMORIAL, skin },
+          draft: DRAFT_WITH_A02_RESOLVED_NO_A03,
+        });
+
+        const result = await callPage();
+
+        expect(result.type).toBe(DeathNoticePreviewStep);
+        expect(result.props.skin).toBe(skin);
+      },
+    );
 
     it("A03 never appears for the remembrance context — falls through past T08 to the same notice", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
@@ -2175,12 +2206,38 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
     expect(CODE).not.toMatch(/saveEditorialContext\(/);
   });
 
-  it("never deduces the editorial context from a death date, an offer, a skin, or a culture — the source has no such signal in scope", () => {
-    // `\.skin\b` (a word boundary, not just `\.skin`) since Mission 035
-    // introduced the legitimate, unrelated `.skinVariant` field (T08's
-    // Light/Dark ambiance) — `resumed.memorial.skinVariant` must not
-    // trip this guard, which is about a literal `.skin` (culture)
-    // read, never about the field name merely starting with "skin".
-    expect(CODE).not.toMatch(/deathDate|dateOfDeath|offerId|\.skin\b|culture/i);
+  it("never deduces the editorial context from a death date, an offer, or a culture — the source has no such signal in scope", () => {
+    expect(CODE).not.toMatch(/deathDate|dateOfDeath|offerId|culture/i);
+  });
+
+  /**
+   * Mission 039B "correction finale" — the QG micro-audit's skin guard.
+   * `resumed.memorial.skin` (the family's real cultural skin) is now a
+   * legitimate, deliberate read: passed straight through as a prop so
+   * `DeathNoticePreviewStep` can decide whether A03 has a real renderer
+   * for it (see that component's own docstring, "The skin guard").
+   * This guard narrows rather than removes the original Mission 021B
+   * one above: `.skin` (word boundary — `.skinVariant` never matches
+   * it, no `\w` boundary between "skin" and "Variant") must appear
+   * EXACTLY this one place, and must never be combined with
+   * `editorialContext` in the same statement — the one thing that
+   * original guard actually existed to prevent.
+   */
+  it("the one legitimate `memorial.skin` read (A03's skin guard) is never used to deduce editorialContext", () => {
+    const skinMatches = CODE.match(/\.skin\b/g) ?? [];
+    expect(skinMatches).toEqual([".skin"]); // exactly one occurrence
+    expect(CODE).toMatch(/skin=\{resumed\.memorial\.skin\}/);
+    // The original danger this guard exists for: `editorialContext`
+    // COMPUTED from `skin` — an assignment or a ternary. There is no
+    // `editorialContext =` assignment anywhere in this route at all (it
+    // is only ever READ off `resumed.memorial.editorialContext`); a
+    // window-based regex between the two tokens would false-positive on
+    // the large, unrelated JSX in between, so this checks the two actual
+    // danger shapes directly instead.
+    // `(?!\{)` excludes the ubiquitous, legitimate JSX prop shape
+    // (`editorialContext={resumed.memorial.editorialContext}`) — a real
+    // assignment (`editorialContext = ...`) is never followed by `{`.
+    expect(CODE).not.toMatch(/editorialContext\s*=(?!\{)[^=]/);
+    expect(CODE).not.toMatch(/skin\s*===?\s*["'`](?:musulman|juif|hindou|intemporel)["'`]\s*\?/);
   });
 });

@@ -16,15 +16,15 @@ import styles from "./DeathNoticeIntemporel.module.css";
  * Mission 039B (A03) — the real Death Notice ("Avis de décès") editorial
  * renderer, Intemporel skin.
  *
- * Composes the Studio's own `HERITAGE_A03_ASSETS_V1` mini-pack (paper
- * texture, peripheral botanicals, seal, ornament branch, five precision
- * pictograms — `config/death-notice-intemporel-tokens.ts`) with the
- * family's real canonical content, exactly the same discipline
- * `HeroIntemporel.tsx` already established for the Hero: no family text
- * is ever baked into an asset, every asset is decorative only, and this
- * is the SAME renderer a future Live Preview and the published memorial
- * page will use — never a miniature or a mock built specially for the
- * Builder's own A03 screen (`DeathNoticePreviewStep.tsx`).
+ * Composes the Studio's own asset packs (paper texture, peripheral
+ * botanicals, seal, ornament branch, five precision pictograms —
+ * `config/death-notice-intemporel-tokens.ts`) with the family's real
+ * canonical content, exactly the same discipline `HeroIntemporel.tsx`
+ * already established for the Hero: no family text is ever baked into an
+ * asset, every asset is decorative only, and this is the SAME renderer a
+ * future Live Preview and the published memorial page will use — never a
+ * miniature or a mock built specially for the Builder's own A03 screen
+ * (`DeathNoticePreviewStep.tsx`).
  *
  * ## Content vs. skin (AGENTS.md section 12)
  *
@@ -34,15 +34,27 @@ import styles from "./DeathNoticeIntemporel.module.css";
  * drawn here is either family content or a Studio-provided decorative
  * asset; a future `musulman`/`juif`/`hindou` A03 would be its own sibling
  * component (`DeathNoticeMusulman.tsx`, etc.) taking the exact same two
- * content props, never a fork inside this one.
+ * content props, never a fork inside this one. `DeathNoticePreviewStep.tsx`
+ * is the ONE place that decides whether this component even gets
+ * rendered for a given `memorial.skin` — see that component's own
+ * docstring (Mission 039B "correction finale" — the skin guard).
  *
- * ## No `SkinVariant` fork (unlike Hero)
+ * ## `SkinVariant` fork — real Light/Dark (Mission 039B correction)
  *
- * The Studio's A03 pack shipped one ivory-paper treatment only — no
- * `light`/`dark` split. `skinVariant` is still accepted and passed
- * through to `SkinScope` (so `data-heritage-skin-variant` is present on
- * the DOM for any future variant-aware override), but nothing in this
- * component's own CSS reads it today.
+ * `HERITAGE_A03_DARK_PACK_V2_QG_FINAL` (QG-final, replaces every earlier
+ * Dark pack) supplies real Dark equivalents for the paper texture and
+ * every decorative asset — `skinVariant` now genuinely selects which set
+ * `config/death-notice-intemporel-tokens.ts` hands back, exactly the
+ * same "one component, two asset sets" shape `HeroIntemporel.tsx`
+ * already uses (`HERO_INTEMPOREL_RUNTIME_MASTER_SRC`). NEVER a CSS
+ * `filter`/inversion/recolor standing in for a missing Dark asset — see
+ * the tokens file's own docstring. The five precision pictograms are the
+ * one deliberate exception: the Dark pack's own README asks for the
+ * SAME icon files in both variants ("sans inventer de nouveaux assets"),
+ * tinted via a CSS `mask-image` to the current ink color (`.precisionIcon`,
+ * module stylesheet) so they stay legible against either paper tone —
+ * recoloring a small, generic, single-color pictogram to match
+ * surrounding text, never an approximation of Studio-authored artwork.
  *
  * ## Modular precision blocks (AGENTS.md section 9)
  *
@@ -140,6 +152,16 @@ export function DeathNoticeIntemporel({
 
   const precisionRows = chunkIntoRows(visibleBlocks, 2);
 
+  // The one place a `SkinVariant` picks WHICH asset set applies — see
+  // config/death-notice-intemporel-tokens.ts's own docstring. Every one
+  // of these is a real Studio asset for its variant, never a Light asset
+  // reused for Dark (or vice versa).
+  const paperTileSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.paperTile[skinVariant];
+  const botanicalLeftSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.botanicalLeft[skinVariant];
+  const botanicalRightSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.botanicalRight[skinVariant];
+  const ornamentSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.ornamentBranch[skinVariant];
+  const sealSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.seal[skinVariant];
+
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.wrap} ${cormorantGaramond.variable}`}>
@@ -151,30 +173,23 @@ export function DeathNoticeIntemporel({
             shipped from `public/` — never `next/image`, same reasoning
             as HeroIntemporel.tsx's own masters. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={DEATH_NOTICE_INTEMPOREL_ASSETS.botanicalLeft}
-          alt=""
-          aria-hidden="true"
-          className={styles.botanicalLeft}
-        />
+        <img src={botanicalLeftSrc} alt="" aria-hidden="true" className={styles.botanicalLeft} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={DEATH_NOTICE_INTEMPOREL_ASSETS.botanicalRight}
-          alt=""
-          aria-hidden="true"
-          className={styles.botanicalRight}
-        />
+        <img src={botanicalRightSrc} alt="" aria-hidden="true" className={styles.botanicalRight} />
 
-        <article className={styles.card}>
+        <article
+          className={styles.card}
+          // The repeatable paper tile is the one asset applied as a CSS
+          // background rather than an <img> (README: "répétable
+          // background-repeat"), so its variant-specific URL is set here,
+          // computed in JS from the real selected asset — never a second
+          // literal path duplicated in the stylesheet.
+          style={{ backgroundImage: `url(${paperTileSrc})` }}
+        >
           <p className={styles.eyebrow}>{contextLabel}</p>
           <h1 className={styles.title}>{translate(language, "deathNotice.previewTitle")}</h1>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={DEATH_NOTICE_INTEMPOREL_ASSETS.ornamentBranch}
-            alt=""
-            aria-hidden="true"
-            className={styles.ornament}
-          />
+          <img src={ornamentSrc} alt="" aria-hidden="true" className={styles.ornament} />
 
           <h2 className={styles.name}>{hero.displayName ?? ""}</h2>
           {dateRangeText !== null && <p className={styles.dates}>{dateRangeText}</p>}
@@ -192,8 +207,22 @@ export function DeathNoticeIntemporel({
                   {row.map((block) => (
                     <div key={block.field} className={styles.precisionBlock}>
                       <div className={styles.precisionHeading}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={block.icon} alt="" aria-hidden="true" className={styles.precisionIcon} />
+                        {/* A generic, single-color pictogram (the SAME
+                            file in both variants — Dark pack README's own
+                            instruction), tinted to the current ink color
+                            via a CSS mask rather than a second (Dark)
+                            icon asset, so it stays legible on either
+                            paper tone. Never an <img>: a mask has no
+                            content of its own to need alt text; the
+                            adjacent label already carries it. */}
+                        <span
+                          aria-hidden="true"
+                          className={styles.precisionIcon}
+                          style={{
+                            WebkitMaskImage: `url(${block.icon})`,
+                            maskImage: `url(${block.icon})`,
+                          }}
+                        />
                         <span className={styles.precisionLabel}>{translate(language, block.labelKey)}</span>
                       </div>
                       <p className={styles.precisionText}>{block.text}</p>
@@ -207,7 +236,7 @@ export function DeathNoticeIntemporel({
           <div className={styles.sealRow} aria-hidden="true">
             <span className={styles.sealLine} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={DEATH_NOTICE_INTEMPOREL_ASSETS.seal} alt="" aria-hidden="true" className={styles.seal} />
+            <img src={sealSrc} alt="" aria-hidden="true" className={styles.seal} />
             <span className={styles.sealLine} />
           </div>
         </article>

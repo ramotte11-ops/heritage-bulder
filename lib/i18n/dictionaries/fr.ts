@@ -103,4 +103,6 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "deathNotice.blockOther": "Autre précision",
   "deathNotice.editAnnouncement": "Modifier l'annonce",
   "deathNotice.editPrecisions": "Modifier les précisions",
+  "deathNotice.previewSkinUnavailable":
+    "L'aperçu de l'avis de décès pour ce style n'est pas encore disponible. Vos informations sont conservées ; l'équipe HERITAGE vous préviendra dès qu'il sera prêt.",
 };

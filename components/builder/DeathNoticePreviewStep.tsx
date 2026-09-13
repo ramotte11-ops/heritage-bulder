@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
-import type { SkinVariant } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
+import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
 import { readHeroForEditing } from "@/lib/builder/guided-flow/hero-step";
 import {
   commitA03,
@@ -21,6 +22,11 @@ import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./DeathNoticePreviewStep.module.css";
 
+/** The only skin A03 has a real renderer for today (Mission 039B). A
+ * future mission adding a Musulman/Juif/Hindou A03 renderer widens this
+ * set — see `resolveA03Renderer` below, the one seam it would extend. */
+const A03_BUILT_SKINS: readonly Skin[] = ["intemporel"];
+
 interface DeathNoticePreviewStepProps {
   language: Language;
   editorialContext: EditorialContext;
@@ -28,10 +34,17 @@ interface DeathNoticePreviewStepProps {
    * guaranteed resolved by the time this renders (see
    * app/builder/[memorialId]/page.tsx's own `needsA03` gate). */
   content: MemorialContent;
+  /** `memorials.skin` — the family's actual cultural skin, RE-VALIDATED
+   * here (never trusted as a bare TS type crossing the DB boundary —
+   * the same discipline `saveLanguageAction`/`saveEditorialContextAction`
+   * already apply to `language`/`editorialContext`). Decides WHICH
+   * renderer this screen shows, or whether it shows an honest
+   * "unavailable" notice instead — see this component's own docstring,
+   * "The skin guard". */
+  skin: Skin;
   /** `memorials.skin_variant` — passed through to the real renderer's own
-   * `SkinScope` for a consistent DOM scope, even though the A03 Studio
-   * pack does not itself fork on it (see `DeathNoticeIntemporel`'s own
-   * docstring). */
+   * `SkinScope`/asset selection (Mission 039B correction: A03 now has a
+   * real Dark pack too — see `DeathNoticeIntemporel`'s own docstring). */
   skinVariant: SkinVariant;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
   persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
@@ -60,11 +73,43 @@ interface DeathNoticePreviewStepProps {
  * A03 reads BOTH canonical models (Hero, Death Notice) — either one
  * being corrupted shows the same honest, non-inventing notice every
  * other Guided Flow screen already shows, never a silent repair.
+ *
+ * ## The skin guard (Mission 039B "correction finale")
+ *
+ * A QG micro-audit confirmed a real, reachable gap: nothing in the
+ * Guided Flow route (`needsPageA`…`needsA03`) ever reads `memorial.skin`,
+ * so a `musulman`/`juif`/`hindou` memorial (real, purchasable offers per
+ * `config/offers.ts` — not hypothetical) reached A03 and silently
+ * received the `intemporel` renderer. This component is the ONE place
+ * that decision is now made, via `resolveSkinRuntime` — the existing
+ * canonical mechanism (`lib/memorial/skin-runtime.ts`), never a second,
+ * bespoke validity check:
+ *
+ *   - `skin` resolves to `"intemporel"` -> the real renderer below, exactly
+ *     as before this correction.
+ *   - `skin` resolves to any other real `Skin` (`musulman`/`juif`/`hindou`)
+ *     OR fails to resolve at all (a corrupted/unrecognized value) -> a
+ *     calm, honest "not yet available for this style" notice — NEVER the
+ *     Intemporel renderer, NEVER an invented Musulman/Juif/Hindou design,
+ *     NEVER any data touched or cleared. No edit links, no Continue: with
+ *     nothing actually shown, there is nothing for the family to have
+ *     genuinely verified, so `commitA03` is never reachable from this
+ *     branch — the family stays here until a real renderer for their
+ *     skin exists (a later mission's job, explicitly out of scope here).
+ *
+ * `A03_BUILT_SKINS` is the one seam a future mission widens when it adds
+ * a real Musulman/Juif/Hindou A03 renderer — nothing else in this
+ * component, `death-notice-step.ts`, or `page.tsx` needs to change.
+ *
+ * Deliberately NOT extended to the Hero (`HeroRevealStep`/`HeroIntemporel`
+ * have the identical, pre-existing gap since Mission 035) — out of scope
+ * for this mission; see the mission report.
  */
 export function DeathNoticePreviewStep({
   language,
   editorialContext,
   content,
+  skin,
   skinVariant,
   persist,
 }: DeathNoticePreviewStepProps) {
@@ -86,6 +131,19 @@ export function DeathNoticePreviewStep({
   }
 
   const progress = deathNoticeStepProgress(editorialContext, content);
+
+  const skinResolution = resolveSkinRuntime(skin);
+  const canRenderA03 = skinResolution.status === "resolved" && A03_BUILT_SKINS.includes(skinResolution.skin);
+
+  if (!canRenderA03) {
+    return (
+      <BuilderScreen progress={progress}>
+        <p role="alert" className={styles.unavailable}>
+          {translate(language, "deathNotice.previewSkinUnavailable")}
+        </p>
+      </BuilderScreen>
+    );
+  }
 
   async function handleEditAnnouncement() {
     if (isSubmitting) return;

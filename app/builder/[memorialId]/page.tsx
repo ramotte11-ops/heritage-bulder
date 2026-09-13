@@ -506,12 +506,24 @@ export default async function BuilderMemorialPage({
     // any precision change all make an earlier verification stale
     // automatically; a photo/crop/shortPhrase change never does (that
     // module's own docstring).
+    //
+    // Mission 039B "correction finale" — `resumed.memorial.skin` is now
+    // passed through too, RAW: `DeathNoticePreviewStep` itself is what
+    // re-validates it (`resolveSkinRuntime`) and decides whether a real
+    // A03 renderer exists for it, or an honest "unavailable" notice shows
+    // instead — never a silent Intemporel render for a
+    // musulman/juif/hindou memorial (that component's own docstring, "The
+    // skin guard"). This route deliberately does not pre-branch on skin
+    // itself, the same discipline it already applies to Hero/Death
+    // Notice corruption (handed raw to each step, which owns its own
+    // "can I actually render this" decision).
     if (needsA03(heroReconciledContent)) {
       return (
         <DeathNoticePreviewStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
+          skin={resumed.memorial.skin}
           skinVariant={resumed.memorial.skinVariant}
           persist={saveDraftAction.bind(null, access.memorialId)}
         />

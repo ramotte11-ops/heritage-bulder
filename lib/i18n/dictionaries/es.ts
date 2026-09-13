@@ -100,4 +100,6 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "deathNotice.blockOther": "Otra precisión",
   "deathNotice.editAnnouncement": "Editar el anuncio",
   "deathNotice.editPrecisions": "Editar las precisiones",
+  "deathNotice.previewSkinUnavailable":
+    "La vista previa del aviso de defunción para este estilo aún no está disponible. Su información se conserva; el equipo de HERITAGE le avisará en cuanto esté lista.",
 };

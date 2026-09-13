@@ -123,7 +123,13 @@
  * one key whose wording would be wrong in one of the two places.
  * `editAnnouncement`/`editPrecisions` are A03's own "Modifier l'annonce"/
  * "Modifier les précisions" links back to A01/A02 (section 14) — distinct
- * from `common.back`, which names no destination.
+ * from `common.back`, which names no destination. `previewSkinUnavailable`
+ * is the Mission 039B "correction finale" skin guard's own notice
+ * (`DeathNoticePreviewStep.tsx`'s own docstring, "The skin guard"): shown
+ * instead of the Intemporel renderer for any `memorial.skin` this A03
+ * has no real renderer for yet — honest and calm, never implying a
+ * failure (distinct wording from `hero.dataUnavailable`, which means
+ * "could not load", not "not built yet").
  *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
@@ -233,6 +239,7 @@ export const TRANSLATION_KEYS = [
   "deathNotice.blockOther",
   "deathNotice.editAnnouncement",
   "deathNotice.editPrecisions",
+  "deathNotice.previewSkinUnavailable",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

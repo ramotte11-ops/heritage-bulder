@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { HeroContent } from "@/types/hero";
 import { EMPTY_DEATH_NOTICE_PRECISIONS, type DeathNoticeContent } from "@/types/death-notice";
@@ -150,6 +152,63 @@ describe("DeathNoticeIntemporel — skin scoping", () => {
     const scope = container.querySelector('[data-heritage-skin="intemporel"]');
     expect(scope).toBeTruthy();
     expect(scope?.getAttribute("data-heritage-skin-variant")).toBe("dark");
+  });
+});
+
+describe("DeathNoticeIntemporel — Light/Dark real assets (Mission 039B correction)", () => {
+  it("uses the Light paper/botanical/seal/ornament assets by default", () => {
+    const { container } = renderNotice({ skinVariant: "light" });
+
+    const card = container.querySelector('[class*="card"]') as HTMLElement;
+    expect(card.style.backgroundImage).toContain("/assets/death-notice/intemporel/paper-background-tile.png");
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-right.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch.png"]')).toBeTruthy();
+    // No Dark asset leaks into the Light render.
+    expect(container.innerHTML).not.toMatch(/-dark\.png/);
+  });
+
+  it("uses the REAL Dark pack assets (V2 QG FINAL) when skinVariant is dark — never the Light ones, never a V1 leftover", () => {
+    const { container } = renderNotice({ skinVariant: "dark" });
+
+    const card = container.querySelector('[class*="card"]') as HTMLElement;
+    expect(card.style.backgroundImage).toContain("/assets/death-notice/intemporel/paper-background-dark.png");
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left-dark.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-right-dark.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage-dark.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch-dark.png"]')).toBeTruthy();
+    // No Light asset leaks into the Dark render, and no V1 filename
+    // (this V2 pack's own README: "ne pas mélanger avec... la texture
+    // de V1" — a V1 leftover would not match this exact filename).
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left.png"]')).toBeNull();
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage.png"]')).toBeNull();
+    expect(card.style.backgroundImage).not.toContain("paper-background-tile.png\")");
+  });
+
+  it("reuses the EXACT SAME precision icon files in both variants — no second (Dark) icon asset invented", () => {
+    const contentWithOnePrecision = {
+      ...FULL_DEATH_NOTICE,
+      precisions: { ...EMPTY_DEATH_NOTICE_PRECISIONS, thought: "Une pensée." },
+    };
+
+    const light = renderNotice({ skinVariant: "light", deathNotice: contentWithOnePrecision });
+    const lightIcon = light.container.querySelector('[class*="precisionIcon"]') as HTMLElement;
+    const lightMaskSrc = lightIcon.style.maskImage || lightIcon.style.getPropertyValue("-webkit-mask-image");
+    cleanup();
+
+    const dark = renderNotice({ skinVariant: "dark", deathNotice: contentWithOnePrecision });
+    const darkIcon = dark.container.querySelector('[class*="precisionIcon"]') as HTMLElement;
+    const darkMaskSrc = darkIcon.style.maskImage || darkIcon.style.getPropertyValue("-webkit-mask-image");
+
+    expect(lightMaskSrc).toContain("/assets/death-notice/intemporel/icon-thought.png");
+    expect(darkMaskSrc).toBe(lightMaskSrc);
+  });
+
+  it("never applies a CSS filter/inversion to fake Dark from the Light paper/botanical/seal/ornament assets", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "DeathNoticeIntemporel.module.css"), "utf8");
+    expect(source).not.toMatch(/filter\s*:/);
+    expect(source).not.toMatch(/invert\(/);
   });
 });
 
