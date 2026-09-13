@@ -15,8 +15,9 @@ import { HeroCropStep } from "@/components/builder/HeroCropStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
 import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
 import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
+import { DeathNoticePreviewStep } from "@/components/builder/DeathNoticePreviewStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
-import { needsA01, needsA02 } from "@/lib/builder/guided-flow/death-notice-step";
+import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -493,16 +494,39 @@ export default async function BuilderMemorialPage({
         />
       );
     }
+
+    // Mission 039B — A03: the Death Notice preview, obligatoire and
+    // non-passable (AGENTS.md Mission 039B section 1). Shown only once
+    // A01 AND A02 are both genuinely behind the family (never before —
+    // see `needsA03`'s own guard) and until A03 itself has been
+    // explicitly verified for the CURRENT content (a deterministic
+    // content fingerprint, `lib/builder/guided-flow/death-notice-step.ts`'s
+    // own `isA03Complete` — never merely "was this screen displayed
+    // once"). A displayName/dates change, an announcementText change, or
+    // any precision change all make an earlier verification stale
+    // automatically; a photo/crop/shortPhrase change never does (that
+    // module's own docstring).
+    if (needsA03(heroReconciledContent)) {
+      return (
+        <DeathNoticePreviewStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          skinVariant={resumed.memorial.skinVariant}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
   }
 
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
   // later mission has built yet, so — for now — a memorial past PAGE E
-  // (and, for `announcement`, past A01/A02) but with nothing else
+  // (and, for `announcement`, past A01/A02/A03) but with nothing else
   // configured gets a controlled notice rather than invented data or a
-  // Builder rendered against NULLs. A03 itself is deliberately NOT built
-  // here (mission brief section 1) — this same notice is exactly what a
-  // memorial past A02 falls through to today.
+  // Builder rendered against NULLs. A04 and beyond are deliberately NOT
+  // built here (Mission 039B scope) — this same notice is exactly what a
+  // memorial past A03 falls through to today.
   // `resumed.memorial.language` is narrowed non-null by the earlier
   // `return`, so this notice can already speak the family's own
   // language rather than a hard-coded one.

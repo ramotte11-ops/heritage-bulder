@@ -92,4 +92,12 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "deathNotice.precisionsFieldQuote": "Una cita",
   "deathNotice.precisionsFieldOther": "Otra precisión",
   "deathNotice.precisionsSkip": "Omitir este paso",
+  "deathNotice.previewTitle": "Aviso de defunción",
+  "deathNotice.blockLocation": "Lugar general",
+  "deathNotice.blockFamilyMessage": "Unas palabras de la familia",
+  "deathNotice.blockThought": "Pensamiento",
+  "deathNotice.blockQuote": "Cita",
+  "deathNotice.blockOther": "Otra precisión",
+  "deathNotice.editAnnouncement": "Editar el anuncio",
+  "deathNotice.editPrecisions": "Editar las precisiones",
 };

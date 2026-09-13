@@ -1,0 +1,299 @@
+/*
+ * Mission 039B (A03) — Death Notice Intemporel.
+ *
+ * One ivory-paper treatment only (no light/dark fork — see the
+ * component's own docstring), so ink colors below are plain local custom
+ * properties, not switched by `data-heritage-skin-variant` the way
+ * HeroIntemporel.module.css's own `--hero-ink-*` are. Values are the
+ * SAME warm ink HeroIntemporel already uses for its `light` variant
+ * (`config/hero-intemporel-tokens.ts`'s `HERO_INTEMPOREL_INK.light`) —
+ * not a coincidence: both are the same HERITAGE Intemporel identity, just
+ * two different editorial artifacts.
+ *
+ * Thin separators are plain CSS borders (asset README's own instruction:
+ * "aucun asset raster nécessaire" for filets) — never an image.
+ */
+
+.wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.25rem 1.75rem;
+  background-color: #f6f1e6;
+  background-image: url("/assets/death-notice/intemporel/paper-background-tile.png");
+  background-repeat: repeat;
+  background-size: 512px 512px;
+  border: 1px solid rgba(111, 114, 85, 0.22);
+  border-radius: 4px;
+  box-shadow: var(--heritage-shadow-elevated, 0 4px 12px rgba(43, 43, 40, 0.1));
+  color: #3d3a2b;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  text-align: center;
+}
+
+@media (min-width: 40rem) {
+  .card {
+    padding: 2.75rem 3rem 2.25rem;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: #6b6256;
+}
+
+.title {
+  margin: 0.5rem 0 0;
+  font-weight: 500;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  color: #3d3a2b;
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2.25rem;
+  }
+}
+
+.ornament {
+  display: block;
+  width: 96px;
+  height: auto;
+  margin: 0.625rem 0 1.125rem;
+  opacity: 0.9;
+}
+
+@media (min-width: 40rem) {
+  .ornament {
+    width: 128px;
+  }
+}
+
+.name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 2.25rem;
+  line-height: 1.1;
+  color: #3d3a2b;
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 40rem) {
+  .name {
+    font-size: 3rem;
+  }
+}
+
+.dates {
+  margin: 0.375rem 0 0;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  color: #6b6256;
+}
+
+@media (min-width: 40rem) {
+  .dates {
+    font-size: 1.125rem;
+  }
+}
+
+.divider {
+  width: 100%;
+  max-width: 22rem;
+  height: 1px;
+  margin: 1.5rem 0;
+  background: rgba(111, 114, 85, 0.32);
+}
+
+.announcement {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: #3d3a2b;
+  white-space: pre-wrap;
+}
+
+.precisions {
+  width: 100%;
+  max-width: 34rem;
+  margin-top: 1.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.precisionRow {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(111, 114, 85, 0.24);
+}
+
+.precisionRow:first-child {
+  border-top: none;
+}
+
+@media (min-width: 40rem) {
+  .precisionRow {
+    flex-direction: row;
+    align-items: stretch;
+  }
+}
+
+.precisionBlock {
+  flex: 1 1 0;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 1rem 0;
+  text-align: left;
+}
+
+@media (min-width: 40rem) {
+  .precisionBlock {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .precisionBlock:not(:first-child) {
+    border-left: 1px solid rgba(111, 114, 85, 0.24);
+  }
+
+  .precisionBlock:first-child {
+    padding-left: 0;
+  }
+
+  .precisionBlock:last-child {
+    padding-right: 0;
+  }
+}
+
+.precisionHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.precisionIcon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.precisionLabel {
+  font-family: var(--heritage-font-family-sans, Inter, system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6b6256;
+}
+
+.precisionText {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: #3d3a2b;
+  white-space: pre-wrap;
+}
+
+.sealRow {
+  width: 100%;
+  max-width: 18rem;
+  margin-top: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.sealLine {
+  flex: 1 1 auto;
+  height: 1px;
+  background: rgba(111, 114, 85, 0.32);
+}
+
+.seal {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+@media (min-width: 40rem) {
+  .seal {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* --- Peripheral botanicals ----------------------------------------------
+   Asset README: "placement absolu, hors flux du contenu ; ne doit jamais
+   fixer la hauteur de la section" and "réduire ou masquer si l'espace
+   devient insuffisant". Hidden by default (every viewport up to and
+   including a typical desktop Builder window, where the centered
+   `BuilderScreen` frame alone already fills most of the width) and shown
+   only once the viewport is comfortably wider than the frame, flanking it
+   without ever overlapping the card's own text. */
+.botanicalLeft,
+.botanicalRight {
+  display: none;
+  position: absolute;
+  top: 50%;
+  width: 130px;
+  height: auto;
+  transform: translateY(-50%);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (min-width: 80rem) {
+  .botanicalLeft,
+  .botanicalRight {
+    display: block;
+  }
+
+  .botanicalLeft {
+    left: -20px;
+  }
+
+  .botanicalRight {
+    right: -20px;
+  }
+}
+
+@media (min-width: 90rem) {
+  .botanicalLeft,
+  .botanicalRight {
+    width: 160px;
+  }
+
+  .botanicalLeft {
+    left: -80px;
+  }
+
+  .botanicalRight {
+    right: -80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

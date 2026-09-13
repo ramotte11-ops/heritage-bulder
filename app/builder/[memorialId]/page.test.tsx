@@ -2,6 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { MemorialVersion, StoredMemorialConfig } from "@/types/memorial";
+// Mission 039B — the real (never mocked) A03 fingerprint helper, so
+// fixtures below can construct an already-verified A03 StepRecord that
+// actually matches their own Hero/Death-Notice content, rather than a
+// guessed/duplicated value that would silently drift from the real
+// implementation. See death-notice-step.test.ts for that module's own
+// exhaustive tests.
+import { deathNoticePreviewFingerprint } from "@/lib/builder/guided-flow/death-notice-step";
 
 /**
  * Mission 021 — the real Builder entry point.
@@ -135,6 +142,12 @@ const { DeathNoticePrecisionsStep } = vi.hoisted(() => ({
 }));
 vi.mock("@/components/builder/DeathNoticePrecisionsStep", () => ({ DeathNoticePrecisionsStep }));
 
+// Mission 039B — A03, mocked the same way and for the same reasons.
+const { DeathNoticePreviewStep } = vi.hoisted(() => ({
+  DeathNoticePreviewStep: vi.fn(() => null),
+}));
+vi.mock("@/components/builder/DeathNoticePreviewStep", () => ({ DeathNoticePreviewStep }));
+
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
 // builds its real MediaEngineDeps. Both compose real Mission 030
@@ -244,53 +257,68 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032/033/034/035/039 — PAGE A, PAGE B, PAGE C, PAGE D, PAGE E,
- * A01 and A02 all genuinely done: a real `displayName`, T04 explicitly
- * skipped (never just inferred from zero dates — QG micro-correction),
- * T05 explicitly treated, T06 explicitly completed with a real photo
- * reference, T07 explicitly completed with a real crop attached to that
- * exact photo, T08 explicitly completed (Mission 035's own "Hero
- * reveal" confirmation), A01 explicitly completed with a real
- * announcement text, and A02 explicitly skipped (Mission 039 — A01/A02
- * only apply to `CONFIGURED_MEMORIAL`'s own `announcement` context, but
- * a completed/skipped StepRecord is simply inert, unread data for a
- * `remembrance` memorial, so the same draft still works for both).
- * Paired with a memorial that has a language and an editorial context,
- * this draft resumes straight past every gate — exactly what every
- * pre-039 test below that expects to reach BuilderShell (or the T02/
- * "not configured yet" fallthrough) still needs. See the "Mission 032"/
- * "Mission 033"/"Mission 034"/"Mission 035"/"Mission 039" describe
- * blocks for the drafts that deliberately do NOT satisfy these gates. */
+/** Mission 032/033/034/035/039/039B — PAGE A, PAGE B, PAGE C, PAGE D,
+ * PAGE E, A01, A02 and A03 all genuinely done: a real `displayName`, T04
+ * explicitly skipped (never just inferred from zero dates — QG
+ * micro-correction), T05 explicitly treated, T06 explicitly completed
+ * with a real photo reference, T07 explicitly completed with a real crop
+ * attached to that exact photo, T08 explicitly completed (Mission 035's
+ * own "Hero reveal" confirmation), A01 explicitly completed with a real
+ * announcement text, A02 explicitly skipped, and A03 explicitly verified
+ * — its `answer` computed with the REAL `deathNoticePreviewFingerprint`
+ * against this exact content, never a guessed string, so
+ * `isA03Complete` genuinely reads true rather than only by accident
+ * (Mission 039 — A01/A02/A03 only apply to `CONFIGURED_MEMORIAL`'s own
+ * `announcement` context, but a completed/skipped StepRecord is simply
+ * inert, unread data for a `remembrance` memorial, so the same draft
+ * still works for both). Paired with a memorial that has a language and
+ * an editorial context, this draft resumes straight past every gate —
+ * exactly what every pre-039B test below that expects to reach
+ * BuilderShell (or the T02/"not configured yet" fallthrough) still
+ * needs. See the "Mission 032"/"Mission 033"/"Mission 034"/
+ * "Mission 035"/"Mission 039"/"Mission 039B" describe blocks for the
+ * drafts that deliberately do NOT satisfy these gates. */
+const REAL_DRAFT_CONTENT_BEFORE_A03: MemorialVersion["content"] = {
+  hero: {
+    displayName: "Real content",
+    birth: null,
+    death: null,
+    shortPhrase: null,
+    photo: {
+      mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001",
+      crop: { focalX: 0.5, focalY: 0.5, zoom: 1 },
+    },
+  },
+  deathNotice: {
+    announcementText: "C'est avec tristesse que nous annonçons son départ.",
+    precisions: {
+      generalLocation: null,
+      familyMessage: null,
+      thought: null,
+      quote: null,
+      other: null,
+    },
+  },
+  guidedFlow: {
+    T04: { status: "skipped" },
+    T05: { status: "skipped" },
+    T06: { status: "completed" },
+    T07: { status: "completed" },
+    T08: { status: "completed" },
+    A01: { status: "completed" },
+    A02: { status: "skipped" },
+  },
+} as MemorialVersion["content"];
+
 const REAL_DRAFT: MemorialVersion = {
   content: {
-    hero: {
-      displayName: "Real content",
-      birth: null,
-      death: null,
-      shortPhrase: null,
-      photo: {
-        mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001",
-        crop: { focalX: 0.5, focalY: 0.5, zoom: 1 },
-      },
-    },
-    deathNotice: {
-      announcementText: "C'est avec tristesse que nous annonçons son départ.",
-      precisions: {
-        generalLocation: null,
-        familyMessage: null,
-        thought: null,
-        quote: null,
-        other: null,
-      },
-    },
+    ...REAL_DRAFT_CONTENT_BEFORE_A03,
     guidedFlow: {
-      T04: { status: "skipped" },
-      T05: { status: "skipped" },
-      T06: { status: "completed" },
-      T07: { status: "completed" },
-      T08: { status: "completed" },
-      A01: { status: "completed" },
-      A02: { status: "skipped" },
+      ...(REAL_DRAFT_CONTENT_BEFORE_A03 as { guidedFlow: object }).guidedFlow,
+      A03: {
+        status: "completed",
+        answer: deathNoticePreviewFingerprint(REAL_DRAFT_CONTENT_BEFORE_A03),
+      },
     },
   } as MemorialVersion["content"],
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -1287,7 +1315,7 @@ describe("BuilderMemorialPage — granted access", () => {
         memorial: CONFIGURED_MEMORIAL,
         draft: REAL_DRAFT,
       });
-      const reconciledContent = {
+      const reconciledContentBeforeA03 = {
         hero: { ...REAL_DRAFT.content.hero, photo: { mediaId: "adopted-later", crop: null } },
         // Mission 039 — this fixture deliberately carries no T06/T07/T08
         // guidedFlow entries at all (same as before A01/A02 existed):
@@ -1298,6 +1326,19 @@ describe("BuilderMemorialPage — granted access", () => {
         // falling through to BuilderShell, exactly like every other gate
         // this specific test does not care about.
         guidedFlow: { A01: { status: "completed" }, A02: { status: "skipped" } },
+      };
+      // Mission 039B — A03 needs its own StepRecord too now, for the
+      // same "not this test's concern" reason, with a real fingerprint
+      // matching this exact fixture (never a guessed string).
+      const reconciledContent = {
+        ...reconciledContentBeforeA03,
+        guidedFlow: {
+          ...reconciledContentBeforeA03.guidedFlow,
+          A03: {
+            status: "completed",
+            answer: deathNoticePreviewFingerprint(reconciledContentBeforeA03),
+          },
+        },
       };
       reconcileHeroMediaOnResume.mockResolvedValue(reconciledContent);
 
@@ -1888,7 +1929,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
 
-    it("renders BuilderShell once A02 is resolved (completed or skipped) and the memorial is otherwise fully configured", async () => {
+    it("renders BuilderShell once A02 is resolved, A03 is verified, and the memorial is otherwise fully configured", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1898,7 +1939,7 @@ describe("BuilderMemorialPage — granted access", () => {
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
         memorial: CONFIGURED_MEMORIAL, // has a real slug
-        draft: REAL_DRAFT, // A01 completed, A02 skipped
+        draft: REAL_DRAFT, // A01 completed, A02 skipped, A03 verified
       });
 
       const result = await callPage();
@@ -1906,6 +1947,129 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(BuilderShell);
       expect(DeathNoticeAnnouncementStep).not.toHaveBeenCalled();
       expect(DeathNoticePrecisionsStep).not.toHaveBeenCalled();
+      expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Mission 039B — A03 (aperçu de l'avis de décès)", () => {
+    /** A01 completed, A02 skipped, A03 never yet visited — A03's own
+     * normal starting point. */
+    const DRAFT_WITH_A02_RESOLVED_NO_A03: MemorialVersion = {
+      content: {
+        ...REAL_DRAFT_CONTENT_BEFORE_A03,
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    it("renders DeathNoticePreviewStep (A03) once A02 is resolved, never before", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: DRAFT_WITH_A02_RESOLVED_NO_A03,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(DeathNoticePreviewStep);
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("wires DeathNoticePreviewStep's persist and skinVariant, persist bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: DRAFT_WITH_A02_RESOLVED_NO_A03,
+      });
+
+      const result = await callPage("claimed-id");
+
+      expect(result.props.content).toBe(DRAFT_WITH_A02_RESOLVED_NO_A03.content);
+      expect(result.props.language).toBe("fr");
+      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props.skinVariant).toBe(CONFIGURED_MEMORIAL.skinVariant);
+
+      const newContent = { guidedFlow: { A03: { status: "completed", answer: "x" } } };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
+    });
+
+    it("A03 never appears for the remembrance context — falls through past T08 to the same notice", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
+        draft: DRAFT_WITH_A02_RESOLVED_NO_A03,
+      });
+
+      const result = await callPage();
+
+      expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+
+    it("renders BuilderShell once A03 is verified (a fingerprint matching the CURRENT content) and the memorial is otherwise fully configured", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: REAL_DRAFT,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(BuilderShell);
+      expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
+    });
+
+    it("A03 shows again after a verified display field changes — a stale fingerprint never counts as still verified", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      const staleDraft: MemorialVersion = {
+        content: {
+          ...REAL_DRAFT.content,
+          deathNotice: {
+            ...(REAL_DRAFT.content as { deathNotice: { announcementText: string; precisions: object } }).deathNotice,
+            announcementText: "Un texte différent, saisi après la vérification A03.",
+          },
+        } as MemorialVersion["content"],
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      };
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: staleDraft,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(DeathNoticePreviewStep);
+      expect(BuilderShell).not.toHaveBeenCalled();
     });
   });
 

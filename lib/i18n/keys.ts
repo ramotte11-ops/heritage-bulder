@@ -106,6 +106,25 @@
  * refusal every other Guided Flow screen already shows on corrupted data,
  * never a bespoke "deathNotice" wording for the identical concept.
  *
+ * Mission 039B adds seven more `deathNotice` keys for A03 (aperçu de
+ * l'avis de décès) — the minimum system texts AGENTS.md section 20
+ * itself names, reusing `context.announcementTitle` (the "Annonce &
+ * Hommage" eyebrow — already exists, section 20's "réutiliser les clés
+ * existantes") and `common.continue` (A03's own Continue) rather than
+ * duplicating either. `previewTitle` is the fixed "Avis de décès" card
+ * title. `blockLocation`/`blockFamilyMessage`/`blockThought`/
+ * `blockQuote`/`blockOther` are A03's own DISPLAY labels for the five A02
+ * precisions — deliberately separate keys from A02's own
+ * `precisionsFieldLocation`/etc. (which phrase the same concept as an
+ * accessible FIELD label at data-entry time, e.g. "Un mot de la
+ * famille") because A03 needs the Studio's own literal heading wording
+ * instead (e.g. "Mot de la famille") — two different UI moments for the
+ * same underlying `DeathNoticePrecisionField`, never silently merged into
+ * one key whose wording would be wrong in one of the two places.
+ * `editAnnouncement`/`editPrecisions` are A03's own "Modifier l'annonce"/
+ * "Modifier les précisions" links back to A01/A02 (section 14) — distinct
+ * from `common.back`, which names no destination.
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -205,6 +224,15 @@ export const TRANSLATION_KEYS = [
   "deathNotice.precisionsFieldQuote",
   "deathNotice.precisionsFieldOther",
   "deathNotice.precisionsSkip",
+  // Mission 039B — A03 (aperçu de l'avis de décès).
+  "deathNotice.previewTitle",
+  "deathNotice.blockLocation",
+  "deathNotice.blockFamilyMessage",
+  "deathNotice.blockThought",
+  "deathNotice.blockQuote",
+  "deathNotice.blockOther",
+  "deathNotice.editAnnouncement",
+  "deathNotice.editPrecisions",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
