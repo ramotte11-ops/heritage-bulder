@@ -426,3 +426,186 @@ describe("context change does not silently destroy already-entered content", () 
     expect(inspectDeathNotice(content)).toEqual({ status: "valid", deathNotice });
   });
 });
+
+// ---------------------------------------------------------------------
+// QG micro-audit — unknown keys never become canonical (mission's own
+// "Point à auditer": the `[key: string]: unknown` index signatures on
+// DeathNoticeContent/DeathNoticePrecisions exist ONLY for structural
+// assignability into MemorialSectionContent (Record<string, unknown>,
+// types/memorial.ts) — the same reason HeroContent carries one. They do
+// NOT make `parseDeathNoticeContent` permissive: it reconstructs a fresh
+// `{ announcementText, precisions }` object field-by-field and never
+// spreads `raw`, so no key the parser doesn't explicitly name can ever
+// reach the returned value, however the index signature reads.
+// ---------------------------------------------------------------------
+
+describe("QG micro-audit — unknown keys never become canonical", () => {
+  it("a Hero-shaped key (displayName/birth/death/photo/shortPhrase) does not survive parsing", () => {
+    const poisoned = {
+      announcementText: "Texte normal.",
+      displayName: "Jean Dupont",
+      birth: { precision: "year", year: 1950 },
+      death: { precision: "year", year: 2020 },
+      photo: { mediaId: "11111111-1111-4111-8111-111111111111" },
+      shortPhrase: "Une phrase.",
+    };
+    const result = parseDeathNoticeContent(poisoned);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    // The canonical value holds ONLY the two known fields.
+    expect(Object.keys(result.deathNotice).sort()).toEqual(["announcementText", "precisions"]);
+    expect(result.deathNotice).toEqual({
+      announcementText: "Texte normal.",
+      precisions: EMPTY_DEATH_NOTICE_PRECISIONS,
+    });
+    for (const heroKey of ["displayName", "birth", "death", "photo", "shortPhrase"]) {
+      expect(Object.prototype.hasOwnProperty.call(result.deathNotice, heroKey)).toBe(false);
+    }
+  });
+
+  it("an Auth/Owner-shaped key (ownerId/userId/email) does not survive parsing", () => {
+    const poisoned = {
+      announcementText: "Texte normal.",
+      ownerId: "owner-1",
+      userId: "user-1",
+      email: "famille@example.com",
+    };
+    const result = parseDeathNoticeContent(poisoned);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    expect(Object.keys(result.deathNotice).sort()).toEqual(["announcementText", "precisions"]);
+    for (const authKey of ["ownerId", "userId", "email"]) {
+      expect(Object.prototype.hasOwnProperty.call(result.deathNotice, authKey)).toBe(false);
+    }
+  });
+
+  it("a ceremony-shaped key (ceremonyDate/venue) does not survive parsing", () => {
+    const poisoned = {
+      announcementText: "Texte normal.",
+      ceremonyDate: "2026-03-01",
+      venue: "Église Saint-Martin",
+    };
+    const result = parseDeathNoticeContent(poisoned);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    expect(Object.keys(result.deathNotice).sort()).toEqual(["announcementText", "precisions"]);
+    for (const ceremonyKey of ["ceremonyDate", "venue"]) {
+      expect(Object.prototype.hasOwnProperty.call(result.deathNotice, ceremonyKey)).toBe(false);
+    }
+  });
+
+  it("all three families of unknown keys combined still parse to exactly the two known fields, nothing more", () => {
+    const poisoned = {
+      announcementText: "Annonce.",
+      precisions: { generalLocation: "Lyon" },
+      displayName: "Jean Dupont",
+      birth: { precision: "year", year: 1950 },
+      death: { precision: "year", year: 2020 },
+      photo: { mediaId: "x" },
+      shortPhrase: "phrase",
+      ownerId: "owner-1",
+      userId: "user-1",
+      email: "a@b.com",
+      ceremonyDate: "2026-01-01",
+      venue: "Church",
+    };
+    const result = parseDeathNoticeContent(poisoned);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    expect(Object.keys(result.deathNotice).sort()).toEqual(["announcementText", "precisions"]);
+    expect(Object.keys(result.deathNotice.precisions).sort()).toEqual(
+      ["familyMessage", "generalLocation", "other", "quote", "thought"].sort(),
+    );
+  });
+
+  it("the same combined poisoned payload also inspects as ordinary valid content.deathNotice, not corrupted", () => {
+    const content: MemorialContent = {
+      deathNotice: {
+        announcementText: "Annonce.",
+        displayName: "Jean Dupont",
+        ownerId: "owner-1",
+        ceremonyDate: "2026-01-01",
+      },
+    };
+    const result = inspectDeathNotice(content);
+    expect(result.status).toBe("valid");
+    if (result.status !== "valid") throw new Error("unreachable");
+    expect(Object.keys(result.deathNotice).sort()).toEqual(["announcementText", "precisions"]);
+  });
+});
+
+describe("QG micro-audit — non-canonical payload keeps raw preserved", () => {
+  it("a deathNotice that is a string, not an object, is corrupted and its raw is preserved untouched", () => {
+    const content: MemorialContent = { deathNotice: "not an object" as unknown as MemorialContent["deathNotice"] };
+    const result = inspectDeathNotice(content);
+    expect(result).toEqual({ status: "corrupted", raw: "not an object" });
+  });
+
+  it("a deathNotice with a wrongly-typed known field is corrupted and its raw — including any unknown sibling keys — is preserved untouched, not stripped down to the known ones", () => {
+    const raw = { announcementText: 42, displayName: "Jean Dupont", ownerId: "owner-1" };
+    const content: MemorialContent = { deathNotice: raw as unknown as MemorialContent["deathNotice"] };
+    const result = inspectDeathNotice(content);
+    expect(result).toEqual({ status: "corrupted", raw });
+    // The exact original object identity/shape is what a future repair
+    // path would need — never a partially-parsed, partially-lost value.
+    if (result.status === "corrupted") {
+      expect(result.raw).toBe(raw);
+    }
+  });
+});
+
+describe("QG micro-audit — write path on a corrupted payload", () => {
+  const corruptedRaw = { announcementText: 42, displayName: "Jean Dupont" };
+
+  it("proves the real risk: readDeathNotice + writeDeathNotice DOES silently discard a corrupted stored value", () => {
+    const content: MemorialContent = { deathNotice: corruptedRaw as unknown as MemorialContent["deathNotice"] };
+    expect(inspectDeathNotice(content).status).toBe("corrupted");
+
+    // The unsafe composition readDeathNotice's own docstring warns
+    // against: it fails safe to an empty value, and writing that back
+    // replaces the corrupted raw with no trace it was ever there.
+    const editedFromReadDeathNotice = setDeathNoticeAnnouncementText(
+      readDeathNotice(content),
+      "Nouveau texte tapé par la famille.",
+    );
+    const next = writeDeathNotice(content, editedFromReadDeathNotice);
+
+    // The corrupted raw (and its unknown `displayName` key) is gone —
+    // this IS the documented risk, proven real, not merely asserted.
+    expect(inspectDeathNotice(next).status).toBe("valid");
+    expect(next.deathNotice).not.toEqual(corruptedRaw);
+  });
+
+  it("proves the safe pattern: a caller branching on inspectDeathNotice can refuse to call writeDeathNotice at all", () => {
+    const content: MemorialContent = { deathNotice: corruptedRaw as unknown as MemorialContent["deathNotice"] };
+
+    // The guarded pattern lib/builder/guided-flow/hero-step.ts already
+    // applies for every Hero field write (inspectHero first, refuse on
+    // "corrupted") composes identically here — Mission 039's own job to
+    // wire in, proven here to actually work when followed.
+    function guardedWrite(c: MemorialContent, text: string): { ok: true; content: MemorialContent } | { ok: false } {
+      const state = inspectDeathNotice(c);
+      if (state.status === "corrupted") return { ok: false };
+      return { ok: true, content: writeDeathNotice(c, setDeathNoticeAnnouncementText(state.deathNotice, text)) };
+    }
+
+    const result = guardedWrite(content, "Nouveau texte.");
+    expect(result).toEqual({ ok: false });
+    // Nothing was written — the original corrupted raw is exactly as it was.
+    expect(inspectDeathNotice(content)).toEqual({ status: "corrupted", raw: corruptedRaw });
+  });
+
+  it("writeDeathNotice itself has no corrupted-check: it always overwrites, by design (mirrors lib/memorial/hero.ts's updateHero) — the guard is the caller's job", () => {
+    const content: MemorialContent = { deathNotice: corruptedRaw as unknown as MemorialContent["deathNotice"] };
+    const deliberateReplacement: DeathNoticeContent = {
+      announcementText: "Remplacement volontaire, ex. après réparation manuelle.",
+      precisions: EMPTY_DEATH_NOTICE_PRECISIONS,
+    };
+    const next = writeDeathNotice(content, deliberateReplacement);
+    expect(readDeathNotice(next)).toEqual(deliberateReplacement);
+  });
+});

@@ -301,19 +301,40 @@ export function readDeathNotice(content: MemorialContent): DeathNoticeContent {
 
 /**
  * Writes a Death Notice back into a draft's content, preserving every
- * other section's content untouched (a plain shallow merge —
- * `content.deathNotice` is the only key this ever touches). Whole-content,
- * last-write-wins, same as `DraftRepository.saveDraftContent`
+ * OTHER section's content untouched (a plain shallow merge —
+ * `content.deathNotice` is the only key this ever touches; `content.hero`,
+ * `content.story`, etc. are all passed through exactly as given). Whole-
+ * content, last-write-wins, same as `DraftRepository.saveDraftContent`
  * (lib/adapters/draft-repository.ts) this is meant to feed: this function
  * does not itself validate `deathNotice` — call `validateDeathNotice`
  * first, the same way a Server Action validates form input before
  * persisting it, and the same discipline lib/memorial/hero.ts's
  * `updateHero` already follows.
  *
- * Because this only ever touches the `deathNotice` key, it can never
- * silently overwrite a corrupted-but-untouched value the caller did not
- * mean to replace, and it never reads or depends on `editorial_context`
- * — see this module's own "context safety" docstring above.
+ * QG micro-audit correction: this function has NO notion of "corrupted"
+ * and never consults `inspectDeathNotice`. It unconditionally REPLACES
+ * whatever `content.deathNotice` held before — corrupted or not — with
+ * whatever `deathNotice` it is given, exactly like `updateHero`. It does
+ * NOT, by itself, protect a `"corrupted"` stored value from being
+ * silently lost. Concretely: `writeDeathNotice(content, readDeathNotice(content))`
+ * (or any edit built on top of `readDeathNotice`'s result) DOES silently
+ * discard a `"corrupted"` raw value the instant it is called — this is
+ * exactly the composition `readDeathNotice`'s own docstring calls "the
+ * WRONG function to call right before a write". The only real guard
+ * lives at the CALLER: branch on `inspectDeathNotice(content).status`
+ * first, and refuse (or explicitly resolve) a `"corrupted"` result before
+ * ever reaching this function — the same discipline
+ * lib/builder/guided-flow/hero-step.ts applies via `inspectHero` before
+ * every one of its Hero field writes. This mission does not itself build
+ * that guarded, `MemorialContent`-level write helper for the Death Notice
+ * (there is no A01/A02 screen yet to call it) — composing `inspectDeathNotice`
+ * with this function safely is Mission 039's job, mirroring
+ * `hero-step.ts`'s own `writeDisplayName`/`commitPageA` pattern exactly.
+ *
+ * This function does still guarantee the one thing its name promises: it
+ * never reads or depends on `editorial_context`, and it never touches any
+ * key other than `deathNotice` — see this module's own "context safety"
+ * docstring above.
  */
 export function writeDeathNotice(
   content: MemorialContent,
