@@ -76,4 +76,23 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "hero.revealToggleToDark": "Voir en version sombre",
   "hero.revealToggleToLight": "Voir en version claire",
   "hero.revealConfirm": "Continuer avec cette ambiance",
+  "deathNotice.announcementTitle": "Quelques mots pour annoncer son départ",
+  "deathNotice.announcementSubtitle":
+    "L'essentiel, avec vos propres mots — inutile d'ajouter autre chose ici.",
+  "deathNotice.announcementPlaceholder":
+    "C'est avec une grande tristesse que nous vous faisons part du décès de…",
+  "deathNotice.announcementRequired": "Merci d'écrire quelques mots pour continuer.",
+  "deathNotice.precisionsTitle": "Souhaitez-vous ajouter quelques précisions ?",
+  "deathNotice.precisionsSubtitle": "Entièrement facultatif — n'ajoutez que ce qui vous semble juste.",
+  "deathNotice.precisionsAddLocation": "Ajouter un lieu",
+  "deathNotice.precisionsAddFamilyMessage": "Ajouter un mot de la famille",
+  "deathNotice.precisionsAddThought": "Ajouter une pensée",
+  "deathNotice.precisionsAddQuote": "Ajouter une citation",
+  "deathNotice.precisionsAddOther": "Ajouter une autre précision",
+  "deathNotice.precisionsFieldLocation": "Lieu",
+  "deathNotice.precisionsFieldFamilyMessage": "Un mot de la famille",
+  "deathNotice.precisionsFieldThought": "Une pensée",
+  "deathNotice.precisionsFieldQuote": "Une citation",
+  "deathNotice.precisionsFieldOther": "Une autre précision",
+  "deathNotice.precisionsSkip": "Passer cette étape",
 };

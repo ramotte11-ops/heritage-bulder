@@ -81,6 +81,31 @@
  * PAGE A/PAGE B; its corrupted-Hero notice reuses the existing
  * `hero.dataUnavailable`, same as both of them too.
  *
+ * Mission 039 adds a `deathNotice` namespace for A01 (l'annonce, quelques
+ * mots) and A02 (précisions facultatives) — one key per distinct piece of
+ * text. `announcementTitle`/`announcementSubtitle` are A01's own
+ * QG-validated copy ("Quelques mots pour annoncer son départ"), never a
+ * label naming `name`/`dates`/`photo`/`cause`/`ceremony` (mission brief
+ * section 2 — those have their own, later screens).
+ * `announcementPlaceholder` is the neutral HERITAGE amorce shown as
+ * placeholder text ONLY — never persisted until the family actually types
+ * something (mission brief section 3), so it is never read through
+ * `announcementText` itself. `announcementRequired` is A01's one human
+ * error, shown only if Continue is somehow reached with no real text.
+ * `precisionsTitle`/`precisionsSubtitle` are A02's own copy ("Souhaitez-
+ * vous ajouter quelques précisions ?"); `precisionsAddLocation`/
+ * `precisionsAddFamilyMessage`/`precisionsAddThought`/`precisionsAddQuote`/
+ * `precisionsAddOther` are the five discreet "Ajouter…" actions (section
+ * 5 — never five large fields shown at once); `precisionsFieldLocation`/
+ * `precisionsFieldFamilyMessage`/`precisionsFieldThought`/
+ * `precisionsFieldQuote`/`precisionsFieldOther` are each opened field's
+ * own accessible label; `precisionsSkip` is the explicit "Passer cette
+ * étape" action (section 8). Both screens' Continue reuses
+ * `common.continue`; their corrupted-Death-Notice notice reuses the
+ * existing `hero.dataUnavailable` — the same honest, non-inventing
+ * refusal every other Guided Flow screen already shows on corrupted data,
+ * never a bespoke "deathNotice" wording for the identical concept.
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -162,6 +187,24 @@ export const TRANSLATION_KEYS = [
   "hero.revealToggleToDark",
   "hero.revealToggleToLight",
   "hero.revealConfirm",
+  // Mission 039 — A01 (l'annonce) and A02 (précisions facultatives).
+  "deathNotice.announcementTitle",
+  "deathNotice.announcementSubtitle",
+  "deathNotice.announcementPlaceholder",
+  "deathNotice.announcementRequired",
+  "deathNotice.precisionsTitle",
+  "deathNotice.precisionsSubtitle",
+  "deathNotice.precisionsAddLocation",
+  "deathNotice.precisionsAddFamilyMessage",
+  "deathNotice.precisionsAddThought",
+  "deathNotice.precisionsAddQuote",
+  "deathNotice.precisionsAddOther",
+  "deathNotice.precisionsFieldLocation",
+  "deathNotice.precisionsFieldFamilyMessage",
+  "deathNotice.precisionsFieldThought",
+  "deathNotice.precisionsFieldQuote",
+  "deathNotice.precisionsFieldOther",
+  "deathNotice.precisionsSkip",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

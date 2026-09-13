@@ -13,7 +13,10 @@ import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
 import { HeroCropStep } from "@/components/builder/HeroCropStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
+import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
+import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
+import { needsA01, needsA02 } from "@/lib/builder/guided-flow/death-notice-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -456,11 +459,50 @@ export default async function BuilderMemorialPage({
     }
   }
 
+  // Mission 039 — A01 (l'annonce) and A02 (précisions facultatives) sit
+  // right after PAGE E, and ONLY for the `announcement` editorial
+  // context (mission brief section 13: A01/A02 must never appear at all
+  // in `remembrance` — never merely skipped, never rendered empty).
+  // Nothing here ever reads or clears `content.deathNotice` for a
+  // `remembrance` memorial: this whole block is unreachable for one, so
+  // a stray Death Notice left over from an earlier context switch is
+  // simply never touched (lib/memorial/death-notice.ts's own "context
+  // safety" doctrine — a context switch alone never destroys data).
+  if (resumed.memorial.editorialContext === "announcement") {
+    if (needsA01(heroReconciledContent)) {
+      return (
+        <DeathNoticeAnnouncementStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    // A02 is shown only once A01 is genuinely behind the family (never
+    // before — see `needsA02`'s own guard) and only until A02 itself has
+    // been treated once, whichever way (mission brief section 8/9).
+    if (needsA02(heroReconciledContent)) {
+      return (
+        <DeathNoticePrecisionsStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+  }
+
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
   // StoredMemorialConfig); choosing `slug` is a Guided Flow step no
   // later mission has built yet, so — for now — a memorial past PAGE E
-  // but with nothing else configured gets a controlled notice rather
-  // than invented data or a Builder rendered against NULLs.
+  // (and, for `announcement`, past A01/A02) but with nothing else
+  // configured gets a controlled notice rather than invented data or a
+  // Builder rendered against NULLs. A03 itself is deliberately NOT built
+  // here (mission brief section 1) — this same notice is exactly what a
+  // memorial past A02 falls through to today.
   // `resumed.memorial.language` is narrowed non-null by the earlier
   // `return`, so this notice can already speak the family's own
   // language rather than a hard-coded one.

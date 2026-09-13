@@ -1,0 +1,76 @@
+/*
+ * Mission 039 — A01 (l'annonce, quelques mots). Chrome lives in
+ * BuilderScreen.module.css; colors/typography reuse the exact T01/T02/
+ * Hero palette (mission brief section 15) — nothing new introduced.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-breathing);
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 140px;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--heritage-text-primary);
+  resize: vertical;
+}
+
+.textarea::placeholder {
+  color: var(--heritage-text-secondary);
+}
+
+.textarea:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 1px;
+}
+
+.textarea:disabled {
+  background: var(--heritage-state-disabled-surface);
+  color: var(--heritage-state-disabled-text);
+}
+
+.fieldError {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--heritage-state-error-text);
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}

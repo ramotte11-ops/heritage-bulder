@@ -17,7 +17,15 @@ import {
   type HeroValidationReason,
 } from "@/lib/memorial/hero";
 import { guidedFlowProgress, type StepRecord } from "./engine";
-import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from "./human-steps";
+import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
+import { humanFlowDefinition, type HumanFlowState } from "./human-steps";
+
+// Re-exported so every existing caller (including this module's own
+// tests) that imports `readGuidedFlowState` from "./hero-step" keeps
+// working unchanged — the real implementation now lives in
+// flow-state.ts, shared with death-notice-step.ts (Mission 039). See
+// that file's own docstring for why.
+export { readGuidedFlowState };
 
 /**
  * Mission 032 — PAGE A (T03 nom affiché + T04 dates) and PAGE B (T05
@@ -136,56 +144,12 @@ import { humanFlowDefinition, STEP_IDS, type HumanFlowState, type StepId } from 
  * blob `content.hero` already lives in (no migration — mission brief
  * section 22), just a sibling key read/written only through the small,
  * defensive helpers below, which never trust its shape.
+ *
+ * The `content.guidedFlow` bag itself (defensive read + shallow-merge
+ * write) now lives in `flow-state.ts` — Mission 039 extracted it out of
+ * this file so `death-notice-step.ts` could reuse the exact same bag
+ * rather than re-implementing it; see that file's own docstring.
  */
-
-/** The one extra key this module reads/writes on top of the ordinary
- * `MemorialContent` shape — never exposed outside this module; callers
- * only ever see plain `MemorialContent` in and out. */
-interface GuidedFlowContent {
-  guidedFlow?: unknown;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStepId(value: string): value is StepId {
-  return (STEP_IDS as readonly string[]).includes(value);
-}
-
-function isStepRecord(value: unknown): value is StepRecord {
-  if (!isPlainObject(value)) return false;
-  if (value.status !== "completed" && value.status !== "skipped") return false;
-  return !("answer" in value) || typeof value.answer === "string";
-}
-
-/**
- * Reads `content.guidedFlow` defensively: anything that isn't a
- * well-formed `{ [StepId]: StepRecord }` bag — missing, the wrong
- * type, an unknown step id, a malformed record — is simply dropped
- * entry by entry, never thrown. Fail-safe on purpose, the same way
- * `readHero` fails safe on a malformed `content.hero`: bad flow-
- * bookkeeping data must never take down the rest of the draft.
- */
-export function readGuidedFlowState(content: MemorialContent): HumanFlowState {
-  const raw = (content as GuidedFlowContent).guidedFlow;
-  if (!isPlainObject(raw)) return {};
-
-  const result: HumanFlowState = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (isStepId(key) && isStepRecord(value)) {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-/** Writes the flow-state bag back, preserving every other content key
- * untouched — a plain shallow merge, same discipline as
- * `lib/memorial/hero.ts`'s `updateHero`. */
-function writeGuidedFlowState(content: MemorialContent, flow: HumanFlowState): MemorialContent {
-  return { ...content, guidedFlow: flow } as MemorialContent;
-}
 
 function hasAnyDate(hero: HeroContent): boolean {
   return hero.birth !== null || hero.death !== null;
