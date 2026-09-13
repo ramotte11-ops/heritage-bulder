@@ -162,6 +162,29 @@ export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosa
   const state = useSyncExternalStore(
     controller ? controller.subscribe : noopSubscribe,
     controller ? controller.getState : getNoopState,
+    // Hotfix — the SSR snapshot. React requires this third argument the
+    // moment a component using useSyncExternalStore can be rendered on
+    // the server (every real Guided Flow screen: direct navigation and
+    // a browser refresh both server-render the full tree); omitting it
+    // throws "Missing getServerSnapshot" and 500s the whole route.
+    //
+    // Always `getNoopState` — never `controller ? controller.getState :
+    // getNoopState` — and deliberately never touches `controller` at
+    // all: `getServerSnapshot` runs during the server pass (no
+    // `window`, no timers, no real save ever attempted there) AND once
+    // more on the client during hydration, before this hook's own
+    // effects have run. At that exact moment `controller`'s own
+    // internal state is ALSO still `INITIAL_AUTOSAVE_STATE` verbatim
+    // (autosave-controller.ts's `createAutosaveController` starts every
+    // controller at that exact value, and `notifyContentChanged` is
+    // only ever called from the `content`-change effect above, which
+    // explicitly skips the mount value — see `isFirstContentRender`).
+    // So server and the first client snapshot are the SAME value,
+    // satisfying useSyncExternalStore's own hydration-consistency
+    // contract, not merely a plausible-looking guess: idle, no pending
+    // save, no save "in progress", no fake error, no dependency on
+    // `window` or on whether a controller happens to exist yet.
+    getNoopState,
   );
 
   // Armed only while there's a real risk — re-evaluated on every state
