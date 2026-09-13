@@ -155,35 +155,76 @@ describe("DeathNoticeIntemporel — skin scoping", () => {
   });
 });
 
-describe("DeathNoticeIntemporel — Light/Dark real assets (Mission 039B correction)", () => {
-  it("uses the Light paper/botanical/seal/ornament assets by default", () => {
+describe("DeathNoticeIntemporel — the Runtime Split Pack envelope (Mission 039B intégration finale)", () => {
+  it("uses the Light TOP/MIDDLE/BOTTOM masters and the Light ornament by default — never mixed with Dark", () => {
     const { container } = renderNotice({ skinVariant: "light" });
 
-    const card = container.querySelector('[class*="card"]') as HTMLElement;
-    expect(card.style.backgroundImage).toContain("/assets/death-notice/intemporel/paper-background-tile.png");
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-right.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch.png"]')).toBeTruthy();
-    // No Dark asset leaks into the Light render.
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/runtime-top-light.png"]')).toBeTruthy();
+    expect(
+      container.querySelector('img[src="/assets/death-notice/intemporel/runtime-bottom-light.png"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch.png"]'),
+    ).toBeTruthy();
+    const middle = container.querySelector('[class*="envelopeMiddle"]') as HTMLElement;
+    expect(middle.style.backgroundImage).toContain("/assets/death-notice/intemporel/runtime-middle-light.png");
+    // No Dark master, and no leftover old-system asset, leaks into the
+    // Light render.
     expect(container.innerHTML).not.toMatch(/-dark\.png/);
+    expect(container.innerHTML).not.toMatch(/paper-background|botanical-(left|right)\.png|seal-heritage\.png/);
   });
 
-  it("uses the REAL Dark pack assets (V2 QG FINAL) when skinVariant is dark — never the Light ones, never a V1 leftover", () => {
+  it("uses the REAL Dark Runtime Split Pack masters when skinVariant is dark — never the Light ones", () => {
     const { container } = renderNotice({ skinVariant: "dark" });
 
-    const card = container.querySelector('[class*="card"]') as HTMLElement;
-    expect(card.style.backgroundImage).toContain("/assets/death-notice/intemporel/paper-background-dark.png");
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left-dark.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-right-dark.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage-dark.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch-dark.png"]')).toBeTruthy();
-    // No Light asset leaks into the Dark render, and no V1 filename
-    // (this V2 pack's own README: "ne pas mélanger avec... la texture
-    // de V1" — a V1 leftover would not match this exact filename).
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/botanical-left.png"]')).toBeNull();
-    expect(container.querySelector('img[src="/assets/death-notice/intemporel/seal-heritage.png"]')).toBeNull();
-    expect(card.style.backgroundImage).not.toContain("paper-background-tile.png\")");
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/runtime-top-dark.png"]')).toBeTruthy();
+    expect(
+      container.querySelector('img[src="/assets/death-notice/intemporel/runtime-bottom-dark.png"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('img[src="/assets/death-notice/intemporel/ornament-branch-dark.png"]'),
+    ).toBeTruthy();
+    const middle = container.querySelector('[class*="envelopeMiddle"]') as HTMLElement;
+    expect(middle.style.backgroundImage).toContain("/assets/death-notice/intemporel/runtime-middle-dark.png");
+    // No Light master leaks into the Dark render — never TOP Light +
+    // BOTTOM Dark or any other cross-variant mix.
+    expect(container.querySelector('img[src="/assets/death-notice/intemporel/runtime-top-light.png"]')).toBeNull();
+    expect(
+      container.querySelector('img[src="/assets/death-notice/intemporel/runtime-bottom-light.png"]'),
+    ).toBeNull();
+    expect(middle.style.backgroundImage).not.toContain("runtime-middle-light.png");
+  });
+
+  it("never renders a separate seal or peripheral botanical element — both are now baked into TOP/BOTTOM", () => {
+    const { container } = renderNotice();
+    // No element with a class name suggesting the old separately-composed
+    // seal/botanical decor exists anymore in this component's own markup.
+    expect(container.querySelector('[class*="seal"]')).toBeNull();
+    expect(container.querySelector('[class*="botanical"]')).toBeNull();
+  });
+
+  it("the old CSS-tiled paper/botanical/seal token entries are no longer consumed by this component's source", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "DeathNoticeIntemporel.tsx"), "utf8");
+    expect(source).not.toMatch(/\.paperTile\b/);
+    expect(source).not.toMatch(/\.botanicalLeft\b/);
+    expect(source).not.toMatch(/\.botanicalRight\b/);
+    expect(source).not.toMatch(/ASSETS\.seal\b/);
+  });
+
+  it("TOP and BOTTOM are never stretched — their own natural 1448:1086 aspect ratio is declared, not overridden by an explicit height", () => {
+    const cssSource = readFileSync(
+      path.resolve(import.meta.dirname, "DeathNoticeIntemporel.module.css"),
+      "utf8",
+    );
+    expect(cssSource).toMatch(/aspect-ratio:\s*1448\s*\/\s*1086/);
+  });
+
+  it("MIDDLE tiles vertically (repeat-y), never stretched to a single deformed image", () => {
+    const cssSource = readFileSync(
+      path.resolve(import.meta.dirname, "DeathNoticeIntemporel.module.css"),
+      "utf8",
+    );
+    expect(cssSource).toMatch(/background-repeat:\s*repeat-y/);
   });
 
   it("reuses the EXACT SAME precision icon files in both variants — no second (Dark) icon asset invented", () => {

@@ -1,21 +1,60 @@
 /*
  * Mission 039B (A03) — Death Notice Intemporel.
  *
- * Light AND Dark now (Mission 039B correction — `HERITAGE_A03_DARK_PACK_V2_QG_FINAL`).
- * Every color below is a plain custom property, scoped exactly the way
- * HeroIntemporel.module.css's own `--hero-ink-*` are —
- * `[data-heritage-skin="intemporel"][data-heritage-skin-variant="light"|"dark"]`
- * — never `prefers-color-scheme` (SkinScope's own doctrine: a Dark
- * memorial stays Dark for every visitor, regardless of their device).
- * `.card`'s own `background-image` is set inline from JS instead
- * (DeathNoticeIntemporel.tsx), since it must switch to a REAL Dark Studio
- * asset, never a filter/inversion applied to the Light one here.
+ * "Intégration finale du runtime master extensible" — the Runtime Split
+ * Pack (`runtimeTop`/`runtimeMiddle`/`runtimeBottom`,
+ * config/death-notice-intemporel-tokens.ts) supplies the sheet's ENTIRE
+ * artistic envelope (torn edges, layered papers, depth, botanicals, the
+ * seal). This stylesheet no longer draws any of that itself — no
+ * `border`, no `box-shadow`, no CSS-tiled `background-image` standing in
+ * for paper texture. The only decoration still drawn in CSS is a single
+ * hairline `.divider` (dynamic content's own separator, never baked into
+ * any master) and the precision icons' mask-tint (see `.precisionIcon`).
  *
- * Thin separators are plain CSS borders (asset READMEs' own instruction:
- * "aucun asset raster nécessaire" for filets) — never an image.
+ * ## How `.envelope` grows to match `.content`, with no JS measurement
+ *
+ * `.sheet` is `position: relative`, with exactly two children:
+ *   1. `.envelope` — `position: absolute; inset: 0` (Studio masters only,
+ *      `aria-hidden`).
+ *   2. `.content` — normal document flow (the family's real text).
+ *
+ * An absolutely-positioned child never contributes to its parent's own
+ * auto height — only `.content`, the one normal-flow child, does. So
+ * `.sheet`'s height is ALWAYS exactly `.content`'s own natural height,
+ * and `.envelope`'s `inset: 0` then resolves against that same value —
+ * pure CSS, no circular dependency, no ResizeObserver.
+ *
+ * Inside `.envelope` (`display: flex; flex-direction: column`):
+ * `.envelopeTop`/`.envelopeBottom` use `aspect-ratio: 1448 / 1086`
+ * (the masters' own real pixel ratio) with `flex: 0 0 auto` — their
+ * height is always EXACTLY that ratio applied to the current width,
+ * never stretched, never shrunk (AGENTS.md section 5: "ne jamais étirer
+ * verticalement TOP/BOTTOM"). `.envelopeMiddle` is `flex: 1 1 auto` —
+ * the ONE flexible piece, automatically filling whatever vertical space
+ * is left in `.envelope` once TOP and BOTTOM have claimed their own
+ * fixed height, with `background-repeat: repeat-y` tiling `runtimeMiddle`
+ * to cover exactly that space (a partial tile at the seam into BOTTOM is
+ * expected and accepted — AGENTS.md sections 5-6).
+ *
+ * ## The one floor: `.sheet`'s own `min-height` (container query units)
+ *
+ * For very short real content (e.g. a brief announcement, no
+ * precisions), `.content`'s own natural height could in principle be
+ * SHORTER than `.envelopeTop` + `.envelopeBottom`'s own combined natural
+ * height (2 × 75% of width = 150% of width) — which would leave
+ * `.envelopeMiddle` nothing to fill and, since TOP/BOTTOM never shrink
+ * below their own aspect ratio, would push BOTTOM (and its baked-in
+ * seal) below `.sheet`'s own box. `min-height: 150cqw` on `.sheet`
+ * (`.wrap` establishes the query container via `container-type:
+ * inline-size`) is the guaranteed floor that makes this impossible: it
+ * is the exact width-relative value TOP+BOTTOM's own combined height
+ * requires, so `.envelope` is NEVER shorter than they need, whatever
+ * `.content` actually contains — while still growing taller, via
+ * `.content`'s own normal flow, for anything longer.
  */
 
 .wrap {
+  container-type: inline-size;
   position: relative;
   display: flex;
   justify-content: center;
@@ -25,11 +64,8 @@
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .wrap {
   --dn-ink-primary: #3d3a2b;
   --dn-ink-secondary: #6b6256;
-  --dn-paper-fallback-bg: #f6f1e6;
-  --dn-border-color: rgba(111, 114, 85, 0.22);
   --dn-divider-color: rgba(111, 114, 85, 0.32);
   --dn-divider-color-soft: rgba(111, 114, 85, 0.24);
-  --dn-card-shadow: var(--heritage-shadow-elevated, 0 4px 12px rgba(43, 43, 40, 0.1));
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .wrap {
@@ -38,40 +74,56 @@
    * a coincidence, both are the same HERITAGE Intemporel identity. */
   --dn-ink-primary: #f0e1cd;
   --dn-ink-secondary: #c8b8a4;
-  --dn-paper-fallback-bg: #211d18;
-  --dn-border-color: rgba(200, 184, 164, 0.2);
   --dn-divider-color: rgba(200, 184, 164, 0.35);
   --dn-divider-color-soft: rgba(200, 184, 164, 0.26);
-  --dn-card-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
 
-.card {
+.sheet {
   position: relative;
   z-index: 1;
   width: 100%;
+  /* The guaranteed floor — see this file's own docstring. */
+  min-height: 150cqw;
+}
+
+.envelope {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.envelopeTop,
+.envelopeBottom {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1448 / 1086;
+  flex: 0 0 auto;
+  object-fit: cover;
+}
+
+.envelopeMiddle {
+  flex: 1 1 auto;
+  min-height: 0;
+  background-repeat: repeat-y;
+  background-position: top center;
+  background-size: 100% auto;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
   box-sizing: border-box;
+  width: 100%;
+  padding: 28% 20% 45%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2rem 1.25rem 1.75rem;
-  background-color: var(--dn-paper-fallback-bg);
-  /* background-image itself is set inline (DeathNoticeIntemporel.tsx) —
-   * the one Light/Dark asset that must be a real Studio PNG, never a CSS
-   * treatment of the other variant's tile. */
-  background-repeat: repeat;
-  background-size: 512px 512px;
-  border: 1px solid var(--dn-border-color);
-  border-radius: 4px;
-  box-shadow: var(--dn-card-shadow);
   color: var(--dn-ink-primary);
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   text-align: center;
-}
-
-@media (min-width: 40rem) {
-  .card {
-    padding: 2.75rem 3rem 2.25rem;
-  }
 }
 
 .eyebrow {
@@ -216,9 +268,8 @@
 
 /* A generic, single-color pictogram tinted via `mask-image` to the
  * current ink color, rather than a plain <img> — see
- * DeathNoticeIntemporel.tsx's own docstring on why: the Dark pack's own
- * README asks for the SAME icon files in both variants, and a raw dark
- * stroke icon would be unreadable against the Dark paper without this.
+ * DeathNoticeIntemporel.tsx's own docstring on why: a raw dark stroke
+ * icon would be unreadable against the Dark paper without this.
  * `background-color` is the actual paint source; the PNG only supplies
  * the shape via the mask's alpha channel. */
 .precisionIcon {
@@ -250,86 +301,6 @@
   line-height: 1.55;
   color: var(--dn-ink-primary);
   white-space: pre-wrap;
-}
-
-.sealRow {
-  width: 100%;
-  max-width: 18rem;
-  margin-top: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-}
-
-.sealLine {
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--dn-divider-color);
-}
-
-.seal {
-  flex: none;
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-}
-
-@media (min-width: 40rem) {
-  .seal {
-    width: 56px;
-    height: 56px;
-  }
-}
-
-/* --- Peripheral botanicals ----------------------------------------------
-   Asset README: "placement absolu, hors flux du contenu ; ne doit jamais
-   fixer la hauteur de la section" and "réduire ou masquer si l'espace
-   devient insuffisant". Hidden by default (every viewport up to and
-   including a typical desktop Builder window, where the centered
-   `BuilderScreen` frame alone already fills most of the width) and shown
-   only once the viewport is comfortably wider than the frame, flanking it
-   without ever overlapping the card's own text. */
-.botanicalLeft,
-.botanicalRight {
-  display: none;
-  position: absolute;
-  top: 50%;
-  width: 130px;
-  height: auto;
-  transform: translateY(-50%);
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 0;
-}
-
-@media (min-width: 80rem) {
-  .botanicalLeft,
-  .botanicalRight {
-    display: block;
-  }
-
-  .botanicalLeft {
-    left: -20px;
-  }
-
-  .botanicalRight {
-    right: -20px;
-  }
-}
-
-@media (min-width: 90rem) {
-  .botanicalLeft,
-  .botanicalRight {
-    width: 160px;
-  }
-
-  .botanicalLeft {
-    left: -80px;
-  }
-
-  .botanicalRight {
-    right: -80px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
