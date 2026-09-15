@@ -205,6 +205,7 @@ export function useFitLongName(text: string): FitLongNameResult {
       const isMobile = window.innerWidth < DEATH_NOTICE_INTEMPOREL_BREAKPOINT_MOBILE_PX;
 
       if (!isMobile) {
+        el.classList.remove(styles.nameFallback);
         el.style.fontSize = "";
         setResult({ fontSizePx: null, isFallback: false });
         return;
@@ -213,6 +214,7 @@ export function useFitLongName(text: string): FitLongNameResult {
       // Cas normal — the CSS clamp's own floor (mobile.minPx) already
       // rendered. Measure it as-is; if it already fits, do nothing (no
       // inline override needed, CSS keeps driving the responsive size).
+      el.classList.remove(styles.nameFallback);
       el.style.fontSize = "";
       if (countVisualLines(el) <= t.mobile.maxLinesNormal) {
         setResult({ fontSizePx: null, isFallback: false });
@@ -221,6 +223,20 @@ export function useFitLongName(text: string): FitLongNameResult {
 
       // Fallback exceptionnel (§9.2) — target size, shrink only if still
       // over maxLines, never past fallback.minPx.
+      //
+      // BUGFIX (QG audit): `.nameFallback` (the class that narrows the
+      // name to the spec's own 88%-of-Sheet max-width and tightens
+      // line-height to 0.92) must be applied to the element BEFORE this
+      // loop measures anything — not only after `setResult` triggers React
+      // to add it on the next render. Measuring at the WIDER pre-fallback
+      // box (the plain `.name` class, no width cap) undercounts how many
+      // lines the text will actually wrap into once React applies the
+      // narrower fallback box a moment later, letting the loop exit one or
+      // more sizes too early and silently ship a name that re-wraps past
+      // `fb.maxLines` after the fact. Adding the class imperatively here
+      // makes every measurement in this loop reflect the box the family
+      // will actually see.
+      el.classList.add(styles.nameFallback);
       const fb = t.mobile.fallback;
       let size = fb.targetPx;
       el.style.fontSize = `${size}px`;

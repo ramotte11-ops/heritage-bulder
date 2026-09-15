@@ -9,18 +9,20 @@
  * is driven entirely by `.sheetMount` (a normal-flow, `position:relative`
  * flex item — never absolutely positioned, so it DOES contribute to
  * `.wrap`'s auto height, unlike `.stage` itself). `.stage` (the Studio's
- * composed background art) is `position:absolute` at `width:100%;
- * height:auto` — its OWN natural aspect ratio, never stretched/cropped
- * to fill `.wrap`. For "cas normal" content the two heights coincide
- * (this file's own tuned `margin-bottom` on `.sheetMount` matches the
- * art's own bottom breathing room); for exceptionally long family
- * content (spec §9.3 — "seul le CORPS central s'allonge"), `.wrap` grows
- * taller than `.stage`'s own rendered height and `.wrap`'s own
- * `--dn-stage-bg` background (this pack's own `colors.json` `stage_bg`
- * token) shows below it — a plain, non-stretched, non-invented
- * extension, never the art itself deformed or repeated (this pack ships
- * no separate "Stage middle" tile the way the Sheet does; see the
- * mission report's own "divergence Studio constatée").
+ * composed background art) is `position:absolute`, always covering
+ * `.wrap`'s own real (dynamic) box without ever stretching the art's own
+ * proportions: Mobile keeps `height:auto` (its own natural aspect ratio
+ * at the zoomed width below) since its very tall reference canvas
+ * already has enough natural height margin for ordinary content; Desktop
+ * uses `height:100%; object-fit:cover` so the SAME unmodified asset
+ * fills `.wrap`'s real height for exceptionally long family content too
+ * (spec §9.3 — "seul le CORPS central s'allonge") by cropping its own
+ * pixels (never stretching/deforming/repeating them) rather than
+ * exposing a flat `--dn-stage-bg` rectangle below a fixed-height render
+ * — see `.stage`'s own Desktop media-query rule for the exact reasoning
+ * (this pack ships no separate "Stage middle" tile the way the Sheet
+ * does, so cropping the existing art is the only non-inventive option
+ * for the exceptionally-long case).
  *
  * `.sheetMount`'s own `width`/`margin-top` are the Sheet's real mount
  * coordinates inside the Stage's own transparent hole
@@ -117,9 +119,31 @@
 @media (min-width: 768px) {
   [data-heritage-skin-variant="light"] .stage,
   [data-heritage-skin-variant="dark"] .stage {
+    /* BUGFIX (QG audit): Desktop is unchanged from a scale/crop
+     * standpoint (still the plain, unscaled canonical canvas — spec
+     * §4) but `height: auto` (the base rule above) left `.stage` at
+     * its own fixed natural rendered height regardless of `.wrap`'s
+     * real height. Since `.wrap`'s height is `.sheetMount`'s own
+     * (Sheet grows with family content — this file's own docstring),
+     * any Sheet taller than the Stage's natural render exposed a flat
+     * `--dn-stage-bg` rectangle below the real art: a visible seam,
+     * exactly the "poster/coupure rectangulaire" the QA matrix's own
+     * FAIL list names. `height: 100%; object-fit: cover` makes this
+     * SAME unmodified asset fill `.wrap`'s real (dynamic) height
+     * instead — preserving its own aspect ratio and cropping (never
+     * stretching) the overflow, the same non-destructive technique
+     * `.envelopeTopDesktop`/`.envelopeBottomDesktop` already use for
+     * their own fixed caps. For ordinary content `.wrap`'s height
+     * already sits close to the art's own natural height (this file's
+     * tuned `.sheetMount` margins), so the crop is negligible; only
+     * exceptionally long content crops further into the art's own
+     * left/right botanical margins — still the Studio's own pixels,
+     * never invented, stretched, or recolored. */
     width: 100%;
+    height: 100%;
     left: 0;
     transform: none;
+    object-fit: cover;
   }
 }
 
@@ -279,7 +303,24 @@
 @media (min-width: 768px) {
   .capTextBox {
     aspect-ratio: 1107 / 255;
-    padding-top: 6%;
+    /* BUGFIX (QG audit): measured directly off the pack's own
+     * `sheet-top.png` pixels (Light: opaque green-dominant pixels;
+     * Dark: brightness-outlier pixels in the center band, both scripts
+     * excluding the torn-edge shading at the extreme sides/top) — the
+     * baked rameau sits at y 119–165 of the 255px-tall Desktop cap,
+     * i.e. 46.7%–64.7% of the cap's own height, confirmed near-identical
+     * in both Light and Dark. At the previous 6% clearance, eyebrow +
+     * title's combined height (padding-top + eyebrow + title's own
+     * margin-top + title) reached ~102.8px into a cap whose rameau
+     * starts at ~119px at the Sheet's own canonical 1107px width — a
+     * collision only becomes visible once the actual rendered Sheet
+     * width is at or above that same canonical width (this bug was
+     * invisible in the file's own dev-harness numbers before the
+     * viewport was corrected to a real 1440px desktop, per the QG's
+     * prior audit). 3% keeps the same block comfortably above 46.7% at
+     * every Desktop width this pack ships an asset for (768–1180px
+     * Sheet width, spec §4). */
+    padding-top: 3%;
   }
 }
 
@@ -366,11 +407,30 @@
 }
 
 /* Spec §9.2 — the locked Mobile-only exceptional fallback. Only ever
- * applied below the 768px breakpoint (`useFitLongName`'s own guard). */
+ * applied below the 768px breakpoint (`useFitLongName`'s own guard).
+ *
+ * BUGFIX (QG audit): spec §9.2 sets the 88% cap against "la feuille
+ * mobile" (the Sheet, i.e. `.sheetMount`'s own width) — NOT against
+ * `.content`'s own width. `.content` already loses 20% of the Sheet's
+ * width to its own `10% 10%` horizontal padding (the general text safe
+ * area), so a `max-width: 88%` written here would resolve against that
+ * already-narrowed box (88% of 80% of the Sheet = only ~70% of the
+ * Sheet) — visibly narrower than the spec's own number, and the direct
+ * reason the QA name failed to reach 3 lines even at the 32px floor.
+ * `.name`'s containing block for percentage width IS `.content`
+ * (percentages always resolve against the containing block, never a
+ * grandparent), so matching the Sheet-relative 88% requires expressing
+ * it AS a percentage of `.content`'s own width (88 / 80 = 110%) and
+ * pulling the box back to centered with a matching negative margin
+ * (110% − 100%, split evenly) — never widening `.content` itself
+ * (that space is `.content`'s own general safe margin for every other
+ * child, not just the name). */
 .nameFallback {
   line-height: 0.92;
   font-weight: 500;
-  max-width: 88%;
+  max-width: 110%;
+  margin-left: -5%;
+  margin-right: -5%;
   margin-bottom: 12px;
 }
 
