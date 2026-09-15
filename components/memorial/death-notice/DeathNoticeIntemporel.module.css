@@ -1,90 +1,182 @@
 /*
- * Mission 039B (A03) — Death Notice Intemporel.
+ * Mission 039B (A03) — "intégration finale du handoff Studio" — Death
+ * Notice Intemporel, `A03_HANDOFF_FINAL_V2` pack.
  *
- * "Intégration finale du runtime master extensible" — the Runtime Split
- * Pack (`runtimeTop`/`runtimeMiddle`/`runtimeBottom`,
- * config/death-notice-intemporel-tokens.ts) supplies the sheet's ENTIRE
- * artistic envelope (torn edges, layered papers, depth, botanicals, the
- * seal). This stylesheet no longer draws any of that itself — no
- * `border`, no `box-shadow`, no CSS-tiled `background-image` standing in
- * for paper texture. The only decoration still drawn in CSS is a single
- * hairline `.divider` (dynamic content's own separator, never baked into
- * any master) and the precision icons' mask-tint (see `.precisionIcon`).
+ * ## Stage + Sheet, pure CSS, no JS measurement
  *
- * ## How `.envelope` grows to match `.content`, with no JS measurement
+ * `.wrap` (the Memorial Stage) never gets a fixed height: it is a
+ * `display:flex; justify-content:center` container whose own auto height
+ * is driven entirely by `.sheetMount` (a normal-flow, `position:relative`
+ * flex item — never absolutely positioned, so it DOES contribute to
+ * `.wrap`'s auto height, unlike `.stage` itself). `.stage` (the Studio's
+ * composed background art) is `position:absolute` at `width:100%;
+ * height:auto` — its OWN natural aspect ratio, never stretched/cropped
+ * to fill `.wrap`. For "cas normal" content the two heights coincide
+ * (this file's own tuned `margin-bottom` on `.sheetMount` matches the
+ * art's own bottom breathing room); for exceptionally long family
+ * content (spec §9.3 — "seul le CORPS central s'allonge"), `.wrap` grows
+ * taller than `.stage`'s own rendered height and `.wrap`'s own
+ * `--dn-stage-bg` background (this pack's own `colors.json` `stage_bg`
+ * token) shows below it — a plain, non-stretched, non-invented
+ * extension, never the art itself deformed or repeated (this pack ships
+ * no separate "Stage middle" tile the way the Sheet does; see the
+ * mission report's own "divergence Studio constatée").
  *
- * `.sheet` is `position: relative`, with exactly two children:
- *   1. `.envelope` — `position: absolute; inset: 0` (Studio masters only,
- *      `aria-hidden`).
- *   2. `.content` — normal document flow (the family's real text).
+ * `.sheetMount`'s own `width`/`margin-top` are the Sheet's real mount
+ * coordinates inside the Stage's own transparent hole
+ * (`DEATH_NOTICE_INTEMPOREL_SHEET_MOUNT` in the tokens file — re-derived
+ * here as `margin-top` percentages of WIDTH, since CSS margin
+ * percentages always resolve against the containing block's inline
+ * size, never its block size, unlike `top` on an absolutely-positioned
+ * box). Horizontal centering is `.wrap`'s own `justify-content: center`
+ * — no `left`/`leftPct` math needed at all.
  *
- * An absolutely-positioned child never contributes to its parent's own
- * auto height — only `.content`, the one normal-flow child, does. So
- * `.sheet`'s height is ALWAYS exactly `.content`'s own natural height,
- * and `.envelope`'s `inset: 0` then resolves against that same value —
- * pure CSS, no circular dependency, no ResizeObserver.
+ * `.sheet` reuses the exact technique the earlier (V1) pack's stylesheet
+ * already established: `.envelope` (`position:absolute;inset:0`,
+ * Studio's TOP/BODY/BOTTOM caps only, `aria-hidden`) never contributes to
+ * `.sheet`'s own auto height — only `.content` (the one normal-flow
+ * child) does, so `.sheet`'s height is always exactly `.content`'s own
+ * natural height, no circular dependency, no ResizeObserver.
+ * `.capTextBox` (eyebrow + section title, sitting on the Sheet's own top
+ * cap, above the rameau décoratif now baked into `sheetTop` — spec §6)
+ * uses the SAME `aspect-ratio` numbers as `.envelopeTopDesktop`/
+ * `.envelopeTopMobile` so its own rendered height exactly matches the
+ * top cap's rendered height with zero JS — and `.content`'s own
+ * `padding-top` uses that identical number, so `.name` (its first child)
+ * never starts before the top cap's real bottom edge, guaranteeing no
+ * collision with the baked rameau at any content length.
  *
- * Inside `.envelope` (`display: flex; flex-direction: column`):
- * `.envelopeTop`/`.envelopeBottom` use `aspect-ratio: 1448 / 1086`
- * (the masters' own real pixel ratio) with `flex: 0 0 auto` — their
- * height is always EXACTLY that ratio applied to the current width,
- * never stretched, never shrunk (AGENTS.md section 5: "ne jamais étirer
- * verticalement TOP/BOTTOM"). `.envelopeMiddle` is `flex: 1 1 auto` —
- * the ONE flexible piece, automatically filling whatever vertical space
- * is left in `.envelope` once TOP and BOTTOM have claimed their own
- * fixed height, with `background-repeat: repeat-y` tiling `runtimeMiddle`
- * to cover exactly that space (a partial tile at the seam into BOTTOM is
- * expected and accepted — AGENTS.md sections 5-6).
- *
- * ## The one floor: `.sheet`'s own `min-height` (container query units)
- *
- * For very short real content (e.g. a brief announcement, no
- * precisions), `.content`'s own natural height could in principle be
- * SHORTER than `.envelopeTop` + `.envelopeBottom`'s own combined natural
- * height (2 × 75% of width = 150% of width) — which would leave
- * `.envelopeMiddle` nothing to fill and, since TOP/BOTTOM never shrink
- * below their own aspect ratio, would push BOTTOM (and its baked-in
- * seal) below `.sheet`'s own box. `min-height: 150cqw` on `.sheet`
- * (`.wrap` establishes the query container via `container-type:
- * inline-size`) is the guaranteed floor that makes this impossible: it
- * is the exact width-relative value TOP+BOTTOM's own combined height
- * requires, so `.envelope` is NEVER shorter than they need, whatever
- * `.content` actually contains — while still growing taller, via
- * `.content`'s own normal flow, for anything longer.
+ * Mobile/Desktop Sheet caps (unlike the single heavy `.stage` pair,
+ * switched via `<picture>` in the component itself) both render
+ * unconditionally and are toggled with plain `display` at the same
+ * `768px` breakpoint — the same technique
+ * `HeroIntemporel.module.css` already established for its own two
+ * runtime masters; these caps are tens of KB each, not ~1.2–1.5MB.
  */
 
 .wrap {
-  container-type: inline-size;
   position: relative;
+  width: 100%;
   display: flex;
   justify-content: center;
-  width: 100%;
+  overflow: hidden;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .wrap {
-  --dn-ink-primary: #3d3a2b;
-  --dn-ink-secondary: #6b6256;
-  --dn-divider-color: rgba(111, 114, 85, 0.32);
-  --dn-divider-color-soft: rgba(111, 114, 85, 0.24);
+  --dn-stage-bg: #f1e6d3;
+  --dn-ink-primary: #292a22;
+  --dn-ink-secondary: #5e5a4c;
+  --dn-rule: #948d7c;
+  --dn-rule-soft: rgba(148, 141, 124, 0.4);
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .wrap {
-  /* Same warm ink HeroIntemporel already uses for its `dark` variant
-   * (config/hero-intemporel-tokens.ts's HERO_INTEMPOREL_INK.dark) — not
-   * a coincidence, both are the same HERITAGE Intemporel identity. */
-  --dn-ink-primary: #f0e1cd;
-  --dn-ink-secondary: #c8b8a4;
-  --dn-divider-color: rgba(200, 184, 164, 0.35);
-  --dn-divider-color-soft: rgba(200, 184, 164, 0.26);
+  --dn-stage-bg: #17140f;
+  --dn-ink-primary: #f1e5d5;
+  --dn-ink-secondary: #d8c8b4;
+  --dn-rule: #a88d67;
+  --dn-rule-soft: rgba(168, 141, 103, 0.4);
+}
+
+.wrap {
+  background-color: var(--dn-stage-bg);
+}
+
+.wrap > picture {
+  display: contents;
+}
+
+.stage {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Mobile: the Studio reference canvas shows the Sheet at only ~56-60%
+   * of the CANVAS's own width (spec §5's raw figure — generous ambient
+   * table/botanical margins either side, as composed for the reference
+   * artboard). Spec §5's own RUNTIME target is different and more
+   * specific: "la feuille runtime vise 90-94vw" — on an actual phone
+   * screen the Sheet should dominate, not float in a wide table scene.
+   * This mission scales the whole Stage canvas up (uniformly — the
+   * Sheet mount hole scales with it) so the Sheet lands at 92vw, the
+   * `.wrap`'s own `overflow: hidden` cropping the now-wider canvas at
+   * both edges symmetrically (`left: 50%` + `translateX(-50%)`).
+   * Desktop needs no such correction — spec §4 already locks Desktop's
+   * Sheet at 66.2% of an UNSCALED, full-width canvas. */
+  width: 163.01%;
+  height: auto;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
+}
+
+[data-heritage-skin-variant="dark"] .stage {
+  width: 154.81%;
+}
+
+@media (min-width: 768px) {
+  [data-heritage-skin-variant="light"] .stage,
+  [data-heritage-skin-variant="dark"] .stage {
+    width: 100%;
+    left: 0;
+    transform: none;
+  }
+}
+
+/* --- Sheet mount (spec §4/§5) ------------------------------------------ */
+
+.sheetMount {
+  position: relative;
+  z-index: 1;
+  width: 92%;
+  margin-top: 31%;
+  margin-bottom: 13.04%;
+}
+
+[data-heritage-skin-variant="dark"] .sheetMount {
+  margin-top: 17.43%;
+  margin-bottom: 12.38%;
+}
+
+@media (min-width: 768px) {
+  [data-heritage-skin-variant="light"] .sheetMount,
+  [data-heritage-skin-variant="dark"] .sheetMount {
+    width: 66.21%;
+    margin-top: 3.23%;
+    margin-bottom: 4%;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1099.98px) {
+  /* "Desktop resserré" (spec §12): same Desktop assets/relations, the
+   * Sheet simply claims more of the tighter viewport ("feuille
+   * élargie") rather than shrinking toward an artificial mobile look. */
+  [data-heritage-skin-variant="light"] .sheetMount,
+  [data-heritage-skin-variant="dark"] .sheetMount {
+    width: 78%;
+  }
 }
 
 .sheet {
   position: relative;
   z-index: 1;
   width: 100%;
-  /* The guaranteed floor — see this file's own docstring. */
-  min-height: 150cqw;
+  container-type: inline-size;
+  min-height: 92.28cqw;
 }
+
+[data-heritage-skin-variant="dark"] .sheet {
+  min-height: 87.66cqw;
+}
+
+@media (min-width: 768px) {
+  [data-heritage-skin-variant="light"] .sheet,
+  [data-heritage-skin-variant="dark"] .sheet {
+    min-height: 37.04cqw;
+  }
+}
+
+/* --- Envelope (TOP/BODY/BOTTOM caps) ------------------------------------ */
 
 .envelope {
   position: absolute;
@@ -94,17 +186,19 @@
   flex-direction: column;
 }
 
-.envelopeTop,
-.envelopeBottom {
+.envelopeTopDesktop,
+.envelopeTopMobile,
+.envelopeBottomDesktop,
+.envelopeBottomMobile {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1448 / 1086;
   flex: 0 0 auto;
   object-fit: cover;
 }
 
-.envelopeMiddle {
+.envelopeBodyDesktop,
+.envelopeBodyMobile {
   flex: 1 1 auto;
   min-height: 0;
   background-repeat: repeat-y;
@@ -112,12 +206,130 @@
   background-size: 100% auto;
 }
 
+/* Mobile-first: mobile caps visible, desktop caps hidden. */
+.envelopeTopDesktop,
+.envelopeBodyDesktop,
+.envelopeBottomDesktop {
+  display: none;
+}
+
+.envelopeTopMobile {
+  aspect-ratio: 531 / 300;
+}
+
+.envelopeBottomMobile {
+  aspect-ratio: 531 / 190;
+}
+
+[data-heritage-skin-variant="dark"] .envelopeTopMobile {
+  aspect-ratio: 559 / 300;
+}
+
+[data-heritage-skin-variant="dark"] .envelopeBottomMobile {
+  aspect-ratio: 559 / 190;
+}
+
+@media (min-width: 768px) {
+  .envelopeTopMobile,
+  .envelopeBodyMobile,
+  .envelopeBottomMobile {
+    display: none;
+  }
+
+  .envelopeTopDesktop,
+  .envelopeBodyDesktop,
+  .envelopeBottomDesktop {
+    display: block;
+  }
+
+  .envelopeBodyDesktop {
+    display: block;
+    flex: 1 1 auto;
+  }
+
+  .envelopeTopDesktop,
+  .envelopeBottomDesktop {
+    aspect-ratio: 1107 / 255;
+  }
+
+  .envelopeBottomDesktop {
+    aspect-ratio: 1107 / 155;
+  }
+}
+
+/* --- Cap text (eyebrow + section title, over the top cap) -------------- */
+
+.capTextBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 2;
+  aspect-ratio: 531 / 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 6%;
+}
+
+[data-heritage-skin-variant="dark"] .capTextBox {
+  aspect-ratio: 559 / 300;
+}
+
+@media (min-width: 768px) {
+  .capTextBox {
+    aspect-ratio: 1107 / 255;
+    padding-top: 6%;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dn-ink-secondary);
+}
+
+@media (min-width: 768px) {
+  .eyebrow {
+    font-size: 13px;
+    letter-spacing: 0.24em;
+  }
+}
+
+.title {
+  margin: 0.375rem 0 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--dn-ink-primary);
+}
+
+@media (min-width: 768px) {
+  .title {
+    font-size: 48px;
+  }
+}
+
+/* --- Dynamic content (name → precisions) -------------------------------- */
+
 .content {
   position: relative;
   z-index: 1;
   box-sizing: border-box;
   width: 100%;
-  padding: 28% 20% 45%;
+  /* padding-top clears the top cap's own rendered height (spec §6's
+   * baked rameau) PLUS a safety margin for the eyebrow/title block above
+   * `.name` — sized generously enough to survive a 2-line title wrap in
+   * any of the three shipped languages (EN/FR/ES), never tuned to fit
+   * French exactly (module docstring: no JS measurement here, so this
+   * margin has to hold for every language up front). */
+  padding: 62% 10% 14%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -126,68 +338,55 @@
   text-align: center;
 }
 
-.eyebrow {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--dn-ink-secondary);
+[data-heritage-skin-variant="dark"] .content {
+  padding-top: 59%;
 }
 
-.title {
-  margin: 0.5rem 0 0;
-  font-weight: 500;
-  font-size: 1.75rem;
-  line-height: 1.15;
-  color: var(--dn-ink-primary);
-}
-
-@media (min-width: 40rem) {
-  .title {
-    font-size: 2.25rem;
-  }
-}
-
-.ornament {
-  display: block;
-  width: 96px;
-  height: auto;
-  margin: 0.625rem 0 1.125rem;
-  opacity: 0.9;
-}
-
-@media (min-width: 40rem) {
-  .ornament {
-    width: 128px;
+@media (min-width: 768px) {
+  [data-heritage-skin-variant="light"] .content,
+  [data-heritage-skin-variant="dark"] .content {
+    padding: 32% 16% 12%;
   }
 }
 
 .name {
   margin: 0;
-  font-weight: 600;
-  font-size: 2.25rem;
-  line-height: 1.1;
+  font-weight: 500;
+  font-size: clamp(38px, 10vw, 50px);
+  line-height: 0.95;
   color: var(--dn-ink-primary);
   overflow-wrap: break-word;
+  max-width: 100%;
 }
 
-@media (min-width: 40rem) {
+@media (min-width: 768px) {
   .name {
-    font-size: 3rem;
+    font-size: clamp(48px, 4vw, 72px);
   }
+}
+
+/* Spec §9.2 — the locked Mobile-only exceptional fallback. Only ever
+ * applied below the 768px breakpoint (`useFitLongName`'s own guard). */
+.nameFallback {
+  line-height: 0.92;
+  font-weight: 500;
+  max-width: 88%;
+  margin-bottom: 12px;
 }
 
 .dates {
   margin: 0.375rem 0 0;
-  font-size: 1rem;
-  letter-spacing: 0.06em;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  font-weight: 400;
   color: var(--dn-ink-secondary);
 }
 
-@media (min-width: 40rem) {
+@media (min-width: 768px) {
   .dates {
-    font-size: 1.125rem;
+    font-size: 28px;
+    letter-spacing: 0.06em;
   }
 }
 
@@ -196,16 +395,24 @@
   max-width: 22rem;
   height: 1px;
   margin: 1.5rem 0;
-  background: var(--dn-divider-color);
+  background: var(--dn-rule-soft);
 }
 
 .announcement {
   margin: 0;
   max-width: 34rem;
-  font-size: 1.0625rem;
-  line-height: 1.65;
+  font-size: 17px;
+  line-height: 1.28;
+  font-weight: 400;
   color: var(--dn-ink-primary);
   white-space: pre-wrap;
+}
+
+@media (min-width: 768px) {
+  .announcement {
+    font-size: 22px;
+    line-height: 1.22;
+  }
 }
 
 .precisions {
@@ -219,14 +426,14 @@
 .precisionRow {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--dn-divider-color-soft);
+  border-top: 1px solid var(--dn-rule-soft);
 }
 
 .precisionRow:first-child {
   border-top: none;
 }
 
-@media (min-width: 40rem) {
+@media (min-width: 768px) {
   .precisionRow {
     flex-direction: row;
     align-items: stretch;
@@ -241,13 +448,13 @@
   text-align: left;
 }
 
-@media (min-width: 40rem) {
+@media (min-width: 768px) {
   .precisionBlock {
     padding: 1.25rem 1.5rem;
   }
 
   .precisionBlock:not(:first-child) {
-    border-left: 1px solid var(--dn-divider-color-soft);
+    border-left: 1px solid var(--dn-rule-soft);
   }
 
   .precisionBlock:first-child {
@@ -267,15 +474,14 @@
 }
 
 /* A generic, single-color pictogram tinted via `mask-image` to the
- * current ink color, rather than a plain <img> — see
- * DeathNoticeIntemporel.tsx's own docstring on why: a raw dark stroke
- * icon would be unreadable against the Dark paper without this.
+ * current ink color, rather than a plain <img> — a raw dark stroke icon
+ * would be unreadable against the Dark paper without this.
  * `background-color` is the actual paint source; the PNG only supplies
  * the shape via the mask's alpha channel. */
 .precisionIcon {
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
   background-color: var(--dn-ink-secondary);
   -webkit-mask-repeat: no-repeat;
@@ -289,18 +495,40 @@
 .precisionLabel {
   font-family: var(--heritage-font-family-sans, Inter, system-ui, sans-serif);
   font-weight: 600;
-  font-size: 0.6875rem;
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--dn-ink-secondary);
 }
 
+@media (min-width: 768px) {
+  .precisionLabel {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+  }
+}
+
 .precisionText {
   margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.28;
+  font-weight: 400;
   color: var(--dn-ink-primary);
   white-space: pre-wrap;
+}
+
+@media (min-width: 768px) {
+  .precisionText {
+    font-size: 17px;
+    line-height: 1.22;
+  }
+}
+
+/* The "citation" precision alone renders italic — this pack's own
+ * `typography.json` gives it a dedicated `quote` token distinct from
+ * `detail_text`, matching the Studio references' own visual treatment. */
+.precisionTextQuote {
+  font-style: italic;
 }
 
 @media (prefers-reduced-motion: reduce) {

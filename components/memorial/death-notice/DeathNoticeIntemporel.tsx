@@ -1,3 +1,6 @@
+"use client";
+
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
@@ -7,77 +10,73 @@ import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
-import { DEATH_NOTICE_INTEMPOREL_ASSETS } from "@/config/death-notice-intemporel-tokens";
+import {
+  DEATH_NOTICE_INTEMPOREL_ASSETS,
+  DEATH_NOTICE_INTEMPOREL_BREAKPOINT_MOBILE_PX,
+  DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY,
+} from "@/config/death-notice-intemporel-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { cormorantGaramond } from "@/components/builder/fonts";
 import styles from "./DeathNoticeIntemporel.module.css";
 
 /**
- * Mission 039B (A03) — the real Death Notice ("Avis de décès") editorial
- * renderer, Intemporel skin.
+ * Mission 039B (A03) — "intégration finale du handoff Studio" — the real
+ * Death Notice ("Avis de décès") editorial renderer, Intemporel skin.
  *
- * Composes the Studio's own Runtime Split Pack (the sheet's entire
- * artistic envelope — torn edges, layered papers, depth, peripheral
- * botanicals, the HERITAGE seal, all baked into three master images per
- * variant — `config/death-notice-intemporel-tokens.ts`) with the
- * family's real canonical content, exactly the same discipline
- * `HeroIntemporel.tsx` already established for the Hero: no family text
- * is ever baked into an asset, every asset is decorative only, and this
- * is the SAME renderer a future Live Preview and the published memorial
- * page will use — never a miniature or a mock built specially for the
- * Builder's own A03 screen (`DeathNoticePreviewStep.tsx`).
+ * Composes the Studio's `A03_HANDOFF_FINAL_V2` pack (Memorial Stage +
+ * extensible Sheet, `config/death-notice-intemporel-tokens.ts`) with the
+ * family's real canonical content — the same discipline
+ * `HeroIntemporel.tsx` already established: no family text is ever baked
+ * into an asset, every asset is decorative only, and this is the SAME
+ * renderer a future Live Preview and the published memorial page will
+ * use, never a mock built specially for the Builder's own A03 screen
+ * (`DeathNoticePreviewStep.tsx`).
  *
- * ## Content vs. skin (AGENTS.md section 12)
+ * ## Three-mass architecture (spec §2)
  *
- * This component takes only canonical `HeroContent`/`DeathNoticeContent`
- * plus the family's `language` — never a second content model, never a
- * duplicate of `hero.ts`/`death-notice.ts`'s own fields. Everything
- * drawn here is either family content or a Studio-provided decorative
- * asset; a future `musulman`/`juif`/`hindou` A03 would be its own sibling
- * component (`DeathNoticeMusulman.tsx`, etc.) taking the exact same two
- * content props, never a fork inside this one. `DeathNoticePreviewStep.tsx`
- * is the ONE place that decides whether this component even gets
- * rendered for a given `memorial.skin` — see that component's own
- * docstring (Mission 039B "correction finale" — the skin guard).
+ * `.stage` — the composed Memorial Stage ambiance (`<picture>`-switched
+ *   Light/Dark × Mobile/Desktop, the ONE `<picture>` in this component:
+ *   by far the heaviest files in the pack, spec §12 "ne pas charger
+ *   inutilement les deux scènes lourdes").
+ * `.sheetMount` — an absolutely-positioned box inside `.stage`, at the
+ *   Sheet's own real mount coordinates (`DEATH_NOTICE_INTEMPOREL_SHEET_MOUNT`).
+ *   Contains the extensible Sheet (top/body/bottom, see the module
+ *   stylesheet's own docstring for how its height tracks `.content`'s
+ *   natural flow with no JS measurement) and the family's real content on
+ *   top of it.
  *
- * ## The extensible Runtime Split Pack envelope (Mission 039B
- * "intégration finale")
+ * The rameau décoratif is baked into `sheetTop` now (spec §6) — this
+ * component renders no separate ornament element; doing so would
+ * duplicate that exact decor (QA matrix "FAIL immédiat": "décor
+ * botanique reconstruit par éléments").
  *
- * `Studio fournit l'art ; Claude assemble` — this component no longer
- * reconstructs any papeterie itself (a flat CSS-tiled background, a
- * hand-drawn border/shadow, separately-composed botanicals or seal).
- * `.envelope` (module stylesheet) stacks exactly three Studio masters:
+ * ## Mobile/Desktop for the Sheet caps (spec §5, §12)
  *
- *   - `.envelopeTop`    — `runtimeTop`, fixed, rendered once, at its own
- *     natural 1448:1086 aspect ratio. NEVER stretched.
- *   - `.envelopeMiddle` — `runtimeMiddle`, `background-repeat: repeat-y`,
- *     filling however much vertical space the family's real content
- *     needs — see the module stylesheet's own docstring for how that
- *     height is derived without any JS measurement.
- *   - `.envelopeBottom` — `runtimeBottom`, fixed, rendered once, anchored
- *     to the sheet's own bottom edge. Carries the HERITAGE seal baked in
- *     — this component renders NO separate seal element anymore.
- *
- * `skinVariant` selects which complete set of three applies — a `light`
- * memorial NEVER mixes a `dark` master with a `light` one or vice versa
- * (`config/death-notice-intemporel-tokens.ts`'s own `Record<SkinVariant,
- * string>` shape makes a cross-variant mix a type error, not just a
- * convention). `.content` (the family's real text) renders ON TOP of
- * this envelope, positioned within its own safe padding so it never
- * overlaps the masters' own torn edges, botanicals, or seal.
+ * `sheetTop`/`sheetBody`/`sheetBottom` are lighter files than the Stage
+ * (tens of KB, not ~1.2–1.5MB) — this mission renders both Mobile and
+ * Desktop caps unconditionally and switches visibility at the
+ * `768px` breakpoint via CSS, the same technique
+ * `HeroIntemporel.module.css` already established for its own two
+ * runtime masters, rather than a second `<picture>` for every cap.
  *
  * ## Modular precision blocks (AGENTS.md section 9)
  *
  * Each of A02's five precisions renders as its own block — icon, label,
- * family text — and is entirely absent, no reserved space, no empty
- * label, when the family never entered it. Blocks are grouped into rows
- * of (at most) two for the desktop/tablet two-column layout; on a narrow
- * viewport the same markup stacks to one column via CSS alone — see the
- * module's own stylesheet. This adapts to 1 through 5 precisions without
- * any asset-side change (AGENTS.md section 10). The five pictograms
- * themselves are UNCHANGED by this mission's integration — see this
- * file's own "precision icon" comment below and the tokens file's own
- * docstring for why.
+ * family text — entirely absent, no reserved space, when the family
+ * never entered it. Blocks group into rows of (at most) two for the
+ * desktop/tablet two-column layout; a narrow viewport stacks to one
+ * column via CSS alone.
+ *
+ * ## Long name — mobile fallback (spec §9.1/§9.2)
+ *
+ * See `useFitLongName` below and
+ * `DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY.name`'s own docstring for the exact
+ * rule. Desktop never goes past 2 lines (QA matrix D-NAM); the Mobile
+ * 3-line/32–34px fallback is the Studio-validated exception (spec §9.2's
+ * own QA case, "Marie-Alexandrine de Beaumont-Rousseau
+ * Delacroix-Fontaine"). Never truncates, ellipsizes, or invents a 4th
+ * line — only the font-size (and, only in fallback, the max-width) ever
+ * changes.
  *
  * ## Dates (AGENTS.md section 7)
  *
@@ -145,6 +144,103 @@ function chunkIntoRows<T>(items: readonly T[], size: number): T[][] {
   return rows;
 }
 
+/** Same DOM technique `HeroIntemporel.tsx`'s `countVisualLines` already
+ * uses: a `Range` over the element's text content, one client rect per
+ * visual line for wrapped inline content. jsdom (tests) doesn't
+ * implement `getClientRects` for a Range — fails safe to "1 line" there
+ * rather than throwing. */
+function countVisualLines(el: HTMLElement): number {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  if (typeof range.getClientRects !== "function") return 1;
+  const rects = range.getClientRects();
+  return rects.length || 1;
+}
+
+export interface FitLongNameResult {
+  ref: RefObject<HTMLHeadingElement | null>;
+  fontSizePx: number | null;
+  isFallback: boolean;
+}
+
+/**
+ * Spec §9.1/§9.2 — Mobile-only exceptional fallback.
+ *
+ * "Cas normal" (1–2 lines) is handled entirely by CSS — the module
+ * stylesheet's own `clamp(38px, 10vw, 50px)` on `.name` already gives
+ * most names their normal responsive size with no JS at all, exactly
+ * per spec §9.1's own token. This hook only ever engages on a narrow
+ * viewport (< `DEATH_NOTICE_INTEMPOREL_BREAKPOINT_MOBILE_PX`) and only
+ * once the name still wraps past `maxLinesNormal` at the CSS clamp's own
+ * floor — Desktop is untouched (QA matrix D-NAM: "max 2 lignes" always;
+ * this hook's `isFallback` never gets a chance to run above the mobile
+ * breakpoint at all).
+ *
+ * Once engaged: sets the fallback's own `targetPx` (34px), re-measures,
+ * and only shrinks further (in whole px, never past `fallback.minPx`,
+ * 32px) if still over `fallback.maxLines` (3). Never truncates,
+ * ellipsizes, or drops a word — the full name is always the element's
+ * `textContent`; only `fontSizePx` (and `.module.css`'s own
+ * fallback-mode `max-width`/`line-height`/`margin-bottom`, applied via
+ * `isFallback`) ever change. If a name still doesn't fit in 3 lines at
+ * 32px, this stays at 32px/whatever it wraps to — spec §9.2's own STOP
+ * clause ("Claude ne réduit pas davantage… n'invente pas une 4e ligne")
+ * is a Studio/QG escalation, not a further client-side reduction.
+ */
+export function useFitLongName(text: string): FitLongNameResult {
+  const ref = useRef<HTMLHeadingElement | null>(null);
+  const [result, setResult] = useState<{ fontSizePx: number | null; isFallback: boolean }>({
+    fontSizePx: null,
+    isFallback: false,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const t = DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY.name;
+
+    function fit() {
+      if (!el) return;
+      const isMobile = window.innerWidth < DEATH_NOTICE_INTEMPOREL_BREAKPOINT_MOBILE_PX;
+
+      if (!isMobile) {
+        el.style.fontSize = "";
+        setResult({ fontSizePx: null, isFallback: false });
+        return;
+      }
+
+      // Cas normal — the CSS clamp's own floor (mobile.minPx) already
+      // rendered. Measure it as-is; if it already fits, do nothing (no
+      // inline override needed, CSS keeps driving the responsive size).
+      el.style.fontSize = "";
+      if (countVisualLines(el) <= t.mobile.maxLinesNormal) {
+        setResult({ fontSizePx: null, isFallback: false });
+        return;
+      }
+
+      // Fallback exceptionnel (§9.2) — target size, shrink only if still
+      // over maxLines, never past fallback.minPx.
+      const fb = t.mobile.fallback;
+      let size = fb.targetPx;
+      el.style.fontSize = `${size}px`;
+      let lines = countVisualLines(el);
+      while (lines > fb.maxLines && size > fb.minPx) {
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+        lines = countVisualLines(el);
+      }
+      setResult({ fontSizePx: size, isFallback: true });
+    }
+
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [text]);
+
+  return { ref, ...result };
+}
+
 export function DeathNoticeIntemporel({
   hero,
   deathNotice,
@@ -164,85 +260,130 @@ export function DeathNoticeIntemporel({
 
   const precisionRows = chunkIntoRows(visibleBlocks, 2);
 
-  // The one place a `SkinVariant` picks WHICH complete Runtime Split
-  // Pack asset set applies — see config/death-notice-intemporel-tokens.ts's
-  // own docstring. Every one of these is a real Studio asset for its
-  // variant, never a Light asset reused for Dark (or vice versa) — the
-  // `Record<SkinVariant, string>` shape makes cross-variant mixing a
-  // type error, not just a discipline.
-  const topSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.runtimeTop[skinVariant];
-  const middleSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.runtimeMiddle[skinVariant];
-  const bottomSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.runtimeBottom[skinVariant];
-  const ornamentSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.ornamentBranch[skinVariant];
+  // The one place a `SkinVariant` picks WHICH complete asset set applies
+  // — every one of these is a real Studio asset for its variant, never a
+  // Light asset reused for Dark (or vice versa) — the
+  // `Record<SkinVariant, FormatAssets>` shape makes cross-variant mixing
+  // a type error, not just a discipline.
+  const stageSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.stage[skinVariant];
+  const sheetTopSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.sheetTop[skinVariant];
+  const sheetBodySrc = DEATH_NOTICE_INTEMPOREL_ASSETS.sheetBody[skinVariant];
+  const sheetBottomSrc = DEATH_NOTICE_INTEMPOREL_ASSETS.sheetBottom[skinVariant];
+
+  const { ref: nameRef, fontSizePx: nameFontSizePx, isFallback: nameIsFallback } = useFitLongName(
+    hero.displayName ?? "",
+  );
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.wrap} ${cormorantGaramond.variable}`}>
-        <div className={styles.sheet}>
-          {/* The entire artistic envelope — torn edges, layered papers,
-              depth, peripheral botanicals, the HERITAGE seal — all baked
-              into these three Studio masters. This component draws NONE
-              of it itself (Mission 039B "intégration finale" section 2).
-              `.envelope`'s own total height is driven by `.content`'s
-              natural flow, one sibling below — see the module
-              stylesheet's own docstring. */}
-          <div className={styles.envelope} aria-hidden="true">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={topSrc} alt="" aria-hidden="true" className={styles.envelopeTop} />
-            <div className={styles.envelopeMiddle} style={{ backgroundImage: `url(${middleSrc})` }} />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={bottomSrc} alt="" aria-hidden="true" className={styles.envelopeBottom} />
-          </div>
+        {/* The composed Memorial Stage — full-bleed ambiance (desk,
+            secondary papers, peripheral botanicals, shadow). ART-ONLY,
+            no decorative text baked in (spec §2). The one `<picture>` in
+            this component — by far the heaviest asset pair, spec §12's
+            own "ne pas charger inutilement les deux scènes lourdes". */}
+        <picture>
+          <source media={`(min-width: ${DEATH_NOTICE_INTEMPOREL_BREAKPOINT_MOBILE_PX}px)`} srcSet={stageSrc.desktop} />
+          <img src={stageSrc.mobile} alt="" aria-hidden="true" className={styles.stage} />
+        </picture>
 
-          <article className={styles.content}>
-            <p className={styles.eyebrow}>{contextLabel}</p>
-            <h1 className={styles.title}>{translate(language, "deathNotice.previewTitle")}</h1>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ornamentSrc} alt="" aria-hidden="true" className={styles.ornament} />
+        <div className={styles.sheetMount}>
+          <div className={styles.sheet}>
+            {/* The extensible Sheet envelope — torn edges, texture, the
+                rameau décoratif (baked into TOP now) and THE SEAL (baked
+                into BOTTOM). This component draws none of it itself.
+                Mobile/Desktop caps both render; CSS switches visibility
+                at the same breakpoint as the Stage `<picture>` above
+                (module stylesheet's own docstring — these are light
+                files, unlike the Stage). `.sheet`'s own total height is
+                driven by `.content`'s natural flow, one sibling below. */}
+            <div className={styles.envelope} aria-hidden="true">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={sheetTopSrc.desktop} alt="" aria-hidden="true" className={styles.envelopeTopDesktop} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={sheetTopSrc.mobile} alt="" aria-hidden="true" className={styles.envelopeTopMobile} />
+              <div
+                className={styles.envelopeBodyDesktop}
+                style={{ backgroundImage: `url(${sheetBodySrc.desktop})` }}
+              />
+              <div
+                className={styles.envelopeBodyMobile}
+                style={{ backgroundImage: `url(${sheetBodySrc.mobile})` }}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={sheetBottomSrc.desktop} alt="" aria-hidden="true" className={styles.envelopeBottomDesktop} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={sheetBottomSrc.mobile} alt="" aria-hidden="true" className={styles.envelopeBottomMobile} />
+            </div>
 
-            <h2 className={styles.name}>{hero.displayName ?? ""}</h2>
-            {dateRangeText !== null && <p className={styles.dates}>{dateRangeText}</p>}
+            {/* Eyebrow + section title sit inside the top cap's own
+                blank paper area, above the baked rameau — see the module
+                stylesheet's own docstring for how `.capText` and
+                `.content`'s padding-top both derive from the exact same
+                cap pixel dimensions, guaranteeing `.name` never starts
+                before the cap's real bottom edge. */}
+            <div className={styles.capTextBox}>
+              <p className={styles.eyebrow}>{contextLabel}</p>
+              <h1 className={styles.title}>{translate(language, "deathNotice.previewTitle")}</h1>
+            </div>
 
-            <div className={styles.divider} aria-hidden="true" />
+            <article className={styles.content}>
+              <h2
+                ref={nameRef}
+                className={`${styles.name} ${nameIsFallback ? styles.nameFallback : ""}`}
+                style={nameFontSizePx !== null ? { fontSize: `${nameFontSizePx}px` } : undefined}
+              >
+                {hero.displayName ?? ""}
+              </h2>
+              {dateRangeText !== null && <p className={styles.dates}>{dateRangeText}</p>}
 
-            {deathNotice.announcementText !== null && (
-              <p className={styles.announcement}>{deathNotice.announcementText}</p>
-            )}
+              <div className={styles.divider} aria-hidden="true" />
 
-            {precisionRows.length > 0 && (
-              <div className={styles.precisions}>
-                {precisionRows.map((row) => (
-                  <div key={row.map((block) => block.field).join("-")} className={styles.precisionRow}>
-                    {row.map((block) => (
-                      <div key={block.field} className={styles.precisionBlock}>
-                        <div className={styles.precisionHeading}>
-                          {/* A generic, single-color pictogram (the SAME
-                              file in both variants — kept unchanged by
-                              this mission, per its own README/doctrine),
-                              tinted to the current ink color via a CSS
-                              mask rather than a second (Dark) icon asset,
-                              so it stays legible on either paper tone.
-                              Never an <img>: a mask has no content of its
-                              own to need alt text; the adjacent label
-                              already carries it. */}
-                          <span
-                            aria-hidden="true"
-                            className={styles.precisionIcon}
-                            style={{
-                              WebkitMaskImage: `url(${block.icon})`,
-                              maskImage: `url(${block.icon})`,
-                            }}
-                          />
-                          <span className={styles.precisionLabel}>{translate(language, block.labelKey)}</span>
+              {deathNotice.announcementText !== null && (
+                <p className={styles.announcement}>{deathNotice.announcementText}</p>
+              )}
+
+              {precisionRows.length > 0 && (
+                <div className={styles.precisions}>
+                  {precisionRows.map((row) => (
+                    <div key={row.map((block) => block.field).join("-")} className={styles.precisionRow}>
+                      {row.map((block) => (
+                        <div key={block.field} className={styles.precisionBlock}>
+                          <div className={styles.precisionHeading}>
+                            {/* A generic, single-color pictogram, tinted
+                                to the current ink color via a CSS mask
+                                rather than a second (Dark) icon asset, so
+                                it stays legible on either paper tone.
+                                Never an <img>: a mask has no content of
+                                its own to need alt text; the adjacent
+                                label already carries it. */}
+                            <span
+                              aria-hidden="true"
+                              className={styles.precisionIcon}
+                              style={{
+                                WebkitMaskImage: `url(${block.icon})`,
+                                maskImage: `url(${block.icon})`,
+                              }}
+                            />
+                            <span className={styles.precisionLabel}>{translate(language, block.labelKey)}</span>
+                          </div>
+                          <p
+                            className={
+                              block.field === "quote"
+                                ? `${styles.precisionText} ${styles.precisionTextQuote}`
+                                : styles.precisionText
+                            }
+                          >
+                            {block.text}
+                          </p>
                         </div>
-                        <p className={styles.precisionText}>{block.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </div>
         </div>
       </div>
     </SkinScope>
