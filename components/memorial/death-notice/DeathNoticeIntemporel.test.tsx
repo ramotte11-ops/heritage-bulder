@@ -223,7 +223,7 @@ describe("DeathNoticeIntemporel — details (mission brief section 8)", () => {
         precisions: { ...EMPTY_DEATH_NOTICE_PRECISIONS, generalLocation: "Lyon" },
       },
     });
-    const blocks = container.querySelectorAll('[class*="block"]:not([class*="blockHeading"]):not([class*="blockLabel"]):not([class*="blockText"]):not([class*="blockDot"])');
+    const blocks = container.querySelectorAll('[class*="block"]:not([class*="blockHeading"]):not([class*="blockLabel"]):not([class*="blockText"]):not([class*="blockIcon"])');
     // Exactly one real block wrapper, and it carries the "full width" class.
     const fullWidthBlocks = Array.from(blocks).filter((el) => el.className.includes("blockFull"));
     expect(fullWidthBlocks.length).toBe(1);
@@ -295,6 +295,29 @@ describe("DeathNoticeIntemporel — details (mission brief section 8)", () => {
     // desktop media query introduces two.
     const beforeMediaQuery = CSS_SOURCE.split("@media (min-width: 960px) {\n  .details")[0];
     expect(beforeMediaQuery).toMatch(/\.details\s*{[^}]*grid-template-columns:\s*1fr;/);
+  });
+
+  it("uses the real Studio pictogram for each precision, never a placeholder dot", () => {
+    const { container } = renderNotice({
+      deathNotice: {
+        announcementText: "Texte.",
+        precisions: {
+          generalLocation: "Lyon",
+          familyMessage: "Merci.",
+          thought: "Une pensée.",
+          quote: "Une citation.",
+          other: "Autre précision.",
+        },
+      },
+    });
+    const icons = container.querySelectorAll('[class*="blockIcon"]');
+    expect(icons.length).toBe(5);
+    const maskUrls = Array.from(icons).map((el) => (el as HTMLElement).style.maskImage);
+    expect(maskUrls.some((src) => src.includes("a03-icon-location.png"))).toBe(true);
+    expect(maskUrls.some((src) => src.includes("a03-icon-family.png"))).toBe(true);
+    expect(maskUrls.some((src) => src.includes("a03-icon-thought.png"))).toBe(true);
+    expect(maskUrls.some((src) => src.includes("a03-icon-quote.png"))).toBe(true);
+    expect(maskUrls.some((src) => src.includes("a03-icon-other.png"))).toBe(true);
   });
 });
 

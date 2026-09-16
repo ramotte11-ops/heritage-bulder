@@ -2,68 +2,51 @@ import type { SkinVariant } from "@/config/skins";
 
 /**
  * Mission 039B — A03 (Avis de décès) runtime tokens, Studio pack
- * `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL`. Verified byte-for-byte
- * against that pack's own `SHA256SUMS.txt` before copying its 12 runtime
- * PNGs into `public/`. `geometry.json` (this pack's own root file — the
- * mission handoff names it `04_TOKENS/geometry.json`, but the pack as
- * delivered carries it at the package root; same content either way) is
- * the SOLE geometric source of truth — every pixel value below that
- * carries a "geometry.json" reference is transcribed from it verbatim,
- * never measured from a PNG or estimated visually.
+ * `HERITAGE_A03_CLAUDE_FINAL_LEAN_UNDER30MB` (the QG-issued single
+ * canonical correction package, superseding the earlier
+ * `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL` upload — its
+ * `03_RUNTIME_ASSETS_CANONICAL/` PNGs are byte-for-byte identical to
+ * that earlier package's own `02_RUNTIME_ASSETS/`, verified before
+ * reuse, so no asset churn was needed; `02_SPEC_TOKENS_ICONS/04_TOKENS/`
+ * is what is NEW here — the real `typography.json`/`colors.json` this
+ * mission's first pass lacked).
  *
- * ## The three-mass SCENE architecture (mission brief section 3, 6)
+ * ## The three-mass SCENE architecture (mission brief section 10)
  *
  * SCENE TOP (once) + SCENE MIDDLE (repeated N times) + SCENE BOTTOM
  * (once), stacked in normal document flow — each `<img>` rendered at
  * `width: 100%; height: auto`, which is exactly the mission's own scale
  * rule (`scale = renderedSceneWidth / nativeCanvasWidth`, uniformly on
- * both axes) applied by the browser's own intrinsic-aspect-ratio scaling,
- * never a second, hand-rolled scale computation for the background
- * images themselves. Four independent variants (mobile/desktop ×
- * light/dark) — no asset is shared or derived from another.
+ * both axes) applied by the browser's own intrinsic-aspect-ratio
+ * scaling, never a second, hand-rolled scale computation for the
+ * background images themselves.
  *
- * ## What this file does NOT provide (flagged, not guessed)
+ * ## Every value below now comes from the package's own tokens — no
+ * placeholder survives
  *
- * `geometry.json` gives Y-anchors (`anchors_y_px`) for where each piece
- * of family content lands in the NOMINAL case (a short single-line name,
- * a brief announcement) — it does not, and structurally cannot, pin an
- * exact Y-coordinate for every element regardless of content length: a
- * name that wraps to two lines must push the dates below it, which is
- * the entire point of "allongement dynamique" (section 6). So these
- * anchors are used here as the STARTING offset for the content block as
- * a whole (`anchors_y_px.eyebrow`) plus the reference deltas this file's
- * own `SPACING` derives its em-based gaps from for the nominal case —
- * never as fixed per-element absolute positions.
- *
- * More importantly: the v3.1.1 canonical package ships `geometry.json`
- * ONLY — no `colors.json`, no `typography.json` (unlike the EARLIER,
- * now-obsolete `A03_HANDOFF_FINAL_V2` pack the previous 039B branch
- * worked from, whose own tokens are explicitly retired — mission brief
- * section 2's "anciens tokens visuels A03"). Two real gaps follow from
- * this, both flagged in the mission report rather than silently guessed:
- *
- *   1. **Text ink color** is not specified anywhere in this package.
- *      Rather than "choisir une nouvelle couleur" (forbidden, mission
- *      brief section 4), `INK` below reuses the ALREADY-CANONICAL
- *      Intemporel-skin ink tokens `HeroIntemporel.module.css` already
- *      established for this exact skin identity
- *      (`HERO_INTEMPOREL_INK` in `config/hero-intemporel-tokens.ts`) —
- *      applying an existing, approved system value, not inventing one.
- *      Flagged for explicit QG/Studio confirmation.
- *   2. **Typography sizes** beyond the name (eyebrow/title/dates/
- *      announcement/detail label/detail text) are not specified either.
- *      `TYPOGRAPHY` below uses conservative, legible sizes reasoned from
- *      `geometry.json`'s own anchor gaps at the nominal case (so text
- *      does not visually overflow its allotted band) — an engineering
- *      placeholder, not a Studio-approved value. Flagged for explicit
- *      QG/Studio confirmation. The NAME's own sizing is the one
- *      exception: the mission brief (section 9) gives it explicitly, and
- *      `TYPOGRAPHY.name` transcribes those numbers verbatim.
+ * `TYPOGRAPHY` (except `name`, already mission-specified) and `INK` are
+ * transcribed VERBATIM from `02_SPEC_TOKENS_ICONS/04_TOKENS/typography.json`
+ * and `colors.json` — the first pass's placeholder sizes and its
+ * borrowed-from-Hero ink colors are both gone. `RHYTHM` below is new:
+ * the exact vertical percentages (`paddingTopPct`, `titleMarginTopPct`,
+ * `branchSpacePct`) a fixed, single-line eyebrow/title header needs to
+ * clear the Studio's own baked rameau décoratif before `name` starts —
+ * derived arithmetically from `geometry.json`'s own `anchors_y_px`
+ * deltas (`(anchorA - anchorB) / nativeCanvasWidthPx`), the same
+ * width-based scale rule every other coordinate in this file uses,
+ * never eyeballed. This is deliberately NOT extended past the header
+ * zone (name/dates/announcement/details keep ordinary flow-based
+ * margins, `DeathNoticeIntemporel.module.css`) — a name that wraps to 2
+ * lines, or a long announcement, must be able to push later elements
+ * down; the Studio's own nominal anchors for those (`name_top`,
+ * `dates_top`, ...) describe the SHORT-content reference case only, per
+ * `A03_RUNTIME_SPEC.md` section 8, not a fixed pin every content length
+ * must satisfy.
  */
 
 export const DEATH_NOTICE_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
-const ASSET_ROOT = "/assets/death-notice/intemporel/runtime";
+const ASSET_ROOT = "/assets/death-notice/intemporel";
 
 interface FormatAssets {
   desktop: string;
@@ -71,21 +54,32 @@ interface FormatAssets {
 }
 
 /** The 12 canonical runtime PNGs — copied verbatim (same bytes,
- * `SHA256SUMS.txt` verified) from the Studio v3.1.1 package into
- * `public/`. No QA/audit file from that package is installed here. */
+ * `SHA256SUMS.txt` verified) from the Studio package into `public/`. No
+ * QA/audit/reference file from that package is installed here. */
 export const DEATH_NOTICE_INTEMPOREL_ASSETS = {
   top: {
-    light: { desktop: `${ASSET_ROOT}/light/desktop/a03-scene-top.png`, mobile: `${ASSET_ROOT}/light/mobile/a03-scene-top.png` },
-    dark: { desktop: `${ASSET_ROOT}/dark/desktop/a03-scene-top.png`, mobile: `${ASSET_ROOT}/dark/mobile/a03-scene-top.png` },
+    light: { desktop: `${ASSET_ROOT}/runtime/light/desktop/a03-scene-top.png`, mobile: `${ASSET_ROOT}/runtime/light/mobile/a03-scene-top.png` },
+    dark: { desktop: `${ASSET_ROOT}/runtime/dark/desktop/a03-scene-top.png`, mobile: `${ASSET_ROOT}/runtime/dark/mobile/a03-scene-top.png` },
   } satisfies Record<SkinVariant, FormatAssets>,
   middle: {
-    light: { desktop: `${ASSET_ROOT}/light/desktop/a03-scene-middle.png`, mobile: `${ASSET_ROOT}/light/mobile/a03-scene-middle.png` },
-    dark: { desktop: `${ASSET_ROOT}/dark/desktop/a03-scene-middle.png`, mobile: `${ASSET_ROOT}/dark/mobile/a03-scene-middle.png` },
+    light: { desktop: `${ASSET_ROOT}/runtime/light/desktop/a03-scene-middle.png`, mobile: `${ASSET_ROOT}/runtime/light/mobile/a03-scene-middle.png` },
+    dark: { desktop: `${ASSET_ROOT}/runtime/dark/desktop/a03-scene-middle.png`, mobile: `${ASSET_ROOT}/runtime/dark/mobile/a03-scene-middle.png` },
   } satisfies Record<SkinVariant, FormatAssets>,
   bottom: {
-    light: { desktop: `${ASSET_ROOT}/light/desktop/a03-scene-bottom.png`, mobile: `${ASSET_ROOT}/light/mobile/a03-scene-bottom.png` },
-    dark: { desktop: `${ASSET_ROOT}/dark/desktop/a03-scene-bottom.png`, mobile: `${ASSET_ROOT}/dark/mobile/a03-scene-bottom.png` },
+    light: { desktop: `${ASSET_ROOT}/runtime/light/desktop/a03-scene-bottom.png`, mobile: `${ASSET_ROOT}/runtime/light/mobile/a03-scene-bottom.png` },
+    dark: { desktop: `${ASSET_ROOT}/runtime/dark/desktop/a03-scene-bottom.png`, mobile: `${ASSET_ROOT}/runtime/dark/mobile/a03-scene-bottom.png` },
   } satisfies Record<SkinVariant, FormatAssets>,
+} as const;
+
+/** The five functional precision pictograms — one file, variant-independent
+ * (tinted via CSS mask against the current ink accent, never a second Dark
+ * file), copied verbatim from `02_SPEC_TOKENS_ICONS/icons/`. */
+export const DEATH_NOTICE_INTEMPOREL_ICONS = {
+  generalLocation: `${ASSET_ROOT}/icons/a03-icon-location.png`,
+  familyMessage: `${ASSET_ROOT}/icons/a03-icon-family.png`,
+  thought: `${ASSET_ROOT}/icons/a03-icon-thought.png`,
+  quote: `${ASSET_ROOT}/icons/a03-icon-quote.png`,
+  other: `${ASSET_ROOT}/icons/a03-icon-other.png`,
 } as const;
 
 /** One format×variant's full geometry — transcribed verbatim from the
@@ -112,9 +106,9 @@ export interface DeathNoticeSceneGeometry {
   bottomArtReservePx: number;
 }
 
-/** `geometry.json`, transcribed verbatim — see this file's own docstring.
- * Desktop is identical Light/Dark on the X axis; Y anchors differ
- * slightly (the two TOP arts are independently composed). */
+/** `geometry.json`, transcribed verbatim. Desktop is identical
+ * Light/Dark on the X axis; Y anchors differ slightly (the two TOP arts
+ * are independently composed). */
 export const DEATH_NOTICE_INTEMPOREL_GEOMETRY: Record<
   SkinVariant,
   { desktop: DeathNoticeSceneGeometry; mobile: DeathNoticeSceneGeometry }
@@ -198,35 +192,62 @@ export const DEATH_NOTICE_INTEMPOREL_GEOMETRY: Record<
 };
 
 /**
- * Typography tokens. `name` is the mission brief's own explicit numbers
- * (section 9), transcribed verbatim — the one part of this table that IS
- * a Studio/QG-locked contract, not a placeholder. Every other entry is
- * this mission's own conservative, legible sizing, reasoned from
- * `geometry.json`'s anchor gaps at the nominal case — see this file's own
- * docstring ("What this file does NOT provide").
+ * The fixed, single-line eyebrow/title header's own vertical rhythm —
+ * see this file's own top docstring for why this (and only this) zone
+ * is geometry-derived rather than flow-based. Each value is
+ * `(anchorDeltaPx / nativeCanvasWidthPx) * 100`, a percentage that
+ * resolves against the container's WIDTH exactly like every other
+ * coordinate here (CSS itself resolves a vertical `padding`/`margin`
+ * percentage against width, not height — no JS needed to apply these).
+ */
+export const DEATH_NOTICE_INTEMPOREL_RHYTHM: Record<
+  SkinVariant,
+  { desktop: { paddingTopPct: number; titleMarginTopPct: number; branchSpacePct: number }; mobile: { paddingTopPct: number; titleMarginTopPct: number; branchSpacePct: number } }
+> = {
+  light: {
+    desktop: { paddingTopPct: 5.0239, titleMarginTopPct: 1.6148, branchSpacePct: 5.622 },
+    mobile: { paddingTopPct: 25.8236, titleMarginTopPct: 3.6132, branchSpacePct: 11.5834 },
+  },
+  dark: {
+    desktop: { paddingTopPct: 4.067, titleMarginTopPct: 1.555, branchSpacePct: 5.7416 },
+    mobile: { paddingTopPct: 31.2434, titleMarginTopPct: 3.6132, branchSpacePct: 12.6461 },
+  },
+};
+
+/**
+ * Typography tokens, transcribed verbatim from the package's own
+ * `typography.json` — `font_family.display`/`body` is `"Cormorant
+ * Garamond"` (already integrated, `components/builder/fonts.ts`'s
+ * `cormorantGaramond`, reused rather than a second font import). `name`
+ * is the mission brief's own explicit numbers (section 13), identical
+ * to `typography.json`'s own `name`/`exceptional_fallback` entries —
+ * transcribed once here as the single source, not duplicated.
  */
 export const DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY = {
   desktop: {
-    eyebrow: { sizePx: 14, lineHeight: 1.2, letterSpacingEm: 0.28, weight: 500 },
-    title: { sizePx: 32, lineHeight: 1.05, weight: 500 },
-    dates: { sizePx: 26, lineHeight: 1.1, letterSpacingEm: 0.04, weight: 400 },
-    announcement: { sizePx: 20, lineHeight: 1.35, weight: 400 },
-    detailLabel: { sizePx: 13, lineHeight: 1.2, letterSpacingEm: 0.2, weight: 600 },
-    detailText: { sizePx: 16, lineHeight: 1.3, weight: 400 },
+    eyebrow: { sizePx: 13, lineHeight: 1.2, letterSpacingEm: 0.24, weight: 500 },
+    title: { sizePx: 48, lineHeight: 1.0, weight: 500 },
+    dates: { sizePx: 28, lineHeight: 1.0, letterSpacingEm: 0.06, weight: 400 },
+    announcement: { sizePx: 22, lineHeight: 1.22, weight: 400 },
+    detailLabel: { sizePx: 13, lineHeight: 1.2, letterSpacingEm: 0.22, weight: 600 },
+    detailText: { sizePx: 17, lineHeight: 1.22, weight: 400 },
+    quote: { sizePx: 17, lineHeight: 1.22, weight: 400 },
   },
   mobile: {
-    eyebrow: { sizePx: 11, lineHeight: 1.2, letterSpacingEm: 0.24, weight: 500 },
-    title: { sizePx: 24, lineHeight: 1.05, weight: 500 },
-    dates: { sizePx: 19, lineHeight: 1.1, letterSpacingEm: 0.03, weight: 400 },
-    announcement: { sizePx: 16, lineHeight: 1.38, weight: 400 },
-    detailLabel: { sizePx: 11, lineHeight: 1.2, letterSpacingEm: 0.18, weight: 600 },
-    detailText: { sizePx: 14, lineHeight: 1.35, weight: 400 },
+    eyebrow: { sizePx: 10, lineHeight: 1.2, letterSpacingEm: 0.22, weight: 500 },
+    title: { sizePx: 34, lineHeight: 1.0, weight: 500 },
+    dates: { sizePx: 21, lineHeight: 1.0, letterSpacingEm: 0.05, weight: 400 },
+    announcement: { sizePx: 17, lineHeight: 1.28, weight: 400 },
+    detailLabel: { sizePx: 11, lineHeight: 1.2, letterSpacingEm: 0.2, weight: 600 },
+    detailText: { sizePx: 15, lineHeight: 1.28, weight: 400 },
+    quote: { sizePx: 15, lineHeight: 1.28, weight: 400 },
   },
   /**
-   * Mission brief section 9 (QG-locked, verbatim) — the name's own
-   * sizing. "Nom complet TOUJOURS affiché" — never ellipsis, truncation,
-   * or a dropped word at any tier, only the font-size (and, only in
-   * fallback, the max-width) ever changes.
+   * Mission brief section 13 (QG-locked, verbatim, identical to
+   * `typography.json`'s own `name`/`exceptional_fallback`) — the name's
+   * own sizing. "Nom complet toujours affiché" — never ellipsis,
+   * truncation, or a dropped word at any tier, only the font-size (and,
+   * only in fallback, the max-width) ever changes.
    */
   name: {
     desktop: { minPx: 48, maxPx: 72, lineHeight: 0.95, weight: 500, maxLinesNormal: 2 },
@@ -236,23 +257,36 @@ export const DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY = {
       lineHeight: 0.95,
       weight: 500,
       maxLinesNormal: 2,
-      /** The exceptional Mobile-only fallback (section 9) — only entered
-       * when the name does not wrap into `maxLinesNormal` lines at
-       * `minPx`. Desktop never enters an equivalent fallback: a name
-       * that fails 2 lines / 48px on Desktop is the mission's own
-       * documented STOP condition, not something this hook resolves. */
       fallback: { targetPx: 34, minPx: 32, lineHeight: 0.92, maxWidthPct: 88, maxLines: 3 },
     },
   },
 } as const;
 
 /**
- * Text ink colors — reused verbatim from the already-canonical
- * Intemporel-skin tokens (`HERO_INTEMPOREL_INK`,
- * `config/hero-intemporel-tokens.ts`), never a new color invented for
- * A03 specifically. See this file's own docstring for why.
+ * Ink + surface tokens, transcribed verbatim from the package's own
+ * `colors.json`. Light and Dark each own their complete set — never a
+ * CSS filter/inversion deriving one from the other. Replaces the first
+ * pass's placeholder (borrowed from `HERITAGE_HERO_INTEMPOREL_INK`,
+ * `config/hero-intemporel-tokens.ts`) entirely.
  */
-export const DEATH_NOTICE_INTEMPOREL_INK = {
-  light: { primary: "#3D3A2B", secondary: "#6B6256", accent: "#6F7255" },
-  dark: { primary: "#F0E1CD", secondary: "#C8B8A4", accent: "#707052" },
-} as const;
+export const DEATH_NOTICE_INTEMPOREL_COLORS: Record<
+  SkinVariant,
+  { textPrimary: string; textSecondary: string; rule: string; olive: string; bronze: string; shadow: string }
+> = {
+  light: {
+    textPrimary: "#292A22",
+    textSecondary: "#5E5A4C",
+    rule: "#948D7C",
+    olive: "#5B6045",
+    bronze: "#A36F3D",
+    shadow: "rgba(73,52,34,0.20)",
+  },
+  dark: {
+    textPrimary: "#F1E5D5",
+    textSecondary: "#D8C8B4",
+    rule: "#A88D67",
+    olive: "#62654A",
+    bronze: "#C79A5D",
+    shadow: "rgba(0,0,0,0.42)",
+  },
+};

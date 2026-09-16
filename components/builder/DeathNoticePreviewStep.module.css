@@ -1,18 +1,38 @@
 /*
- * Mission 039B — A03 (aperçu de l'avis de décès). Chrome lives in
- * BuilderScreen.module.css; the actual editorial card is
- * DeathNoticeIntemporel's own concern (its own stylesheet) — this file
- * only handles this screen's stage wrapper and its three Builder-only
- * controls, deliberately never baked into the Avis itself.
+ * Mission 039B — A03 (aperçu de l'avis de décès), correction pass.
+ *
+ * `DeathNoticeIntemporel` (rendered directly as a sibling below
+ * `.builderBar`) takes NO width/background/spacing rule from this file
+ * at all — it is full-bleed, capped only by its own `max-width:
+ * 941px/1672px`. `.builderBar`/`.builderControls` are the only two
+ * zones this file styles: a slim, visually distinct Builder strip above
+ * and below the Memorial, each independently capped at a modest reading
+ * width — neither one resizes or frames the Memorial between them. This
+ * is deliberately NOT `BuilderScreen` (that component's own `.frame`
+ * caps at 600px and would recreate exactly the "card inside a card"
+ * the PO rejected) — see DeathNoticePreviewStep.tsx's own docstring.
  */
 
-/* No `overflow: hidden` here — the card's own height is entirely
- * dynamic (SCENE MIDDLE×N). */
-.stage {
-  width: 100%;
+.page {
+  min-height: 100dvh;
+  background: var(--heritage-surface-page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.form {
+.builderBar {
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.5rem 1.25rem 0;
+  box-sizing: border-box;
+}
+
+.builderControls {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  padding: 0 1.25rem 2.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -55,6 +75,10 @@
 .editLink:focus-visible {
   outline: 2px solid var(--heritage-focus-ring);
   outline-offset: 2px;
+}
+
+.ctaWrap {
+  width: 100%;
 }
 
 .error {

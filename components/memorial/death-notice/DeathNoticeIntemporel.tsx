@@ -14,6 +14,7 @@ import {
   DEATH_NOTICE_INTEMPOREL_ASSETS,
   DEATH_NOTICE_INTEMPOREL_BREAKPOINT_DESKTOP_PX,
   DEATH_NOTICE_INTEMPOREL_GEOMETRY,
+  DEATH_NOTICE_INTEMPOREL_ICONS,
   DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY,
   type DeathNoticeSceneGeometry,
 } from "@/config/death-notice-intemporel-tokens";
@@ -24,7 +25,26 @@ import styles from "./DeathNoticeIntemporel.module.css";
 /**
  * Mission 039B — A03: the real Death Notice ("Avis de décès") editorial
  * renderer, Intemporel skin, Studio pack
- * `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL`.
+ * `HERITAGE_A03_CLAUDE_FINAL_LEAN_UNDER30MB` (the QG-issued single
+ * canonical correction package; its runtime PNGs are byte-identical to
+ * the earlier `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL` upload this
+ * file originally shipped against — only the tokens/icons changed).
+ *
+ * ## A MEMORIAL renderer, never a Builder card (correction pass)
+ *
+ * This component renders the real Memorial Stage — the same mini-site a
+ * visitor sees — not a preview thumbnail. It takes no width, background,
+ * or spacing from whatever calls it: `.wrap`'s own `width:
+ * 100%;max-width:941px/1672px;margin-inline:auto` (geometry.json's own
+ * `runtime_width_rule`) is the ONLY sizing rule here, so it renders
+ * identically whether its caller is the Builder's A03 screen, a future
+ * Live Preview, or the published page. The FIRST pass of this mission
+ * got this wrong by nesting it inside `BuilderScreen`'s own 600px-capped
+ * `.frame` (`components/builder/BuilderScreen.module.css`) — the PO
+ * rejected the result outright: it read as "a small card in the middle
+ * of the Builder" rather than the real site. `DeathNoticePreviewStep.tsx`
+ * no longer wraps this component in `BuilderScreen` for exactly that
+ * reason — see that file's own docstring.
  *
  * ## SCENE TOP + SCENE MIDDLE×N + SCENE BOTTOM (mission brief section 3, 6)
  *
@@ -121,12 +141,12 @@ export interface DeathNoticeIntemporelProps {
   skinVariant: SkinVariant;
 }
 
-const PRECISION_BLOCKS: readonly { field: DeathNoticePrecisionField; labelKey: TranslationKey }[] = [
-  { field: "generalLocation", labelKey: "deathNotice.blockLocation" },
-  { field: "familyMessage", labelKey: "deathNotice.blockFamilyMessage" },
-  { field: "thought", labelKey: "deathNotice.blockThought" },
-  { field: "quote", labelKey: "deathNotice.blockQuote" },
-  { field: "other", labelKey: "deathNotice.blockOther" },
+const PRECISION_BLOCKS: readonly { field: DeathNoticePrecisionField; labelKey: TranslationKey; icon: string }[] = [
+  { field: "generalLocation", labelKey: "deathNotice.blockLocation", icon: DEATH_NOTICE_INTEMPOREL_ICONS.generalLocation },
+  { field: "familyMessage", labelKey: "deathNotice.blockFamilyMessage", icon: DEATH_NOTICE_INTEMPOREL_ICONS.familyMessage },
+  { field: "thought", labelKey: "deathNotice.blockThought", icon: DEATH_NOTICE_INTEMPOREL_ICONS.thought },
+  { field: "quote", labelKey: "deathNotice.blockQuote", icon: DEATH_NOTICE_INTEMPOREL_ICONS.quote },
+  { field: "other", labelKey: "deathNotice.blockOther", icon: DEATH_NOTICE_INTEMPOREL_ICONS.other },
 ];
 
 /** Same DOM technique `HeroIntemporel.tsx`'s `countVisualLines` already
@@ -379,7 +399,14 @@ export function DeathNoticeIntemporel({
                     className={`${styles.block} ${oddTotal && isLast ? styles.blockFull : ""}`}
                   >
                     <div className={styles.blockHeading}>
-                      <span className={styles.blockDot} aria-hidden="true" />
+                      <span
+                        aria-hidden="true"
+                        className={styles.blockIcon}
+                        style={{
+                          WebkitMaskImage: `url(${block.icon})`,
+                          maskImage: `url(${block.icon})`,
+                        }}
+                      />
                       <span className={styles.blockLabel}>{translate(language, block.labelKey)}</span>
                     </div>
                     <p

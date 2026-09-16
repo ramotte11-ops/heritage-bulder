@@ -84,6 +84,26 @@ describe("DeathNoticePreviewStep — the real renderer, rendered", () => {
     expect(screen.getByText("Elle s'en est allée paisiblement, entourée des siens.")).toBeTruthy();
   });
 
+  /**
+   * Correction pass — the PO rejected the first pass because
+   * DeathNoticeIntemporel was nested inside BuilderScreen's own
+   * 600px-capped `.frame`, reading as "a small card inside the
+   * Builder" rather than the real Memorial Stage. This guards against
+   * that regression: the Memorial's own wrapper must be a DIRECT
+   * child of this screen's root, never a descendant of any
+   * BuilderScreen-owned frame element.
+   */
+  it("never nests the Memorial inside BuilderScreen's own frame — no ancestor caps its width", () => {
+    const { container } = render(<DeathNoticePreviewStep {...baseProps()} />);
+    const memorialWrap = container.querySelector('[data-heritage-skin="intemporel"]');
+    expect(memorialWrap).toBeTruthy();
+    let node = memorialWrap?.parentElement ?? null;
+    while (node && node !== container) {
+      expect(node.className).not.toMatch(/frame/i);
+      node = node.parentElement;
+    }
+  });
+
   it("shows a controlled notice instead of crashing on a corrupted Hero", () => {
     render(<DeathNoticePreviewStep {...baseProps({ content: { hero: "garbage" } as unknown as MemorialContent })} />);
     expect(screen.queryByText("Jean Dupont")).toBeNull();
