@@ -369,7 +369,11 @@ export function DeathNoticeIntemporel({
         </div>
 
         <div ref={contentRef} className={styles.content}>
-          <p className={styles.eyebrow}>{contextLabel}</p>
+          <div className={styles.eyebrowRow}>
+            <span className={styles.eyebrowRule} aria-hidden="true" />
+            <p className={styles.eyebrow}>{contextLabel}</p>
+            <span className={styles.eyebrowRule} aria-hidden="true" />
+          </div>
           <h1 className={styles.title}>{translate(language, "deathNotice.previewTitle")}</h1>
 
           <div className={styles.branchSpace} aria-hidden="true" />

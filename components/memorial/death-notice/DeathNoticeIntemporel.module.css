@@ -94,6 +94,10 @@
    bottom (see DeathNoticeIntemporel.tsx's own docstring on the layout
    feedback loop that created). */
 
+/* The header (eyebrow through announcement) is center-aligned in all
+   four canonical references — only the details grid switches back to
+   left-aligned text within each block (its own `.details` rule below
+   overrides this). */
 .content {
   position: absolute;
   top: 0;
@@ -102,7 +106,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  text-align: left;
+  text-align: center;
 }
 
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .content {
@@ -129,6 +133,30 @@
   padding-right: 27.099%;
 }
 
+/* The eyebrow, flanked by two short functional rules — a "filet
+   fonctionnel" (mission brief section 10's own content list), never a
+   reconstruction of the botanical branch (that stays baked in SCENE
+   TOP). */
+.eyebrowRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9em;
+}
+
+.eyebrowRule {
+  height: 1px;
+  width: 1.6em;
+  background: var(--dn-rule);
+  flex: none;
+}
+
+@media (min-width: 960px) {
+  .eyebrowRule {
+    width: 2.4em;
+  }
+}
+
 .eyebrow {
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
@@ -138,6 +166,7 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--dn-text-secondary);
+  white-space: nowrap;
 }
 
 @media (min-width: 960px) {
@@ -175,17 +204,37 @@
   font-size: 48px;
 }
 
+/*
+ * `title`'s margin-top and `branchSpace`'s padding-top below are
+ * DELIBERATELY NOT the raw `(anchorDelta / nativeCanvasWidthPx)`
+ * percentages `DEATH_NOTICE_INTEMPOREL_RHYTHM` documents — those are
+ * correct for `.content`'s OWN padding-top (its containing block, per
+ * CSS, really is `.wrap`'s full width), but `.title`/`.branchSpace` are
+ * CHILDREN of `.content`, whose containing block is `.content`'s own,
+ * ALREADY-NARROWER content-box (after the safe-area left/right padding
+ * is subtracted) — a percentage here resolves against THAT narrower
+ * width, not the full scene width the scale rule specifies. Left
+ * uncorrected, this under-shoots the intended gap by roughly half
+ * (found by direct pixel measurement against the canonical references,
+ * not a guess): the raw value × `1 / contentWidthRatio` restores the
+ * correct rendered pixel gap. `contentWidthRatio` = `1 -
+ * (paddingLeftPct + paddingRightPct)`, precomputed per format×variant
+ * from this file's own safe-area numbers above.
+ */
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .title {
-  margin-top: 1.6148%;
+  margin-top: 3.1285%;
 }
 
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="desktop"] .title {
-  margin-top: 1.555%;
+  margin-top: 3.0127%;
 }
 
-[data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .title,
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .title {
+  margin-top: 8.2128%;
+}
+
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .title {
-  margin-top: 3.6132%;
+  margin-top: 7.7982%;
 }
 
 /* The rameau décoratif is baked into SCENE TOP itself (mission brief
@@ -205,19 +254,19 @@
 }
 
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .branchSpace {
-  padding-top: 5.622%;
+  padding-top: 10.8922%;
 }
 
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="desktop"] .branchSpace {
-  padding-top: 5.7416%;
+  padding-top: 11.1239%;
 }
 
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .branchSpace {
-  padding-top: 11.5834%;
+  padding-top: 26.3289%;
 }
 
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .branchSpace {
-  padding-top: 12.6461%;
+  padding-top: 27.2933%;
 }
 
 .name {
@@ -261,7 +310,7 @@
 }
 
 .rule {
-  margin: 0.9em 0;
+  margin: 0.9em auto;
   height: 1px;
   width: 100%;
   max-width: 220px;
@@ -297,6 +346,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 1em;
+  text-align: left;
 }
 
 @media (min-width: 960px) {

@@ -192,27 +192,21 @@ export const DEATH_NOTICE_INTEMPOREL_GEOMETRY: Record<
 };
 
 /**
- * The fixed, single-line eyebrow/title header's own vertical rhythm —
- * see this file's own top docstring for why this (and only this) zone
- * is geometry-derived rather than flow-based. Each value is
- * `(anchorDeltaPx / nativeCanvasWidthPx) * 100`, a percentage that
- * resolves against the container's WIDTH exactly like every other
- * coordinate here (CSS itself resolves a vertical `padding`/`margin`
- * percentage against width, not height — no JS needed to apply these).
+ * The fixed, single-line eyebrow/title header's own vertical rhythm is
+ * geometry-derived rather than flow-based — see this file's own top
+ * docstring. The actual percentages live directly in
+ * `DeathNoticeIntemporel.module.css` (not duplicated here as data,
+ * to avoid two sources of truth silently drifting apart): `.content`'s
+ * own `padding-top` is `(eyebrowAnchorPx / nativeCanvasWidthPx) * 100`,
+ * exactly like every other coordinate here (CSS resolves a vertical
+ * `padding`/`margin` percentage against the containing block's WIDTH).
+ * `.title`'s `margin-top` and `.branchSpace`'s `padding-top`, being
+ * CHILDREN of `.content` rather than of `.wrap`, need that same raw
+ * percentage multiplied by `1 / contentWidthRatio` first — see that
+ * stylesheet's own comment at those rules for why (their containing
+ * block is `.content`'s ALREADY safe-area-inset width, not `.wrap`'s
+ * full one).
  */
-export const DEATH_NOTICE_INTEMPOREL_RHYTHM: Record<
-  SkinVariant,
-  { desktop: { paddingTopPct: number; titleMarginTopPct: number; branchSpacePct: number }; mobile: { paddingTopPct: number; titleMarginTopPct: number; branchSpacePct: number } }
-> = {
-  light: {
-    desktop: { paddingTopPct: 5.0239, titleMarginTopPct: 1.6148, branchSpacePct: 5.622 },
-    mobile: { paddingTopPct: 25.8236, titleMarginTopPct: 3.6132, branchSpacePct: 11.5834 },
-  },
-  dark: {
-    desktop: { paddingTopPct: 4.067, titleMarginTopPct: 1.555, branchSpacePct: 5.7416 },
-    mobile: { paddingTopPct: 31.2434, titleMarginTopPct: 3.6132, branchSpacePct: 12.6461 },
-  },
-};
 
 /**
  * Typography tokens, transcribed verbatim from the package's own
