@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_DEATH_NOTICE_CONTENT, EMPTY_DEATH_NOTICE_PRECISIONS } from "@/types/death-notice";
+import { EMPTY_HERO_CONTENT } from "@/types/hero";
 import { humanFlowDefinition } from "./human-steps";
 import { firstIncompleteStep } from "./engine";
 import {
   commitA01,
   commitA02,
+  commitA03,
+  deathNoticePreviewFingerprint,
   deathNoticeStepProgress,
   isA01Complete,
   isA02Resolved,
+  isA03Complete,
   needsA01,
   needsA02,
+  needsA03,
   readDeathNoticeForEditing,
+  reopenA01,
+  reopenA02,
   skipA02,
   writeAnnouncementText,
   writePrecision,
@@ -454,5 +461,251 @@ describe("deathNoticeStepProgress — reuses the real Mission 025 engine", () =>
     const before = deathNoticeStepProgress("announcement", EMPTY_CONTENT);
     const after = deathNoticeStepProgress("announcement", a01Done());
     expect(after).toBeGreaterThan(before);
+  });
+});
+
+// ---------------------------------------------------------------------
+// A03 — Mission 039B: commitA03 / isA03Complete / needsA03 / reopenA01 /
+// reopenA02 / deathNoticePreviewFingerprint
+// ---------------------------------------------------------------------
+
+/** A01 completed, A02 explicitly skipped — A03's own normal starting
+ * point, mirrors the death-notice-step.ts module's own doctrine. */
+function a02SkippedAfterA01(content: MemorialContent = a01Done()): MemorialContent {
+  const skipped = skipA02(content);
+  if (!skipped.ok) throw new Error("test fixture: skipA02 unexpectedly failed");
+  return skipped.content;
+}
+
+/** A01 completed, A02 completed with a real precision, A03 not yet
+ * verified — A03's other normal starting point. */
+function a02CompletedAfterA01(): MemorialContent {
+  const withPrecision = writePrecision(a01Done(), "generalLocation", "En Bretagne");
+  if (!withPrecision.ok) throw new Error("test fixture: writePrecision unexpectedly failed");
+  const committed = commitA02(withPrecision.content);
+  if (!committed.ok) throw new Error("test fixture: commitA02 unexpectedly failed");
+  return committed.content;
+}
+
+/** A01+A02 resolved, THEN A03 itself explicitly verified (the real
+ * Continue click) — the normal "fully done" state. */
+function a03Done(content: MemorialContent = a02SkippedAfterA01()): MemorialContent {
+  const committed = commitA03(content);
+  if (!committed.ok) throw new Error("test fixture: commitA03 unexpectedly failed");
+  return committed.content;
+}
+
+describe("needsA03 — gated behind A01 AND A02, never before", () => {
+  it("an empty draft does not need A03 (A01 itself is not even done)", () => {
+    expect(needsA03(EMPTY_CONTENT)).toBe(false);
+  });
+
+  it("A01 done alone, A02 not yet resolved — A03 not shown yet", () => {
+    expect(needsA03(a01Done())).toBe(false);
+  });
+
+  it("A01 done, A02 skipped — A03 is now needed", () => {
+    expect(needsA03(a02SkippedAfterA01())).toBe(true);
+    expect(isA03Complete(a02SkippedAfterA01())).toBe(false);
+  });
+
+  it("A01 done, A02 completed with a real precision — A03 is now needed", () => {
+    expect(needsA03(a02CompletedAfterA01())).toBe(true);
+  });
+
+  it("A01+A02+A03 all resolved — A03 no longer needed", () => {
+    const content = a03Done();
+    expect(needsA03(content)).toBe(false);
+    expect(isA03Complete(content)).toBe(true);
+  });
+});
+
+describe("commitA03 — the ONLY place A03's StepRecord is ever written", () => {
+  it("writes A03 completed with the current content's own fingerprint", () => {
+    const before = a02SkippedAfterA01();
+    const committed = commitA03(before);
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const flow = (committed.content as { guidedFlow: Record<string, { status: string; answer?: string }> })
+      .guidedFlow;
+    expect(flow.A03.status).toBe("completed");
+    expect(flow.A03.answer).toBe(deathNoticePreviewFingerprint(before));
+  });
+
+  it("refuses when A01 is not genuinely complete (announcementText still null)", () => {
+    expect(commitA03(EMPTY_CONTENT)).toEqual({ ok: false, reason: "announcementText" });
+  });
+
+  it("refuses when A02 has never been resolved, even with A01 done", () => {
+    expect(commitA03(a01Done())).toEqual({ ok: false, reason: "precisions" });
+  });
+
+  it("refuses on a corrupted stored Death Notice", () => {
+    expect(commitA03(CORRUPTED_UNKNOWN_KEY)).toEqual({ ok: false, reason: "corrupted" });
+    expect(commitA03(CORRUPTED_WRONG_TYPE)).toEqual({ ok: false, reason: "corrupted" });
+  });
+
+  it("refuses on a corrupted stored Hero, even with a valid Death Notice", () => {
+    const content: MemorialContent = {
+      ...a02SkippedAfterA01(),
+      hero: "not an object" as unknown as MemorialContent["hero"],
+    };
+    expect(commitA03(content)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("deathNoticePreviewFingerprint — invalidation (mission brief section 10)", () => {
+  it("identical content produces an identical fingerprint — a genuine re-verification stays valid", () => {
+    const content = a02SkippedAfterA01();
+    expect(deathNoticePreviewFingerprint(content)).toBe(deathNoticePreviewFingerprint({ ...content }));
+  });
+
+  it("changing hero.displayName invalidates an already-verified A03", () => {
+    const verified = a03Done();
+    expect(isA03Complete(verified)).toBe(true);
+
+    const changed: MemorialContent = {
+      ...verified,
+      hero: { ...EMPTY_HERO_CONTENT, ...(verified.hero as object), displayName: "Un autre nom" },
+    };
+    expect(isA03Complete(changed)).toBe(false);
+    expect(needsA03(changed)).toBe(true);
+  });
+
+  it("changing hero.birth/death invalidates an already-verified A03", () => {
+    const verified = a03Done();
+    const changed: MemorialContent = {
+      ...verified,
+      hero: { ...EMPTY_HERO_CONTENT, ...(verified.hero as object), birth: { precision: "year", year: 1950 } },
+    };
+    expect(isA03Complete(changed)).toBe(false);
+  });
+
+  it("changing announcementText invalidates an already-verified A03", () => {
+    const verified = a03Done();
+    const written = writeAnnouncementText(verified, "Un texte différent, saisi après la vérification.");
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(isA03Complete(written.content)).toBe(false);
+    expect(needsA03(written.content)).toBe(true);
+  });
+
+  it("changing any one precision invalidates an already-verified A03", () => {
+    const verified = a03Done(a02CompletedAfterA01());
+    const written = writePrecision(verified, "quote", "Une citation ajoutée après vérification.");
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(isA03Complete(written.content)).toBe(false);
+  });
+
+  it("changing hero.photo/crop does NOT invalidate an already-verified A03 — not displayed in A03", () => {
+    const verified = a03Done();
+    const changed: MemorialContent = {
+      ...verified,
+      hero: {
+        ...EMPTY_HERO_CONTENT,
+        ...(verified.hero as object),
+        photo: { mediaId: "a-different-media-id", crop: { focalX: 0.2, focalY: 0.3, zoom: 1.4 } },
+      },
+    };
+    expect(isA03Complete(changed)).toBe(true);
+  });
+
+  it("changing hero.shortPhrase does NOT invalidate an already-verified A03 — not displayed in A03", () => {
+    const verified = a03Done();
+    const changed: MemorialContent = {
+      ...verified,
+      hero: { ...EMPTY_HERO_CONTENT, ...(verified.hero as object), shortPhrase: "Une phrase ajoutée" },
+    };
+    expect(isA03Complete(changed)).toBe(true);
+  });
+
+  it("identical content re-verified stays valid — no false invalidation", () => {
+    const verified = a03Done();
+    expect(isA03Complete({ ...verified })).toBe(true);
+  });
+});
+
+describe("reopenA01 — 'Modifier l'annonce' (mission brief section 10)", () => {
+  it("un-marks A01 as done, which cascades needsA02/needsA03 back to true, without deleting any data", () => {
+    const verified = a03Done();
+    expect(needsA01(verified)).toBe(false);
+
+    const reopened = reopenA01(verified);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+
+    expect(needsA01(reopened.content)).toBe(true);
+    expect(needsA02(reopened.content)).toBe(false); // never reached — A01 gates it
+    expect(needsA03(reopened.content)).toBe(false); // never reached either
+
+    // Nothing was deleted — the family's own text is still exactly there.
+    const read = readDeathNoticeForEditing(reopened.content);
+    expect(read.status === "ready" && read.deathNotice.announcementText).toBe(
+      "Elle s'en est allée paisiblement, entourée des siens.",
+    );
+  });
+
+  it("re-confirming the exact same text after reopening A01 leaves A03 still valid, no extra click needed", () => {
+    const verified = a03Done();
+    const reopened = reopenA01(verified);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+
+    const recommitted = commitA01(reopened.content);
+    expect(recommitted.ok).toBe(true);
+    if (!recommitted.ok) return;
+
+    expect(isA03Complete(recommitted.content)).toBe(true);
+  });
+
+  it("refuses on a corrupted stored Death Notice", () => {
+    expect(reopenA01(CORRUPTED_UNKNOWN_KEY)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("reopenA02 — 'Modifier les précisions' (mission brief section 10)", () => {
+  it("un-marks only A02, leaving A01 untouched, without deleting any precision", () => {
+    const verified = a03Done(a02CompletedAfterA01());
+    const reopened = reopenA02(verified);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+
+    expect(needsA01(reopened.content)).toBe(false); // A01 still done
+    expect(needsA02(reopened.content)).toBe(true); // A02 needs re-treating
+    expect(needsA03(reopened.content)).toBe(false); // never reached — A02 gates it
+
+    const read = readDeathNoticeForEditing(reopened.content);
+    expect(read.status === "ready" && read.deathNotice.precisions.generalLocation).toBe("En Bretagne");
+  });
+
+  it("refuses on a corrupted stored Death Notice", () => {
+    expect(reopenA02(CORRUPTED_UNKNOWN_KEY)).toEqual({ ok: false, reason: "corrupted" });
+  });
+});
+
+describe("Progression — A03 required+non-skippable (human-steps.ts)", () => {
+  it("A03 completed advances the logical next step past the announcement branch", () => {
+    const flow = humanFlowDefinition("announcement");
+    const state = {
+      T03: { status: "completed" as const },
+      T04: { status: "skipped" as const },
+      T05: { status: "skipped" as const },
+      T06: { status: "completed" as const },
+      T07: { status: "completed" as const },
+      T08: { status: "completed" as const },
+      A01: { status: "completed" as const },
+      A02: { status: "skipped" as const },
+      A03: { status: "completed" as const },
+    };
+    const next = firstIncompleteStep(flow, state);
+    expect(next?.id).toBe("A04");
+  });
+
+  it("remembrance never includes A03 in its route at all", () => {
+    const flow = humanFlowDefinition("remembrance");
+    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
+    expect(route.some((s) => s.id === "A03")).toBe(false);
   });
 });

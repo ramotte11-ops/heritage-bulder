@@ -1,0 +1,75 @@
+/*
+ * Mission 039B — A03 (aperçu de l'avis de décès). Chrome lives in
+ * BuilderScreen.module.css; the actual editorial card is
+ * DeathNoticeIntemporel's own concern (its own stylesheet) — this file
+ * only handles this screen's stage wrapper and its three Builder-only
+ * controls, deliberately never baked into the Avis itself.
+ */
+
+/* No `overflow: hidden` here — the card's own height is entirely
+ * dynamic (SCENE MIDDLE×N). */
+.stage {
+  width: 100%;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-breathing);
+  margin-top: var(--heritage-space-breathing);
+}
+
+.editLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-sm);
+}
+
+@media (min-width: 40rem) {
+  .editLinks {
+    flex-direction: row;
+    gap: var(--heritage-space-xl);
+  }
+}
+
+.editLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.editLink:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.editLink:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+  text-align: center;
+}
+
+/* The skin guard's own notice — deliberately NOT `.error`'s error-red
+ * tone: nothing failed here, this is an honest "not built yet for your
+ * style" state, not a failure to load. */
+.unavailable {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+  text-align: center;
+  max-width: 28rem;
+  margin-inline: auto;
+}

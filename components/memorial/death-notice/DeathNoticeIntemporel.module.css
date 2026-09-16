@@ -1,0 +1,331 @@
+/*
+ * Mission 039B — A03 (Avis de décès), Studio pack
+ * A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL.
+ *
+ * Horizontal (safe-area) and vertical (eyebrow start) offsets below are
+ * static percentages derived directly from geometry.json's own pixel
+ * values, divided by that variant's own native canvas WIDTH — exactly
+ * the mission's scale rule (`scale = renderedSceneWidth /
+ * nativeCanvasWidth`, applied uniformly to every coordinate), and exactly
+ * how CSS itself resolves a vertical `padding`/`gap` percentage (always
+ * against the containing block's WIDTH, never its height) — so no
+ * runtime JS is needed for POSITIONING at all, only for the dynamic
+ * MIDDLE repeat count and the long-name fit (see the component file).
+ * Ink colors are the one thing tokenized per
+ * `data-heritage-skin-variant` — reused verbatim from the already-
+ * canonical Hero Intemporel ink tokens (see the component's own
+ * docstring on why).
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  max-width: 941px;
+  margin-inline: auto;
+  overflow: hidden;
+  isolation: isolate;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: reveal 600ms ease-out forwards;
+}
+
+@media (min-width: 960px) {
+  .wrap {
+    max-width: 1672px;
+  }
+}
+
+@keyframes reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .wrap {
+  --dn-ink-primary: #3d3a2b;
+  --dn-ink-secondary: #6b6256;
+  --dn-ink-accent: #6f7255;
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .wrap {
+  --dn-ink-primary: #f0e1cd;
+  --dn-ink-secondary: #c8b8a4;
+  --dn-ink-accent: #707052;
+}
+
+/* --- SCENE TOP + SCENE MIDDLE×N + SCENE BOTTOM ------------------------
+   Normal document flow, no gap between tiles — each image keeps its own
+   intrinsic ratio via width:100%/height:auto (the scale rule), never
+   stretched, cropped, or re-ratioed. */
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 0;
+}
+
+.sceneImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- Content overlay ---------------------------------------------------
+   One shared DOM tree for both formats — `padding-top` (vertical start)
+   and `padding-left`/`padding-right` (safe area) both static
+   percentages, selected per format×variant below. */
+
+/* Deliberately top/left/right only — never `bottom` (and never
+   `inset`, which sets it too). An absolutely positioned box with BOTH
+   `top` and `bottom` non-auto stretches to fill that span instead of
+   sizing to its own content, which would feed directly back into the
+   scene runtime's own height measurement below (a taller scene stack ->
+   a taller `.content` box -> a measured "content is taller" -> an even
+   taller scene stack — runaway growth, exactly what mission brief
+   section 6 forbids). Only `top`/`left`/`right` are set, so height stays
+   the browser's ordinary content-driven "auto". */
+.content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .content {
+  padding-top: 5.024%;
+  padding-left: 24.103%;
+  padding-right: 24.282%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="desktop"] .content {
+  padding-top: 4.067%;
+  padding-left: 24.103%;
+  padding-right: 24.282%;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .content {
+  padding-top: 25.824%;
+  padding-left: 27.843%;
+  padding-right: 28.162%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .content {
+  padding-top: 31.243%;
+  padding-left: 26.567%;
+  padding-right: 27.099%;
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dn-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .eyebrow {
+    font-size: 14px;
+    letter-spacing: 0.28em;
+  }
+}
+
+.title {
+  margin: 0.3em 0 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.05;
+  color: var(--dn-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .title {
+    font-size: 32px;
+  }
+}
+
+/* The rameau décoratif is baked into SCENE TOP itself (mission brief
+   section 7) — this is blank vertical space only, sized so the family's
+   name never collides with that baked ornament. */
+.branchSpace {
+  height: 4.5em;
+}
+
+@media (min-width: 960px) {
+  .branchSpace {
+    height: 3.4em;
+  }
+}
+
+.name {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: clamp(38px, 10vw, 50px);
+  line-height: 0.95;
+  color: var(--dn-ink-primary);
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 960px) {
+  .name {
+    font-size: clamp(48px, 6vw, 72px);
+  }
+}
+
+/* Mobile-only exceptional fallback (mission brief section 9) — applied
+   imperatively by useFitLongName before it measures anything. */
+.nameFallback {
+  max-width: 88%;
+  line-height: 0.92;
+}
+
+.dates {
+  margin: 0.35em 0 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.1;
+  letter-spacing: 0.03em;
+  color: var(--dn-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .dates {
+    font-size: 26px;
+    letter-spacing: 0.04em;
+  }
+}
+
+.rule {
+  margin: 0.9em 0;
+  height: 1px;
+  width: 100%;
+  max-width: 220px;
+  background: var(--dn-ink-secondary);
+  opacity: 0.4;
+}
+
+.announcement {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.38;
+  color: var(--dn-ink-primary);
+  white-space: pre-wrap;
+}
+
+@media (min-width: 960px) {
+  .announcement {
+    font-size: 20px;
+    line-height: 1.35;
+  }
+}
+
+/* --- Details (mission brief section 8) ---------------------------------
+   1 -> full width; 2 -> two columns; 3 -> 2+1 full; 4 -> 2+2;
+   5 -> 2+2+1 full. Falls out of one rule: two columns always, and the
+   LAST block spans both exactly when the total visible count is odd
+   (.blockFull, applied by the component only to that last block). Mobile
+   forces a single column unconditionally. */
+
+.details {
+  margin-top: 1.6em;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1em;
+}
+
+@media (min-width: 960px) {
+  .details {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 4.6%;
+    row-gap: 1.4em;
+  }
+}
+
+.blockFull {
+  grid-column: 1 / -1;
+}
+
+.block {
+  min-width: 0;
+}
+
+.blockHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.35em;
+}
+
+/* A plain, functional marker (mission brief section 8: "pictogrammes
+   fonctionnels") — the v3.1.1 canonical package ships no precision icon
+   asset, so this is a minimal generic dot, never a reconstruction of any
+   Studio decorative pictogram. */
+.blockDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dn-ink-accent);
+  flex: none;
+}
+
+.blockLabel {
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dn-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .blockLabel {
+    font-size: 13px;
+    letter-spacing: 0.2em;
+  }
+}
+
+.blockText {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--dn-ink-primary);
+  white-space: pre-wrap;
+}
+
+@media (min-width: 960px) {
+  .blockText {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+}
+
+.blockTextQuote {
+  font-style: italic;
+}

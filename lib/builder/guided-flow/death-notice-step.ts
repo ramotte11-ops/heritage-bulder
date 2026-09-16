@@ -3,13 +3,14 @@ import type { EditorialContext } from "@/config/memorial";
 import type { DeathNoticeContent, DeathNoticePrecisions } from "@/types/death-notice";
 import {
   inspectDeathNotice,
+  readDeathNotice,
   setDeathNoticeAnnouncementText,
   setDeathNoticePrecision,
   writeDeathNotice,
   type DeathNoticePrecisionField,
   type DeathNoticeValidationReason,
 } from "@/lib/memorial/death-notice";
-import { readHero } from "@/lib/memorial/hero";
+import { inspectHero, readHero } from "@/lib/memorial/hero";
 import { guidedFlowProgress, type StepRecord } from "./engine";
 import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
 import { humanFlowDefinition } from "./human-steps";
@@ -261,5 +262,182 @@ export function skipA02(content: MemorialContent): DeathNoticeFieldWriteResult {
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
 
   const nextFlow = { ...readGuidedFlowState(content), A02: { status: "skipped" } as StepRecord };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/**
+ * A03 — the Death Notice preview (Mission 039B). Reuses the exact same
+ * `content.guidedFlow` bag A01/A02 already write through, and the exact
+ * same `StepRecord` shape the engine already defines (engine.ts) — no
+ * second model, no migration (mission brief section 17).
+ *
+ * ## Verification, not autosave (mission brief section 15)
+ *
+ * A03's own "Continuer" means the family has SEEN and VERIFIED this exact
+ * rendered Avis — never merely that A03 was displayed once. Its
+ * `StepRecord` is written, exactly like A01/A02's, only at that explicit
+ * click (`commitA03`), never derived from the mere fact that the screen
+ * rendered.
+ *
+ * ## Invalidation via a deterministic content fingerprint (mission brief
+ * section 10, fingerprint)
+ *
+ * Rather than scattering an "invalidate A03" call across every earlier
+ * Hero/Death-Notice write path (T03-T08, A01, A02), A03 alone knows
+ * whether the version it last verified still matches the CURRENT content.
+ * `StepRecord.answer` (engine.ts) already exists as an opaque string a
+ * step may use for its own purposes — this is that seam, reused rather
+ * than extended: `commitA03` stores a short, deterministic fingerprint of
+ * exactly the fields A03 actually displays, and `isA03Complete`
+ * recomputes that same fingerprint live and compares. A mismatch means
+ * some displayed field changed since the family last verified —
+ * `isA03Complete` then reads `false`, `needsA03` shows A03 again, with NO
+ * explicit "invalidate" call required anywhere else in the codebase
+ * (mirrors `hero-step.ts`'s own `resolveT04Record`/`isPageDComplete`
+ * doctrine: a live re-check wins over a stale stored "completed", rather
+ * than every writer having to remember to clear it).
+ *
+ * `deathNoticePreviewFingerprint` hashes (never stores verbatim) exactly:
+ * `hero.displayName`, `hero.birth`, `hero.death`,
+ * `deathNotice.announcementText`, and all five `deathNotice.precisions`
+ * fields — precisely the mission brief's closed list of "données affichées
+ * dans A03". Deliberately EXCLUDED: `hero.photo`/`crop` and
+ * `hero.shortPhrase` — none of which A03 renders (the mission brief's own
+ * explicit carve-out) — so replacing the Hero photo or editing the short
+ * phrase never invalidates an already-verified A03.
+ *
+ * The hash itself is a small, dependency-free, non-cryptographic checksum
+ * (FNV-1a, 32-bit) — not a security primitive, just a cheap, deterministic
+ * equality fingerprint. Storing the hash rather than the fingerprinted
+ * fields themselves is also what keeps this from becoming a second copy of
+ * the content — `content.guidedFlow.A03.answer` never holds more than a
+ * short opaque string, whatever the family's announcement text and
+ * precisions actually contain.
+ */
+
+/** A small, deterministic, non-cryptographic string hash (FNV-1a,
+ * 32-bit) — an equality fingerprint, not a security boundary. Returns a
+ * fixed-width lowercase hex string. */
+function fnv1aHash(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The exact fingerprint `commitA03` stores and `isA03Complete` compares
+ * against — see this section's own docstring for the closed field list
+ * and why a hash, not the raw content, is stored. Exported so a caller
+ * that needs to construct an already-verified A03 fixture (this module's
+ * own tests, app/builder/[memorialId]/page.test.tsx) can compute the exact
+ * same value rather than guessing or duplicating this logic.
+ */
+export function deathNoticePreviewFingerprint(content: MemorialContent): string {
+  const hero = readHero(content);
+  const deathNotice = readDeathNotice(content);
+  const payload = JSON.stringify({
+    displayName: hero.displayName,
+    birth: hero.birth,
+    death: hero.death,
+    announcementText: deathNotice.announcementText,
+    precisions: {
+      generalLocation: deathNotice.precisions.generalLocation,
+      familyMessage: deathNotice.precisions.familyMessage,
+      thought: deathNotice.precisions.thought,
+      quote: deathNotice.precisions.quote,
+      other: deathNotice.precisions.other,
+    },
+  });
+  return fnv1aHash(payload);
+}
+
+/** A03's real persisted outcome: has the family explicitly verified A03
+ * for the content EXACTLY as it stands right now? A stored `"completed"`
+ * record whose `answer` no longer matches the live fingerprint reads as
+ * NOT complete — the live re-check this section's docstring documents. */
+export function isA03Complete(content: MemorialContent): boolean {
+  const record = readGuidedFlowState(content).A03;
+  if (record?.status !== "completed") return false;
+  return record.answer === deathNoticePreviewFingerprint(content);
+}
+
+/** A03 is shown once A01 is genuinely complete AND A02 is genuinely
+ * resolved (never before — mirrors `needsA02`'s own gate on `needsA01`)
+ * and until A03 itself has been verified for the CURRENT content. */
+export function needsA03(content: MemorialContent): boolean {
+  if (needsA01(content)) return false;
+  if (needsA02(content)) return false;
+  return !isA03Complete(content);
+}
+
+/**
+ * A03's own "Continuer" — the ONLY place A03's real `StepRecord` ever
+ * gets written, always `"completed"`, always paired with the current
+ * content's own fingerprint. Re-verifies its own preconditions rather
+ * than trusting the page's gate (the same discipline `commitPageE`
+ * applies via `isHeroComplete` before marking T08 done): refuses on a
+ * corrupted Hero OR a corrupted Death Notice, refuses if
+ * `announcementText` is somehow still null (A01 not genuinely done), and
+ * refuses if A02 has never been resolved either way.
+ */
+export function commitA03(content: MemorialContent): DeathNoticeFieldWriteResult {
+  const inspectedDeathNotice = inspectDeathNotice(content);
+  if (inspectedDeathNotice.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const inspectedHero = inspectHero(content);
+  if (inspectedHero.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  if (inspectedDeathNotice.deathNotice.announcementText === null) {
+    return { ok: false, reason: "announcementText" };
+  }
+  if (!isA02Resolved(content)) {
+    return { ok: false, reason: "precisions" };
+  }
+
+  const answer = deathNoticePreviewFingerprint(content);
+  const nextFlow = { ...readGuidedFlowState(content), A03: { status: "completed", answer } as StepRecord };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/**
+ * A03's "Modifier l'annonce" (mission brief section 10) — NOT a second
+ * A01 screen and NOT itself an `announcementText` write: it only un-marks
+ * A01 as done by deleting its `StepRecord`, which is exactly what makes
+ * `needsA01` (and therefore `needsA02`/`needsA03`, both gated behind it)
+ * true again on the very next read. The family lands back on the exact
+ * same `DeathNoticeAnnouncementStep` screen, their existing
+ * `announcementText` still seeded (mission brief: "le retour en édition ne
+ * doit supprimer aucune donnée"). No explicit A03 invalidation is needed
+ * here either way: `commitA01` always runs again before A03 is reachable,
+ * and by then `isA03Complete`'s own live fingerprint comparison is what
+ * decides — identical if the family re-confirms the exact same text,
+ * different (so A03 shows again) if they actually changed it.
+ */
+export function reopenA01(content: MemorialContent): DeathNoticeFieldWriteResult {
+  const inspected = inspectDeathNotice(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const nextFlow = { ...readGuidedFlowState(content) };
+  delete nextFlow.A01;
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/**
+ * A03's "Modifier les précisions" (mission brief section 10) — mirrors
+ * `reopenA01` exactly, one step down: un-marks only A02 as resolved
+ * (deleting its `StepRecord`), leaving A01 and every stored precision
+ * untouched. `needsA02` reads true again immediately, routing back to
+ * `DeathNoticePrecisionsStep` with every already-entered precision still
+ * seeded.
+ */
+export function reopenA02(content: MemorialContent): DeathNoticeFieldWriteResult {
+  const inspected = inspectDeathNotice(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const nextFlow = { ...readGuidedFlowState(content) };
+  delete nextFlow.A02;
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
