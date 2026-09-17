@@ -24,11 +24,9 @@ import styles from "./DeathNoticeIntemporel.module.css";
 
 /**
  * Mission 039B — A03: the real Death Notice ("Avis de décès") editorial
- * renderer, Intemporel skin, Studio pack
- * `HERITAGE_A03_CLAUDE_FINAL_LEAN_UNDER30MB` (the QG-issued single
- * canonical correction package; its runtime PNGs are byte-identical to
- * the earlier `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL` upload this
- * file originally shipped against — only the tokens/icons changed).
+ * renderer, Intemporel skin, Studio pack `A03_CANONICAL_FINAL_PACKAGE`
+ * (the QG-issued final canonical package — no earlier A03 upload's
+ * asset, offset, or token is reused as source of truth).
  *
  * ## A MEMORIAL renderer, never a Builder card (correction pass)
  *
@@ -406,10 +404,8 @@ export function DeathNoticeIntemporel({
                       <span
                         aria-hidden="true"
                         className={styles.blockIcon}
-                        style={{
-                          WebkitMaskImage: `url(${block.icon})`,
-                          maskImage: `url(${block.icon})`,
-                        }}
+                        // Static, package-verbatim SVG markup (config/death-notice-intemporel-tokens.ts), never user content.
+                        dangerouslySetInnerHTML={{ __html: block.icon }}
                       />
                       <span className={styles.blockLabel}>{translate(language, block.labelKey)}</span>
                     </div>

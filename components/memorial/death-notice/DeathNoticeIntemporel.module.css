@@ -1,6 +1,6 @@
 /*
  * Mission 039B — A03 (Avis de décès), Studio pack
- * HERITAGE_A03_CLAUDE_FINAL_LEAN_UNDER30MB.
+ * A03_CANONICAL_FINAL_PACKAGE.
  *
  * Every size/color below is transcribed verbatim from the package's own
  * typography.json / colors.json (config/death-notice-intemporel-tokens.ts
@@ -25,7 +25,7 @@
 .wrap {
   position: relative;
   width: 100%;
-  max-width: 941px;
+  max-width: 841px;
   margin-inline: auto;
   overflow: hidden;
   isolation: isolate;
@@ -56,17 +56,17 @@
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .wrap {
-  --dn-text-primary: #292a22;
-  --dn-text-secondary: #5e5a4c;
-  --dn-rule: #948d7c;
-  --dn-bronze: #a36f3d;
+  --dn-text-primary: #2e2923;
+  --dn-text-secondary: #6e675d;
+  --dn-rule: #8b8479;
+  --dn-bronze: #9a6436;
 }
 
 [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .wrap {
-  --dn-text-primary: #f1e5d5;
-  --dn-text-secondary: #d8c8b4;
-  --dn-rule: #a88d67;
-  --dn-bronze: #c79a5d;
+  --dn-text-primary: #f0e7da;
+  --dn-text-secondary: #cfc3b2;
+  --dn-rule: #b7874a;
+  --dn-bronze: #c69352;
 }
 
 /* --- SCENE TOP + SCENE MIDDLE×N + SCENE BOTTOM ------------------------
@@ -122,15 +122,15 @@
 }
 
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .content {
-  padding-top: 25.8236%;
-  padding-left: 27.843%;
-  padding-right: 28.162%;
+  padding-top: 27.9429%;
+  padding-left: 12.3662%;
+  padding-right: 12.3662%;
 }
 
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .content {
-  padding-top: 31.2434%;
-  padding-left: 26.567%;
-  padding-right: 27.099%;
+  padding-top: 22.1165%;
+  padding-left: 14.2687%;
+  padding-right: 14.2687%;
 }
 
 /* The eyebrow, flanked by two short functional rules — a "filet
@@ -161,9 +161,9 @@
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 500;
-  font-size: 10px;
-  line-height: 1.2;
-  letter-spacing: 0.22em;
+  font-size: 11px;
+  line-height: 1.15;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--dn-text-secondary);
   white-space: nowrap;
@@ -178,23 +178,22 @@
 
 /*
  * `white-space: nowrap` + a fluid `clamp()` ceiling at the Studio's own
- * 34px (mobile) — the fixed "Avis de décès" header must never wrap: the
+ * 29px (mobile) — the fixed "Avis de décès" header must never wrap: the
  * branch clearance below it (`.branchSpace`) is sized for a ONE-line
  * title, and the branch art itself is baked at a fixed position in
  * SCENE TOP, independent of how tall a wrapped title would become — a
  * 2-line title would grow into (and visually collide with) that static
- * art. typography.json's `mobile.section_title.size_px` (34) is
- * reached at the reference's own ~941px canvas; `clamp()` keeps that
- * exact ceiling while shrinking gracefully on a real phone narrower
- * than that canvas (this fixed, short, translated string — never
- * family content — is the one place a Studio px value needs this
- * clamp; `name` already has its own explicit, mission-specified fitting
- * rule instead). */
+ * art. typography.json's `mobile.title.size_px` (29) is reached at the
+ * reference's own ~841px canvas; `clamp()` keeps that exact ceiling
+ * while shrinking gracefully on a real phone narrower than that canvas
+ * (this fixed, short, translated string — never family content — is the
+ * one place a Studio px value needs this clamp; `name` already has its
+ * own explicit, mission-specified fitting rule instead). */
 .title {
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 500;
-  font-size: clamp(22px, 6vw, 34px);
+  font-size: clamp(20px, 6vw, 29px);
   line-height: 1.0;
   color: var(--dn-text-primary);
   white-space: nowrap;
@@ -205,6 +204,7 @@
 }
 
 /*
+ * Desktop (frozen — unchanged since Mission 039B's finition pass):
  * `title`'s own gap after the eyebrow is a small, fixed value —
  * DELIBERATELY NOT the geometry-derived `(anchorDelta /
  * nativeCanvasWidthPx) × 1/contentWidthRatio` percentage an earlier pass
@@ -226,6 +226,14 @@
  */
 .title {
   margin-top: 0.3em;
+}
+
+/* Mobile: `spacing.json`'s own `header_eyebrow_to_title_px` (24) — the
+   new Mobile art (different branch position/clearance) has its own
+   Studio-authored value, applied directly rather than reusing desktop's
+   empirically-tuned `0.3em`. */
+[data-scene-format="mobile"] .title {
+  margin-top: 24px;
 }
 
 /* The rameau décoratif is baked into SCENE TOP itself (mission brief
@@ -262,18 +270,22 @@
 }
 
 [data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .branchSpace {
-  padding-top: 30.2782%;
+  padding-top: 35.0632%;
 }
 
 [data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .branchSpace {
-  padding-top: 31.3873%;
+  padding-top: 33.4859%;
 }
 
+/* Mobile's own "cas normal" is a single fixed size (typography.json's
+   `mobile.name.normal_px`, 42), not a shrink range — the `clamp()`
+   ceiling still lets it shrink gracefully below the reference ~841px
+   canvas, down to the exceptional fallback's own absolute floor (30). */
 .name {
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 500;
-  font-size: clamp(38px, 10vw, 50px);
+  font-size: clamp(30px, 10vw, 42px);
   line-height: 0.95;
   color: var(--dn-text-primary);
   overflow-wrap: break-word;
@@ -285,21 +297,31 @@
   }
 }
 
-/* Mobile-only exceptional fallback (mission brief section 13) — applied
-   imperatively by useFitLongName before it measures anything. */
+/* Mobile-only exceptional fallback (mission brief section 9/13) —
+   applied imperatively by useFitLongName before it measures anything.
+   No max-width here: typography.json's `long_name_fallback` gives no
+   width figure (unlike the prior package's own placeholder 88%) — the
+   name stays inside `.content`'s own safe-area padding, already sized
+   from this package's own geometry.json. */
 .nameFallback {
-  max-width: 88%;
-  line-height: 0.92;
+  line-height: 0.94;
 }
 
+/* Base rule is the Mobile size; the desktop media query below overrides
+   size/letter-spacing only (frozen). Mobile's own margin-top uses
+   `spacing.json`'s `name_to_dates_px` (18) directly, below. */
 .dates {
   margin: 0.35em 0 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 400;
-  font-size: 21px;
-  line-height: 1.0;
-  letter-spacing: 0.05em;
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
   color: var(--dn-text-primary);
+}
+
+[data-scene-format="mobile"] .dates {
+  margin-top: 18px;
 }
 
 @media (min-width: 960px) {
@@ -309,20 +331,29 @@
   }
 }
 
+/* Base (mobile) `.rule` margin is set so its own top+bottom span
+   `spacing.json`'s `dates_to_announcement_px` (30, mobile) around the
+   1px rule itself; desktop keeps its prior, unchanged `0.9em`. */
 .rule {
-  margin: 0.9em auto;
+  margin: 15px auto;
   height: 1px;
   width: 100%;
   max-width: 220px;
   background: var(--dn-rule);
 }
 
+@media (min-width: 960px) {
+  .rule {
+    margin: 0.9em auto;
+  }
+}
+
 .announcement {
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 400;
-  font-size: 17px;
-  line-height: 1.28;
+  font-size: 16px;
+  line-height: 1.38;
   color: var(--dn-text-primary);
   white-space: pre-wrap;
 }
@@ -347,6 +378,14 @@
   grid-template-columns: 1fr;
   gap: 1em;
   text-align: left;
+}
+
+/* `spacing.json`'s own `announcement_to_details_px` (30) and
+   `detail_block_gap_px` (24), mobile only — desktop keeps its prior,
+   unchanged em-based values (frozen). */
+[data-scene-format="mobile"] .details {
+  margin-top: 30px;
+  gap: 24px;
 }
 
 @media (min-width: 960px) {
@@ -374,22 +413,26 @@
   margin-bottom: 0.35em;
 }
 
-/* The real Studio pictogram (mission brief section 10), tinted to the
-   bronze accent via a CSS mask rather than a second (Dark) icon asset,
-   so it stays legible on either paper tone. Never an <img>: a mask has
-   no content of its own to need alt text; the adjacent label already
-   carries it. */
+/* The real Studio pictogram (05_ICONS/*.svg, mission brief section 10),
+   rendered inline (see DeathNoticeIntemporel.tsx) so its own
+   `stroke="currentColor"` paths pick up `color` here — the bronze
+   accent, legible on either paper tone without a second Dark asset.
+   Never an <img>/mask: the SVG source itself is the tint mechanism the
+   package's own 05_ICONS/README.md specifies. `aria-hidden` on the
+   wrapper (component) — the adjacent label already carries the a11y
+   text. */
 .blockIcon {
+  display: block;
   width: 16px;
   height: 16px;
   flex: none;
-  background-color: var(--dn-bronze);
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  -webkit-mask-position: center;
-  mask-position: center;
+  color: var(--dn-bronze);
+}
+
+.blockIcon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 @media (min-width: 960px) {
@@ -403,8 +446,8 @@
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 600;
   font-size: 11px;
-  line-height: 1.2;
-  letter-spacing: 0.2em;
+  line-height: 1.15;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--dn-text-secondary);
 }
@@ -420,8 +463,8 @@
   margin: 0;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 400;
-  font-size: 15px;
-  line-height: 1.28;
+  font-size: 14px;
+  line-height: 1.38;
   color: var(--dn-text-primary);
   white-space: pre-wrap;
 }

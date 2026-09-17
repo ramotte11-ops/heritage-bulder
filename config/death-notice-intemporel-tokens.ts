@@ -2,14 +2,16 @@ import type { SkinVariant } from "@/config/skins";
 
 /**
  * Mission 039B — A03 (Avis de décès) runtime tokens, Studio pack
- * `HERITAGE_A03_CLAUDE_FINAL_LEAN_UNDER30MB` (the QG-issued single
- * canonical correction package, superseding the earlier
- * `A03_RUNTIME_CORRECTIONS_V3_1_1_QA_CANONICAL` upload — its
- * `03_RUNTIME_ASSETS_CANONICAL/` PNGs are byte-for-byte identical to
- * that earlier package's own `02_RUNTIME_ASSETS/`, verified before
- * reuse, so no asset churn was needed; `02_SPEC_TOKENS_ICONS/04_TOKENS/`
- * is what is NEW here — the real `typography.json`/`colors.json` this
- * mission's first pass lacked).
+ * `A03_CANONICAL_FINAL_PACKAGE` (the QG-issued final canonical package,
+ * superseding every earlier A03 upload — no previous ZIP, geometry file,
+ * QA board, or asset was reused). Desktop geometry (`04_TOKENS/geometry.json`)
+ * is numerically identical to the prior package (art frozen per this
+ * package's own rule); its 6 runtime PNGs are nonetheless replaced
+ * (opaque RGB exports, no alpha channel — fixes the hairline export
+ * fringe the prior RGBA exports baked in). Mobile geometry, safe areas,
+ * anchors, colors, and mobile typography are entirely new (Mobile was
+ * recomposed by Studio for real smartphone widths). Icons are now 5 SVGs
+ * (`05_ICONS/`, `stroke="currentColor"`) instead of PNGs.
  *
  * ## The three-mass SCENE architecture (mission brief section 10)
  *
@@ -71,15 +73,26 @@ export const DEATH_NOTICE_INTEMPOREL_ASSETS = {
   } satisfies Record<SkinVariant, FormatAssets>,
 } as const;
 
-/** The five functional precision pictograms — one file, variant-independent
- * (tinted via CSS mask against the current ink accent, never a second Dark
- * file), copied verbatim from `02_SPEC_TOKENS_ICONS/icons/`. */
+/**
+ * The five functional precision pictograms — raw SVG markup transcribed
+ * verbatim from `05_ICONS/*.svg` (SHA-256 verified against the package's
+ * own `SHA256SUMS.txt`), rendered inline (`dangerouslySetInnerHTML`) so
+ * their `stroke="currentColor"` paths pick up the CSS `color` the
+ * package's own `05_ICONS/README.md` mandates — never as an `<img>`
+ * (which cannot be tinted by `currentColor`) and never a second Dark
+ * file, mask, icon library, or emoji substitute.
+ */
 export const DEATH_NOTICE_INTEMPOREL_ICONS = {
-  generalLocation: `${ASSET_ROOT}/icons/a03-icon-location.png`,
-  familyMessage: `${ASSET_ROOT}/icons/a03-icon-family.png`,
-  thought: `${ASSET_ROOT}/icons/a03-icon-thought.png`,
-  quote: `${ASSET_ROOT}/icons/a03-icon-quote.png`,
-  other: `${ASSET_ROOT}/icons/a03-icon-other.png`,
+  generalLocation:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 22s7-6.1 7-13A7 7 0 1 0 5 9c0 6.9 7 13 7 13Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="9" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  familyMessage:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="5.7" r="2.1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 19v-2.1c0-2.4 2-4.4 4.4-4.4h.2M20.5 19v-2.1c0-2.4-2-4.4-4.4-4.4h-.2M7.4 19v-2.4c0-2.5 2.1-4.6 4.6-4.6s4.6 2.1 4.6 4.6V19" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  thought:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21V9m0 6c-3.6 0-6-2-6-5 3.6 0 6 2 6 5Zm0-2c3.6 0 6-2 6-5-3.6 0-6 2-6 5Zm0-6c-2.5 0-4.2-1.5-4.2-3.8C10.3 4.2 12 5.7 12 8Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  quote:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  other:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.5 5.5h7v13h-7zM13.5 5.5h7v13h-7z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 9H7.2c0 3.2-1.2 4.6-3.7 5.7M20.5 9h-3.3c0 3.2-1.2 4.6-3.7 5.7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
 } as const;
 
 /** One format×variant's full geometry — transcribed verbatim from the
@@ -133,22 +146,22 @@ export const DEATH_NOTICE_INTEMPOREL_GEOMETRY: Record<
       bottomArtReservePx: 138,
     },
     mobile: {
-      nativeCanvasWidthPx: 941,
-      sceneTopHeightPx: 760,
-      sceneMiddleHeightPx: 220,
-      sceneBottomHeightPx: 692,
-      safeAreaXPx: { left: 262, right: 676 },
+      nativeCanvasWidthPx: 841,
+      sceneTopHeightPx: 680,
+      sceneMiddleHeightPx: 260,
+      sceneBottomHeightPx: 430,
+      safeAreaXPx: { left: 104, right: 737 },
       anchorsYPx: {
-        eyebrow: 243,
-        title: 277,
-        branchCenter: 344,
-        nameTop: 386,
-        datesTop: 445,
-        announcementTop: 507,
-        detailsFlowTop: 742,
+        eyebrow: 235,
+        title: 294,
+        branchCenter: 419,
+        nameTop: 487,
+        datesTop: 593,
+        announcementTop: 648,
+        detailsFlowTop: 895,
       },
-      detailColumnsPx: { left: { left: 262, right: 676 }, right: null },
-      bottomArtReservePx: 196,
+      detailColumnsPx: { left: { left: 104, right: 737 }, right: null },
+      bottomArtReservePx: 170,
     },
   },
   dark: {
@@ -171,22 +184,22 @@ export const DEATH_NOTICE_INTEMPOREL_GEOMETRY: Record<
       bottomArtReservePx: 138,
     },
     mobile: {
-      nativeCanvasWidthPx: 941,
-      sceneTopHeightPx: 700,
-      sceneMiddleHeightPx: 220,
-      sceneBottomHeightPx: 752,
-      safeAreaXPx: { left: 250, right: 686 },
+      nativeCanvasWidthPx: 841,
+      sceneTopHeightPx: 640,
+      sceneMiddleHeightPx: 260,
+      sceneBottomHeightPx: 430,
+      safeAreaXPx: { left: 120, right: 721 },
       anchorsYPx: {
-        eyebrow: 294,
-        title: 328,
-        branchCenter: 402,
-        nameTop: 447,
-        datesTop: 519,
-        announcementTop: 575,
-        detailsFlowTop: 786,
+        eyebrow: 186,
+        title: 241,
+        branchCenter: 355,
+        nameTop: 416,
+        datesTop: 511,
+        announcementTop: 577,
+        detailsFlowTop: 848,
       },
-      detailColumnsPx: { left: { left: 250, right: 686 }, right: null },
-      bottomArtReservePx: 190,
+      detailColumnsPx: { left: { left: 120, right: 721 }, right: null },
+      bottomArtReservePx: 180,
     },
   },
 };
@@ -228,13 +241,13 @@ export const DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY = {
     quote: { sizePx: 17, lineHeight: 1.22, weight: 400 },
   },
   mobile: {
-    eyebrow: { sizePx: 10, lineHeight: 1.2, letterSpacingEm: 0.22, weight: 500 },
-    title: { sizePx: 34, lineHeight: 1.0, weight: 500 },
-    dates: { sizePx: 21, lineHeight: 1.0, letterSpacingEm: 0.05, weight: 400 },
-    announcement: { sizePx: 17, lineHeight: 1.28, weight: 400 },
-    detailLabel: { sizePx: 11, lineHeight: 1.2, letterSpacingEm: 0.2, weight: 600 },
-    detailText: { sizePx: 15, lineHeight: 1.28, weight: 400 },
-    quote: { sizePx: 15, lineHeight: 1.28, weight: 400 },
+    eyebrow: { sizePx: 11, lineHeight: 1.15, letterSpacingEm: 0.2, weight: 500 },
+    title: { sizePx: 29, lineHeight: 1.0, weight: 500 },
+    dates: { sizePx: 18, lineHeight: 1.1, letterSpacingEm: 0.04, weight: 400 },
+    announcement: { sizePx: 16, lineHeight: 1.38, weight: 400 },
+    detailLabel: { sizePx: 11, lineHeight: 1.15, letterSpacingEm: 0.16, weight: 600 },
+    detailText: { sizePx: 14, lineHeight: 1.38, weight: 400 },
+    quote: { sizePx: 14, lineHeight: 1.38, weight: 400 },
   },
   /**
    * Mission brief section 13 (QG-locked, verbatim, identical to
@@ -246,41 +259,44 @@ export const DEATH_NOTICE_INTEMPOREL_TYPOGRAPHY = {
   name: {
     desktop: { minPx: 48, maxPx: 72, lineHeight: 0.95, weight: 500, maxLinesNormal: 2 },
     mobile: {
-      minPx: 38,
-      maxPx: 50,
+      // typography.json's mobile `name` gives a single `normal_px: 42`
+      // (no min), unlike desktop's own min/max shrink range — mobile's
+      // "cas normal" tier is a fixed size, not a shrink-to-fit range;
+      // min=max encodes that without a second code path in
+      // useFitLongName (its shrink loop simply never iterates here).
+      minPx: 42,
+      maxPx: 42,
       lineHeight: 0.95,
       weight: 500,
       maxLinesNormal: 2,
-      fallback: { targetPx: 34, minPx: 32, lineHeight: 0.92, maxWidthPct: 88, maxLines: 3 },
+      fallback: { targetPx: 32, minPx: 30, lineHeight: 0.94, maxLines: 3 },
     },
   },
 } as const;
 
 /**
- * Ink + surface tokens, transcribed verbatim from the package's own
- * `colors.json`. Light and Dark each own their complete set — never a
- * CSS filter/inversion deriving one from the other. Replaces the first
- * pass's placeholder (borrowed from `HERITAGE_HERO_INTEMPOREL_INK`,
- * `config/hero-intemporel-tokens.ts`) entirely.
+ * Ink tokens, transcribed verbatim from the package's own `colors.json`
+ * (`ink` -> textPrimary, `muted_ink` -> textSecondary, `separator` ->
+ * rule, `accent` -> bronze). Light and Dark each own their complete set
+ * — never a CSS filter/inversion deriving one from the other.
+ * `stage_background`/`paper` are not consumed here — this component
+ * never paints its own background, only the Studio's own scene pixels
+ * (see `DeathNoticeIntemporel.tsx`'s own docstring).
  */
 export const DEATH_NOTICE_INTEMPOREL_COLORS: Record<
   SkinVariant,
-  { textPrimary: string; textSecondary: string; rule: string; olive: string; bronze: string; shadow: string }
+  { textPrimary: string; textSecondary: string; rule: string; bronze: string }
 > = {
   light: {
-    textPrimary: "#292A22",
-    textSecondary: "#5E5A4C",
-    rule: "#948D7C",
-    olive: "#5B6045",
-    bronze: "#A36F3D",
-    shadow: "rgba(73,52,34,0.20)",
+    textPrimary: "#2E2923",
+    textSecondary: "#6E675D",
+    rule: "#8B8479",
+    bronze: "#9A6436",
   },
   dark: {
-    textPrimary: "#F1E5D5",
-    textSecondary: "#D8C8B4",
-    rule: "#A88D67",
-    olive: "#62654A",
-    bronze: "#C79A5D",
-    shadow: "rgba(0,0,0,0.42)",
+    textPrimary: "#F0E7DA",
+    textSecondary: "#CFC3B2",
+    rule: "#B7874A",
+    bronze: "#C69352",
   },
 };

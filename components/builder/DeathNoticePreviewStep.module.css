@@ -4,7 +4,7 @@
  * `DeathNoticeIntemporel` (rendered directly as a sibling below
  * `.builderBar`) takes NO width/background/spacing rule from this file
  * at all — it is full-bleed, capped only by its own `max-width:
- * 941px/1672px`. `.builderBar`/`.builderControls` are the only two
+ * 841px/1672px`. `.builderBar`/`.builderControls` are the only two
  * zones this file styles: a slim, visually distinct Builder strip above
  * and below the Memorial, each independently capped at a modest reading
  * width — neither one resizes or frames the Memorial between them. This

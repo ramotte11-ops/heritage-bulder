@@ -163,7 +163,7 @@ describe("DeathNoticeIntemporel — allongement dynamique (mission brief section
     const desktopN = container.querySelectorAll('img[src*="a03-scene-middle.png"]').length;
 
     setViewportWidth(500);
-    stubMeasurements(941, 300);
+    stubMeasurements(841, 300);
     window.dispatchEvent(new Event("resize"));
 
     // Still renders a valid scene after the resize — mobile geometry now
@@ -297,7 +297,7 @@ describe("DeathNoticeIntemporel — details (mission brief section 8)", () => {
     expect(beforeMediaQuery).toMatch(/\.details\s*{[^}]*grid-template-columns:\s*1fr;/);
   });
 
-  it("uses the real Studio pictogram for each precision, never a placeholder dot", () => {
+  it("uses the real Studio pictogram (inline SVG, never a placeholder dot)", () => {
     const { container } = renderNotice({
       deathNotice: {
         announcementText: "Texte.",
@@ -312,12 +312,13 @@ describe("DeathNoticeIntemporel — details (mission brief section 8)", () => {
     });
     const icons = container.querySelectorAll('[class*="blockIcon"]');
     expect(icons.length).toBe(5);
-    const maskUrls = Array.from(icons).map((el) => (el as HTMLElement).style.maskImage);
-    expect(maskUrls.some((src) => src.includes("a03-icon-location.png"))).toBe(true);
-    expect(maskUrls.some((src) => src.includes("a03-icon-family.png"))).toBe(true);
-    expect(maskUrls.some((src) => src.includes("a03-icon-thought.png"))).toBe(true);
-    expect(maskUrls.some((src) => src.includes("a03-icon-quote.png"))).toBe(true);
-    expect(maskUrls.some((src) => src.includes("a03-icon-other.png"))).toBe(true);
+    // Package's 05_ICONS/README.md: inline SVG tinted via CSS `color`
+    // (`stroke="currentColor"`), never an <img>/mask.
+    icons.forEach((icon) => {
+      const svg = icon.querySelector("svg");
+      expect(svg).toBeTruthy();
+      expect(svg?.innerHTML).toMatch(/stroke="currentColor"/);
+    });
   });
 });
 
@@ -363,7 +364,7 @@ describe("DeathNoticeIntemporel — long name (mission brief section 9)", () => 
     expect(h2.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau Delacroix-Fontaine");
   });
 
-  it("mobile fallback never drops below the documented 32px floor", () => {
+  it("mobile fallback never drops below the documented 30px absolute minimum", () => {
     setViewportWidth(500);
     stubLineCountByFontSize(() => 5); // never fits, at any size
     const { container } = renderNotice({
@@ -371,12 +372,12 @@ describe("DeathNoticeIntemporel — long name (mission brief section 9)", () => 
     });
     const h2 = container.querySelector("h2") as HTMLElement;
     const finalSize = Number.parseFloat(h2.style.fontSize);
-    expect(finalSize).toBe(32);
+    expect(finalSize).toBe(30);
   });
 
-  it("mobile fallback applies the fallback max-width/line-height class once engaged", () => {
+  it("mobile fallback applies the fallback line-height class once engaged", () => {
     setViewportWidth(500);
-    stubLineCountByFontSize((px) => (px <= 34 ? 3 : 4));
+    stubLineCountByFontSize((px) => (px <= 32 ? 3 : 4));
     const { container } = renderNotice({
       hero: { ...FULL_HERO, displayName: "Marie-Alexandrine de Beaumont-Rousseau" },
     });

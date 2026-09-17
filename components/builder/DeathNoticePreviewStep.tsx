@@ -66,8 +66,8 @@ interface DeathNoticePreviewStepProps {
  * constraining the other's width:
  *
  *   1. `DeathNoticeIntemporel` itself — full-bleed, edge-to-edge up to
- *      its OWN `max-width: 941px`/`1672px` (`geometry.json`'s own
- *      `runtime_width_rule`), exactly as a visitor would see it on the
+ *      its OWN `max-width: 841px`/`1672px` (`geometry.json`'s own
+ *      `runtime_width`), exactly as a visitor would see it on the
  *      published page or a future Live Preview. Nothing here (this
  *      component's own CSS) sets a width, background, or padding on it.
  *   2. A slim, visually distinct Builder strip above (progress) and
