@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint · Test · Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 est IMPOSÉ par la suite de tests, pas un choix de confort :
+          #   jsdom@30.0.1  engines: ^22.22.2 || ^24.15.0 || >=26.0.0
+          #   undici@8.10.2 engines: >=22.19.0
+          # Sur Node 20, les 11 fichiers annotés `@vitest-environment jsdom`
+          # font crasher leur worker vitest sur
+          #   TypeError: webidl.util.markAsUncloneable is not a function
+          # (undici/lib/web/cache/cachestorage.js, chargé par jsdom/lib/api.js).
+          # Le build de production reste validé sur Node 20 par le job
+          # `build-production` ci-dessous.
+          node-version: '22'
+          cache: 'npm'
+
+      # Installation déterministe : échoue si package-lock.json est désynchronisé.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # OBLIGATOIRE avant tsc. tsconfig.json inclut ".next/types/**/*.ts", que
+      # Next.js 16 génère (LayoutProps, PageProps…) dans un répertoire gitignoré.
+      # Sans cette étape, tsc échoue sur :
+      #   app/layout.tsx(9,50): error TS2304: Cannot find name 'LayoutProps'.
+      - name: Generate Next route types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  build-production:
+    name: Build (Node 20, parité Netlify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Exactement la version que Netlify utilise en production
+          # (netlify.toml → [build.environment] NODE_VERSION = "20").
+          # `next build` n'importe jamais jsdom, donc la contrainte Node 22 de
+          # la suite de tests ne s'applique pas ici : ce job prouve que le
+          # bundle de production compile bien sur le Node réel de production.
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  assets-guard:
+    name: Assets deletion guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'allow-asset-deletion')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Les rendus Studio sous public/assets et assets ne sont pas régénérables.
+      # Leur suppression reste possible, mais devient un acte explicite : il faut
+      # poser le label `allow-asset-deletion` sur la PR, ce qui relance ce job.
+      - name: Fail if the PR deletes assets without the allow-asset-deletion label
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          DELETED="$(git diff --name-status --diff-filter=D \
+            "origin/${BASE_REF}...HEAD" -- public/assets assets \
+            | cut -f2-)"
+          if [ -n "$DELETED" ]; then
+            echo "::error::Cette PR supprime des assets non régénérables."
+            echo "$DELETED" | while IFS= read -r f; do
+              echo "::error file=${f}::asset supprimé : ${f}"
+            done
+            echo ""
+            echo "Pour autoriser volontairement cette suppression, poser le label"
+            echo "  allow-asset-deletion"
+            echo "sur la PR. Le job se relancera automatiquement."
+            exit 1
+          fi
+          echo "Aucun asset supprimé par cette PR."
