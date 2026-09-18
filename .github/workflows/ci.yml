@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint · Test · Types · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Aligné sur netlify.toml ([build.environment] NODE_VERSION = "20").
+          node-version: '20'
+          cache: 'npm'
+
+      # Installation déterministe : échoue si package-lock.json est désynchronisé.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # OBLIGATOIRE avant tsc. tsconfig.json inclut ".next/types/**/*.ts", que
+      # Next.js 16 génère (LayoutProps, PageProps…) dans un répertoire gitignoré.
+      # Sans cette étape, tsc échoue sur :
+      #   app/layout.tsx(9,50): error TS2304: Cannot find name 'LayoutProps'.
+      - name: Generate Next route types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  assets-guard:
+    name: Assets deletion guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'allow-asset-deletion')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Les rendus Studio sous public/assets et assets ne sont pas régénérables.
+      # Leur suppression reste possible, mais devient un acte explicite : il faut
+      # poser le label `allow-asset-deletion` sur la PR, ce qui relance ce job.
+      - name: Fail if the PR deletes assets without the allow-asset-deletion label
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          DELETED="$(git diff --name-status --diff-filter=D \
+            "origin/${BASE_REF}...HEAD" -- public/assets assets \
+            | cut -f2-)"
+          if [ -n "$DELETED" ]; then
+            echo "::error::Cette PR supprime des assets non régénérables."
+            echo "$DELETED" | while IFS= read -r f; do
+              echo "::error file=${f}::asset supprimé : ${f}"
+            done
+            echo ""
+            echo "Pour autoriser volontairement cette suppression, poser le label"
+            echo "  allow-asset-deletion"
+            echo "sur la PR. Le job se relancera automatiquement."
+            exit 1
+          fi
+          echo "Aucun asset supprimé par cette PR."
