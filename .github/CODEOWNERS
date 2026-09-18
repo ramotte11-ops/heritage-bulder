@@ -1,0 +1,23 @@
+# HERITAGE — propriété des chemins sensibles.
+#
+# Ce fichier n'a d'effet que si « Require review from Code Owners » est activé
+# dans la protection de la branche `main` (Settings → Branches).
+#
+# Tant que le QG/PO est le seul opérateur humain du projet, cette option reste
+# volontairement DÉSACTIVÉE : l'activer bloquerait toute PR faute de reviewer
+# disponible. Le fichier est posé maintenant pour être prêt le jour où un
+# second relecteur rejoint le projet.
+
+# Rendus Studio non régénérables
+/public/assets/          @ramotte11-ops
+/assets/                 @ramotte11-ops
+
+# Schéma et preuves d'audit Supabase
+/supabase/migrations/    @ramotte11-ops
+/supabase/checks/        @ramotte11-ops
+
+# Gouvernance : CI, règles agents, propriété des chemins
+/.github/                @ramotte11-ops
+/.claude/                @ramotte11-ops
+/AGENTS.md               @ramotte11-ops
+/CLAUDE.md               @ramotte11-ops
