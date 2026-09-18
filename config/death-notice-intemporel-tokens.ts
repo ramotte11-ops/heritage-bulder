@@ -90,9 +90,9 @@ export const DEATH_NOTICE_INTEMPOREL_ICONS = {
   thought:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21V9m0 6c-3.6 0-6-2-6-5 3.6 0 6 2 6 5Zm0-2c3.6 0 6-2 6-5-3.6 0-6 2-6 5Zm0-6c-2.5 0-4.2-1.5-4.2-3.8C10.3 4.2 12 5.7 12 8Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
   quote:
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
-  other:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.5 5.5h7v13h-7zM13.5 5.5h7v13h-7z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 9H7.2c0 3.2-1.2 4.6-3.7 5.7M20.5 9h-3.3c0 3.2-1.2 4.6-3.7 5.7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  other:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
 } as const;
 
 /** One format×variant's full geometry — transcribed verbatim from the
