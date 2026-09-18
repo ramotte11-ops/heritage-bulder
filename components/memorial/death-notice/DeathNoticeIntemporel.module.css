@@ -1,0 +1,481 @@
+/*
+ * Mission 039B — A03 (Avis de décès), Studio pack
+ * A03_CANONICAL_FINAL_PACKAGE.
+ *
+ * Every size/color below is transcribed verbatim from the package's own
+ * typography.json / colors.json (config/death-notice-intemporel-tokens.ts
+ * carries the same numbers as plain data for the JS that needs them —
+ * name-fitting, icon selection — this file is their CSS expression).
+ * Horizontal safe-area padding and the fixed eyebrow/title header's own
+ * vertical rhythm (padding-top, title's margin-top, the branch-clearance
+ * gap) are static percentages derived from geometry.json's own pixel
+ * anchors divided by that variant's native canvas WIDTH — exactly the
+ * mission's scale rule, and exactly how CSS itself resolves a vertical
+ * padding/margin percentage (always against width, never height) — so
+ * no runtime JS is needed for POSITIONING at all, only for the dynamic
+ * MIDDLE repeat count and the long-name fit (see the component file).
+ * Everything AFTER that fixed header (name onward) uses ordinary
+ * flow-based margins instead of more geometry pins, deliberately: a
+ * name that wraps to 2 lines, or a long announcement, must be able to
+ * push later content down, which a per-element geometry pin (sized for
+ * the Studio's own short nominal reference content) cannot allow — see
+ * the tokens file's own docstring.
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  max-width: 841px;
+  margin-inline: auto;
+  overflow: hidden;
+  isolation: isolate;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: reveal 600ms ease-out forwards;
+}
+
+@media (min-width: 960px) {
+  .wrap {
+    max-width: 1672px;
+  }
+}
+
+@keyframes reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .wrap {
+  --dn-text-primary: #2e2923;
+  --dn-text-secondary: #6e675d;
+  --dn-rule: #8b8479;
+  --dn-bronze: #9a6436;
+}
+
+[data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .wrap {
+  --dn-text-primary: #f0e7da;
+  --dn-text-secondary: #cfc3b2;
+  --dn-rule: #b7874a;
+  --dn-bronze: #c69352;
+}
+
+/* --- SCENE TOP + SCENE MIDDLE×N + SCENE BOTTOM ------------------------
+   Normal document flow, no gap between tiles — each image keeps its own
+   intrinsic ratio via width:100%/height:auto (the scale rule), never
+   stretched, cropped, or re-ratioed. */
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 0;
+}
+
+.sceneImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- Content overlay ---------------------------------------------------
+   One shared DOM tree for both formats — top/left/right only, NEVER
+   bottom (see DeathNoticeIntemporel.tsx's own docstring on the layout
+   feedback loop that created). */
+
+/* The header (eyebrow through announcement) is center-aligned in all
+   four canonical references — only the details grid switches back to
+   left-aligned text within each block (its own `.details` rule below
+   overrides this). */
+.content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .content {
+  padding-top: 5.0239%;
+  padding-left: 24.103%;
+  padding-right: 24.282%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="desktop"] .content {
+  padding-top: 4.067%;
+  padding-left: 24.103%;
+  padding-right: 24.282%;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .content {
+  padding-top: 27.9429%;
+  padding-left: 12.3662%;
+  padding-right: 12.3662%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .content {
+  padding-top: 22.1165%;
+  padding-left: 14.2687%;
+  padding-right: 14.2687%;
+}
+
+/* The eyebrow, flanked by two short functional rules — a "filet
+   fonctionnel" (mission brief section 10's own content list), never a
+   reconstruction of the botanical branch (that stays baked in SCENE
+   TOP). */
+.eyebrowRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9em;
+}
+
+.eyebrowRule {
+  height: 1px;
+  width: 1.6em;
+  background: var(--dn-rule);
+  flex: none;
+}
+
+@media (min-width: 960px) {
+  .eyebrowRule {
+    width: 2.4em;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.15;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dn-text-secondary);
+  white-space: nowrap;
+}
+
+@media (min-width: 960px) {
+  .eyebrow {
+    font-size: 13px;
+    letter-spacing: 0.24em;
+  }
+}
+
+/*
+ * `white-space: nowrap` + a fluid `clamp()` ceiling at the Studio's own
+ * 29px (mobile) — the fixed "Avis de décès" header must never wrap: the
+ * branch clearance below it (`.branchSpace`) is sized for a ONE-line
+ * title, and the branch art itself is baked at a fixed position in
+ * SCENE TOP, independent of how tall a wrapped title would become — a
+ * 2-line title would grow into (and visually collide with) that static
+ * art. typography.json's `mobile.title.size_px` (29) is reached at the
+ * reference's own ~841px canvas; `clamp()` keeps that exact ceiling
+ * while shrinking gracefully on a real phone narrower than that canvas
+ * (this fixed, short, translated string — never family content — is the
+ * one place a Studio px value needs this clamp; `name` already has its
+ * own explicit, mission-specified fitting rule instead). */
+.title {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: clamp(20px, 6vw, 29px);
+  line-height: 1.0;
+  color: var(--dn-text-primary);
+  white-space: nowrap;
+}
+
+[data-scene-format="desktop"] .title {
+  font-size: 48px;
+}
+
+/*
+ * Desktop (frozen — unchanged since Mission 039B's finition pass):
+ * `title`'s own gap after the eyebrow is a small, fixed value —
+ * DELIBERATELY NOT the geometry-derived `(anchorDelta /
+ * nativeCanvasWidthPx) × 1/contentWidthRatio` percentage an earlier pass
+ * of this file used. That value IS the more "geometrically precise" one
+ * on paper, but direct visual comparison against the canonical
+ * references exposed the real, higher-priority problem it causes: the
+ * raw anchors put `title`'s own anchor only ~34-67px (native) above
+ * `branch_center` — already a razor-thin gap in the Studio's own
+ * numbers at nominal size — and pushing `title` further down via the
+ * larger, "corrected" margin ate into what little clearance existed
+ * before the baked branch art, causing a real, visible collision (the
+ * title's own descenders touching the rameau) that a direct zoomed
+ * screenshot confirmed. "Le rameau ne doit jamais chevaucher le texte"
+ * is the one absolute rule that outranks exact anchor-distance fidelity
+ * here: `title` now sits as close to the eyebrow as comfortably
+ * readable, maximizing real clearance to the fixed branch position
+ * below it — `.branchSpace` (below) still reserves its own generous,
+ * geometry-derived gap on top of that for the same reason.
+ */
+.title {
+  margin-top: 0.3em;
+}
+
+/* Mobile: `spacing.json`'s own `header_eyebrow_to_title_px` (24) — the
+   new Mobile art (different branch position/clearance) has its own
+   Studio-authored value, applied directly rather than reusing desktop's
+   empirically-tuned `0.3em`. */
+[data-scene-format="mobile"] .title {
+  margin-top: 24px;
+}
+
+/* The rameau décoratif is baked into SCENE TOP itself (mission brief
+   section 10) — this is blank vertical space only, reserving the gap
+   geometry.json's own anchors give for it (title -> name_top), scaled
+   up from `.content`'s own narrower containing block exactly like
+   `.title`'s margin-top above. Deliberately `padding-top`, NOT `height`:
+   `.content` has no explicit height (it sizes to its own content), and a
+   CSS percentage `height` cannot resolve against an indeterminate-height
+   containing block (computes to 0 — unlike `padding`/`margin`
+   percentages, which the spec always resolves against the containing
+   block's WIDTH regardless of axis) — exactly the bug an earlier pass of
+   this file hit (the branch space collapsed to 0, letting the name
+   visually collide with the branch/title).
+   A further +15% safety margin is added on top of the raw geometry
+   value: the branch art itself sits at a FIXED pixel position baked into
+   SCENE TOP, completely independent of how this flow-based header
+   actually renders (real font metrics for Cormorant Garamond, as served
+   by Google Fonts and rasterized by the browser, are never pixel-
+   identical to whatever reference tool the Studio anchors were measured
+   against) — "le rameau ne doit jamais chevaucher le texte" is the
+   absolute rule, so this clearance errs generous rather than exact. */
+.branchSpace {
+  height: 0;
+  padding-top: 0;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="desktop"] .branchSpace {
+  padding-top: 12.526%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="desktop"] .branchSpace {
+  padding-top: 12.7925%;
+}
+
+[data-heritage-skin-variant="light"] .wrap[data-scene-format="mobile"] .branchSpace {
+  padding-top: 35.0632%;
+}
+
+[data-heritage-skin-variant="dark"] .wrap[data-scene-format="mobile"] .branchSpace {
+  padding-top: 33.4859%;
+}
+
+/* Mobile's own "cas normal" is a single fixed size (typography.json's
+   `mobile.name.normal_px`, 42), not a shrink range — the `clamp()`
+   ceiling still lets it shrink gracefully below the reference ~841px
+   canvas, down to the exceptional fallback's own absolute floor (30). */
+.name {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 500;
+  font-size: clamp(30px, 10vw, 42px);
+  line-height: 0.95;
+  color: var(--dn-text-primary);
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 960px) {
+  .name {
+    font-size: clamp(48px, 6vw, 72px);
+  }
+}
+
+/* Mobile-only exceptional fallback (mission brief section 9/13) —
+   applied imperatively by useFitLongName before it measures anything.
+   No max-width here: typography.json's `long_name_fallback` gives no
+   width figure (unlike the prior package's own placeholder 88%) — the
+   name stays inside `.content`'s own safe-area padding, already sized
+   from this package's own geometry.json. */
+.nameFallback {
+  line-height: 0.94;
+}
+
+/* Base rule is the Mobile size; the desktop media query below overrides
+   size/letter-spacing only (frozen). Mobile's own margin-top uses
+   `spacing.json`'s `name_to_dates_px` (18) directly, below. */
+.dates {
+  margin: 0.35em 0 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--dn-text-primary);
+}
+
+[data-scene-format="mobile"] .dates {
+  margin-top: 18px;
+}
+
+@media (min-width: 960px) {
+  .dates {
+    font-size: 28px;
+    letter-spacing: 0.06em;
+  }
+}
+
+/* Base (mobile) `.rule` margin is set so its own top+bottom span
+   `spacing.json`'s `dates_to_announcement_px` (30, mobile) around the
+   1px rule itself; desktop keeps its prior, unchanged `0.9em`. */
+.rule {
+  margin: 15px auto;
+  height: 1px;
+  width: 100%;
+  max-width: 220px;
+  background: var(--dn-rule);
+}
+
+@media (min-width: 960px) {
+  .rule {
+    margin: 0.9em auto;
+  }
+}
+
+.announcement {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.38;
+  color: var(--dn-text-primary);
+  white-space: pre-wrap;
+}
+
+@media (min-width: 960px) {
+  .announcement {
+    font-size: 22px;
+    line-height: 1.22;
+  }
+}
+
+/* --- Details (mission brief section 10) ---------------------------------
+   1 -> full width; 2 -> two columns; 3 -> 2+1 full; 4 -> 2+2;
+   5 -> 2+2+1 full. Falls out of one rule: two columns always, and the
+   LAST block spans both exactly when the total visible count is odd
+   (.blockFull, applied by the component only to that last block). Mobile
+   forces a single column unconditionally. */
+
+.details {
+  margin-top: 1.6em;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1em;
+  text-align: left;
+}
+
+/* `spacing.json`'s own `announcement_to_details_px` (30) and
+   `detail_block_gap_px` (24), mobile only — desktop keeps its prior,
+   unchanged em-based values (frozen). */
+[data-scene-format="mobile"] .details {
+  margin-top: 30px;
+  gap: 24px;
+}
+
+@media (min-width: 960px) {
+  .details {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 4.6%;
+    row-gap: 1.4em;
+  }
+}
+
+.blockFull {
+  grid-column: 1 / -1;
+}
+
+.block {
+  min-width: 0;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--dn-rule);
+}
+
+.blockHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.35em;
+}
+
+/* The real Studio pictogram (05_ICONS/*.svg, mission brief section 10),
+   rendered inline (see DeathNoticeIntemporel.tsx) so its own
+   `stroke="currentColor"` paths pick up `color` here — the bronze
+   accent, legible on either paper tone without a second Dark asset.
+   Never an <img>/mask: the SVG source itself is the tint mechanism the
+   package's own 05_ICONS/README.md specifies. `aria-hidden` on the
+   wrapper (component) — the adjacent label already carries the a11y
+   text. */
+.blockIcon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--dn-bronze);
+}
+
+.blockIcon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media (min-width: 960px) {
+  .blockIcon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.blockLabel {
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.15;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dn-text-secondary);
+}
+
+@media (min-width: 960px) {
+  .blockLabel {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+  }
+}
+
+.blockText {
+  margin: 0;
+  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.38;
+  color: var(--dn-text-primary);
+  white-space: pre-wrap;
+}
+
+@media (min-width: 960px) {
+  .blockText {
+    font-size: 17px;
+    line-height: 1.22;
+  }
+}
+
+.blockTextQuote {
+  font-style: italic;
+}

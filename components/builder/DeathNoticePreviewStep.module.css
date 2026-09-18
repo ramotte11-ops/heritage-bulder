@@ -1,0 +1,99 @@
+/*
+ * Mission 039B — A03 (aperçu de l'avis de décès), correction pass.
+ *
+ * `DeathNoticeIntemporel` (rendered directly as a sibling below
+ * `.builderBar`) takes NO width/background/spacing rule from this file
+ * at all — it is full-bleed, capped only by its own `max-width:
+ * 841px/1672px`. `.builderBar`/`.builderControls` are the only two
+ * zones this file styles: a slim, visually distinct Builder strip above
+ * and below the Memorial, each independently capped at a modest reading
+ * width — neither one resizes or frames the Memorial between them. This
+ * is deliberately NOT `BuilderScreen` (that component's own `.frame`
+ * caps at 600px and would recreate exactly the "card inside a card"
+ * the PO rejected) — see DeathNoticePreviewStep.tsx's own docstring.
+ */
+
+.page {
+  min-height: 100dvh;
+  background: var(--heritage-surface-page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.builderBar {
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.5rem 1.25rem 0;
+  box-sizing: border-box;
+}
+
+.builderControls {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  padding: 0 1.25rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-breathing);
+  margin-top: var(--heritage-space-breathing);
+}
+
+.editLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-sm);
+}
+
+@media (min-width: 40rem) {
+  .editLinks {
+    flex-direction: row;
+    gap: var(--heritage-space-xl);
+  }
+}
+
+.editLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.editLink:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.editLink:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.ctaWrap {
+  width: 100%;
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+  text-align: center;
+}
+
+/* The skin guard's own notice — deliberately NOT `.error`'s error-red
+ * tone: nothing failed here, this is an honest "not built yet for your
+ * style" state, not a failure to load. */
+.unavailable {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+  text-align: center;
+  max-width: 28rem;
+  margin-inline: auto;
+}

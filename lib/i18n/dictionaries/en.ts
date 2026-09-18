@@ -92,4 +92,14 @@ export const en: Record<TranslationKey, string> = {
   "deathNotice.precisionsFieldQuote": "A quote",
   "deathNotice.precisionsFieldOther": "Another detail",
   "deathNotice.precisionsSkip": "Skip this step",
+  "deathNotice.previewTitle": "Death Notice",
+  "deathNotice.blockLocation": "Location",
+  "deathNotice.blockFamilyMessage": "A word from the family",
+  "deathNotice.blockThought": "Thought",
+  "deathNotice.blockQuote": "Quote",
+  "deathNotice.blockOther": "Additional note",
+  "deathNotice.editAnnouncement": "Edit the announcement",
+  "deathNotice.editPrecisions": "Edit the details",
+  "deathNotice.previewSkinUnavailable":
+    "The death notice preview for this style isn't available yet. Your information is safely kept — the HERITAGE team will let you know as soon as it's ready.",
 };

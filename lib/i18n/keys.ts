@@ -106,6 +106,28 @@
  * refusal every other Guided Flow screen already shows on corrupted data,
  * never a bespoke "deathNotice" wording for the identical concept.
  *
+ * Mission 039B adds seven more `deathNotice` keys for A03 (aperçu de
+ * l'avis de décès) — the minimum system texts the mission brief itself
+ * names, reusing `context.announcementTitle` (the "Annonce & Hommage"
+ * eyebrow — already exists) and `common.continue` (A03's own Continue)
+ * rather than duplicating either. `previewTitle` is the fixed "Avis de
+ * décès" card title. `blockLocation`/`blockFamilyMessage`/`blockThought`/
+ * `blockQuote`/`blockOther` are A03's own DISPLAY labels for the five A02
+ * precisions — deliberately separate keys from A02's own
+ * `precisionsFieldLocation`/etc. (which phrase the same concept as an
+ * accessible FIELD label at data-entry time) because A03 needs its own
+ * literal heading wording instead — two different UI moments for the same
+ * underlying `DeathNoticePrecisionField`, never silently merged into one
+ * key whose wording would be wrong in one of the two places.
+ * `editAnnouncement`/`editPrecisions` are A03's own "Modifier l'annonce"/
+ * "Modifier les précisions" links back to A01/A02 — distinct from
+ * `common.back`, which names no destination. `previewSkinUnavailable` is
+ * the skin guard's own notice: shown instead of the Intemporel renderer
+ * for any `memorial.skin` this A03 has no real renderer for yet — honest
+ * and calm, never implying a failure (distinct wording from
+ * `hero.dataUnavailable`, which means "could not load", not "not built
+ * yet").
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -205,6 +227,16 @@ export const TRANSLATION_KEYS = [
   "deathNotice.precisionsFieldQuote",
   "deathNotice.precisionsFieldOther",
   "deathNotice.precisionsSkip",
+  // Mission 039B — A03 (aperçu de l'avis de décès).
+  "deathNotice.previewTitle",
+  "deathNotice.blockLocation",
+  "deathNotice.blockFamilyMessage",
+  "deathNotice.blockThought",
+  "deathNotice.blockQuote",
+  "deathNotice.blockOther",
+  "deathNotice.editAnnouncement",
+  "deathNotice.editPrecisions",
+  "deathNotice.previewSkinUnavailable",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
