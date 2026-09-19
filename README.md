@@ -58,11 +58,17 @@ No environment variables or external service is required to install, run,
 or build this project — see `.env.example` for what a future mission will
 need once Supabase is actually connected.
 
-Once running, open `/builder/demo` for the Mission 003 Builder demo — a
-locally-driven memorial editor with two demo memorials, one per
-currently-configured editorial context. The real Builder
-(`/builder/[memorialId]`, Mission 021) needs a real, authenticated Owner
-and a real Memorial — see that mission's section below.
+Once running, open `/builder/demo` for the **QG Runtime Demo** (mini-mission
+before Mission 040) — a local, in-memory walkthrough of the real Guided Flow
+screens (Hero PAGE A/B/E, A01, A02, A03 with the real `DeathNoticeIntemporel`
+renderer), driven by a deterministic fixture, no Supabase, no Auth, no
+entitlement, nothing ever saved. It replaced the Mission 003 `BuilderShell`
+fixture picker that used to live at this URL — see
+`lib/builder/qg-runtime-demo.ts` and `app/builder/demo/page.tsx` for the
+full doctrine and why the old fixture demo had drifted from the real
+runtime. The real Builder (`/builder/[memorialId]`, Mission 021) needs a
+real, authenticated Owner and a real Memorial — see that mission's section
+below.
 
 Open `/login` for the Mission 004 owner authentication demo (Magic
 Link). Without `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -120,9 +126,13 @@ app/                          Next.js App Router — routes only
       actions.ts                saveDraftAction: the autosave Server
                                  Action, re-authorizing every save
                                  (+ actions.test.ts)
-    demo/                     Mission 003 fixtures, explicitly isolated
-      page.tsx                  Demo memorial picker
-      [demoId]/page.tsx         Opens one demo memorial in the Builder shell
+    demo/                     QG Runtime Demo (mini-mission pre-040):
+      page.tsx                  local, in-memory Guided Flow walkthrough
+                                 (Hero PAGE A/B/E, A01, A02, A03) — no
+                                 Supabase, no Auth, never saved. Replaces
+                                 the old Mission 003 `BuilderShell` fixture
+                                 picker that used to live here (see
+                                 lib/builder/qg-runtime-demo.ts)
   login/page.tsx               Magic Link request form (Mission 004)
   owner/page.tsx                Protected shell — session required, no
                                 Owner/Entitlement lookup (+ page.test.tsx)
@@ -142,9 +152,12 @@ components/                   Presentational UI, grouped by domain
                                  (Mission 009B) wired straight into
                                  lib/builder/use-autosave.ts, observing
                                  its own state.content — the real route
-                                 passes a bound Server Action (021B), the
-                                 demo screen (app/builder/demo/[demoId])
-                                 passes none. Mission
+                                 passes a bound Server Action (021B); no
+                                 route passes none anymore since the old
+                                 Mission 003 demo screen at
+                                 app/builder/demo/[demoId] was replaced by
+                                 the QG Runtime Demo (pre-040), which never
+                                 renders BuilderShell at all. Mission
                                  010's beforeunload/retry protection comes
                                  for free through that same hook call —
                                  no change to this file was needed
@@ -852,14 +865,28 @@ same `notFound()` — never distinguished, so a wrong id can never be used
 to learn whether it is real (the same indistinguishability
 `authorizeMemorialAccess` itself already documents).
 
-The demo Builder (Mission 003) still exists, unchanged in behaviour, but
-moved from `/builder`/`/builder/[demoId]` to `/builder/demo`/
-`/builder/demo/[demoId]` — freeing the `/builder/[x]` URL slot for the
-real route (Next.js does not allow two differently-named dynamic
-segments at the same position) and, just as importantly, making sure the
-fixture index is no longer reachable from what looks like the real
-Builder path. `lib/builder/demo-memorials.ts` is not imported by the
+The demo Builder (Mission 003) moved from `/builder`/`/builder/[demoId]`
+to `/builder/demo`/`/builder/demo/[demoId]` — freeing the `/builder/[x]`
+URL slot for the real route (Next.js does not allow two differently-named
+dynamic segments at the same position) and, just as importantly, making
+sure the fixture index is no longer reachable from what looks like the
+real Builder path. `lib/builder/demo-memorials.ts` is not imported by the
 real route at all.
+
+**QG Runtime Demo mini-mission (pre-Mission 040) — `/builder/demo`
+replaced.** By the time Missions 023-039B had built the full Guided Flow
+(T01…T08, A01-A03) in front of `BuilderShell`, the Mission 003 fixture
+picker at `/builder/demo`/`/builder/demo/[demoId]` had become actively
+misleading: it still opened `BuilderShell` directly, skipping the entire
+parcours a real family (or a real reviewer) actually experiences.
+`app/builder/demo/page.tsx` now renders that real Guided Flow sequence
+against a deterministic, in-memory fixture built through the same pure
+Guided Flow functions the real route calls (`lib/builder/qg-runtime-demo.ts`)
+— still no Supabase, no Auth, no entitlement, nothing ever saved.
+`app/builder/demo/[demoId]/page.tsx` no longer exists.
+`lib/builder/demo-memorials.ts`/`demo-content.ts` are unchanged and still
+back the unrelated Mission 003 `builder-state`/autosave unit tests, but
+are no longer reachable from any route.
 
 ### What Mission 021B changed, after an independent audit
 
@@ -1021,10 +1048,12 @@ exclusion list for the full wording):
 - ~~Real autosave *persistence* from the visible Builder~~ — wired by
   Missions 021/021B: the real route passes
   `saveDraftAction.bind(null, authorizedMemorialId)` as `BuilderShell`'s
-  `persist` prop — a Server Action that re-authorizes on every save. The
-  demo Builder (`app/builder/demo/[demoId]`) still passes none — its
-  fixtures (`lib/builder/demo-memorials.ts`) remain deliberately not
-  UUID-shaped and are never written to Supabase. The database grants this
+  `persist` prop — a Server Action that re-authorizes on every save.
+  `lib/builder/demo-memorials.ts`'s fixtures remain deliberately not
+  UUID-shaped and are never written to Supabase — they no longer back any
+  route (`app/builder/demo/[demoId]` was replaced by the QG Runtime Demo,
+  pre-Mission 040, which never renders `BuilderShell`), only the unrelated
+  Mission 003 unit tests. The database grants this
   needs ship in `20260905160000_builder_owner_access.sql`; a project that
   has not applied it yet gets the controlled failure notice instead.
 - Any real in-app Builder navigation, or a guard for it — Mission 010
@@ -1053,11 +1082,12 @@ exclusion list for the full wording):
   itself exists and is tested (Missions 016-019, see above), but nothing
   transports a real order to it, and there is still no working
   (redeemable) Entitlement flow end to end.
-- Real persistence from the DEMO Builder specifically: `/builder/demo`
-  (Mission 003, moved from `/builder` by Mission 021) still edits two
-  local fixture memorials, in React state, for the current page session
-  only, by design — see Mission 021's section above for the real route
-  (`/builder/[memorialId]`), which does persist for real.
+- Real persistence from the DEMO route specifically: `/builder/demo` is
+  now the QG Runtime Demo (mini-mission pre-040, replacing the Mission
+  003 fixture picker that used to live here) — an in-memory Guided Flow
+  walkthrough, local to the current page session only, by design — see
+  Mission 021's section above for the real route (`/builder/[memorialId]`),
+  which does persist for real.
 - Real publication logic or real slug/URL generation. The Builder's
   "Prévisualisation" mode is a local preview of demo content, not a
   public memorial page — nothing is written to
