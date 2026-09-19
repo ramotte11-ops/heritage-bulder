@@ -122,4 +122,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "ceremony.noteSubtitle": "Totalmente opcional — añada solo lo que le parezca útil.",
   "ceremony.noteLabel": "Nota práctica",
   "ceremony.skip": "Omitir este paso",
+  "ceremony.sectionTitle": "Ceremonia",
+  "ceremony.zoneDateTime": "Fecha y hora",
+  "ceremony.zonePlace": "Lugar de la ceremonia",
+  "ceremony.zonePractical": "Información práctica",
 };

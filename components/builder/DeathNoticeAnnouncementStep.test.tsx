@@ -23,6 +23,7 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
+  EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
 }));
 
 const { DeathNoticeAnnouncementStep } = await import("./DeathNoticeAnnouncementStep");
