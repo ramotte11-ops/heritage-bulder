@@ -209,19 +209,28 @@ export interface FitDisplayNameResult {
  * fraction of a proportionally smaller box, and its last wrapped line
  * reaches into the branch.
  *
- * `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`/`NARROW_MOBILE_SAFE_AREA_RATIO`
- * below are that measurement's direct result: at 375px, the branch's
- * leftmost extent (in the vertical band a 4-5 line extreme name reaches)
- * sits at roughly 72% of the Hero's own width; `.displayedName` starts
- * indented from the Hero's edge, so a cap of 75% of the element's own
- * (already-indented) available width keeps a real, deliberate margin
- * short of that — not a bare minimum fit. This ratio touches
- * `.displayedName` ONLY inside Tier 4 (see `fit()` below) and only under
- * `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`: Tiers 1-3 — every normal name,
- * "Éléonore Vasseur" included (measured at 237.6px for its own widest
- * line, comfortably inside the untouched, full-width Tier 1-3 box) —
- * never see it, and 390px/430px/desktop take the exact original code
- * path, unmodified.
+ * `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`/`NARROW_MOBILE_SAFE_AREA_RATIO`/
+ * `NARROW_MOBILE_SAFE_AREA_MIN_FONT_PX` below are that measurement's
+ * direct result — QG-refined once already (an initial 75%/40px pass was
+ * safe but visually over-fragmented "Marie-Charlotte de La Fontaine-
+ * Delacroix-Beaumont du Plessis-Grandchamp" into 7 lines; QG's own
+ * side-by-side comparison of three real-rendered options chose "Option
+ * C" below for the best editorial result at the largest measured
+ * margin). At 375px, the branch's leftmost extent (in the vertical band
+ * a 4-line extreme name at this width reaches) sits comfortably clear of
+ * 88% of `.displayedName`'s own (already-indented) available width —
+ * measured margin ~40-45px, the most generous of the three options QG
+ * compared, and still real/deliberate, not a bare minimum fit.
+ * `NARROW_MOBILE_SAFE_AREA_MIN_FONT_PX` (32px) is a SEPARATE, narrow-
+ * mobile-only floor — it never changes `extremeFallbackMinPx` (40px),
+ * which stays exactly as Mission 035 v4 defined it for every other tier,
+ * width and breakpoint (390px/430px/desktop mobile Tier 4 included).
+ * This pair touches `.displayedName` ONLY inside Tier 4 (see `fit()`
+ * below) and only under `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`: Tiers
+ * 1-3 — every normal name, "Éléonore Vasseur" included (measured at
+ * 237.6px for its own widest line, comfortably inside the untouched,
+ * full-width Tier 1-3 box) — never see either constant, and
+ * 390px/430px/desktop take the exact original code path, unmodified.
  *
  * Mission 035 v4 section 6 (QG-locked) — the three-tier fitting
  * strategy this builds on; see `HERO_INTEMPOREL_TYPOGRAPHY.displayedName`'s
@@ -238,7 +247,13 @@ export interface FitDisplayNameResult {
  * tier) and, now, `maxWidth` (Tier 4, narrow mobile only) ever change.
  */
 const NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX = 380;
-const NARROW_MOBILE_SAFE_AREA_RATIO = 0.75;
+const NARROW_MOBILE_SAFE_AREA_RATIO = 0.88;
+/** A dedicated floor for Tier 4 on narrow mobile ONLY — deliberately
+ * separate from `HERO_INTEMPOREL_TYPOGRAPHY.displayedName.extremeFallbackMinPx`
+ * (40px), which remains the shared floor for every other width/breakpoint.
+ * QG-validated ("Option C") as still comfortably legible at this one,
+ * already-rare combination (Tier 4 AND narrower than 380px). */
+const NARROW_MOBILE_SAFE_AREA_MIN_FONT_PX = 32;
 
 export function useFitDisplayName(text: string): FitDisplayNameResult {
   const ref = useRef<HTMLHeadingElement | null>(null);
@@ -298,14 +313,20 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       // Tier 4 — the documented fallback extrême: still over even the
       // 3-line allowance at the normal floor.
       //
-      // QG Hero 375px long-name collision fix: only here, and only on
-      // narrow mobile (see this hook's own top docstring for the
-      // measured evidence), cap the element's own width to the measured
-      // safe fraction BEFORE shrinking, so the shrink loop's own
-      // `countVisualLines` re-measurement — and therefore the final
-      // wrapped width — reflects the safe area, not the full zone.
+      // QG Hero 375px long-name collision fix ("Option C", QG-validated):
+      // only here, and only on narrow mobile (see this hook's own top
+      // docstring for the measured evidence), cap the element's own
+      // width to the measured safe fraction BEFORE shrinking, so the
+      // shrink loop's own `countVisualLines` re-measurement — and
+      // therefore the final wrapped width — reflects the safe area, not
+      // the full zone. The shrink floor is ALSO narrowed for this one
+      // case only (`extremeFloorPx`) — `t.extremeFallbackMinPx` itself
+      // is never reassigned, so every other width/breakpoint keeps
+      // exactly Mission 035 v4's own 40px floor.
+      let extremeFloorPx: number = t.extremeFallbackMinPx;
       if (!isDesktop && window.innerWidth <= NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX) {
         el.style.maxWidth = `${NARROW_MOBILE_SAFE_AREA_RATIO * 100}%`;
+        extremeFloorPx = NARROW_MOBILE_SAFE_AREA_MIN_FONT_PX;
         // `lines` above was measured against the now-stale, uncapped
         // width — re-measure immediately so the loop below (and its
         // entry condition) reflects the real, narrower box.
@@ -313,8 +334,8 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       }
 
       // Shrink further, the smallest amount needed, down to (never past)
-      // extremeFallbackMinPx.
-      while (lines > t.maxLinesExtreme && size > t.extremeFallbackMinPx) {
+      // the applicable floor.
+      while (lines > t.maxLinesExtreme && size > extremeFloorPx) {
         size -= 1;
         setSize(size);
         lines = countVisualLines(el);
