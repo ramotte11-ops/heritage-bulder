@@ -128,6 +128,24 @@
  * `hero.dataUnavailable`, which means "could not load", not "not built
  * yet").
  *
+ * Mission 040 adds a `ceremony` namespace for A04 ("Un moment est-il
+ * prévu ?") and A05-A08 (date/heure, nom du lieu, adresse/accès, note
+ * pratique facultative). `momentTitle`/`momentSubtitle` are A04's own
+ * copy; `momentYes`/`momentUndecided`/`momentNo` label its three choice
+ * cards (mirrors `context.*`'s own choice-card convention). Each of the
+ * four following screens has its own `Title`/`Subtitle` plus one field
+ * label per field it owns — `dateTimeTitle`/`dateTimeSubtitle` +
+ * `dateLabel`/`timeLabel` (A05); `venueTitle`/`venueSubtitle` +
+ * `venueLabel` (A06); `addressTitle`/`addressSubtitle` +
+ * `addressLabel`/`accessLabel` (A07); `noteTitle`/`noteSubtitle` +
+ * `noteLabel` (A08). `skip` is the one "Passer cette étape" action
+ * reused across all four (A05-A08) — its own key, distinct from
+ * `deathNotice.precisionsSkip`, so either branch can reword its own skip
+ * action later without touching the other. Every screen's own Continue
+ * reuses `common.continue`; a corrupted stored Ceremony reuses the
+ * existing `hero.dataUnavailable`, same as every other Guided Flow
+ * screen.
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -237,6 +255,27 @@ export const TRANSLATION_KEYS = [
   "deathNotice.editAnnouncement",
   "deathNotice.editPrecisions",
   "deathNotice.previewSkinUnavailable",
+  // Mission 040 — A04 (moment prévu ?) and A05-A08 (informations cérémonie).
+  "ceremony.momentTitle",
+  "ceremony.momentSubtitle",
+  "ceremony.momentYes",
+  "ceremony.momentUndecided",
+  "ceremony.momentNo",
+  "ceremony.dateTimeTitle",
+  "ceremony.dateTimeSubtitle",
+  "ceremony.dateLabel",
+  "ceremony.timeLabel",
+  "ceremony.venueTitle",
+  "ceremony.venueSubtitle",
+  "ceremony.venueLabel",
+  "ceremony.addressTitle",
+  "ceremony.addressSubtitle",
+  "ceremony.addressLabel",
+  "ceremony.accessLabel",
+  "ceremony.noteTitle",
+  "ceremony.noteSubtitle",
+  "ceremony.noteLabel",
+  "ceremony.skip",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

@@ -16,8 +16,14 @@ import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
 import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
 import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
 import { DeathNoticePreviewStep } from "@/components/builder/DeathNoticePreviewStep";
+import { CeremonyMomentStep } from "@/components/builder/CeremonyMomentStep";
+import { CeremonyDateTimeStep } from "@/components/builder/CeremonyDateTimeStep";
+import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
+import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
+import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
+import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -512,6 +518,70 @@ export default async function BuilderMemorialPage({
           content={heroReconciledContent}
           skin={resumed.memorial.skin}
           skinVariant={resumed.memorial.skinVariant}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    // Mission 040 — A04: "Un moment est-il prévu ?", obligatoire et
+    // non-passable, shown only once A01/A02/A03 are all genuinely behind
+    // the family (never before — see `needsA04`'s own guard, which also
+    // routes back here on a corrupted stored Ceremony).
+    if (needsA04(heroReconciledContent)) {
+      return (
+        <CeremonyMomentStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    // Mission 040 — A05-A08: the ceremony's own information, shown only
+    // when A04 was answered "yes" (never for "non"/"pas encore décidé" —
+    // `needsA05`..`needsA08` each read that answer themselves) and only
+    // until each one has been treated once, whichever way. Every one of
+    // the four is facultatif and passable (human-steps.ts).
+    if (needsA05(heroReconciledContent)) {
+      return (
+        <CeremonyDateTimeStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    if (needsA06(heroReconciledContent)) {
+      return (
+        <CeremonyVenueStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    if (needsA07(heroReconciledContent)) {
+      return (
+        <CeremonyAddressStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    if (needsA08(heroReconciledContent)) {
+      return (
+        <CeremonyNoteStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
         />
       );
