@@ -1,4 +1,4 @@
-import { Cormorant_Garamond, Inter, La_Belle_Aurore, Playfair_Display } from "next/font/google";
+import { Cormorant_Garamond, EB_Garamond, Inter, La_Belle_Aurore, Playfair_Display } from "next/font/google";
 
 /**
  * Mission 023 — the two typefaces the Studio's T01 design specifies
@@ -59,5 +59,35 @@ export const laBelleAurore = La_Belle_Aurore({
   subsets: ["latin"],
   weight: ["400"],
   variable: "--font-heritage-hero-script",
+  display: "swap",
+});
+
+/**
+ * Mission 040B — the Ceremony Intemporel renderer's own typeface,
+ * `spec/runtime-tokens.json`'s `fontFamily.display`/`fontFamily.body`:
+ * "EB Garamond" (400). Integrated the same way every other Studio-named
+ * typeface in this file is — `next/font/google`, self-hosted, scoped
+ * locally via its own `.variable` (here, `CeremonyIntemporel.module.css`
+ * alone) rather than wired into the root layout.
+ *
+ * `runtime-tokens.json` also names "EB Garamond SC" for the `label` role
+ * (the small-caps zone headings — "DATE ET HEURE", "LIEU DE LA
+ * CÉRÉMONIE", "INFORMATIONS PRATIQUES"). Google Fonts, and therefore
+ * `next/font/google`, does not publish a distinct "EB Garamond SC"
+ * family (verified against this project's own bundled
+ * `next/dist/compiled/@next/font/dist/google/font-data.json`, which
+ * lists "EB Garamond" but no "SC" sibling) — there is no real font file
+ * to fetch or package, and this mission's own brief forbids packaging
+ * font files directly into the Studio ZIP's place. Per the brief's own
+ * "réutiliser les fonts déjà présentes... si elles correspondent aux
+ * tokens Studio" latitude, the label role reuses this SAME `EB_Garamond`
+ * family with `font-variant-caps: small-caps` (a standard CSS
+ * substitution for a small-caps face when the true SC cut is
+ * unavailable) — never a visually unrelated substitute typeface.
+ */
+export const ebGaramond = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-heritage-ceremony-serif",
   display: "swap",
 });

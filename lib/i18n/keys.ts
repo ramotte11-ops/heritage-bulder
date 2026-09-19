@@ -276,6 +276,11 @@ export const TRANSLATION_KEYS = [
   "ceremony.noteSubtitle",
   "ceremony.noteLabel",
   "ceremony.skip",
+  // Mission 040B — CeremonyIntemporel (the real Memorial renderer).
+  "ceremony.sectionTitle",
+  "ceremony.zoneDateTime",
+  "ceremony.zonePlace",
+  "ceremony.zonePractical",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

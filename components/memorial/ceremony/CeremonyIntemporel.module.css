@@ -1,0 +1,268 @@
+/*
+ * Mission 040B — the Ceremony Intemporel renderer's own stylesheet.
+ * Studio pack CEREMONIE_RUNTIME_STUDIO_QG_CANDIDATE_V3_CORRECTED
+ * (GREEN QG). Every color/size/spacing value traces back to
+ * config/ceremony-intemporel-tokens.ts, itself transcribed verbatim
+ * from that package's spec/*.json — nothing here is a freehand choice
+ * beyond generic CSS mechanics (flex centering, absolute positioning).
+ *
+ * ## One shared DOM tree, CSS-switched at the breakpoint
+ *
+ * Mirrors HeroIntemporel.module.css exactly: both the desktop and
+ * mobile master `<img>` render in the DOM (only one ever visible, via
+ * this file's own 960px media query), and every content zone is a
+ * SINGLE element whose position comes from CSS custom properties the
+ * component sets inline — `--zx/--zy/--zw/[--zh]` for desktop,
+ * `--zxm/--zym/--zwm/[--zhm]` for mobile — switched by the same media
+ * query, never duplicated markup.
+ *
+ * `.posBoxAuto` is for a zone sized by WIDTH only (`height: auto`,
+ * preserving the asset's own intrinsic ratio — titleSprig, closing).
+ * `.posBoxFixed` is for a zone sized by BOTH dimensions (icons — square
+ * tokens exactly matching the square 128×128 assets; rules — line art
+ * whose entire purpose is to stretch to the needed length, never a
+ * distortion of a photographic/illustrative subject).
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  max-width: 1448px;
+  margin-inline: auto;
+  color: var(--ceremony-ink-text-primary);
+}
+
+.masterDesktop,
+.masterMobile {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.masterMobile {
+  display: none;
+}
+
+@media (max-width: 959.98px) {
+  .wrap {
+    max-width: 941px;
+  }
+  .masterDesktop {
+    display: none;
+  }
+  .masterMobile {
+    display: block;
+  }
+}
+
+.posBoxAuto {
+  position: absolute;
+  left: var(--zx);
+  top: var(--zy);
+  width: var(--zw);
+  height: auto;
+}
+
+.posBoxFixed {
+  position: absolute;
+  left: var(--zx);
+  top: var(--zy);
+  width: var(--zw);
+  height: var(--zh);
+}
+
+@media (max-width: 959.98px) {
+  .posBoxAuto {
+    left: var(--zxm);
+    top: var(--zym);
+    width: var(--zwm);
+  }
+  .posBoxFixed {
+    left: var(--zxm);
+    top: var(--zym);
+    width: var(--zwm);
+    height: var(--zhm);
+  }
+}
+
+.desktopOnly {
+  display: block;
+}
+.mobileOnly {
+  display: none;
+}
+@media (max-width: 959.98px) {
+  .desktopOnly {
+    display: none;
+  }
+  .mobileOnly {
+    display: block;
+  }
+}
+
+.decorImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.decorImgAuto {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.rule {
+  position: absolute;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * ## Fluid, canvas-relative typography (fixes a real fidelity bug)
+ *
+ * The Studio's own tokens (`runtime-tokens.json`) give a fixed pixel
+ * `fontSize` per role, but ONLY meaningful relative to its own canonical
+ * canvas (1448px desktop / 941px mobile) — exactly like every geometry
+ * `x/y/w/h` in this same file, which this component already converts to
+ * a PERCENTAGE of the canvas before use (`pxBoxToPct`). A flat `Npx`
+ * font-size does NOT scale down with the wrapper the way a percentage
+ * position does: rendered at a real 375-430px phone width (≈40-46% of
+ * the 941px mobile canonical canvas), a flat mobile-nominal px value
+ * would look roughly 2.2× too large — exactly the fidelity bug an
+ * initial QA screenshot pass caught (title overlapping the sprig, every
+ * text zone overflowing into the next).
+ *
+ * `vw` (percent of VIEWPORT width) is the fix, mirroring
+ * `DeathNoticeIntemporel.module.css`'s own established
+ * `clamp(floorPx, Nvw, ceilingPx)` technique for the identical problem:
+ * `.wrap` renders full-bleed (`width: 100%`, no Builder-inherited
+ * max-width — this component's own doctrine), so its rendered width
+ * equals the viewport width, and `Nvw` is calibrated so the clamp's
+ * value equals the Studio's own nominal px EXACTLY at that regime's own
+ * canonical width (941px mobile, 1448px desktop) — `vw = nominalPx /
+ * canonicalWidthPx * 100`. Two regimes (mobile default, desktop
+ * `@media`), each capped at its own Studio nominal, with a defensive
+ * floor for narrower-than-375px viewports this mission does not target
+ * but must not visibly break on.
+ */
+
+/* ---------------------------------------------------------------------
+ * Title
+ * ------------------------------------------------------------------- */
+
+.title {
+  margin: 0;
+  text-align: center;
+  font-weight: 400;
+  line-height: 1;
+  font-size: clamp(29px, 6.1637vw, 58px);
+}
+
+@media (min-width: 960px) {
+  .title {
+    font-size: clamp(58px, 4.9724vw, 72px);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Zone label (small-caps heading)
+ * ------------------------------------------------------------------- */
+
+.zoneLabel {
+  margin: 0 0 0.35em;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  font-size: clamp(10px, 2.0191vw, 19px);
+  letter-spacing: 0.15em;
+  color: var(--ceremony-ink-text-secondary);
+}
+
+@media (min-width: 960px) {
+  .zoneLabel {
+    font-size: clamp(19px, 1.4503vw, 21px);
+    letter-spacing: 0.18em;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Icon (already-composited circular PNG — sized only, never redrawn)
+ * ------------------------------------------------------------------- */
+
+.icon {
+  position: absolute;
+}
+
+/* ---------------------------------------------------------------------
+ * Zone rows (icon + label/text column)
+ * ------------------------------------------------------------------- */
+
+.zoneRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+}
+
+.zoneBody {
+  margin: 0;
+  font-weight: 400;
+}
+
+.primaryText {
+  composes: zoneBody;
+  line-height: 1.08;
+  font-size: clamp(15px, 3.2946vw, 31px);
+  color: var(--ceremony-ink-text-primary);
+}
+
+@media (min-width: 960px) {
+  .primaryText {
+    line-height: 1.06;
+    font-size: clamp(31px, 2.3481vw, 34px);
+  }
+}
+
+.secondaryText {
+  composes: zoneBody;
+  line-height: 1.12;
+  font-size: clamp(12px, 2.5504vw, 24px);
+  color: var(--ceremony-ink-text-secondary);
+  margin-top: 0.2em;
+}
+
+@media (min-width: 960px) {
+  .secondaryText {
+    font-size: clamp(24px, 1.7956vw, 26px);
+  }
+}
+
+.practicalText {
+  composes: zoneBody;
+  line-height: 1.17;
+  font-size: clamp(12px, 2.4442vw, 23px);
+  color: var(--ceremony-ink-text-primary);
+}
+
+@media (min-width: 960px) {
+  .practicalText {
+    line-height: 1.18;
+    font-size: clamp(23px, 1.7265vw, 25px);
+  }
+}
+
+.practicalText + .practicalText {
+  margin-top: 0.4em;
+}
+
+.error {
+  font-size: 0.875rem;
+}
