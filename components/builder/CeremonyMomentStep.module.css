@@ -1,0 +1,78 @@
+/*
+ * Mission 040 — A04 ("Un moment est-il prévu ?"). Chrome lives in
+ * BuilderScreen.module.css; colors/typography/layout reuse the exact
+ * LanguageStep (T01) / ContextStep (T02) three/two-choice grammar —
+ * nothing new introduced.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-breathing);
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-lg);
+}
+
+@media (min-width: 40rem) {
+  .options {
+    flex-direction: row;
+    gap: var(--heritage-space-lg);
+  }
+
+  .options > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

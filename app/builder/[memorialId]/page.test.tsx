@@ -144,6 +144,23 @@ const { DeathNoticePreviewStep } = vi.hoisted(() => ({
 }));
 vi.mock("@/components/builder/DeathNoticePreviewStep", () => ({ DeathNoticePreviewStep }));
 
+// Mission 040 — A04-A08, mocked the same way and for the same reasons as
+// the Death Notice screens above.
+const { CeremonyMomentStep } = vi.hoisted(() => ({ CeremonyMomentStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyMomentStep", () => ({ CeremonyMomentStep }));
+
+const { CeremonyDateTimeStep } = vi.hoisted(() => ({ CeremonyDateTimeStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyDateTimeStep", () => ({ CeremonyDateTimeStep }));
+
+const { CeremonyVenueStep } = vi.hoisted(() => ({ CeremonyVenueStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyVenueStep", () => ({ CeremonyVenueStep }));
+
+const { CeremonyAddressStep } = vi.hoisted(() => ({ CeremonyAddressStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyAddressStep", () => ({ CeremonyAddressStep }));
+
+const { CeremonyNoteStep } = vi.hoisted(() => ({ CeremonyNoteStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyNoteStep", () => ({ CeremonyNoteStep }));
+
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
 // builds its real MediaEngineDeps. Both compose real Mission 030
@@ -253,23 +270,26 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032/033/034/035/039 — PAGE A, PAGE B, PAGE C, PAGE D, PAGE E,
- * A01 and A02 all genuinely done: a real `displayName`, T04 explicitly
- * skipped (never just inferred from zero dates — QG micro-correction),
- * T05 explicitly treated, T06 explicitly completed with a real photo
- * reference, T07 explicitly completed with a real crop attached to that
- * exact photo, T08 explicitly completed (Mission 035's own "Hero
- * reveal" confirmation), A01 explicitly completed with a real
- * announcement text, and A02 explicitly skipped (Mission 039 — A01/A02
+/** Mission 032/033/034/035/039/040 — PAGE A, PAGE B, PAGE C, PAGE D,
+ * PAGE E, A01, A02 and A04 all genuinely done: a real `displayName`, T04
+ * explicitly skipped (never just inferred from zero dates — QG
+ * micro-correction), T05 explicitly treated, T06 explicitly completed
+ * with a real photo reference, T07 explicitly completed with a real
+ * crop attached to that exact photo, T08 explicitly completed (Mission
+ * 035's own "Hero reveal" confirmation), A01 explicitly completed with a
+ * real announcement text, A02 explicitly skipped, and A04 explicitly
+ * answered "no" (Mission 040 — A05-A08 stay non-applicable, so no
+ * further ceremony data is needed for this shared fixture; A01/A02/A04
  * only apply to `CONFIGURED_MEMORIAL`'s own `announcement` context, but
  * a completed/skipped StepRecord is simply inert, unread data for a
  * `remembrance` memorial, so the same draft still works for both).
  * Paired with a memorial that has a language and an editorial context,
  * this draft resumes straight past every gate — exactly what every
- * pre-039 test below that expects to reach BuilderShell (or the T02/
- * "not configured yet" fallthrough) still needs. See the "Mission 032"/
- * "Mission 033"/"Mission 034"/"Mission 035"/"Mission 039" describe
- * blocks for the drafts that deliberately do NOT satisfy these gates. */
+ * pre-039/pre-040 test below that expects to reach BuilderShell (or the
+ * T02/"not configured yet" fallthrough) still needs. See the "Mission
+ * 032"/"Mission 033"/"Mission 034"/"Mission 035"/"Mission 039"/"Mission
+ * 040" describe blocks for the drafts that deliberately do NOT satisfy
+ * these gates. */
 const REAL_DRAFT_CONTENT_BASE = {
   hero: {
     displayName: "Real content",
@@ -299,6 +319,7 @@ const REAL_DRAFT_CONTENT_BASE = {
     T08: { status: "completed" },
     A01: { status: "completed" },
     A02: { status: "skipped" },
+    A04: { status: "completed", answer: "no" },
   },
 };
 
@@ -1313,15 +1334,19 @@ describe("BuilderMemorialPage — granted access", () => {
       const reconciledContentBase = {
         hero: { ...REAL_DRAFT.content.hero, photo: { mediaId: "adopted-later", crop: null } },
         deathNotice: REAL_DRAFT_CONTENT_BASE.deathNotice,
-        // Mission 039 — this fixture deliberately carries no T06/T07/T08
-        // guidedFlow entries at all (same as before A01/A02 existed):
+        // Mission 039/040 — this fixture deliberately carries no T06/T07/
+        // T08 guidedFlow entries at all (same as before A01/A02 existed):
         // `needsPageC` being true short-circuits `needsPageD`/`needsPageE`
-        // to false, so neither PAGE D nor PAGE E is reached. A01/A02/A03
-        // ARE reached now, though (nothing gates them behind PAGE C the
-        // same way), so they need their own StepRecord here to keep
+        // to false, so neither PAGE D nor PAGE E is reached. A01/A02/A03/
+        // A04 ARE reached now, though (nothing gates them behind PAGE C
+        // the same way), so they need their own StepRecord here to keep
         // falling through to BuilderShell, exactly like every other gate
         // this specific test does not care about.
-        guidedFlow: { A01: { status: "completed" }, A02: { status: "skipped" } },
+        guidedFlow: {
+          A01: { status: "completed" },
+          A02: { status: "skipped" },
+          A04: { status: "completed", answer: "no" },
+        },
       };
       const reconciledContent = {
         ...reconciledContentBase,
@@ -2042,6 +2067,232 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
       expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+  });
+
+  describe("Mission 040 — A04 (moment prévu ?) and A05-A08 (informations cérémonie)", () => {
+    /** PAGE A through A03 all genuinely done, ANNOUNCEMENT context, A04
+     * NOT yet answered — A04's own normal starting point. */
+    const GUIDED_FLOW_WITHOUT_A04: Record<string, unknown> = {
+      ...(REAL_DRAFT.content as { guidedFlow: Record<string, unknown> }).guidedFlow,
+    };
+    delete GUIDED_FLOW_WITHOUT_A04.A04;
+    const DRAFT_WITH_A03_DONE_NO_A04: MemorialVersion = {
+      content: {
+        ...REAL_DRAFT.content,
+        guidedFlow: GUIDED_FLOW_WITHOUT_A04,
+      } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    /** Same as above, plus A04 answered "yes" — A05's own normal
+     * starting point. */
+    function draftWithA04Yes(extraGuidedFlow: Record<string, unknown> = {}): MemorialVersion {
+      return {
+        content: {
+          ...DRAFT_WITH_A03_DONE_NO_A04.content,
+          guidedFlow: {
+            ...(DRAFT_WITH_A03_DONE_NO_A04.content as { guidedFlow: object }).guidedFlow,
+            A04: { status: "completed", answer: "yes" },
+            ...extraGuidedFlow,
+          },
+        } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+    }
+
+    it("renders CeremonyMomentStep (A04) once A03 is done, for the announcement context", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL, // editorialContext: "announcement"
+        draft: DRAFT_WITH_A03_DONE_NO_A04,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyMomentStep);
+      expect(CeremonyDateTimeStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("wires CeremonyMomentStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: DRAFT_WITH_A03_DONE_NO_A04,
+      });
+
+      const result = await callPage("claimed-id");
+
+      expect(result.props.content).toBe(DRAFT_WITH_A03_DONE_NO_A04.content);
+      expect(result.props.editorialContext).toBe("announcement");
+
+      const newContent = { guidedFlow: {} };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
+    });
+
+    it("A04 never appears for the remembrance context — falls through past T08 to the same notice", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
+        draft: DRAFT_WITH_A03_DONE_NO_A04,
+      });
+
+      const result = await callPage();
+
+      expect(CeremonyMomentStep).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+
+    it("A04 = no never opens A05-A08 — falls straight through to the not-configured-yet notice", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: REAL_DRAFT, // A04 = "no" (REAL_DRAFT_CONTENT_BASE)
+      });
+
+      const result = await callPage();
+
+      expect(CeremonyMomentStep).not.toHaveBeenCalled();
+      expect(CeremonyDateTimeStep).not.toHaveBeenCalled();
+      expect(result.type).toBe(BuilderShell);
+    });
+
+    it("renders CeremonyDateTimeStep (A05) once A04 = yes, never before", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes(),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyDateTimeStep);
+      expect(CeremonyMomentStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders CeremonyVenueStep (A06) once A05 is resolved", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({ A05: { status: "skipped" } }),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyVenueStep);
+      expect(CeremonyDateTimeStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders CeremonyAddressStep (A07) once A06 is resolved", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({ A05: { status: "skipped" }, A06: { status: "skipped" } }),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyAddressStep);
+      expect(CeremonyVenueStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders CeremonyNoteStep (A08) once A07 is resolved", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({
+          A05: { status: "skipped" },
+          A06: { status: "skipped" },
+          A07: { status: "skipped" },
+        }),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyNoteStep);
+      expect(CeremonyAddressStep).not.toHaveBeenCalled();
+      expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders BuilderShell once A04-A08 are all resolved and the memorial is otherwise fully configured", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL, // has a real slug
+        draft: draftWithA04Yes({
+          A05: { status: "skipped" },
+          A06: { status: "skipped" },
+          A07: { status: "skipped" },
+          A08: { status: "completed" },
+        }),
+      });
+
+      const result = await callPage();
+
+      expect(CeremonyMomentStep).not.toHaveBeenCalled();
+      expect(CeremonyDateTimeStep).not.toHaveBeenCalled();
+      expect(CeremonyVenueStep).not.toHaveBeenCalled();
+      expect(CeremonyAddressStep).not.toHaveBeenCalled();
+      expect(CeremonyNoteStep).not.toHaveBeenCalled();
+      expect(result.type).toBe(BuilderShell);
     });
   });
 
