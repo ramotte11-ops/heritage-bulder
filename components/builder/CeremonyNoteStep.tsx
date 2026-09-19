@@ -29,13 +29,12 @@ interface CeremonyNoteStepProps {
 }
 
 /**
- * Mission 040 — A08: one facultative practical note, and the ceremony
- * branch's own "validation" moment (mission brief). Unlike A05-A07,
- * `note` is never required for "Continuer" to succeed — this screen's
- * real purpose is to let the family close out the ceremony information
- * they have chosen to share, not to collect one more mandatory field.
- * "Passer cette étape" stays available alongside it, for a family that
- * wants to move on without confirming even that.
+ * Mission 040 — A08: one facultative practical note. Same two-outcome
+ * shape as A05-A07 (QG review — A08 is only ever "note pratique
+ * facultative", never a second, broader branch-validation screen):
+ * "Continuer" stays disabled while `note` is empty, "Passer cette
+ * étape" lets the family move on without one, and once a note is
+ * entered "Continuer" becomes available and commits A08 as completed.
  */
 export function CeremonyNoteStep({ language, editorialContext, content: initialContent, persist }: CeremonyNoteStepProps) {
   const router = useRouter();
@@ -148,7 +147,7 @@ export function CeremonyNoteStep({ language, editorialContext, content: initialC
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled}>
+            <PrimaryButton type="submit" disabled={controlsDisabled || read.ceremony.note === null}>
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>

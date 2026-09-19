@@ -284,7 +284,7 @@ describe("A07 — adresse ou accès + CTA → completed", () => {
 });
 
 // ---------------------------------------------------------------------
-// A08 — note pratique facultative / validation
+// A08 — note pratique facultative
 // ---------------------------------------------------------------------
 
 describe("A08 — gated behind A07, never before", () => {
@@ -297,23 +297,29 @@ describe("A08 — gated behind A07, never before", () => {
   });
 });
 
-describe("A08 — note purement facultative; Continue jamais bloqué", () => {
-  it("commitA08 succeeds with no note at all — the branch's own validation moment", () => {
-    expect(commitA08(a07Skipped()).ok).toBe(true);
+describe("A08 — note + CTA → completed; sans note → refusé (QG review, mêmes règles qu'A05-A07)", () => {
+  it("commitA08 rejects when note is still null", () => {
+    expect(commitA08(a07Skipped())).toEqual({ ok: false, reason: "note" });
   });
 
-  it("commitA08 succeeds with a note present too", () => {
+  it("commitA08 succeeds once a note is present", () => {
     const withNote = writeCeremonyNote(a07Skipped(), "Recueillement à partir de 14h.");
     expect(withNote.ok).toBe(true);
     if (!withNote.ok) return;
     expect(commitA08(withNote.content).ok).toBe(true);
   });
 
-  it("skipA08 is still available, never touching note", () => {
+  it("skipA08 never touches note, and needs no note to be used", () => {
     const skipped = skipA08(a07Skipped());
     expect(skipped.ok).toBe(true);
     if (!skipped.ok) return;
     expect(needsA08(skipped.content)).toBe(false);
+    const read = readCeremonyForEditing(skipped.content);
+    expect(read.status === "ready" && read.ceremony.note).toBe(null);
+  });
+
+  it("refuses to commit over a corrupted stored Ceremony", () => {
+    expect(commitA08(CORRUPTED_UNKNOWN_KEY)).toEqual({ ok: false, reason: "corrupted" });
   });
 });
 
@@ -374,9 +380,11 @@ describe("Progression — full ceremony branch, A04=yes through A08, human-steps
 // ---------------------------------------------------------------------
 
 describe("Reprise — chaque étape résolue reste résolue tant que le contenu ne change pas", () => {
-  it("a fully-resolved ceremony branch never re-asks any of A04-A08", () => {
-    const content = a07Skipped();
-    const committed = commitA08(content);
+  it("a fully-resolved ceremony branch (A08 completed with a note) never re-asks any of A04-A08", () => {
+    const withNote = writeCeremonyNote(a07Skipped(), "Recueillement à partir de 14h.");
+    expect(withNote.ok).toBe(true);
+    if (!withNote.ok) return;
+    const committed = commitA08(withNote.content);
     expect(committed.ok).toBe(true);
     if (!committed.ok) return;
 
@@ -385,5 +393,17 @@ describe("Reprise — chaque étape résolue reste résolue tant que le contenu 
     expect(needsA06(committed.content)).toBe(false);
     expect(needsA07(committed.content)).toBe(false);
     expect(needsA08(committed.content)).toBe(false);
+  });
+
+  it("a fully-resolved ceremony branch (A08 skipped, no note) never re-asks any of A04-A08 either", () => {
+    const skipped = skipA08(a07Skipped());
+    expect(skipped.ok).toBe(true);
+    if (!skipped.ok) return;
+
+    expect(needsA04(skipped.content)).toBe(false);
+    expect(needsA05(skipped.content)).toBe(false);
+    expect(needsA06(skipped.content)).toBe(false);
+    expect(needsA07(skipped.content)).toBe(false);
+    expect(needsA08(skipped.content)).toBe(false);
   });
 });

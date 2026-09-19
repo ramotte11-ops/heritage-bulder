@@ -55,12 +55,12 @@ import { resolveHeroFlowState } from "./hero-step";
  * famille"). `commitAxx` requires the group's own field(s) to genuinely
  * hold something at the moment of the click (mirrors `commitA02`'s own
  * "au moins une précision" rule); `skipAxx` never touches
- * `content.ceremony` at all, only the step's own `StepRecord`. A08 is
- * the one exception: its own field (`note`) is purely facultative *and*
- * this step is also the branch's own "validation" moment (mission
- * brief), so `commitA08` never requires `note` to hold anything —
- * `skipA08` still exists alongside it for a family that wants to move on
- * without confirming even that.
+ * `content.ceremony` at all, only the step's own `StepRecord`. A08
+ * follows the exact same two-outcome shape as A05-A07: `commitA08`
+ * requires `note` to genuinely hold something (QG review, Mission 040 —
+ * A08 is only ever "note pratique facultative", never a second,
+ * broader "validation" screen); `skipA08` lets the family move on
+ * without one.
  *
  * ## The corrupted guard
  *
@@ -156,8 +156,8 @@ export function needsA07(content: MemorialContent): boolean {
   return !isStepResolved(content, "A07");
 }
 
-/** A08 (note pratique facultative / validation) — mirrors `needsA07`,
- * one step down; the last of the four. */
+/** A08 (note pratique facultative) — mirrors `needsA07`, one step down;
+ * the last of the four. */
 export function needsA08(content: MemorialContent): boolean {
   if (needsA07(content)) return false;
   if (!isCeremonyPlanned(content)) return false;
@@ -321,16 +321,17 @@ export function skipA07(content: MemorialContent): CeremonyFieldWriteResult {
 }
 
 // ---------------------------------------------------------------------
-// A08 — note pratique facultative / validation. Unlike A05-A07,
-// `commitA08` never requires its own field: `note` is purely
-// facultative and this step also plays the branch's own "validation"
-// role (mission brief) — a family with nothing left to add still
-// legitimately "continues" past it.
+// A08 — note pratique facultative. Same two-outcome shape as A05-A07
+// (QG review, Mission 040): `commitA08` requires `note` to genuinely
+// hold something at the moment of the click; a family with nothing to
+// add uses `skipA08` instead — A08 is never a second, broader
+// "validation" screen for the branch.
 // ---------------------------------------------------------------------
 
 export function commitA08(content: MemorialContent): CeremonyFieldWriteResult {
   const inspected = inspectCeremony(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (inspected.ceremony.note === null) return { ok: false, reason: "note" };
 
   const nextFlow = { ...readGuidedFlowState(content), A08: { status: "completed" } as StepRecord };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
