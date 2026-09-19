@@ -11,8 +11,8 @@ import { translate } from "@/lib/i18n/translate";
 import { commitPageE, heroStepProgress, readHeroForEditing } from "@/lib/builder/guided-flow/hero-step";
 import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
 import { BuilderScreen } from "./BuilderScreen";
+import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
-import screenStyles from "./BuilderScreen.module.css";
 import styles from "./HeroRevealStep.module.css";
 
 interface HeroRevealStepProps {
@@ -48,14 +48,47 @@ interface HeroRevealStepProps {
  *
  * "Ce n'est ni un formulaire, ni une card, ni une miniature. C'est la
  * première récompense émotionnelle du parcours." (mission brief section
- * 15). This screen still uses `BuilderScreen` for the surrounding
- * Builder chrome (logo, progress bar — always light, mission brief
- * section 15: "le chrome du Builder autour reste clair"), but everything
- * inside is the REAL `HeroIntemporel` renderer — the same one a future
- * Live Preview and the published memorial page will use, never a
- * miniature or a mock built specially for this screen (mission brief
- * section 3).
+ * 15). Everything below the slim Builder bar is the REAL `HeroIntemporel`
+ * renderer — the same one a future Live Preview and the published
+ * memorial page will use, never a miniature or a mock built specially
+ * for this screen (mission brief section 3).
  *
+ * ## QG Hero Runtime Fidelity mini-mission — `BuilderScreen` dropped for
+ * the real Hero (post-Mission-035 correction)
+ *
+ * This screen originally wrapped `HeroIntemporel` in `BuilderScreen`,
+ * whose own `.frame` caps at 600px desktop / 335px mobile
+ * (BuilderScreen.module.css) — the right width for T01-T07's narrow
+ * forms, but never meant to also bound the Hero's own immersive
+ * composition. A forensic audit (QG, pre-Mission-040) traced the
+ * "carte/timbre centrée" effect visible on `/builder/demo` straight to
+ * this: `HeroIntemporel` itself carries no `max-width` of its own
+ * (HeroIntemporel.module.css) and would gladly render at its master's
+ * native size (1536×1024 desktop, 941×1672 mobile) — `.frame` was the
+ * only thing shrinking it.
+ *
+ * `DeathNoticePreviewStep.tsx` (A03) had already hit, and fixed, the
+ * exact same defect in Mission 039B — its own docstring documents the
+ * PO's "card inside a card" rejection of wrapping `DeathNoticeIntemporel`
+ * in `BuilderScreen`. This screen now follows that SAME principle, one
+ * level down: a plain `<main>` with its own slim `.builderBar` (progress
+ * + title) and `.builderControls` (toggle + CTA) — each independently
+ * capped at a modest reading width (28rem, A03's own convention for a
+ * Builder-only strip) — bracketing the Hero, which sits in `.stage` at
+ * its own `max-width: 1536px` (the desktop master's own native width,
+ * chosen from the Hero masters themselves per this mini-mission's brief
+ * — never A03's 841px/1672px, which belong to a differently-sized
+ * Studio pack). Below that cap the Hero renders at a genuinely
+ * generous, near-viewport width on both desktop and mobile (no more
+ * 335px mobile ceiling); above it, the desktop master is capped at its
+ * own native resolution rather than upscaled.
+ *
+ * `BuilderScreen` is kept for exactly one case below — no real Hero to
+ * show at all (`read.status !== "ready"`) — the same "keep the chrome
+ * only where there is no real Memorial to render" split A03 already
+ * uses for its own corrupted/unavailable states.
+ *
+
  * ## Preview vs. confirmation (mission brief section 16-17)
  *
  * `previewVariant` is local React state ONLY — it starts at
@@ -161,8 +194,9 @@ export function HeroRevealStep({
   }
 
   return (
-    <BuilderScreen progress={progress}>
-      <div className={styles.copy}>
+    <main className={styles.page}>
+      <div className={styles.builderBar}>
+        <ProgressBar value={progress} />
         <h1 className={styles.title}>{translate(language, "hero.revealTitle")}</h1>
       </div>
 
@@ -176,7 +210,7 @@ export function HeroRevealStep({
         />
       </div>
 
-      <form className={styles.form} onSubmit={handleSubmit}>
+      <form className={styles.builderControls} onSubmit={handleSubmit}>
         <button
           type="button"
           className={styles.toggle}
@@ -189,7 +223,7 @@ export function HeroRevealStep({
           )}
         </button>
 
-        <div className={screenStyles.ctaWrap}>
+        <div className={styles.ctaWrap}>
           <PrimaryButton type="submit" disabled={isSubmitting}>
             {translate(language, "hero.revealConfirm")}
           </PrimaryButton>
@@ -201,6 +235,6 @@ export function HeroRevealStep({
           </p>
         )}
       </form>
-    </BuilderScreen>
+    </main>
   );
 }
