@@ -165,6 +165,22 @@
 
 .displayedName {
   margin: 0;
+  /* QG Hero Runtime Fidelity mini-mission — without this, `.displayedName`
+   * is the ONE child of `.textZone` (a `flex-direction:column` box with
+   * `align-items:flex-start`, never `stretch`) that does not size itself
+   * to the zone's own width: it was measured rendering at its own
+   * one-line content width (e.g. 284px for "Éléonore Vasseur" at 86px)
+   * wider than `.textZone`'s available content box (213.6px), silently
+   * clipped by `.textZone`'s own `overflow:hidden` rather than wrapping.
+   * `useFitDisplayName`'s `countVisualLines()` (HeroIntemporel.tsx) only
+   * ever sees the ACTUAL rendered line count, so an element free to grow
+   * past its intended column always measures "1 line" and the fitting
+   * algorithm never engages. `width: 100%` forces this element to the
+   * same deterministic width its siblings (`.contextLabel`, `.dates`)
+   * already end up at, exactly like `.shortPhrase`'s own `max-width:
+   * 100%` below — so real wrapping (and therefore real shrinking) can
+   * actually occur, for every name length, at every breakpoint. */
+  width: 100%;
   font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
   font-weight: 500;
   /* This is only the SSR/no-JS fallback (the Studio's nominal max size)

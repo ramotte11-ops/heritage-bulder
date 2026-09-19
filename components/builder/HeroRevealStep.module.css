@@ -1,16 +1,43 @@
 /*
- * Mission 035 — PAGE E (T08, Hero reveal). Chrome lives in
- * BuilderScreen.module.css and always stays the light Studio look
- * (mission brief section 15) — only `.stage` below ever renders under a
- * `data-heritage-skin-variant="dark"` scope, via HeroIntemporel's own
- * `SkinScope`.
+ * Mission 035 — PAGE E (T08, Hero reveal).
+ *
+ * QG Hero Runtime Fidelity mini-mission (post-Mission-035 correction,
+ * pre-Mission-040) — this file no longer relies on BuilderScreen.module.css
+ * for its chrome (see HeroRevealStep.tsx's own docstring for why): `.page`/
+ * `.builderBar`/`.builderControls`/`.stage` below mirror, in PRINCIPLE only
+ * (never in exact numbers — DeathNoticeIntemporel's 841px/1672px belong to
+ * a differently-sized Studio pack), the same three-zone split
+ * DeathNoticePreviewStep.module.css already uses for A03: a narrow
+ * Builder-only strip above and below, and a Hero that is never
+ * width-bound by either one. `.stage`'s `max-width: 1536px` is the Hero
+ * masters' OWN desktop-native width (config/hero-intemporel-tokens.ts's
+ * `HERO_INTEMPOREL_RUNTIME_MASTER_SPECS.*.desktop.dimensionsPx`) — chosen
+ * from the Hero assets themselves, not copied from A03.
+ *
+ * Only `.stage` (via HeroIntemporel's own `SkinScope`) ever renders under
+ * a `data-heritage-skin-variant="dark"` scope — `.page`/`.builderBar`/
+ * `.builderControls` stay the light Studio look regardless (mission brief
+ * section 15: "le chrome du Builder autour reste clair").
  */
 
-.copy {
-  text-align: center;
+.page {
+  min-height: 100dvh;
+  background: var(--heritage-surface-page);
   display: flex;
   flex-direction: column;
+  align-items: center;
+}
+
+.builderBar {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  padding: 1.5rem 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: var(--heritage-space-sm);
+  text-align: center;
 }
 
 .title {
@@ -26,20 +53,31 @@
   }
 }
 
-/* The real Hero, full width, contained but never cropped/scaled down to
- * a "miniature" (mission brief section 15). */
+/* The real Hero: capped only at its own desktop master's native
+ * resolution (never upscaled past it on very wide screens), and no
+ * longer shrunk below that on desktop or mobile by an unrelated
+ * artificial cap (previously inherited from BuilderScreen's `.frame`,
+ * 600px/335px) — see this file's own top docstring. */
 .stage {
   width: 100%;
-  border-radius: var(--heritage-radius-control);
-  overflow: hidden;
-  box-shadow: 0 1px 0 var(--heritage-border-soft);
+  max-width: 1536px;
+  margin-inline: auto;
 }
 
-.form {
+.builderControls {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  padding: 0 1.25rem 2.5rem;
+  margin-top: var(--heritage-space-breathing);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--heritage-space-breathing);
+}
+
+.ctaWrap {
+  width: 100%;
 }
 
 .toggle {
