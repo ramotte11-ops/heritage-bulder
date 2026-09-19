@@ -193,10 +193,40 @@ export interface FitDisplayNameResult {
 }
 
 /**
+ * QG Hero 375px long-name collision fix (post-Hero-Runtime-Fidelity
+ * mini-mission). A forensic measurement against the real mobile master
+ * PNGs (`hero-runtime-{light,dark}-mobile.png`) found that the botanical
+ * decoration baked into the master is NOT at a fixed pixel distance from
+ * the text zone's left edge — it is a fixed FRACTION of the Hero's own
+ * rendered width (the master scales uniformly with the Hero box). Tier
+ * 4's `extremeFallbackMinPx` (40px), by contrast, is a fixed ABSOLUTE
+ * size, chosen once for "mobile" as a whole. At a wide-enough mobile
+ * viewport (measured safe at 390px and 430px) that mismatch never
+ * matters — 40px text stays comfortably clear of the branch. At the
+ * narrowest real phone widths (measured colliding at 375px, confirmed
+ * via a row-by-row pixel scan of the actual asset and cross-checked
+ * against the live render), the SAME 40px text occupies a larger
+ * fraction of a proportionally smaller box, and its last wrapped line
+ * reaches into the branch.
+ *
+ * `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`/`NARROW_MOBILE_SAFE_AREA_RATIO`
+ * below are that measurement's direct result: at 375px, the branch's
+ * leftmost extent (in the vertical band a 4-5 line extreme name reaches)
+ * sits at roughly 72% of the Hero's own width; `.displayedName` starts
+ * indented from the Hero's edge, so a cap of 75% of the element's own
+ * (already-indented) available width keeps a real, deliberate margin
+ * short of that — not a bare minimum fit. This ratio touches
+ * `.displayedName` ONLY inside Tier 4 (see `fit()` below) and only under
+ * `NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX`: Tiers 1-3 — every normal name,
+ * "Éléonore Vasseur" included (measured at 237.6px for its own widest
+ * line, comfortably inside the untouched, full-width Tier 1-3 box) —
+ * never see it, and 390px/430px/desktop take the exact original code
+ * path, unmodified.
+ *
  * Mission 035 v4 section 6 (QG-locked) — the three-tier fitting
- * strategy; see `HERO_INTEMPOREL_TYPOGRAPHY.displayedName`'s own
- * docstring for the exact rule this implements. Runs client-side only
- * (`useLayoutEffect`, after the browser has laid out the real text
+ * strategy this builds on; see `HERO_INTEMPOREL_TYPOGRAPHY.displayedName`'s
+ * own docstring for the exact rule Tiers 1-4 implement. Runs client-side
+ * only (`useLayoutEffect`, after the browser has laid out the real text
  * against the real font): the initial render (and any
  * server-rendered/no-JS view) shows the name at the nominal size —
  * `HeroIntemporel.module.css`'s own fallback — so there is no flash of
@@ -204,9 +234,12 @@ export interface FitDisplayNameResult {
  * once real measurement is possible.
  *
  * NEVER truncates, ellipsizes, or drops a word at any tier — the full
- * name is always the element's `textContent`; only `fontSizePx` ever
- * changes.
+ * name is always the element's `textContent`; only `fontSizePx` (every
+ * tier) and, now, `maxWidth` (Tier 4, narrow mobile only) ever change.
  */
+const NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX = 380;
+const NARROW_MOBILE_SAFE_AREA_RATIO = 0.75;
+
 export function useFitDisplayName(text: string): FitDisplayNameResult {
   const ref = useRef<HTMLHeadingElement | null>(null);
   const [result, setResult] = useState<{ fontSizePx: number | null; lines: number | null; usedExtremeFallback: boolean }>(
@@ -228,6 +261,13 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       const setSize = (px: number) => {
         el.style.fontSize = `${px}px`;
       };
+
+      // Reset any narrow-mobile safe-area cap a PREVIOUS call of this
+      // same effect left behind (e.g. a resize from a narrow phone to a
+      // wider one, or a text change) before measuring anything below —
+      // Tiers 1-3 must always measure against the element's normal,
+      // uncapped width.
+      el.style.maxWidth = "";
 
       // Tier 1/2 — nominal size, then shrink (never below the NORMAL
       // floor) until it wraps into <= maxLinesNormal. A name that
@@ -256,8 +296,24 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       }
 
       // Tier 4 — the documented fallback extrême: still over even the
-      // 3-line allowance at the normal floor. Shrink further, the
-      // smallest amount needed, down to (never past) extremeFallbackMinPx.
+      // 3-line allowance at the normal floor.
+      //
+      // QG Hero 375px long-name collision fix: only here, and only on
+      // narrow mobile (see this hook's own top docstring for the
+      // measured evidence), cap the element's own width to the measured
+      // safe fraction BEFORE shrinking, so the shrink loop's own
+      // `countVisualLines` re-measurement — and therefore the final
+      // wrapped width — reflects the safe area, not the full zone.
+      if (!isDesktop && window.innerWidth <= NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX) {
+        el.style.maxWidth = `${NARROW_MOBILE_SAFE_AREA_RATIO * 100}%`;
+        // `lines` above was measured against the now-stale, uncapped
+        // width — re-measure immediately so the loop below (and its
+        // entry condition) reflects the real, narrower box.
+        lines = countVisualLines(el);
+      }
+
+      // Shrink further, the smallest amount needed, down to (never past)
+      // extremeFallbackMinPx.
       while (lines > t.maxLinesExtreme && size > t.extremeFallbackMinPx) {
         size -= 1;
         setSize(size);

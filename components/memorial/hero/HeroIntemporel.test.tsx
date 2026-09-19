@@ -386,4 +386,114 @@ describe("HeroIntemporel — displayedName fitting (mission 035 v4, section 6)",
     expect(finalSize).toBe(40); // settles exactly at the extreme floor, no lower
     expect(h1.textContent).toBe("Marie-Alexandrine de Beaumont-Rousseau"); // never truncated
   });
+
+  /**
+   * QG Hero 375px long-name collision fix — a forensic measurement
+   * against the real mobile master assets found Tier 4's name reaching
+   * into the botanical decoration baked into the master, specifically at
+   * narrow phone widths (measured colliding at 375px, safe at 390px/
+   * 430px). These tests exercise the resulting `maxWidth` cap in
+   * isolation from real layout, the same `stubLineCountByFontSize`
+   * technique the tiers above already use.
+   */
+  describe("Tier 4 narrow-mobile safe-area cap (QG Hero 375px collision fix)", () => {
+    function setViewportWidth(width: number) {
+      Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+    }
+
+    it("caps the element's own width only once Tier 4 is reached, on a narrow mobile viewport (375px)", () => {
+      setViewportWidth(375);
+      // Mobile bounds: nominal 72, normal floor 48. Never fits in <= 3
+      // lines above 48px; still 4+ lines even at the extreme floor — a
+      // genuinely extreme name, exactly like the mission's own test case.
+      stubLineCountByFontSize((px) => (px <= 40 ? 4 : 5));
+      const { container } = renderHero({
+        hero: {
+          ...FULL_HERO,
+          displayName: "Marie-Charlotte de La Fontaine-Delacroix-Beaumont du Plessis-Grandchamp",
+        },
+      });
+
+      const h1 = container.querySelector("h1") as HTMLElement;
+      expect(Number.parseFloat(h1.style.fontSize)).toBe(40); // still respects the documented extreme floor
+      expect(h1.style.maxWidth).toBe("75%"); // the measured safe-area cap, applied
+      expect(h1.textContent).toBe(
+        "Marie-Charlotte de La Fontaine-Delacroix-Beaumont du Plessis-Grandchamp",
+      ); // never truncated
+    });
+
+    it("leaves Tiers 1-3 completely uncapped on the SAME narrow viewport — normal names are untouched", () => {
+      setViewportWidth(375);
+      stubLineCountByFontSize(() => 1); // fits in 1 line at nominal — Tier 1, never reaches Tier 4
+      const { container } = renderHero({ hero: { ...FULL_HERO, displayName: "Éléonore Vasseur" } });
+
+      const h1 = container.querySelector("h1") as HTMLElement;
+      expect(Number.parseFloat(h1.style.fontSize)).toBe(72); // mobile nominal, untouched
+      expect(h1.style.maxWidth).toBe(""); // no cap — Tier 1 never applies one
+    });
+
+    it("does not cap Tier 4 at 390px or wider — only the measured-unsafe narrow band is touched", () => {
+      setViewportWidth(390);
+      stubLineCountByFontSize((px) => (px <= 40 ? 4 : 5)); // same genuinely-extreme name as above
+      const { container } = renderHero({
+        hero: {
+          ...FULL_HERO,
+          displayName: "Marie-Charlotte de La Fontaine-Delacroix-Beaumont du Plessis-Grandchamp",
+        },
+      });
+
+      const h1 = container.querySelector("h1") as HTMLElement;
+      expect(Number.parseFloat(h1.style.fontSize)).toBe(40); // Tier 4 still reached, same as before this fix
+      expect(h1.style.maxWidth).toBe(""); // but never capped at this width — matches the measured-safe QA
+    });
+
+    it("does not cap Tier 4 on desktop even at a narrow-mobile-equivalent pixel width", () => {
+      // isDesktop is decided by the 960px breakpoint, never by this
+      // narrow-mobile threshold — a desktop viewport must never trigger
+      // the mobile-only cap even if some future desktop window happened
+      // to sit below the raw NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX value.
+      setViewportWidth(1024); // real jsdom default; kept explicit here for clarity
+      stubLineCountByFontSize(() => 5);
+      const { container } = renderHero({
+        hero: {
+          ...FULL_HERO,
+          displayName: "Marie-Alexandrine de Beaumont-Rousseau",
+        },
+      });
+
+      const h1 = container.querySelector("h1") as HTMLElement;
+      expect(h1.style.maxWidth).toBe("");
+    });
+
+    it("resets a previous narrow-mobile cap when a later fit finds Tiers 1-3 sufficient (e.g. a resize to a shorter effective wrap)", () => {
+      setViewportWidth(375);
+      let stage: "extreme" | "fits" = "extreme";
+      stubLineCountByFontSize((px) => (stage === "extreme" ? (px <= 40 ? 4 : 5) : 1));
+
+      const { container, rerender } = renderHero({
+        hero: {
+          ...FULL_HERO,
+          displayName: "Marie-Charlotte de La Fontaine-Delacroix-Beaumont du Plessis-Grandchamp",
+        },
+      });
+      const h1 = container.querySelector("h1") as HTMLElement;
+      expect(h1.style.maxWidth).toBe("75%"); // Tier 4 cap applied first
+
+      // Simulate the SAME element later fitting in 1 line (a shorter
+      // name, or a resize) — the effect re-runs (text changed) and must
+      // clear its own earlier cap rather than leaving it stuck.
+      stage = "fits";
+      rerender(
+        <HeroIntemporel
+          hero={{ ...FULL_HERO, displayName: "Ana Vives" }}
+          photo={PHOTO}
+          skinVariant="light"
+          editorialContext="remembrance"
+          language="fr"
+        />,
+      );
+      const h1Again = container.querySelector("h1") as HTMLElement;
+      expect(h1Again.style.maxWidth).toBe("");
+    });
+  });
 });
