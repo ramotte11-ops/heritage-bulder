@@ -349,6 +349,22 @@ export const TRANSLATION_KEYS = [
   "personSheet.a12Question",
   "personSheet.a12Helper",
   "personSheet.skip",
+  // "Récit de vie" — the Memorial renderer composing A10/A11/A12 into
+  // one editorial piece (Studio pack RECIT_DE_VIE_STUDIO_RUNTIME_V1_1).
+  // Structural/editorial chrome only — never the family's own text,
+  // which is never translated (StoryIntemporel.tsx renders
+  // content.personWords/lovedThings/legacy verbatim). `title` is the
+  // section's own heading; `person`/`loved`/`legacy` are A10/A11/A12's
+  // own small-caps zone labels (word-for-word the package's own
+  // `spec/content-contract.json`); `decorativeMemories` is the one piece
+  // of HERITAGE editorial microcopy the package places on its own blank
+  // note asset ("Des souvenirs qui restent.") — never family-authored,
+  // never baked into the asset (content-contract.json's own rule).
+  "story.title",
+  "story.person",
+  "story.loved",
+  "story.legacy",
+  "story.decorativeMemories",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

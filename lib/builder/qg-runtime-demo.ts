@@ -24,6 +24,11 @@ import {
   writePrecision,
 } from "@/lib/builder/guided-flow/death-notice-step";
 import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
+import {
+  writeLegacyFieldText,
+  writeLovedThingsFieldText,
+  writePersonWordsFieldText,
+} from "@/lib/builder/guided-flow/person-sheet-step";
 
 /**
  * QG Runtime Demo (mini-mission before Mission 040) — deterministic,
@@ -275,6 +280,72 @@ export const QG_RUNTIME_DEMO_DEFAULT_SKIN_VARIANT: SkinVariant = "light";
  * a QG reviewer can trigger, would throw here for the same reason
  * `buildQgRuntimeDemoContent` does).
  */
+/**
+ * "Récit de vie" (StoryIntemporel) demo fixtures — the QG Runtime Demo's
+ * own visual-validation panel for this renderer (mission requirement:
+ * reuse the existing demo rather than a second showcase). Fixture texts
+ * only, deliberately fictional, never real family content. Applied
+ * through the real `writePersonWordsFieldText`/`writeLovedThingsFieldText`/
+ * `writeLegacyFieldText` functions (`lib/builder/guided-flow/person-sheet-step.ts`)
+ * — never by hand-shaping `content.personWords`/`lovedThings`/`legacy`,
+ * same discipline as every other fixture in this module.
+ */
+export const QG_RUNTIME_DEMO_STORY_A10_TEXT =
+  "Elle était douce, attentive et toujours à l'écoute. Elle avait un grand cœur, une présence rassurante et une manière unique de faire se sentir chacun important.";
+export const QG_RUNTIME_DEMO_STORY_A11_TEXT =
+  "Elle aimait les livres, la nature, les longues promenades en bord de mer et les repas partagés en famille.";
+export const QG_RUNTIME_DEMO_STORY_A12_TEXT =
+  "Elle nous laisse des valeurs précieuses : la générosité, le respect des autres et la capacité de voir le beau dans chaque jour.";
+
+/** A deliberately long single matière, to test the package's own
+ * "375px, texte long" QA scenario — real runtime text, no line limit. */
+export const QG_RUNTIME_DEMO_STORY_A10_LONG_TEXT =
+  "Elle avait une présence rassurante et une grande capacité d'écoute. Toujours disponible pour sa famille et ses amis, elle savait trouver les mots justes et apporter du réconfort dans les moments difficiles. Elle faisait preuve d'une générosité naturelle, d'une attention sincère aux autres et d'une grande curiosité pour tout ce qui l'entourait. Aujourd'hui encore, nous gardons en mémoire son sourire, sa force tranquille et tout ce qu'elle nous a transmis.";
+
+export const QG_RUNTIME_DEMO_STORY_COMBINATIONS = [
+  "A10",
+  "A11",
+  "A12",
+  "A10+A11",
+  "A10+A12",
+  "A11+A12",
+  "A10+A11+A12",
+  "A10-long",
+] as const;
+export type QgRuntimeDemoStoryCombination = (typeof QG_RUNTIME_DEMO_STORY_COMBINATIONS)[number];
+
+/** Builds a fresh, minimal `MemorialContent` carrying only whichever
+ * Récit de vie matières `combination` names — through the real
+ * `write*FieldText` functions, so `StoryIntemporel` receives content
+ * exactly as the real combined Builder sheet (Mission 044) would have
+ * produced it. */
+export function buildQgRuntimeDemoStoryContent(combination: QgRuntimeDemoStoryCombination): MemorialContent {
+  let content: MemorialContent = {};
+
+  const wantsA10 = combination === "A10" || combination === "A10+A11" || combination === "A10+A12" || combination === "A10+A11+A12";
+  const wantsA10Long = combination === "A10-long";
+  const wantsA11 = combination === "A11" || combination === "A10+A11" || combination === "A11+A12" || combination === "A10+A11+A12";
+  const wantsA12 = combination === "A12" || combination === "A10+A12" || combination === "A11+A12" || combination === "A10+A11+A12";
+
+  if (wantsA10 || wantsA10Long) {
+    const write = writePersonWordsFieldText(content, wantsA10Long ? QG_RUNTIME_DEMO_STORY_A10_LONG_TEXT : QG_RUNTIME_DEMO_STORY_A10_TEXT);
+    if (!write.ok) throw new Error("QG runtime demo fixture: personWords write refused");
+    content = write.content;
+  }
+  if (wantsA11) {
+    const write = writeLovedThingsFieldText(content, QG_RUNTIME_DEMO_STORY_A11_TEXT);
+    if (!write.ok) throw new Error("QG runtime demo fixture: lovedThings write refused");
+    content = write.content;
+  }
+  if (wantsA12) {
+    const write = writeLegacyFieldText(content, QG_RUNTIME_DEMO_STORY_A12_TEXT);
+    if (!write.ok) throw new Error("QG runtime demo fixture: legacy write refused");
+    content = write.content;
+  }
+
+  return content;
+}
+
 export function buildQgRuntimeDemoContentThroughA03(input: QgRuntimeDemoHeroInput): MemorialContent {
   let content = buildQgRuntimeDemoContent(input);
 

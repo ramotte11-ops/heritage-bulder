@@ -16,11 +16,20 @@ import {
   QG_RUNTIME_DEMO_NAME_LONG,
   QG_RUNTIME_DEMO_NAME_NORMAL,
   QG_RUNTIME_DEMO_PRECISIONS,
+  QG_RUNTIME_DEMO_STORY_A10_LONG_TEXT,
+  QG_RUNTIME_DEMO_STORY_A10_TEXT,
+  QG_RUNTIME_DEMO_STORY_A11_TEXT,
+  QG_RUNTIME_DEMO_STORY_A12_TEXT,
+  QG_RUNTIME_DEMO_STORY_COMBINATIONS,
   applyQgRuntimeDemoAnnouncement,
   applyQgRuntimeDemoPrecisions,
   buildQgRuntimeDemoContent,
   buildQgRuntimeDemoContentThroughA03,
+  buildQgRuntimeDemoStoryContent,
 } from "./qg-runtime-demo";
+import { readPersonWords } from "@/lib/memorial/person-words";
+import { readLovedThings } from "@/lib/memorial/loved-things";
+import { readLegacy } from "@/lib/memorial/legacy";
 
 /**
  * QG Runtime Demo (mini-mission before Mission 040) — the demo page
@@ -101,5 +110,39 @@ describe("qg-runtime-demo", () => {
     expect(needsA01(content)).toBe(false);
     expect(needsA02(content)).toBe(false);
     expect(needsA03(content)).toBe(true);
+  });
+
+  describe("buildQgRuntimeDemoStoryContent — Récit de vie demo fixtures", () => {
+    it("every combination reaches exactly the matières its own name says, through the real write functions", () => {
+      const expected: Record<string, { a10: boolean; a11: boolean; a12: boolean }> = {
+        A10: { a10: true, a11: false, a12: false },
+        A11: { a10: false, a11: true, a12: false },
+        A12: { a10: false, a11: false, a12: true },
+        "A10+A11": { a10: true, a11: true, a12: false },
+        "A10+A12": { a10: true, a11: false, a12: true },
+        "A11+A12": { a10: false, a11: true, a12: true },
+        "A10+A11+A12": { a10: true, a11: true, a12: true },
+        "A10-long": { a10: true, a11: false, a12: false },
+      };
+
+      for (const combo of QG_RUNTIME_DEMO_STORY_COMBINATIONS) {
+        const content = buildQgRuntimeDemoStoryContent(combo);
+        const want = expected[combo];
+        expect(readPersonWords(content).text !== null).toBe(want.a10);
+        expect(readLovedThings(content).text !== null).toBe(want.a11);
+        expect(readLegacy(content).text !== null).toBe(want.a12);
+      }
+    });
+
+    it("A10-long uses the deliberately long fixture text, every other A10 combo uses the normal one", () => {
+      expect(readPersonWords(buildQgRuntimeDemoStoryContent("A10-long")).text).toBe(QG_RUNTIME_DEMO_STORY_A10_LONG_TEXT);
+      expect(readPersonWords(buildQgRuntimeDemoStoryContent("A10")).text).toBe(QG_RUNTIME_DEMO_STORY_A10_TEXT);
+    });
+
+    it("A11/A12 fixture text matches the module's own exported constants", () => {
+      const content = buildQgRuntimeDemoStoryContent("A11+A12");
+      expect(readLovedThings(content).text).toBe(QG_RUNTIME_DEMO_STORY_A11_TEXT);
+      expect(readLegacy(content).text).toBe(QG_RUNTIME_DEMO_STORY_A12_TEXT);
+    });
   });
 });

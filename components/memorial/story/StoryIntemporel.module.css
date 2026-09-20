@@ -1,0 +1,392 @@
+/*
+ * "Récit de vie" Intemporel renderer — Studio pack
+ * RECIT_DE_VIE_STUDIO_RUNTIME_V1_1. Every desktop/mobile geometry value
+ * below traces to config/story-intemporel-tokens.ts, itself transcribed
+ * verbatim from that package's own spec/geometry.json (content column
+ * x/width/gaps, mobile per-width horizontal padding, matter/label gaps,
+ * minimum-after-last-matter). The package gives NO geometry for the
+ * decorative corner assets (botanical/seal/sprig/note) — those four
+ * placements are a visual-proportion match against the package's own
+ * qa/*.png proofs, flagged to QG in StoryIntemporel.tsx's own docstring,
+ * not read off a spec number that does not exist.
+ *
+ * ## Two-layer stack, no fixed-canvas percentage boxes
+ *
+ * Unlike Hero/Ceremony/Death Notice, this section is NOT positioned
+ * against a fixed illustration canvas — see StoryIntemporel.tsx's own
+ * docstring for why the package's own FRAME_TOP + FLOW_BODY +
+ * FRAME_BOTTOM architecture needs none of that. `.wrap` carries the one
+ * repeatable asset (the seamless paper tile) as its own CSS background;
+ * the four decorative corner images are `position: absolute` against
+ * `.wrap` (`top`/`bottom` + `left`/`right`, never against a fixed
+ * height), and everything else is `.content`, an ordinary flex column in
+ * normal document flow — `.wrap`'s total height is simply whatever that
+ * flow content resolves to, so the FRAME BOTTOM decor (anchored
+ * `bottom: 0`) always tracks the real content height with zero JS
+ * measurement (`growth.bottom_anchor`: "after last present matter").
+ *
+ * ## The rail — one continuous line per gap, CSS-only, content-height-
+ * aware
+ *
+ * `.iconCol` is a flex sibling of `.textCol` inside `.matterRow`
+ * (default `align-items: stretch`, so `.iconCol` is stretched to
+ * `.textCol`'s own natural height, whatever that turns out to be for
+ * this family's text). `.rail` is `position: absolute` inside `.iconCol`,
+ * starting right after the icon (`top: <icon size>`) and extending past
+ * `.iconCol`'s own (stretched) bottom edge by exactly one `matterGapPx`
+ * (`bottom: -<matterGapPx>`) — so it always reaches precisely the next
+ * present matter's own icon, however tall this matter's text turned out
+ * to be. `.matter:last-child .rail` is hidden — the last PRESENT
+ * matter's own trailing rail, whichever A-number it is (an absent
+ * matière never gets a DOM node to be `:last-child` of at all).
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  overflow: hidden;
+  background-repeat: repeat;
+  background-position: top left;
+  color: var(--story-ink-primary);
+}
+
+/* ---------------------------------------------------------------------
+ * Decor layer — FRAME TOP / FRAME BOTTOM, non-repeating, pinned to the
+ * section's own corners.
+ * ------------------------------------------------------------------- */
+
+.desktopOnly {
+  display: block;
+}
+.mobileOnly {
+  display: none;
+}
+
+@media (max-width: 959.98px) {
+  .desktopOnly {
+    display: none;
+  }
+  .mobileOnly {
+    display: block;
+  }
+}
+
+.decorTopLeft {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 280px;
+  height: auto;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.decorBottomRight {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 260px;
+  height: auto;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.seal {
+  position: absolute;
+  bottom: 32px;
+  left: 32px;
+  width: 96px;
+  height: 96px;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.decorTopMobile {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 130px;
+  height: auto;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.decorBottomMobile {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 150px;
+  height: auto;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------
+ * Content layer — ordinary responsive flow, determines .wrap's height.
+ * ------------------------------------------------------------------- */
+
+.content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 56px 28px 40px;
+}
+
+@media (min-width: 960px) {
+  .content {
+    padding: 88px 275px 64px 365px;
+  }
+}
+
+/* Mobile per-width horizontal padding — spec/geometry.json's own
+ * horizontal_padding_px, stepped at each named supported width rather
+ * than smoothed, since the package's own QA set proves each one
+ * individually. */
+@media (min-width: 390px) and (max-width: 959.98px) {
+  .content {
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+}
+@media (min-width: 414px) and (max-width: 959.98px) {
+  .content {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+@media (min-width: 430px) and (max-width: 959.98px) {
+  .content {
+    padding-left: 34px;
+    padding-right: 34px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Title + sprig
+ * ------------------------------------------------------------------- */
+
+.headerRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 40px;
+}
+
+@media (min-width: 960px) {
+  .headerRow {
+    margin-bottom: 56px;
+  }
+}
+
+.title {
+  margin: 0;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.1em;
+  font-size: clamp(20px, 5.3vw, 26px);
+}
+
+@media (min-width: 960px) {
+  .title {
+    font-size: 28px;
+    letter-spacing: 0.14em;
+  }
+}
+
+.sprig {
+  display: block;
+  width: 84px;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (min-width: 960px) {
+  .sprig {
+    width: 110px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Matters — icon rail + label/text column, one per present matière.
+ * ------------------------------------------------------------------- */
+
+.matters {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 960px) {
+  .matters {
+    max-width: 800px;
+  }
+}
+
+.matter {
+  margin-bottom: 48px;
+}
+
+@media (min-width: 960px) {
+  .matter {
+    margin-bottom: 72px;
+  }
+}
+
+.matter:last-child {
+  margin-bottom: 0;
+}
+
+.matterRow {
+  display: flex;
+  gap: 18px;
+}
+
+@media (min-width: 960px) {
+  .matterRow {
+    gap: 38px;
+  }
+}
+
+.iconCol {
+  position: relative;
+  flex: 0 0 50px;
+}
+
+@media (min-width: 960px) {
+  .iconCol {
+    flex-basis: 72px;
+  }
+}
+
+.icon {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.rail {
+  position: absolute;
+  top: 50px;
+  bottom: -48px;
+  left: 50%;
+  width: 1.5px;
+  transform: translateX(-50%);
+  background-color: var(--story-ink-primary);
+  opacity: 0.55;
+}
+
+@media (min-width: 960px) {
+  .rail {
+    top: 72px;
+    bottom: -72px;
+  }
+}
+
+.matter:last-child .rail {
+  display: none;
+}
+
+.textCol {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (min-width: 960px) {
+  .textCol {
+    max-width: 650px;
+  }
+}
+
+.label {
+  margin: 0 0 14px;
+  font-weight: 400;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--story-ink-secondary);
+}
+
+@media (min-width: 960px) {
+  .label {
+    margin-bottom: 18px;
+    font-size: 14px;
+    letter-spacing: 0.16em;
+  }
+}
+
+.familyText {
+  margin: 0;
+  white-space: pre-wrap;
+  font-weight: 400;
+  line-height: 1.6;
+  font-size: 16px;
+  color: var(--story-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .familyText {
+    font-size: 18px;
+    line-height: 1.65;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Editorial note — HERITAGE microcopy on a blank note asset, never
+ * baked (spec/content-contract.json's own rule). Follows the last
+ * matter in normal flow (growth.bottom_anchor), pushed to the column's
+ * own right edge via align-self on the flex-column .content.
+ * ------------------------------------------------------------------- */
+
+.editorialNote {
+  position: relative;
+  align-self: flex-end;
+  width: 230px;
+  margin-top: 56px;
+}
+
+@media (min-width: 960px) {
+  .editorialNote {
+    width: 320px;
+    margin-top: 86px;
+  }
+}
+
+.editorialNoteImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.editorialNoteText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 18%;
+  text-align: center;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--story-ink-primary);
+}
+
+@media (min-width: 960px) {
+  .editorialNoteText {
+    font-size: 17px;
+  }
+}
