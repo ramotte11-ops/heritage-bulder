@@ -140,10 +140,15 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "traditions.saveEdit": "Guardar",
   "traditions.skip": "Omitir este paso",
 
-  "personWords.title": "Unas palabras sobre la persona",
-  "personWords.subtitle": "¿Cómo le gustaría presentar a la persona que era?",
-  "personWords.helper":
+  "personSheet.title": "Unas palabras sobre la persona",
+  "personSheet.a10Question": "¿Cómo le gustaría presentar a la persona que era?",
+  "personSheet.a10Helper":
     "Unas pocas frases son suficientes. Puede hablar de su personalidad, de lo que la caracterizaba o simplemente escribir lo que desea que sus seres queridos recuerden de ella.",
-  "personWords.textLabel": "Su texto",
-  "personWords.skip": "Omitir este paso",
+  "personSheet.a11Question": "¿Qué le gustaba especialmente?",
+  "personSheet.a11Helper":
+    "Una pasión, un lugar, una canción, una costumbre, un plato, momentos compartidos o simplemente esas pequeñas cosas del día a día que le hacían feliz…",
+  "personSheet.a12Question": "¿Qué deja detrás de sí?",
+  "personSheet.a12Helper":
+    "Un valor, una expresión, un gesto, algo que les enseñó o transmitió, o simplemente lo que siempre recordarán de ella…",
+  "personSheet.skip": "Omitir este paso",
 };

@@ -168,18 +168,27 @@
  * Traditions list reuses the existing `hero.dataUnavailable`, same as
  * every other Guided Flow screen.
  *
- * Mission 043 adds a `personWords` namespace for A10 ("Quelques mots sur
- * la personne") — one key per distinct piece of text, none named after a
- * component, same discipline as `traditions` above. `title`/`subtitle`
- * are A10's own QG-validated copy ("Quelques mots sur la personne" /
- * "Comment aimeriez-vous présenter la personne qu'elle était ?");
- * `helper` is the QG-validated secondary aid ("Quelques phrases
- * suffisent. ..."); `textLabel` labels the one free-text field. `skip` is
- * A10's own "Passer cette étape" action — its own key, distinct from
- * `traditions.skip`/`ceremony.skip`, same convention as every other
- * branch's skip action. Continue reuses `common.continue`, and a
- * corrupted stored PersonWords value reuses the existing
- * `hero.dataUnavailable`, same as every other Guided Flow screen.
+ * Mission 043 originally added a `personWords` namespace for A10's own
+ * single screen ("Quelques mots sur la personne"). Mission 044 (QG
+ * Produit/UX decision) merges A10 with A11 ("Ce qu'elle aimait") and A12
+ * ("Ce qu'elle laisse") into ONE Builder screen — three open invitations
+ * on a single sheet, not three successive screens — so those keys are
+ * replaced by a `personSheet` namespace: `title` is the sheet's own
+ * shared heading (the former `personWords.title`, general enough to
+ * introduce all three matières at once); `a10Question`/`a10Helper`,
+ * `a11Question`/`a11Helper` and `a12Question`/`a12Helper` are each
+ * matière's own QG-validated question + secondary aid, one key per
+ * distinct piece of text, none named after a component (same discipline
+ * as `traditions` above) — `a10Question`/`a10Helper` are word-for-word
+ * the former `personWords.subtitle`/`personWords.helper`. Each
+ * question doubles as its own field's accessible label (no separate
+ * `textLabel` key needed — three fields cannot share one generic "Votre
+ * texte" label). `skip` is the sheet's own single "Passer cette étape"
+ * action — its own key, distinct from `traditions.skip`/`ceremony.skip`,
+ * same convention as every other branch's skip action. Continue reuses
+ * `common.continue`, and a corrupted stored value (in any of the three
+ * matières) reuses the existing `hero.dataUnavailable`, same as every
+ * other Guided Flow screen.
  *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
@@ -329,12 +338,17 @@ export const TRANSLATION_KEYS = [
   "traditions.removeAction",
   "traditions.saveEdit",
   "traditions.skip",
-  // Mission 043 — A10 (Quelques mots sur la personne).
-  "personWords.title",
-  "personWords.subtitle",
-  "personWords.helper",
-  "personWords.textLabel",
-  "personWords.skip",
+  // Mission 044 — the combined A10+A11+A12 sheet (Quelques mots sur la
+  // personne / Ce qu'elle aimait / Ce qu'elle laisse), replacing Mission
+  // 043's own single-A10-screen `personWords.*` keys.
+  "personSheet.title",
+  "personSheet.a10Question",
+  "personSheet.a10Helper",
+  "personSheet.a11Question",
+  "personSheet.a11Helper",
+  "personSheet.a12Question",
+  "personSheet.a12Helper",
+  "personSheet.skip",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
