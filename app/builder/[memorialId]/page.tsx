@@ -223,11 +223,13 @@ import styles from "./page.module.css";
  * ## Mission 043 — A10 (Quelques mots sur la personne) sits right after A09
  *
  * Shown once A09 is genuinely behind the family (`needsA10`,
- * lib/builder/guided-flow/person-words-step.ts — reuses `needsA09`
- * verbatim) and only until A10 itself has been treated once, whichever
- * way. One free-text field, entirely facultative and passable, no
- * `skin`/culture input at all (unlike A09, A10 never narrows or infers
- * anything from either).
+ * lib/builder/guided-flow/person-words-step.ts — gates on
+ * `isA09Resolved`, never on `needsA09`: `needsA09 === false` is
+ * ambiguous for a skippable step, so the real gate is A09's own
+ * resolved-or-not fact) and only until A10 itself has been treated once,
+ * whichever way. One free-text field, entirely facultative and
+ * passable, no `skin`/culture input at all (unlike A09, A10 never
+ * narrows or infers anything from either).
  */
 export const dynamic = "force-dynamic";
 
@@ -636,8 +638,10 @@ export default async function BuilderMemorialPage({
 
     // Mission 043 — A10: "Quelques mots sur la personne". Shown only
     // once A09 is genuinely behind the family (never before — see
-    // `needsA10`'s own guard, which reuses `needsA09` verbatim) and only
-    // until A10 itself has been treated once, whichever way. Entirely
+    // `needsA10`'s own guard, which gates on `isA09Resolved`, never on
+    // `needsA09` — `needsA09 === false` is ambiguous for a skippable
+    // step) and only until A10 itself has been treated once, whichever
+    // way. Entirely
     // facultative and passable, one free-text field, no Memorial
     // rendering decided here (mission brief: no renderer, no section
     // architecture in this mission).
