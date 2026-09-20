@@ -139,4 +139,11 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "traditions.removeAction": "Eliminar",
   "traditions.saveEdit": "Guardar",
   "traditions.skip": "Omitir este paso",
+
+  "personWords.title": "Unas palabras sobre la persona",
+  "personWords.subtitle": "¿Cómo le gustaría presentar a la persona que era?",
+  "personWords.helper":
+    "Unas pocas frases son suficientes. Puede hablar de su personalidad, de lo que la caracterizaba o simplemente escribir lo que desea que sus seres queridos recuerden de ella.",
+  "personWords.textLabel": "Su texto",
+  "personWords.skip": "Omitir este paso",
 };

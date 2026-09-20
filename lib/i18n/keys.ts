@@ -168,6 +168,19 @@
  * Traditions list reuses the existing `hero.dataUnavailable`, same as
  * every other Guided Flow screen.
  *
+ * Mission 043 adds a `personWords` namespace for A10 ("Quelques mots sur
+ * la personne") — one key per distinct piece of text, none named after a
+ * component, same discipline as `traditions` above. `title`/`subtitle`
+ * are A10's own QG-validated copy ("Quelques mots sur la personne" /
+ * "Comment aimeriez-vous présenter la personne qu'elle était ?");
+ * `helper` is the QG-validated secondary aid ("Quelques phrases
+ * suffisent. ..."); `textLabel` labels the one free-text field. `skip` is
+ * A10's own "Passer cette étape" action — its own key, distinct from
+ * `traditions.skip`/`ceremony.skip`, same convention as every other
+ * branch's skip action. Continue reuses `common.continue`, and a
+ * corrupted stored PersonWords value reuses the existing
+ * `hero.dataUnavailable`, same as every other Guided Flow screen.
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -316,6 +329,12 @@ export const TRANSLATION_KEYS = [
   "traditions.removeAction",
   "traditions.saveEdit",
   "traditions.skip",
+  // Mission 043 — A10 (Quelques mots sur la personne).
+  "personWords.title",
+  "personWords.subtitle",
+  "personWords.helper",
+  "personWords.textLabel",
+  "personWords.skip",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
