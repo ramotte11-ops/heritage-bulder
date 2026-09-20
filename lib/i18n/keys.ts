@@ -146,6 +146,28 @@
  * existing `hero.dataUnavailable`, same as every other Guided Flow
  * screen.
  *
+ * Mission 042 adds a `traditions` namespace for A09 ("Traditions &
+ * repères") — one key per distinct piece of text, none named after a
+ * component. `title`/`subtitle` are A09's own QG-validated copy
+ * ("Traditions & repères" / "Souhaitez-vous partager une tradition, une
+ * pratique ou une consigne particulière avec les proches ?").
+ * `suggestionsHeading` introduces the (possibly empty — mission brief
+ * section 6, V1 ships zero editorial suggestions) list of catalog
+ * suggestions; `addSuggestionAction` is each suggestion card's own
+ * explicit confirm action — never shown pre-selected. `addCustomAction`
+ * is the discreet "+ Ajouter un repère personnalisé" entry point,
+ * following the same discreet-action convention as
+ * `deathNotice.precisionsAdd*`; `titleFieldLabel`/`textFieldLabel` label
+ * the small composer form it reveals. `confirmAdd` confirms a new entry
+ * (custom or adopted from a suggestion); `editAction`/`removeAction`
+ * label each already-confirmed entry's own controls, and `saveEdit`
+ * confirms an in-place edit. `skip` is A09's own "Passer cette étape"
+ * action — its own key, distinct from `ceremony.skip`/
+ * `deathNotice.precisionsSkip`, same convention as every other branch's
+ * skip action. Continue reuses `common.continue`, and a corrupted stored
+ * Traditions list reuses the existing `hero.dataUnavailable`, same as
+ * every other Guided Flow screen.
+ *
  * Mission 034 adds `hero.crop*` for PAGE D (T07, the Hero photo crop) —
  * one key per distinct piece of text. `cropTitle`/`cropSubtitle` are the
  * page's own QG-validated copy ("Ajustez votre photo"); `cropZoomLabel`
@@ -281,6 +303,19 @@ export const TRANSLATION_KEYS = [
   "ceremony.zoneDateTime",
   "ceremony.zonePlace",
   "ceremony.zonePractical",
+  // Mission 042 — A09 (Traditions & repères).
+  "traditions.title",
+  "traditions.subtitle",
+  "traditions.suggestionsHeading",
+  "traditions.addSuggestionAction",
+  "traditions.addCustomAction",
+  "traditions.titleFieldLabel",
+  "traditions.textFieldLabel",
+  "traditions.confirmAdd",
+  "traditions.editAction",
+  "traditions.removeAction",
+  "traditions.saveEdit",
+  "traditions.skip",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

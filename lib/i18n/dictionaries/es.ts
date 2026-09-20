@@ -126,4 +126,17 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "ceremony.zoneDateTime": "Fecha y hora",
   "ceremony.zonePlace": "Lugar de la ceremonia",
   "ceremony.zonePractical": "Información práctica",
+  "traditions.title": "Tradiciones y detalles",
+  "traditions.subtitle":
+    "¿Desea compartir una tradición, una práctica o una indicación particular con sus seres queridos?",
+  "traditions.suggestionsHeading": "Algunas sugerencias",
+  "traditions.addSuggestionAction": "Añadir esta sugerencia",
+  "traditions.addCustomAction": "+ Añadir un detalle personal",
+  "traditions.titleFieldLabel": "Título (opcional)",
+  "traditions.textFieldLabel": "Su texto",
+  "traditions.confirmAdd": "Añadir",
+  "traditions.editAction": "Editar",
+  "traditions.removeAction": "Eliminar",
+  "traditions.saveEdit": "Guardar",
+  "traditions.skip": "Omitir este paso",
 };

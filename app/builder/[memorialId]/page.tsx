@@ -21,9 +21,11 @@ import { CeremonyDateTimeStep } from "@/components/builder/CeremonyDateTimeStep"
 import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
 import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
+import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
+import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -203,6 +205,18 @@ import styles from "./page.module.css";
  * B/PAGE C already fall through to. `BuilderShell` receives the same
  * reconciled content PAGE D itself renders against, never the raw,
  * pre-reconciliation one.
+ *
+ * ## Mission 042 — A09 (Traditions & repères) sits right after the Ceremony block
+ *
+ * Shown once the whole A04-A08 Ceremony block is genuinely behind the
+ * family (`needsA09`, lib/builder/guided-flow/traditions-step.ts —
+ * reuses `needsA04`..`needsA08` verbatim, never a Ceremony field
+ * itself), reached the exact same way whether A04 was answered "yes",
+ * "no" or "undecided" (mission brief section 2 — A09 is independent of
+ * whether a ceremony is actually planned). `skin` is passed through
+ * RE-VALIDATED, exactly like A03's own `skin` prop above, used only to
+ * narrow which catalog suggestions `TraditionsStep` may offer — never to
+ * infer or pre-select a practice for the family.
  */
 export const dynamic = "force-dynamic";
 
@@ -582,6 +596,28 @@ export default async function BuilderMemorialPage({
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    // Mission 042 — A09: "Traditions & repères". Shown once the whole
+    // Ceremony block is genuinely behind the family — A04 resolved, and
+    // A05-A08 resolved too whenever A04 was answered "yes" (never
+    // before: `needsA09` reuses `needsA04`..`needsA08` verbatim) — and
+    // reached exactly the same way whether A04 was "yes", "no" or
+    // "undecided" (mission brief section 2: A09 stays reachable and
+    // independent of whether a ceremony is actually planned). `skin` is
+    // passed through RE-VALIDATED (never a bare TS type crossing the DB
+    // boundary), used ONLY to narrow which catalog suggestions may be
+    // shown — never to infer or pre-select a practice.
+    if (needsA09(heroReconciledContent)) {
+      return (
+        <TraditionsStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          skin={resumed.memorial.skin}
           persist={saveDraftAction.bind(null, access.memorialId)}
         />
       );
