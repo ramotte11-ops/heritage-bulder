@@ -236,6 +236,37 @@ describe("CeremonyIntemporel — Light/Dark ink", () => {
   });
 });
 
+describe("CeremonyIntemporel — Mission 041: renders identically regardless of content.deathNotice", () => {
+  it("the same ceremony data renders the same date/heure/lieu/adresse whether deathNotice is absent, present, or a completely different value", () => {
+    const ceremony = { date: "2023-10-21", time: "14:00", venueName: "Église Saint-Joseph", address: "1234, rue des Érables, Lyon", access: null, note: null };
+
+    const first = render(<CeremonyIntemporel content={{ ceremony }} language="fr" skinVariant="light" />);
+    const dateText = first.getByText("Samedi 21 octobre 2023").textContent;
+    const venueText = first.getByText("Église Saint-Joseph").textContent;
+    cleanup();
+
+    const second = render(
+      <CeremonyIntemporel
+        content={{
+          ceremony,
+          deathNotice: {
+            announcementText: "Un texte d'annonce sans rapport.",
+            precisions: { generalLocation: "Ailleurs", familyMessage: null, thought: null, quote: null, other: null },
+          },
+        }}
+        language="fr"
+        skinVariant="light"
+      />,
+    );
+
+    expect(second.getByText("Samedi 21 octobre 2023").textContent).toBe(dateText);
+    expect(second.getByText("Église Saint-Joseph").textContent).toBe(venueText);
+    // The unrelated deathNotice text never leaks into the Ceremony renderer.
+    expect(second.queryByText("Un texte d'annonce sans rapport.")).toBeNull();
+    expect(second.queryByText(/Ailleurs/)).toBeNull();
+  });
+});
+
 describe("CeremonyIntemporel — corrupted content never crashes", () => {
   it("a corrupted content.ceremony (unknown key) renders the empty/absent fallback instead of throwing", () => {
     const corrupted: MemorialContent = {
