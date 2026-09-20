@@ -40,6 +40,7 @@ vi.mock("next/font/google", () => ({
   // Mission 035 — components/builder/fonts.ts also exports these two now.
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
+  EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
 }));
 
 const { uploadToSignedUrl, getBrowserSupabaseClient } = vi.hoisted(() => {

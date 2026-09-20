@@ -20,6 +20,7 @@ import { EMPTY_DEATH_NOTICE_PRECISIONS } from "@/types/death-notice";
 vi.mock("next/font/google", () => ({
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
+  EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));

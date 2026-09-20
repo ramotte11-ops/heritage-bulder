@@ -122,4 +122,8 @@ export const en: Record<TranslationKey, string> = {
   "ceremony.noteSubtitle": "Entirely optional — add only what feels useful.",
   "ceremony.noteLabel": "Practical note",
   "ceremony.skip": "Skip this step",
+  "ceremony.sectionTitle": "Ceremony",
+  "ceremony.zoneDateTime": "Date and time",
+  "ceremony.zonePlace": "Ceremony location",
+  "ceremony.zonePractical": "Practical information",
 };
