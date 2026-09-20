@@ -22,10 +22,12 @@ import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
 import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
+import { PersonWordsStep } from "@/components/builder/PersonWordsStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
+import { needsA10 } from "@/lib/builder/guided-flow/person-words-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -217,6 +219,15 @@ import styles from "./page.module.css";
  * RE-VALIDATED, exactly like A03's own `skin` prop above, used only to
  * narrow which catalog suggestions `TraditionsStep` may offer — never to
  * infer or pre-select a practice for the family.
+ *
+ * ## Mission 043 — A10 (Quelques mots sur la personne) sits right after A09
+ *
+ * Shown once A09 is genuinely behind the family (`needsA10`,
+ * lib/builder/guided-flow/person-words-step.ts — reuses `needsA09`
+ * verbatim) and only until A10 itself has been treated once, whichever
+ * way. One free-text field, entirely facultative and passable, no
+ * `skin`/culture input at all (unlike A09, A10 never narrows or infers
+ * anything from either).
  */
 export const dynamic = "force-dynamic";
 
@@ -618,6 +629,24 @@ export default async function BuilderMemorialPage({
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           skin={resumed.memorial.skin}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+        />
+      );
+    }
+
+    // Mission 043 — A10: "Quelques mots sur la personne". Shown only
+    // once A09 is genuinely behind the family (never before — see
+    // `needsA10`'s own guard, which reuses `needsA09` verbatim) and only
+    // until A10 itself has been treated once, whichever way. Entirely
+    // facultative and passable, one free-text field, no Memorial
+    // rendering decided here (mission brief: no renderer, no section
+    // architecture in this mission).
+    if (needsA10(heroReconciledContent)) {
+      return (
+        <PersonWordsStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
         />
       );

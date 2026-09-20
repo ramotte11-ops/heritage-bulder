@@ -139,4 +139,11 @@ export const en: Record<TranslationKey, string> = {
   "traditions.removeAction": "Remove",
   "traditions.saveEdit": "Save",
   "traditions.skip": "Skip this step",
+
+  "personWords.title": "A few words about the person",
+  "personWords.subtitle": "How would you like to describe the person they were?",
+  "personWords.helper":
+    "A few sentences are enough. You can talk about their personality, what set them apart, or simply write what you would like loved ones to remember about them.",
+  "personWords.textLabel": "Your text",
+  "personWords.skip": "Skip this step",
 };
