@@ -1,8 +1,11 @@
 /*
- * Mission 043 — A10 (Quelques mots sur la personne). Chrome lives in
- * BuilderScreen.module.css; colors/typography reuse the exact existing
- * palette (same convention as CeremonyNoteStep.module.css) — no new
- * Builder design direction introduced.
+ * Mission 044 — the single "Quelques mots sur la personne" sheet
+ * (A10 + A11 + A12 together). Same chrome/palette convention as
+ * PersonWordsStep.module.css (Mission 043) — no new Builder design
+ * direction, just three field blocks instead of one, aired out with a
+ * larger gap between them so the sheet reads as "trois invitations
+ * suffisamment aérées et lisibles" (mission brief section 8), never a
+ * cramped biography form.
  */
 
 .copy {
@@ -25,16 +28,6 @@
   }
 }
 
-.subtitle {
-  font-size: 0.9375rem;
-  color: var(--heritage-text-secondary);
-}
-
-.helper {
-  font-size: 0.8125rem;
-  color: var(--heritage-text-secondary);
-}
-
 .form {
   display: flex;
   flex-direction: column;
@@ -45,19 +38,31 @@
   display: flex;
   flex-direction: column;
   gap: var(--heritage-space-xs);
+  padding-block-start: var(--heritage-space-md);
+  border-top: 1px solid var(--heritage-border-soft);
+}
+
+.field:first-of-type {
+  padding-block-start: 0;
+  border-top: none;
 }
 
 .fieldLabel {
-  font-family: var(--heritage-font-family-sans);
+  font-family: var(--heritage-font-family-serif);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 1.0625rem;
   color: var(--heritage-text-primary);
+}
+
+.helper {
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
 }
 
 .textarea {
   width: 100%;
   box-sizing: border-box;
-  min-height: 140px;
+  min-height: 120px;
   padding: 0.75rem 0.875rem;
   border: 1px solid var(--heritage-border-soft);
   border-radius: var(--heritage-radius-control);

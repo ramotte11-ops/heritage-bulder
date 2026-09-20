@@ -31,8 +31,10 @@ import { EMPTY_PERSON_WORDS_CONTENT, type PersonWordsContent } from "@/types/per
  * `writePersonWords` operate purely on `content.personWords`, regardless
  * of whatever context the memorial happens to be in right now. A10 only
  * ever being SHOWN in `announcement` is entirely
- * `lib/builder/guided-flow/person-words-step.ts` / `human-steps.ts`'s
- * concern (mirrors `traditions.ts`'s own "context safety" doctrine).
+ * `lib/builder/guided-flow/person-sheet-step.ts` (Mission 044's combined
+ * A10+A11+A12 sheet, replacing Mission 043's own A10-only
+ * `person-words-step.ts`) / `human-steps.ts`'s concern (mirrors
+ * `traditions.ts`'s own "context safety" doctrine).
  *
  * ## No Auth/Owner dependency, no I/O
  *
@@ -171,7 +173,7 @@ export function readPersonWords(content: MemorialContent): PersonWordsContent {
  * it unconditionally REPLACES whatever `content.personWords` held
  * before. The only real guard lives at the CALLER: branch on
  * `inspectPersonWords(content).status` first (see
- * lib/builder/guided-flow/person-words-step.ts, which is the one place
+ * lib/builder/guided-flow/person-sheet-step.ts, which is the one place
  * this function is ever composed with a write).
  */
 export function writePersonWords(content: MemorialContent, personWords: PersonWordsContent): MemorialContent {

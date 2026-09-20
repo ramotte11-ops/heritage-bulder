@@ -22,12 +22,12 @@ import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
 import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
-import { PersonWordsStep } from "@/components/builder/PersonWordsStep";
+import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { needsPageA, needsPageB, needsPageC, needsPageD, needsPageE } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
-import { needsA10 } from "@/lib/builder/guided-flow/person-words-step";
+import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -220,15 +220,21 @@ import styles from "./page.module.css";
  * narrow which catalog suggestions `TraditionsStep` may offer — never to
  * infer or pre-select a practice for the family.
  *
- * ## Mission 043 — A10 (Quelques mots sur la personne) sits right after A09
+ * ## Mission 043/044 — the combined A10+A11+A12 sheet sits right after A09
  *
- * Shown once A09 is genuinely behind the family (`needsA10`,
- * lib/builder/guided-flow/person-words-step.ts — gates on
+ * Mission 043 built A10 ("Quelques mots sur la personne") as its own
+ * single screen. A QG Produit/UX decision (Mission 044) merged it with
+ * A11 ("Ce qu'elle aimait") and A12 ("Ce qu'elle laisse") into ONE
+ * screen — three open, entirely facultative invitations on a single
+ * sheet, three still-distinct content matières
+ * (`content.personWords`/`lovedThings`/`legacy`), never three successive
+ * screens. Shown once A09 is genuinely behind the family (`needsPersonSheet`,
+ * lib/builder/guided-flow/person-sheet-step.ts — gates on
  * `isA09Resolved`, never on `needsA09`: `needsA09 === false` is
  * ambiguous for a skippable step, so the real gate is A09's own
- * resolved-or-not fact) and only until A10 itself has been treated once,
- * whichever way. One free-text field, entirely facultative and
- * passable, no `skin`/culture input at all (unlike A09, A10 never
+ * resolved-or-not fact) and only until the sheet itself has been treated
+ * once, whichever way (all three matières resolved together, by one
+ * Continue/Skip click). No `skin`/culture input at all (this sheet never
  * narrows or infers anything from either).
  */
 export const dynamic = "force-dynamic";
@@ -636,18 +642,19 @@ export default async function BuilderMemorialPage({
       );
     }
 
-    // Mission 043 — A10: "Quelques mots sur la personne". Shown only
-    // once A09 is genuinely behind the family (never before — see
-    // `needsA10`'s own guard, which gates on `isA09Resolved`, never on
-    // `needsA09` — `needsA09 === false` is ambiguous for a skippable
-    // step) and only until A10 itself has been treated once, whichever
-    // way. Entirely
-    // facultative and passable, one free-text field, no Memorial
-    // rendering decided here (mission brief: no renderer, no section
-    // architecture in this mission).
-    if (needsA10(heroReconciledContent)) {
+    // Mission 044 — the combined A10+A11+A12 sheet ("Quelques mots sur
+    // la personne" / "Ce qu'elle aimait" / "Ce qu'elle laisse"). Shown
+    // only once A09 is genuinely behind the family (never before — see
+    // `needsPersonSheet`'s own guard, which gates on `isA09Resolved`,
+    // never on `needsA09` — `needsA09 === false` is ambiguous for a
+    // skippable step) and only until the sheet itself has been treated
+    // once, whichever way. Entirely facultative and passable, three
+    // free-text matières resolved together, no Memorial rendering
+    // decided here (mission brief: no renderer, no "Récit de vie"
+    // composition in this mission).
+    if (needsPersonSheet(heroReconciledContent)) {
       return (
-        <PersonWordsStep
+        <PersonSheetStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}

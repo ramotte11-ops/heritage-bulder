@@ -166,10 +166,11 @@ vi.mock("@/components/builder/CeremonyNoteStep", () => ({ CeremonyNoteStep }));
 const { TraditionsStep } = vi.hoisted(() => ({ TraditionsStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/TraditionsStep", () => ({ TraditionsStep }));
 
-// Mission 043 — A10, mocked the same way and for the same reasons as
-// TraditionsStep above.
-const { PersonWordsStep } = vi.hoisted(() => ({ PersonWordsStep: vi.fn(() => null) }));
-vi.mock("@/components/builder/PersonWordsStep", () => ({ PersonWordsStep }));
+// Mission 044 — the combined A10+A11+A12 sheet, mocked the same way and
+// for the same reasons as TraditionsStep above (replaces Mission 043's
+// own A10-only PersonWordsStep mock).
+const { PersonSheetStep } = vi.hoisted(() => ({ PersonSheetStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/PersonSheetStep", () => ({ PersonSheetStep }));
 
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
@@ -280,28 +281,30 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032/033/034/035/039/040/042/043 — PAGE A, PAGE B, PAGE C, PAGE D,
- * PAGE E, A01, A02, A04, A09 and A10 all genuinely done: a real `displayName`,
- * T04 explicitly skipped (never just inferred from zero dates — QG
- * micro-correction), T05 explicitly treated, T06 explicitly completed
- * with a real photo reference, T07 explicitly completed with a real
- * crop attached to that exact photo, T08 explicitly completed (Mission
- * 035's own "Hero reveal" confirmation), A01 explicitly completed with a
- * real announcement text, A02 explicitly skipped, A04 explicitly
- * answered "no" (Mission 040 — A05-A08 stay non-applicable, so no
- * further ceremony data is needed for this shared fixture), A09
- * explicitly skipped (Mission 042 — reached immediately after A04 = no,
- * with nothing entered), and A10 explicitly skipped too (Mission 043 —
- * reached immediately after A09, with nothing entered; A01/A02/A04/A09/
- * A10 only apply to `CONFIGURED_MEMORIAL`'s own `announcement` context,
+/** Mission 032/033/034/035/039/040/042/043/044 — PAGE A, PAGE B, PAGE C,
+ * PAGE D, PAGE E, A01, A02, A04, A09 and the combined A10+A11+A12 sheet
+ * all genuinely done: a real `displayName`, T04 explicitly skipped
+ * (never just inferred from zero dates — QG micro-correction), T05
+ * explicitly treated, T06 explicitly completed with a real photo
+ * reference, T07 explicitly completed with a real crop attached to that
+ * exact photo, T08 explicitly completed (Mission 035's own "Hero
+ * reveal" confirmation), A01 explicitly completed with a real
+ * announcement text, A02 explicitly skipped, A04 explicitly answered
+ * "no" (Mission 040 — A05-A08 stay non-applicable, so no further
+ * ceremony data is needed for this shared fixture), A09 explicitly
+ * skipped (Mission 042 — reached immediately after A04 = no, with
+ * nothing entered), and A10/A11/A12 explicitly skipped too (Mission
+ * 044 — the combined sheet always resolves all three together, reached
+ * immediately after A09, with nothing entered; A01/A02/A04/A09/A10/A11/
+ * A12 only apply to `CONFIGURED_MEMORIAL`'s own `announcement` context,
  * but a completed/skipped StepRecord is simply inert, unread data for a
  * `remembrance` memorial, so the same draft still works for both).
  * Paired with a memorial that has a language and an editorial context,
  * this draft resumes straight past every gate — exactly what every
- * pre-039/pre-040/pre-042/pre-043 test below that expects to reach
+ * pre-039/pre-040/pre-042/pre-044 test below that expects to reach
  * BuilderShell (or the T02/"not configured yet" fallthrough) still
  * needs. See the "Mission 032"/"Mission 033"/"Mission 034"/"Mission
- * 035"/"Mission 039"/"Mission 040"/"Mission 042"/"Mission 043" describe
+ * 035"/"Mission 039"/"Mission 040"/"Mission 042"/"Mission 044" describe
  * blocks for the drafts that deliberately do NOT satisfy these gates. */
 const REAL_DRAFT_CONTENT_BASE = {
   hero: {
@@ -335,6 +338,8 @@ const REAL_DRAFT_CONTENT_BASE = {
     A04: { status: "completed", answer: "no" },
     A09: { status: "skipped" },
     A10: { status: "skipped" },
+    A11: { status: "skipped" },
+    A12: { status: "skipped" },
   },
 };
 
@@ -1363,6 +1368,8 @@ describe("BuilderMemorialPage — granted access", () => {
           A04: { status: "completed", answer: "no" },
           A09: { status: "skipped" },
           A10: { status: "skipped" },
+          A11: { status: "skipped" },
+          A12: { status: "skipped" },
         },
       };
       const reconciledContent = {
@@ -2089,17 +2096,20 @@ describe("BuilderMemorialPage — granted access", () => {
 
   describe("Mission 040 — A04 (moment prévu ?) and A05-A08 (informations cérémonie)", () => {
     /** PAGE A through A03 all genuinely done, ANNOUNCEMENT context, A04
-     * NOT yet answered — A04's own normal starting point. A09 and A10 are
-     * also stripped out here (REAL_DRAFT_CONTENT_BASE carries them
-     * resolved, Mission 042/043): a fixture representing "before A04"
-     * must never already carry a resolved A09/A10, which in the real
-     * flow can only be reached AFTER A04. */
+     * NOT yet answered — A04's own normal starting point. A09 and the
+     * combined A10/A11/A12 sheet are also stripped out here
+     * (REAL_DRAFT_CONTENT_BASE carries them resolved, Mission 042/044): a
+     * fixture representing "before A04" must never already carry a
+     * resolved A09/A10/A11/A12, which in the real flow can only be
+     * reached AFTER A04. */
     const GUIDED_FLOW_WITHOUT_A04: Record<string, unknown> = {
       ...(REAL_DRAFT.content as { guidedFlow: Record<string, unknown> }).guidedFlow,
     };
     delete GUIDED_FLOW_WITHOUT_A04.A04;
     delete GUIDED_FLOW_WITHOUT_A04.A09;
     delete GUIDED_FLOW_WITHOUT_A04.A10;
+    delete GUIDED_FLOW_WITHOUT_A04.A11;
+    delete GUIDED_FLOW_WITHOUT_A04.A12;
     const DRAFT_WITH_A03_DONE_NO_A04: MemorialVersion = {
       content: {
         ...REAL_DRAFT.content,
@@ -2469,7 +2479,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
 
-    it("renders PersonWordsStep (A10), not BuilderShell, once A09 is resolved too — Mission 043 sits right after this block", async () => {
+    it("renders PersonSheetStep (A10+A11+A12), not BuilderShell, once A09 is resolved too — Mission 044 sits right after this block", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2490,16 +2500,18 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(PersonWordsStep);
+      expect(result.type).toBe(PersonSheetStep);
       expect(result.type).not.toBe(BuilderShell);
     });
 
-    // Mission 043 — nested here (not a sibling describe) for the same
+    // Mission 044 — nested here (not a sibling describe) for the same
     // reason Mission 042 is nested above: reuses Mission 040's own
     // `draftWithA04Yes`/`DRAFT_WITH_A03_DONE_NO_A04` fixtures rather than
-    // redeclaring them.
-    describe("Mission 043 — A10 (Quelques mots sur la personne)", () => {
-      it("does not render PersonWordsStep before A09 is resolved", async () => {
+    // redeclaring them. Replaces Mission 043's own "A10-only screen"
+    // describe block — QG Produit/UX decision merged A10/A11/A12 into
+    // one screen (see lib/builder/guided-flow/person-sheet-step.ts).
+    describe("Mission 044 — the combined A10+A11+A12 sheet (Quelques mots sur la personne)", () => {
+      it("does not render PersonSheetStep before A09 is resolved", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2519,11 +2531,11 @@ describe("BuilderMemorialPage — granted access", () => {
 
         const result = await callPage();
 
-        expect(result.type).not.toBe(PersonWordsStep);
+        expect(result.type).not.toBe(PersonSheetStep);
         expect(result.type).toBe(TraditionsStep);
       });
 
-      it("renders PersonWordsStep immediately after A09 is skipped (A04 = no route)", async () => {
+      it("renders PersonSheetStep immediately after A09 is skipped (A04 = no route)", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2548,10 +2560,10 @@ describe("BuilderMemorialPage — granted access", () => {
 
         const result = await callPage();
 
-        expect(result.type).toBe(PersonWordsStep);
+        expect(result.type).toBe(PersonSheetStep);
       });
 
-      it("A10 never appears for the remembrance context", async () => {
+      it("the combined sheet never appears for the remembrance context", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2566,11 +2578,11 @@ describe("BuilderMemorialPage — granted access", () => {
 
         const result = await callPage();
 
-        expect(result.type).not.toBe(PersonWordsStep);
+        expect(result.type).not.toBe(PersonSheetStep);
         expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
       });
 
-      it("wires PersonWordsStep's persist, bound to the AUTHORIZED memorialId — no skin prop (A10 narrows nothing)", async () => {
+      it("wires PersonSheetStep's persist, bound to the AUTHORIZED memorialId — no skin prop (the sheet narrows nothing)", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2592,7 +2604,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
         const result = await callPage("claimed-id");
 
-        expect(result.type).toBe(PersonWordsStep);
+        expect(result.type).toBe(PersonSheetStep);
         expect(result.props.skin).toBeUndefined();
 
         const newContent = { guidedFlow: {} };
@@ -2600,7 +2612,7 @@ describe("BuilderMemorialPage — granted access", () => {
         expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
       });
 
-      it("renders BuilderShell once A10 is resolved too, everything else already resolved", async () => {
+      it("still renders PersonSheetStep, never BuilderShell, when only A10 is resolved — A11/A12 still pending", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2617,6 +2629,39 @@ describe("BuilderMemorialPage — granted access", () => {
             A08: { status: "completed" },
             A09: { status: "skipped" },
             A10: { status: "skipped" },
+          }),
+        });
+
+        const result = await callPage();
+
+        // The real Continue/Skip click always resolves A10/A11/A12
+        // together (see person-sheet-step.test.ts) — this proves the
+        // PAGE gate itself does not treat a partial resolution as done,
+        // defensively, even though that state is not reachable through
+        // the real UI.
+        expect(result.type).toBe(PersonSheetStep);
+        expect(result.type).not.toBe(BuilderShell);
+      });
+
+      it("renders BuilderShell once the whole sheet is resolved too, everything else already resolved", async () => {
+        getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+        authorizeMemorialForRequest.mockResolvedValue({
+          status: "granted",
+          ownerId: "owner-a",
+          memorialId: MEMORIAL_ID,
+        });
+        resumeBuilderSession.mockResolvedValue({
+          status: "resumable",
+          memorial: CONFIGURED_MEMORIAL,
+          draft: draftWithA04Yes({
+            A05: { status: "skipped" },
+            A06: { status: "skipped" },
+            A07: { status: "skipped" },
+            A08: { status: "completed" },
+            A09: { status: "skipped" },
+            A10: { status: "skipped" },
+            A11: { status: "skipped" },
+            A12: { status: "skipped" },
           }),
         });
 

@@ -140,10 +140,15 @@ export const en: Record<TranslationKey, string> = {
   "traditions.saveEdit": "Save",
   "traditions.skip": "Skip this step",
 
-  "personWords.title": "A few words about the person",
-  "personWords.subtitle": "How would you like to describe the person they were?",
-  "personWords.helper":
+  "personSheet.title": "A few words about the person",
+  "personSheet.a10Question": "How would you like to describe the person they were?",
+  "personSheet.a10Helper":
     "A few sentences are enough. You can talk about their personality, what set them apart, or simply write what you would like loved ones to remember about them.",
-  "personWords.textLabel": "Your text",
-  "personWords.skip": "Skip this step",
+  "personSheet.a11Question": "What did they particularly love?",
+  "personSheet.a11Helper":
+    "A passion, a place, a song, a habit, a favorite dish, shared moments, or simply the small everyday things that brought them joy…",
+  "personSheet.a12Question": "What do they leave behind?",
+  "personSheet.a12Helper":
+    "A value, a saying, a gesture, something they taught or passed on to you, or simply what you'll always remember about them…",
+  "personSheet.skip": "Skip this step",
 };
