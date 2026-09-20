@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { cleanup, render } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_CEREMONY_CONTENT, type CeremonyContent } from "@/types/ceremony";
@@ -126,12 +128,22 @@ describe("CeremonyIntemporel — date/heure field states", () => {
     expect(getByText("à 14 h 00")).toBeTruthy();
   });
 
-  it("neither date nor time: the whole dateTime zone (icon + label) disappears, never an empty label", () => {
+  it("QG-locked rule (Mission 040B finalization): neither date nor time present — the whole dateTime zone (icon + label + text) disappears, no placeholder, no reserved blank space", () => {
     const { container, queryByText } = renderCeremony({
       content: contentWith({ date: null, time: null }),
     });
     expect(queryByText("Date et heure")).toBeNull();
     expect(container.querySelector('img[src*="icon-calendar.png"]')).toBeNull();
+  });
+
+  it("the empty-dateTime rule never touches the other Studio zones (title, sprig, lieu, closing all still render)", () => {
+    const { container, getByText } = renderCeremony({
+      content: contentWith({ date: null, time: null, venueName: "Église Saint-Joseph" }),
+    });
+    expect(getByText("Cérémonie")).toBeTruthy();
+    expect(container.querySelector('img[src*="title-sprig.png"]')).toBeTruthy();
+    expect(getByText("Église Saint-Joseph")).toBeTruthy();
+    expect(container.querySelector('img[src*="closing-heart-sprig.png"]')).toBeTruthy();
   });
 });
 
@@ -160,12 +172,22 @@ describe("CeremonyIntemporel — lieu/adresse field states", () => {
     expect(getByText("1234, rue des Érables, Lyon")).toBeTruthy();
   });
 
-  it("neither venue nor address: the whole placeAddress zone disappears", () => {
+  it("QG-locked rule (Mission 040B finalization): neither venue nor address present — the whole placeAddress zone disappears, no placeholder, no reserved blank space", () => {
     const { container, queryByText } = renderCeremony({
       content: contentWith({ venueName: null, address: null }),
     });
     expect(queryByText("Lieu de la cérémonie")).toBeNull();
     expect(container.querySelector('img[src*="icon-location.png"]')).toBeNull();
+  });
+
+  it("the empty-placeAddress rule never touches the other Studio zones (title, sprig, date/heure, closing all still render)", () => {
+    const { container, getByText } = renderCeremony({
+      content: contentWith({ venueName: null, address: null, date: "2023-10-21" }),
+    });
+    expect(getByText("Cérémonie")).toBeTruthy();
+    expect(container.querySelector('img[src*="title-sprig.png"]')).toBeTruthy();
+    expect(getByText("Samedi 21 octobre 2023")).toBeTruthy();
+    expect(container.querySelector('img[src*="closing-heart-sprig.png"]')).toBeTruthy();
   });
 });
 
@@ -246,5 +268,24 @@ describe("CeremonyIntemporel — i18n zone labels resolve per language", () => {
     const { getByText } = renderCeremony({ language: "es" });
     expect(getByText("Ceremonia")).toBeTruthy();
     expect(getByText("Fecha y hora")).toBeTruthy();
+  });
+});
+
+describe("CeremonyIntemporel — master images never carry an anisotropic-scaling mechanism (QG audit, Mission 040B finalization)", () => {
+  it("neither master <img> has an inline style or class beyond the intrinsic-ratio one", () => {
+    const { container } = renderCeremony();
+    const desktop = container.querySelector('img[src*="ceremonie-master-desktop-light.png"]') as HTMLImageElement;
+    const mobile = container.querySelector('img[src*="ceremonie-master-mobile-light.png"]') as HTMLImageElement;
+    expect(desktop.getAttribute("style")).toBeNull();
+    expect(mobile.getAttribute("style")).toBeNull();
+  });
+
+  it("source-level guard: the module stylesheet sizes both masters by width only (height: auto), never object-fit or transform", () => {
+    const css = readFileSync(path.resolve(import.meta.dirname, "CeremonyIntemporel.module.css"), "utf8");
+    const masterRule = css.match(/\.masterDesktop,\s*\n?\.masterMobile\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(masterRule).toContain("width: 100%");
+    expect(masterRule).toContain("height: auto");
+    expect(css).not.toMatch(/\.master(Desktop|Mobile)[^{]*\{[^}]*object-fit/);
+    expect(css).not.toMatch(/\.master(Desktop|Mobile)[^{]*\{[^}]*transform/);
   });
 });

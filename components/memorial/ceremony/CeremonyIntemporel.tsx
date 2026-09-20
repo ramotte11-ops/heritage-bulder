@@ -61,19 +61,23 @@ import styles from "./CeremonyIntemporel.module.css";
  * `closing-heart-sprig.png` asset sits in — exactly `geometry.json`'s own
  * `states` block, never a third, invented state.
  *
- * ## Individually-empty dateTime/placeAddress zones (beyond the Studio's
- * own QA references)
+ * ## Individually-empty dateTime/placeAddress zones — locked QG decision
+ * (Mission 040B finalization)
  *
- * The Studio's QA set only exercises `practicalInfo` being absent, never
- * `dateTime`/`placeAddress` being entirely empty (every A05-A07 field
- * skipped). No Studio-defined state or geometry accounts for hiding
- * `dateTime`/`placeAddress` outright. This component's own choice, kept
- * consistent with `DeathNoticeIntemporel.tsx`'s existing "un bloc absent
- * disparaît totalement, jamais une ligne vide artificielle" doctrine: if
- * a zone's own fields are ALL null, that zone (icon + label + text)
- * renders nothing at all — never an empty label with nothing under it.
- * This is this component's own extrapolation, not a Studio-verified
- * pixel reference; flagged as such in the mission report.
+ * The Studio's QA set only exercises `practicalInfo` being absent —
+ * `dateTime`/`placeAddress` being entirely empty (every A05/A06/A07
+ * field skipped) has no dedicated Studio pixel reference. QG reviewed
+ * this gap and settled it explicitly, no longer a Claude-side
+ * extrapolation: if `date` AND `time` are both absent, the ENTIRE
+ * dateTime zone (its icon, its label, its text) renders nothing at all;
+ * if `venueName` AND `address` are both absent, the entire placeAddress
+ * zone (icon + label + text) renders nothing at all. Either way: no
+ * placeholder, no reserved blank space, no icon left floating without
+ * its own label/text. Every OTHER Studio zone keeps its exact
+ * `geometry.json` position — this rule never moves or recomposes
+ * anything else. (Mirrors `DeathNoticeIntemporel.tsx`'s own "un bloc
+ * absent disparaît totalement" doctrine for its precisions, applied here
+ * to the two zones whose own fields can all be simultaneously null.)
  *
  * ## Typography — EB Garamond (see components/builder/fonts.ts)
  *
@@ -304,6 +308,29 @@ export function CeremonyIntemporel({ content, language, skinVariant }: CeremonyI
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.wrap} ${ebGaramond.variable}`} style={inkVars} data-testid="ceremony-intemporel">
+        {/*
+         * QG audit (Mission 040B finalization) flagged the wax seal baked
+         * into the desktop master as appearing elliptical. Investigated
+         * pixel-for-pixel: `.masterDesktop`/`.masterMobile` below carry no
+         * `object-fit`, no `transform`, and no independent width/height —
+         * only `width:100%;height:auto` (module stylesheet), the same
+         * intrinsic-ratio technique `HeroIntemporel.tsx`'s own masters
+         * use, so nothing here can stretch X independently of Y. A direct
+         * crop-for-crop comparison (rendered screenshot vs. the raw
+         * `ceremonie-master-desktop-light.png` file, both at native
+         * 1448×1086 with zero scaling applied) showed byte-for-byte
+         * identical proportions, and a pixel-mask measurement of the seal
+         * region in the UNTOUCHED source PNG alone (no runtime involved
+         * at all) already reads as an ellipse. The oval shape is baked
+         * into the Studio master itself — never introduced, amplified, or
+         * masked by this component. Per this mission's own STOP doctrine
+         * ("ne pas compenser par une interprétation graphique"), this is
+         * reported back to QG rather than "fixed" with a runtime
+         * transform that would selectively re-shape one baked decorative
+         * element inside a single flat master image — which is not
+         * technically possible without either editing the master
+         * (forbidden) or distorting the whole scene around it.
+         */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.desktop} alt="" aria-hidden="true" className={styles.masterDesktop} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
