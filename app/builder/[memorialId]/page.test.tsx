@@ -161,6 +161,11 @@ vi.mock("@/components/builder/CeremonyAddressStep", () => ({ CeremonyAddressStep
 const { CeremonyNoteStep } = vi.hoisted(() => ({ CeremonyNoteStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/CeremonyNoteStep", () => ({ CeremonyNoteStep }));
 
+// Mission 042 — A09, mocked the same way and for the same reasons as
+// the Ceremony screens above.
+const { TraditionsStep } = vi.hoisted(() => ({ TraditionsStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/TraditionsStep", () => ({ TraditionsStep }));
+
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
 // builds its real MediaEngineDeps. Both compose real Mission 030
@@ -270,26 +275,28 @@ const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConf
   slug: null,
 };
 
-/** Mission 032/033/034/035/039/040 — PAGE A, PAGE B, PAGE C, PAGE D,
- * PAGE E, A01, A02 and A04 all genuinely done: a real `displayName`, T04
- * explicitly skipped (never just inferred from zero dates — QG
+/** Mission 032/033/034/035/039/040/042 — PAGE A, PAGE B, PAGE C, PAGE D,
+ * PAGE E, A01, A02, A04 and A09 all genuinely done: a real `displayName`,
+ * T04 explicitly skipped (never just inferred from zero dates — QG
  * micro-correction), T05 explicitly treated, T06 explicitly completed
  * with a real photo reference, T07 explicitly completed with a real
  * crop attached to that exact photo, T08 explicitly completed (Mission
  * 035's own "Hero reveal" confirmation), A01 explicitly completed with a
- * real announcement text, A02 explicitly skipped, and A04 explicitly
+ * real announcement text, A02 explicitly skipped, A04 explicitly
  * answered "no" (Mission 040 — A05-A08 stay non-applicable, so no
- * further ceremony data is needed for this shared fixture; A01/A02/A04
- * only apply to `CONFIGURED_MEMORIAL`'s own `announcement` context, but
- * a completed/skipped StepRecord is simply inert, unread data for a
+ * further ceremony data is needed for this shared fixture), and A09
+ * explicitly skipped (Mission 042 — reached immediately after A04 = no,
+ * with nothing entered; A01/A02/A04/A09 only apply to
+ * `CONFIGURED_MEMORIAL`'s own `announcement` context, but a
+ * completed/skipped StepRecord is simply inert, unread data for a
  * `remembrance` memorial, so the same draft still works for both).
  * Paired with a memorial that has a language and an editorial context,
  * this draft resumes straight past every gate — exactly what every
- * pre-039/pre-040 test below that expects to reach BuilderShell (or the
- * T02/"not configured yet" fallthrough) still needs. See the "Mission
- * 032"/"Mission 033"/"Mission 034"/"Mission 035"/"Mission 039"/"Mission
- * 040" describe blocks for the drafts that deliberately do NOT satisfy
- * these gates. */
+ * pre-039/pre-040/pre-042 test below that expects to reach BuilderShell
+ * (or the T02/"not configured yet" fallthrough) still needs. See the
+ * "Mission 032"/"Mission 033"/"Mission 034"/"Mission 035"/"Mission
+ * 039"/"Mission 040"/"Mission 042" describe blocks for the drafts that
+ * deliberately do NOT satisfy these gates. */
 const REAL_DRAFT_CONTENT_BASE = {
   hero: {
     displayName: "Real content",
@@ -320,6 +327,7 @@ const REAL_DRAFT_CONTENT_BASE = {
     A01: { status: "completed" },
     A02: { status: "skipped" },
     A04: { status: "completed", answer: "no" },
+    A09: { status: "skipped" },
   },
 };
 
@@ -1346,6 +1354,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A01: { status: "completed" },
           A02: { status: "skipped" },
           A04: { status: "completed", answer: "no" },
+          A09: { status: "skipped" },
         },
       };
       const reconciledContent = {
@@ -2072,11 +2081,16 @@ describe("BuilderMemorialPage — granted access", () => {
 
   describe("Mission 040 — A04 (moment prévu ?) and A05-A08 (informations cérémonie)", () => {
     /** PAGE A through A03 all genuinely done, ANNOUNCEMENT context, A04
-     * NOT yet answered — A04's own normal starting point. */
+     * NOT yet answered — A04's own normal starting point. A09 is also
+     * stripped out here (REAL_DRAFT_CONTENT_BASE carries it resolved,
+     * Mission 042): a fixture representing "before A04" must never
+     * already carry a resolved A09, which in the real flow can only be
+     * reached AFTER A04. */
     const GUIDED_FLOW_WITHOUT_A04: Record<string, unknown> = {
       ...(REAL_DRAFT.content as { guidedFlow: Record<string, unknown> }).guidedFlow,
     };
     delete GUIDED_FLOW_WITHOUT_A04.A04;
+    delete GUIDED_FLOW_WITHOUT_A04.A09;
     const DRAFT_WITH_A03_DONE_NO_A04: MemorialVersion = {
       content: {
         ...REAL_DRAFT.content,
@@ -2267,7 +2281,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(BuilderShell).not.toHaveBeenCalled();
     });
 
-    it("renders BuilderShell once A04-A08 are all resolved and the memorial is otherwise fully configured", async () => {
+    it("renders TraditionsStep (A09), not BuilderShell, once A04-A08 are all resolved — Mission 042 sits right after this block", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2292,8 +2306,184 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(CeremonyVenueStep).not.toHaveBeenCalled();
       expect(CeremonyAddressStep).not.toHaveBeenCalled();
       expect(CeremonyNoteStep).not.toHaveBeenCalled();
+      expect(result.type).toBe(TraditionsStep);
+      expect(result.type).not.toBe(BuilderShell);
+    });
+
+    // Mission 042 — nested here (not a sibling describe) so these tests
+    // can reuse Mission 040's own `draftWithA04Yes`/
+    // `DRAFT_WITH_A03_DONE_NO_A04` fixtures rather than redeclaring them.
+    describe("Mission 042 — A09 (Traditions & repères)", () => {
+    it("does not render TraditionsStep before the Ceremony block is resolved (A04 = yes, A05-A08 still pending)", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes(),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).not.toBe(TraditionsStep);
+      expect(result.type).toBe(CeremonyDateTimeStep);
+    });
+
+    it("renders TraditionsStep immediately after A04 = no — A05-A08 stay non-applicable", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      // A04 = "no" explicitly for this test's own draft, mirroring
+      // Mission 040's own `REAL_DRAFT` fixture ("A04 = no (...)").
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: {
+          content: {
+            ...DRAFT_WITH_A03_DONE_NO_A04.content,
+            guidedFlow: {
+              ...(DRAFT_WITH_A03_DONE_NO_A04.content as { guidedFlow: object }).guidedFlow,
+              A04: { status: "completed", answer: "no" },
+            },
+          } as MemorialVersion["content"],
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(TraditionsStep);
+    });
+
+    it("renders TraditionsStep immediately after A04 = undecided", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: {
+          content: {
+            ...DRAFT_WITH_A03_DONE_NO_A04.content,
+            guidedFlow: {
+              ...(DRAFT_WITH_A03_DONE_NO_A04.content as { guidedFlow: object }).guidedFlow,
+              A04: { status: "completed", answer: "undecided" },
+            },
+          } as MemorialVersion["content"],
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(TraditionsStep);
+    });
+
+    it("renders TraditionsStep once A08 is resolved (A04 = yes path)", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({
+          A05: { status: "skipped" },
+          A06: { status: "skipped" },
+          A07: { status: "skipped" },
+          A08: { status: "skipped" },
+        }),
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(TraditionsStep);
+    });
+
+    it("A09 never appears for the remembrance context", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
+        draft: DRAFT_WITH_A03_DONE_NO_A04,
+      });
+
+      const result = await callPage();
+
+      expect(result.type).not.toBe(TraditionsStep);
+      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+    });
+
+    it("wires TraditionsStep's persist and skin, bound to the AUTHORIZED memorialId", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: "authorized-id",
+      });
+      const draft = {
+        content: {
+          ...DRAFT_WITH_A03_DONE_NO_A04.content,
+          guidedFlow: {
+            ...(DRAFT_WITH_A03_DONE_NO_A04.content as { guidedFlow: object }).guidedFlow,
+            A04: { status: "completed", answer: "no" },
+          },
+        } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial: CONFIGURED_MEMORIAL, draft });
+
+      const result = await callPage("claimed-id");
+
+      expect(result.type).toBe(TraditionsStep);
+      expect(result.props.skin).toBe(CONFIGURED_MEMORIAL.skin);
+
+      const newContent = { guidedFlow: {} };
+      await result.props.persist(newContent);
+      expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
+    });
+
+    it("renders BuilderShell once A09 is resolved too, everything else already resolved", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({
+          A05: { status: "skipped" },
+          A06: { status: "skipped" },
+          A07: { status: "skipped" },
+          A08: { status: "completed" },
+          A09: { status: "skipped" },
+        }),
+      });
+
+      const result = await callPage();
+
       expect(result.type).toBe(BuilderShell);
     });
+  });
   });
 
   it("resolves notFoundOrForbidden from resumeBuilderSession the same way as a denied authorization", async () => {
@@ -2407,17 +2597,21 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
    * real cultural skin) is now a legitimate, deliberate read: passed
    * straight through as a prop so `DeathNoticePreviewStep` can decide
    * whether A03 has a real renderer for it (see that component's own
-   * docstring, "The skin guard"). This guard narrows rather than removes
-   * the original one above: `.skin` (word boundary — `.skinVariant`
-   * never matches it, no `\w` boundary between "skin" and "Variant") must
-   * appear EXACTLY this one place, and must never be combined with
-   * `editorialContext` in the same statement — the one thing that
-   * original guard actually existed to prevent.
+   * docstring, "The skin guard"). Mission 042 adds a second, equally
+   * deliberate read: `TraditionsStep` receives the same re-validated
+   * `skin`, used ONLY to narrow `resolveAvailableTraditionSuggestions`'s
+   * catalog (config/tradition-suggestions.ts) — never to infer or
+   * pre-select a practice, and never combined with `editorialContext` in
+   * the same statement, the one thing this guard actually exists to
+   * prevent. `.skin` (word boundary — `.skinVariant` never matches it, no
+   * `\w` boundary between "skin" and "Variant") must appear EXACTLY these
+   * two places, both a plain `skin={resumed.memorial.skin}` JSX prop,
+   * never anywhere else.
    */
-  it("the one legitimate `memorial.skin` read (A03's skin guard) is never used to deduce editorialContext", () => {
+  it("the two legitimate `memorial.skin` reads (A03's and A09's skin guards) are never used to deduce editorialContext", () => {
     const skinMatches = CODE.match(/\.skin\b/g) ?? [];
-    expect(skinMatches).toEqual([".skin"]); // exactly one occurrence
-    expect(CODE).toMatch(/skin=\{resumed\.memorial\.skin\}/);
+    expect(skinMatches).toEqual([".skin", ".skin"]); // exactly these two occurrences
+    expect(CODE.match(/skin=\{resumed\.memorial\.skin\}/g) ?? []).toHaveLength(2);
     // The original danger this guard exists for: `editorialContext`
     // COMPUTED from `skin` — an assignment or a ternary. There is no
     // `editorialContext =` assignment anywhere in this route at all (it

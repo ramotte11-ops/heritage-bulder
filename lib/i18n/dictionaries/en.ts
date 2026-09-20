@@ -126,4 +126,17 @@ export const en: Record<TranslationKey, string> = {
   "ceremony.zoneDateTime": "Date and time",
   "ceremony.zonePlace": "Ceremony location",
   "ceremony.zonePractical": "Practical information",
+  "traditions.title": "Traditions & personal notes",
+  "traditions.subtitle":
+    "Would you like to share a tradition, a practice, or a particular wish with your loved ones?",
+  "traditions.suggestionsHeading": "A few suggestions",
+  "traditions.addSuggestionAction": "Add this suggestion",
+  "traditions.addCustomAction": "+ Add a personal note",
+  "traditions.titleFieldLabel": "Title (optional)",
+  "traditions.textFieldLabel": "Your text",
+  "traditions.confirmAdd": "Add",
+  "traditions.editAction": "Edit",
+  "traditions.removeAction": "Remove",
+  "traditions.saveEdit": "Save",
+  "traditions.skip": "Skip this step",
 };
