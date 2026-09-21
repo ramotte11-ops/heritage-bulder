@@ -349,6 +349,13 @@ export const TRANSLATION_KEYS = [
   "personSheet.a12Question",
   "personSheet.a12Helper",
   "personSheet.skip",
+  // Mission — Récit de vie Intemporel V1.3.1 (the real Memorial renderer
+  // for A10/A11/A12, spec/localization.json's own `recit.*` keys).
+  "recit.title",
+  "recit.person",
+  "recit.loved",
+  "recit.legacy",
+  "recit.decorativeMemories",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

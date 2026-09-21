@@ -1,0 +1,371 @@
+/*
+ * Récit de vie Intemporel — module stylesheet. Studio pack
+ * RECIT_DE_VIE_STUDIO_RUNTIME_V1_3_1 (QG GREEN pour intégration
+ * runtime). Every number below traces back to
+ * config/recit-de-vie-intemporel-tokens.ts, itself transcribed verbatim
+ * from that package's own spec/execution-contract.json — see that
+ * file's own docstring for the full architecture reasoning and for the
+ * derivation of every mobile linear formula used here.
+ *
+ * ## Breakpoint — 1024px, per the contract's own `desktop.viewport_
+ * rule.min` (not the 960px every other Intemporel renderer in this repo
+ * uses for Ceremony/Hero/Death Notice — those packages' own contracts
+ * say 960; this one says 1024. Honored literally rather than aligned to
+ * the sibling convention, since execution-contract.json is this
+ * package's own normative source).
+ *
+ * ## Desktop — literal fixed pixels, never scaled
+ *
+ * `desktop.viewport_rule`: "center 1440 artboard; gutters use exact
+ * theme background; do not scale artboard up". `.canvas` therefore
+ * renders at a LITERAL `width: 1440px` (never `max-width: 1440px;
+ * width: 100%` the way Ceremony/Hero's own fluid canvases do) — every
+ * desktop x/y number below is used as-is, a straight 1:1 px
+ * transcription of execution-contract.json's own `desktop` block.
+ *
+ * ## Mobile — `viewportWidth/430` scale, plus a SEPARATE vertical-
+ * spacing damping factor
+ *
+ * Two independent scale factors, both explicit in the contract, kept
+ * distinct here:
+ *  (a) `top_asset_scale: viewportWidth/430` — pure proportional scaling,
+ *      applied to asset sizes/positions/icon size/rail width (`width:
+ *      100%` on a 430-native-width image already gives this for free;
+ *      every other proportional value below is `nominalAt430/430*100`
+ *      expressed as a `vw` coefficient);
+ *  (b) `matter.vertical_spacing_interpolation` — a GENTLER factor for
+ *      vertical gaps only (0.92 at 375, 1.0 at 430 — never as low as
+ *      pure `375/430=0.872` would give), applied to `matterGapPxAt430`
+ *      and each `minimumGapAfterLastMatterPxByCountAt430`. Both (a) and
+ *      (b), and `padding_px`'s own four documented values, are exactly
+ *      linear in viewport width — verified by fitting a line through
+ *      the contract's 375/430 endpoints and checking it reproduces the
+ *      contract's own 390/414 figures to the nearest documented px —
+ *      so each is written below as one `calc(A + Bvw)` formula rather
+ *      than four separate media queries that could silently drift
+ *      apart.
+ *
+ * ## The rail — pure CSS timeline, no JS measurement
+ *
+ * The BODY's own height is intentionally never JS-measured: `.body` is
+ * a background-repeat-y div that simply WRAPS the matter list
+ * (`.matterList`), so its height falls out of ordinary document flow —
+ * exactly as tall as the family's own text needs, no taller. The rail
+ * between two consecutive present matters uses the classic CSS
+ * "timeline" technique instead of any runtime layout measurement:
+ * `.matter:not(:last-child)::before` is an absolutely-positioned bar
+ * whose `top` starts right below the icon and whose `bottom` is a
+ * NEGATIVE value equal to the matter's own `margin-bottom` (the gap to
+ * the next matter) — which places its far end exactly at the next
+ * matter's own icon, regardless of how tall either matter's text
+ * happens to be. `:not(:last-child)` alone guarantees "the last present
+ * matter has no outgoing rail" (contract's own rule), since an absent
+ * matter is never rendered as a `.matter` element in the first place —
+ * there is no separate "is this the last one" flag to keep in sync.
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  background: var(--recit-background);
+  color: var(--recit-family-text);
+}
+
+/* ---------------------------------------------------------------------
+ * Breakpoint switch — mobile shown by default, desktop at >=1024px
+ * ------------------------------------------------------------------- */
+
+.desktopOnly {
+  display: none;
+}
+.mobileOnly {
+  display: block;
+}
+@media (min-width: 1024px) {
+  .desktopOnly {
+    display: block;
+  }
+  .mobileOnly {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Scene top / bottom — verbatim Studio pixels, intrinsic ratio only
+ * ------------------------------------------------------------------- */
+
+.sceneTop,
+.sceneBottomImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (min-width: 1024px) {
+  .wrap {
+    width: 1440px;
+    margin-inline: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Title — mobile: centered, viewportWidth/430 scale. Desktop: fixed box.
+ * ------------------------------------------------------------------- */
+
+.title {
+  position: relative;
+  z-index: 1;
+  margin: calc(-37.9070vw) auto 0;
+  max-width: 65.1163vw;
+  text-align: center;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  font-size: 24px;
+  line-height: 27px;
+  letter-spacing: 0.08em;
+  color: var(--recit-title);
+}
+
+@media (min-width: 1024px) {
+  .title {
+    margin: -554px 0 0 486px;
+    width: 560px;
+    max-width: 560px;
+    font-size: 34px;
+    line-height: 37px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Body — repeat-y paper field, height driven purely by its own content
+ * ------------------------------------------------------------------- */
+
+.body {
+  position: relative;
+  z-index: 1;
+  margin-top: calc(33.2558vw - 27px);
+  background-image: var(--recit-body-bg-mobile);
+  background-repeat: repeat-y;
+  background-position: top center;
+  background-size: 100% auto;
+}
+
+@media (min-width: 1024px) {
+  .body {
+    margin-top: 162px;
+    background-image: var(--recit-body-bg-desktop);
+  }
+}
+
+.matterList {
+  list-style: none;
+  margin: 0;
+  /* Left padding = the mobile section padding (execution-contract.json's
+   * `mobile.padding_px`, linearly fitted through its 375/430 endpoints —
+   * see this file's own top docstring) — matches `matter.icon_x_rule:
+   * "padding"`: the icon's left edge sits exactly at that padding. */
+  padding: 0 0 0 calc(2.7273px + 7.2727vw);
+}
+
+@media (min-width: 1024px) {
+  .matterList {
+    padding: 0 0 0 360px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * One matter row — icon column + label/text column
+ * ------------------------------------------------------------------- */
+
+.matter {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: calc(17.9782px + 6.9818vw);
+}
+
+.matter:last-child {
+  margin-bottom: 0;
+}
+
+@media (min-width: 1024px) {
+  .matter {
+    margin-bottom: 74px;
+  }
+  .matter:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* Rail — timeline segment from this matter's icon to the next present
+ * matter's icon. Never rendered after the last present matter (see this
+ * file's own top docstring). */
+.matter:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: calc((12.0930vw - 0.2907vw) / 2);
+  top: 12.0930vw;
+  bottom: calc(-1 * (17.9782px + 6.9818vw));
+  width: 0.2907vw;
+  background: var(--recit-rail);
+}
+
+@media (min-width: 1024px) {
+  .matter:not(:last-child)::before {
+    left: calc((72px - 1.5px) / 2);
+    top: 72px;
+    bottom: -74px;
+    width: 1.5px;
+  }
+}
+
+.railColumn {
+  position: relative;
+  flex: 0 0 17.6744vw;
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .railColumn {
+    flex: 0 0 110px;
+  }
+}
+
+.icon {
+  display: block;
+  width: 12.0930vw;
+  height: 12.0930vw;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (min-width: 1024px) {
+  .icon {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+.textColumn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 6.5116vw;
+}
+
+@media (min-width: 1024px) {
+  .textColumn {
+    flex: 0 1 650px;
+    max-width: 650px;
+    padding-right: 0;
+  }
+}
+
+.label {
+  margin: 0 0 4.4945vw;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  font-size: 13px;
+  line-height: 15px;
+  letter-spacing: 0.1em;
+  color: var(--recit-label);
+}
+
+@media (min-width: 1024px) {
+  .label {
+    margin: 0 0 18px;
+    font-size: 16px;
+    line-height: 18px;
+  }
+}
+
+.familyText {
+  font-weight: 400;
+  font-size: clamp(15.5px, 4.1860vw, 18px);
+  line-height: clamp(22.4px, 6.0465vw, 26px);
+  color: var(--recit-family-text);
+}
+
+@media (min-width: 1024px) {
+  .familyText {
+    font-size: 23px;
+    line-height: 32px;
+  }
+}
+
+.familyTextLine {
+  margin: 0;
+}
+.familyTextLine + .familyTextLine {
+  margin-top: 0.6em;
+}
+
+/* ---------------------------------------------------------------------
+ * Closure — scene-bottom + the localized "Des souvenirs qui restent."
+ * microcopy, positioned as a percentage of the closure wrapper's own
+ * box (which itself scales 1:1 with the visible scene-bottom image via
+ * intrinsic ratio) — no px/vw formula needed for the microcopy box.
+ * ------------------------------------------------------------------- */
+
+.closureWrap {
+  position: relative;
+  z-index: 1;
+  margin-top: var(--recit-closure-gap);
+}
+
+/* Minimum gap after the last present matter's text — one class per
+ * present-matter count (execution-contract.json's own
+ * `minimum_gap_after_last_matter_px_by_count[_at_430]`). */
+.closureGapMobile1 {
+  --recit-closure-gap: calc(26.2182px + 10.1818vw);
+}
+.closureGapMobile2 {
+  --recit-closure-gap: calc(23.2218px + 9.0182vw);
+}
+.closureGapMobile3 {
+  --recit-closure-gap: calc(20.9745px + 8.1455vw);
+}
+@media (min-width: 1024px) {
+  .closureGapMobile1 {
+    --recit-closure-gap: 92px;
+  }
+  .closureGapMobile2 {
+    --recit-closure-gap: 82px;
+  }
+  .closureGapMobile3 {
+    --recit-closure-gap: 72px;
+  }
+}
+
+.microcopy {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  left: 19.5349%;
+  top: 20%;
+  width: 55.3488%;
+  height: 41.5385%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(13px, 3.4884vw, 15px);
+  line-height: clamp(15.6px, 4.1860vw, 18px);
+  color: var(--recit-microcopy);
+}
+
+@media (min-width: 1024px) {
+  .microcopy {
+    left: 58.4722%;
+    top: 33.6%;
+    width: 22.9167%;
+    height: 30%;
+    font-size: 18px;
+    line-height: 22px;
+  }
+}

@@ -31,6 +31,10 @@ import {
   buildQgRuntimeDemoContent,
   buildQgRuntimeDemoContentThroughA03,
 } from "@/lib/builder/qg-runtime-demo";
+import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
+import { writePersonWords } from "@/lib/memorial/person-words";
+import { writeLovedThings } from "@/lib/memorial/loved-things";
+import { writeLegacy } from "@/lib/memorial/legacy";
 import styles from "./page.module.css";
 
 /**
@@ -92,6 +96,73 @@ function scenarioHeroInput(scenario: Scenario) {
 const LANGUAGE = QG_RUNTIME_DEMO_LANGUAGE;
 const EDITORIAL_CONTEXT = QG_RUNTIME_DEMO_EDITORIAL_CONTEXT;
 
+/**
+ * Récit de vie Runtime V1.3.1 — QG Runtime Demo control panel (mission
+ * brief section 14). A dedicated preview mode, entirely additive: it
+ * never touches the gated Hero/A01-A03 flow above (`needsPageA` ->
+ * ... -> `needsA03`), never mounts `BuilderShell`, and never persists
+ * anything beyond this page's own local `useState`. Toggled by
+ * `showRecit`, independent from `scenario`/`generation` so switching
+ * back to the guided flow resumes exactly where it was left.
+ *
+ * Content is built through the real `writePersonWords`/`writeLovedThings`/
+ * `writeLegacy` functions (lib/memorial/person-words.ts,
+ * loved-things.ts, legacy.ts) — the same functions
+ * `PersonSheetStep`/Mission 044's combined A10+A11+A12 sheet itself
+ * calls — never a hand-shaped `content.personWords`/… object, mirroring
+ * `buildQgRuntimeDemoContent`'s own doctrine (this file's top docstring).
+ */
+type RecitScenario =
+  | "A10"
+  | "A11"
+  | "A12"
+  | "A10_A11"
+  | "A10_A12"
+  | "A11_A12"
+  | "A10_A11_A12"
+  | "A10_LONG";
+
+const RECIT_SCENARIOS: { id: RecitScenario; label: string }[] = [
+  { id: "A10", label: "A10 seul" },
+  { id: "A11", label: "A11 seul" },
+  { id: "A12", label: "A12 seul" },
+  { id: "A10_A11", label: "A10+A11" },
+  { id: "A10_A12", label: "A10+A12" },
+  { id: "A11_A12", label: "A11+A12" },
+  { id: "A10_A11_A12", label: "A10+A11+A12" },
+  { id: "A10_LONG", label: "A10 long" },
+];
+
+const RECIT_A10_TEXT =
+  "Elle avait un rire qui remplissait toute la pièce, et une patience infinie pour écouter chacun, jusqu'au bout.";
+const RECIT_A11_TEXT =
+  "Le jardin au printemps, les repas dominicaux en famille, et le café du matin pris lentement sur la terrasse.";
+const RECIT_A12_TEXT =
+  "Un héritage de gentillesse, de curiosité, et l'habitude de toujours tendre la main en premier.";
+const RECIT_A10_LONG_TEXT = Array.from(
+  { length: 6 },
+  (_, i) =>
+    `Paragraphe ${i + 1} — un très long texte familial, écrit tel quel par la famille, jamais résumé ni reformulé par HERITAGE, pour vérifier que la section Récit de vie grandit naturellement avec le contenu réel plutôt que d'être bornée à une hauteur fixe.`,
+).join("\n");
+
+function buildRecitScenarioContent(scenario: RecitScenario): MemorialContent {
+  let content: MemorialContent = {};
+  const includeA10 = scenario === "A10" || scenario === "A10_A11" || scenario === "A10_A12" || scenario === "A10_A11_A12" || scenario === "A10_LONG";
+  const includeA11 = scenario === "A11" || scenario === "A10_A11" || scenario === "A11_A12" || scenario === "A10_A11_A12";
+  const includeA12 = scenario === "A12" || scenario === "A10_A12" || scenario === "A11_A12" || scenario === "A10_A11_A12";
+
+  if (includeA10) {
+    content = writePersonWords(content, { text: scenario === "A10_LONG" ? RECIT_A10_LONG_TEXT : RECIT_A10_TEXT });
+  }
+  if (includeA11) {
+    content = writeLovedThings(content, { text: RECIT_A11_TEXT });
+  }
+  if (includeA12) {
+    content = writeLegacy(content, { text: RECIT_A12_TEXT });
+  }
+  return content;
+}
+
 export default function QgRuntimeDemoPage() {
   const [scenario, setScenario] = useState<Scenario>("normal");
   const [content, setContent] = useState<MemorialContent>(() =>
@@ -104,6 +175,17 @@ export default function QgRuntimeDemoPage() {
   // content swap must remount them, never rely on a prop-change re-render
   // to reset that internal copy.
   const [generation, setGeneration] = useState(0);
+
+  // Récit de vie Runtime V1.3.1 QG Runtime Demo panel — entirely
+  // independent from the gated flow above (see this file's own
+  // `RECIT_SCENARIOS` docstring).
+  const [showRecit, setShowRecit] = useState(false);
+  const [recitScenario, setRecitScenario] = useState<RecitScenario>("A10_A11_A12");
+
+  function applyRecitScenario(next: RecitScenario) {
+    setRecitScenario(next);
+    setShowRecit(true);
+  }
 
   async function persist(next: MemorialContent) {
     setContent(next);
@@ -133,7 +215,11 @@ export default function QgRuntimeDemoPage() {
   let stepLabel: string;
   let body: ReactNode;
 
-  if (needsPageA(content)) {
+  if (showRecit) {
+    const recitContent = buildRecitScenarioContent(recitScenario);
+    stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
+    body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
+  } else if (needsPageA(content)) {
     stepLabel = "Hero — PAGE A (nom, dates)";
     body = (
       <HeroIdentityStep
@@ -277,6 +363,26 @@ export default function QgRuntimeDemoPage() {
           >
             Dark
           </button>
+        </div>
+
+        <div className={styles.panelGroup}>
+          <span className={styles.panelGroupLabel}>Récit de vie V1.3.1</span>
+          {RECIT_SCENARIOS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={styles.panelButton}
+              aria-pressed={showRecit && recitScenario === s.id}
+              onClick={() => applyRecitScenario(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+          {showRecit && (
+            <button type="button" className={styles.panelButton} onClick={() => setShowRecit(false)}>
+              Retour au parcours
+            </button>
+          )}
         </div>
 
         <div className={styles.panelGroup}>

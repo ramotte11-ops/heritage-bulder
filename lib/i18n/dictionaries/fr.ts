@@ -154,4 +154,9 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "personSheet.a12Helper":
     "Une valeur, une expression, un geste, quelque chose qu'elle vous a appris ou transmis, ou simplement ce que vous garderez d'elle…",
   "personSheet.skip": "Passer cette étape",
+  "recit.title": "LE RÉCIT D’UNE VIE",
+  "recit.person": "LA PERSONNE QU’ELLE ÉTAIT",
+  "recit.loved": "CE QU’ELLE AIMAIT",
+  "recit.legacy": "CE QU’ELLE LAISSE DERRIÈRE ELLE",
+  "recit.decorativeMemories": "Des souvenirs qui restent.",
 };

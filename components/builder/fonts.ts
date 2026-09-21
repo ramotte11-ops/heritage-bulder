@@ -91,3 +91,28 @@ export const ebGaramond = EB_Garamond({
   variable: "--font-heritage-ceremony-serif",
   display: "swap",
 });
+
+/**
+ * Récit de vie Runtime V1.3.1 — the typography lock's own microcopy role
+ * ("Des souvenirs qui restent.") requires EB Garamond ITALIC 400, which
+ * `ebGaramond` above does not load (its `weight: ["400"]` call has no
+ * `style` option, so `next/font/google` only fetches the upright cut).
+ * Google Fonts does publish an EB Garamond italic 400 face — verified
+ * against this project's own bundled
+ * `next/dist/compiled/@next/font/dist/google/font-data.json`, whose
+ * `"EB Garamond"` entry lists `"styles": ["normal", "italic"]` — so this
+ * is a second, real font-loading call for the SAME family, never a
+ * CSS `font-style: italic` synthetic slant applied to the upright face
+ * (V1.3.1 contract: "Aucune autre police ni substitution n'est
+ * autorisée"). Kept as its own export, its own `.variable`, rather than
+ * widening `ebGaramond` itself to `style: ["normal", "italic"]`: every
+ * existing caller of `ebGaramond` (CeremonyIntemporel today) keeps
+ * loading exactly the one upright face it already depends on, unchanged.
+ */
+export const ebGaramondItalic = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["400"],
+  style: ["italic"],
+  variable: "--font-heritage-recit-serif-italic",
+  display: "swap",
+});

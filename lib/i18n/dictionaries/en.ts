@@ -151,4 +151,9 @@ export const en: Record<TranslationKey, string> = {
   "personSheet.a12Helper":
     "A value, a saying, a gesture, something they taught or passed on to you, or simply what you'll always remember about them…",
   "personSheet.skip": "Skip this step",
+  "recit.title": "THE STORY OF A LIFE",
+  "recit.person": "THE PERSON THEY WERE",
+  "recit.loved": "WHAT THEY LOVED",
+  "recit.legacy": "WHAT THEY LEAVE BEHIND",
+  "recit.decorativeMemories": "Memories that remain.",
 };
