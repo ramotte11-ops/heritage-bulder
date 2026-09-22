@@ -1,0 +1,197 @@
+/*
+ * Récit de vie Intemporel — module stylesheet. Handoff GREEN QG
+ * `HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT`. Every number below
+ * traces back to `config/recit-de-vie-runtime-tokens.ts`, itself
+ * transcribed verbatim from that Handoff's own `geometry/mobile.json`/
+ * `geometry/desktop.json` — see that file's own docstring for the full
+ * architecture reasoning.
+ *
+ * ## Breakpoint — 1024px, the Handoff's own strict cutover
+ *
+ * `execution-contract.json`: `"vertical_max": 1023, "desktop_min": 1024`
+ * — Mobile and Desktop are two entirely different compositions (vertical
+ * stack vs. horizontal three-column), so this is a hard switch, never a
+ * gradual reflow across the boundary.
+ *
+ * ## Mobile — pure `vw`, no cap (continuous 375-1023)
+ *
+ * `.wrap` renders full-bleed (`width:100%`, no inherited max-width) up
+ * to the breakpoint, so its rendered width equals the viewport width and
+ * a plain `Nvw` IS the Handoff's own `scale = renderedWidth / 941`
+ * (`N = valueAtCanonical / 941 * 100`) for every position AND every font
+ * size alike (Handoff: "Aucun breakpoint ne modifie la composition"
+ * between 375 and 1023) — never a `clamp()` here, since Mobile has no
+ * independent ceiling short of the 1024 cutover itself.
+ *
+ * ## Desktop — percentage-of-container (position) + `clamp()` (type),
+ * capped at 1448
+ *
+ * `.wrap` gets `max-width:1448px` at the breakpoint — exactly
+ * `CeremonyIntemporel.module.css`'s own technique — so every position
+ * below is a plain percentage of the 1448×1086 canvas (works for any
+ * width from 1024 up, and locks for free once `max-width` caps it at
+ * 1448). Font sizes use `clamp(floorAt1024px, Nvw, ceilingAt1448px)`,
+ * the same fluid-until-its-own-cap technique that file already
+ * establishes for an identical requirement.
+ *
+ * ## The shared overlay technique — one element, two positions
+ *
+ * `.posBox` reads `--zx/--zy/--zw/--zh` (Mobile, the default) or
+ * `--zxd/--zyd/--zwd/--zhd` (Desktop, past the breakpoint) — set inline
+ * by the component's own `zoneVars()`, mirroring
+ * `CeremonyIntemporel.tsx`'s identical `--zx/--zxm` device. One DOM
+ * node per overlay, never duplicated markup.
+ */
+
+.wrap {
+  position: relative;
+  width: 100%;
+  color: var(--recit-ink);
+}
+
+@media (min-width: 1024px) {
+  .wrap {
+    max-width: 1448px;
+    margin-inline: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * ART layer — verbatim Studio pixels, intrinsic ratio only
+ * ------------------------------------------------------------------- */
+
+.mobileImg,
+.desktopImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mobileOnly {
+  display: block;
+}
+.desktopOnly {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .mobileOnly {
+    display: none;
+  }
+  .desktopOnly {
+    display: block;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Shared overlay positioning
+ * ------------------------------------------------------------------- */
+
+.posBox {
+  position: absolute;
+  left: var(--zx);
+  top: var(--zy);
+  width: var(--zw);
+  height: var(--zh);
+  margin: 0;
+}
+
+@media (min-width: 1024px) {
+  .posBox {
+    left: var(--zxd);
+    top: var(--zyd);
+    width: var(--zwd);
+    height: var(--zhd);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Title
+ * ------------------------------------------------------------------- */
+
+.title {
+  text-align: center;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  font-size: 5.8667vw;
+  line-height: 6.4533vw;
+}
+
+@media (min-width: 1024px) {
+  .title {
+    font-size: clamp(28.2873px, 2.7624vw, 40px);
+    line-height: clamp(33.9448px, 3.3149vw, 48px);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Label (small-caps matter heading) — Mobile left, Desktop centered
+ * (execution-contract.json's own `align` per breakpoint, not a Sonnet
+ * styling choice)
+ * ------------------------------------------------------------------- */
+
+.label {
+  text-align: left;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  font-size: 3.2vw;
+  line-height: 4.096vw;
+}
+
+@media (min-width: 1024px) {
+  .label {
+    text-align: center;
+    font-size: clamp(15.558px, 1.5193vw, 22px);
+    line-height: clamp(18.6696px, 1.8232vw, 26.4px);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Body — family text (verbatim) or the HERITAGE fallback, identical box
+ * and style either way
+ * ------------------------------------------------------------------- */
+
+.body {
+  text-align: left;
+  font-weight: 400;
+  font-size: 4.5333vw;
+  line-height: 6.6187vw;
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 1024px) {
+  .body {
+    text-align: center;
+    font-size: clamp(15.558px, 1.5193vw, 22px);
+    line-height: clamp(19.4475px, 1.8992vw, 27.5px);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Microcopy — italic, centered both breakpoints; Desktop alone carries
+ * the Handoff's own -10deg card rotation. Mobile font-size/line-height
+ * corrected by HERITAGE_RDV_HANDOFF_ADDENDUM_MICROCOPY_MOBILE_V1 (QG
+ * GREEN): 20px/23.6px -> 16px/21px at the 375 witness width
+ * (16/375*100 = 4.2667vw, 21/375*100 = 5.6vw) — the withdrawn value
+ * measured the glyphs' own visible bbox rather than a composition box,
+ * so "Des souvenirs qui restent." wrapped to 4 lines instead of the
+ * documented 2. Desktop's own microcopy block below is untouched by
+ * this addendum.
+ * ------------------------------------------------------------------- */
+
+.microcopy {
+  text-align: center;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 4.2667vw;
+  line-height: 5.6vw;
+}
+
+@media (min-width: 1024px) {
+  .microcopy {
+    font-size: clamp(21.2155px, 2.0718vw, 30px);
+    line-height: clamp(24.0442px, 2.3481vw, 34px);
+    transform: rotate(var(--recit-microcopy-rotation));
+  }
+}

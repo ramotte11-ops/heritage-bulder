@@ -31,6 +31,10 @@ import {
   buildQgRuntimeDemoContent,
   buildQgRuntimeDemoContentThroughA03,
 } from "@/lib/builder/qg-runtime-demo";
+import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
+import { writePersonWords } from "@/lib/memorial/person-words";
+import { writeLovedThings } from "@/lib/memorial/loved-things";
+import { writeLegacy } from "@/lib/memorial/legacy";
 import styles from "./page.module.css";
 
 /**
@@ -92,6 +96,63 @@ function scenarioHeroInput(scenario: Scenario) {
 const LANGUAGE = QG_RUNTIME_DEMO_LANGUAGE;
 const EDITORIAL_CONTEXT = QG_RUNTIME_DEMO_EDITORIAL_CONTEXT;
 
+/**
+ * Récit de vie — QG Runtime Demo control panel, Handoff GREEN QG
+ * `HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT` (mission section 14's own
+ * QA matrix: "trois fallbacks courts, 80/80/80... 240/240/240, puis
+ * chaque matière à 240 avec les deux autres courtes"). Entirely
+ * additive, exactly like the withdrawn V1.3.1 panel it replaces: never
+ * touches the gated Hero/A01-A03 flow above, never persists anything
+ * beyond this page's own local `useState`. Content is built through the
+ * real `writePersonWords`/`writeLovedThings`/`writeLegacy` functions —
+ * never a hand-shaped `content.personWords`/… object.
+ */
+type RecitScenario = "FALLBACKS" | "SHORT" | "STRESS_240" | "MIXED";
+
+const RECIT_SCENARIOS: { id: RecitScenario; label: string }[] = [
+  { id: "FALLBACKS", label: "3 fallbacks (vide)" },
+  { id: "SHORT", label: "Textes courts" },
+  { id: "STRESS_240", label: "Stress 240/240/240" },
+  { id: "MIXED", label: "Mixte (famille + fallback)" },
+];
+
+const RECIT_SHORT_A10 = "Élise avançait avec douceur.";
+const RECIT_SHORT_A11 = "Elle aimait les livres et la mer.";
+const RECIT_SHORT_A12 = "Elle laisse une tendresse profonde.";
+
+/** Exactly 240 Unicode code points each, built deterministically so the
+ * length is exact and auditable rather than eyeballed. */
+function repeatToLength(sentence: string, length: number): string {
+  const units = Array.from(sentence.repeat(Math.ceil(length / sentence.length)));
+  return units.slice(0, length).join("");
+}
+const RECIT_STRESS_A10 = repeatToLength("Une présence qui demeure dans chaque souvenir partagé. ", 240);
+const RECIT_STRESS_A11 = repeatToLength("Ce qu'elle aimait continue de vivre dans nos gestes. ", 240);
+const RECIT_STRESS_A12 = repeatToLength("Ce qu'elle nous laisse ne s'efface pas avec le temps. ", 240);
+
+function buildRecitScenarioContent(scenario: RecitScenario): MemorialContent {
+  let content: MemorialContent = {};
+  if (scenario === "FALLBACKS") return content;
+
+  if (scenario === "SHORT") {
+    content = writePersonWords(content, { text: RECIT_SHORT_A10 });
+    content = writeLovedThings(content, { text: RECIT_SHORT_A11 });
+    content = writeLegacy(content, { text: RECIT_SHORT_A12 });
+    return content;
+  }
+
+  if (scenario === "STRESS_240") {
+    content = writePersonWords(content, { text: RECIT_STRESS_A10 });
+    content = writeLovedThings(content, { text: RECIT_STRESS_A11 });
+    content = writeLegacy(content, { text: RECIT_STRESS_A12 });
+    return content;
+  }
+
+  // MIXED — only A10 filled, A11/A12 fall back.
+  content = writePersonWords(content, { text: RECIT_SHORT_A10 });
+  return content;
+}
+
 export default function QgRuntimeDemoPage() {
   const [scenario, setScenario] = useState<Scenario>("normal");
   const [content, setContent] = useState<MemorialContent>(() =>
@@ -104,6 +165,16 @@ export default function QgRuntimeDemoPage() {
   // content swap must remount them, never rely on a prop-change re-render
   // to reset that internal copy.
   const [generation, setGeneration] = useState(0);
+
+  // Récit de vie QG Runtime Demo panel — independent from the gated
+  // flow above (see this file's own `RECIT_SCENARIOS` docstring).
+  const [showRecit, setShowRecit] = useState(false);
+  const [recitScenario, setRecitScenario] = useState<RecitScenario>("FALLBACKS");
+
+  function applyRecitScenario(next: RecitScenario) {
+    setRecitScenario(next);
+    setShowRecit(true);
+  }
 
   async function persist(next: MemorialContent) {
     setContent(next);
@@ -133,7 +204,11 @@ export default function QgRuntimeDemoPage() {
   let stepLabel: string;
   let body: ReactNode;
 
-  if (needsPageA(content)) {
+  if (showRecit) {
+    const recitContent = buildRecitScenarioContent(recitScenario);
+    stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
+    body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
+  } else if (needsPageA(content)) {
     stepLabel = "Hero — PAGE A (nom, dates)";
     body = (
       <HeroIdentityStep
@@ -277,6 +352,26 @@ export default function QgRuntimeDemoPage() {
           >
             Dark
           </button>
+        </div>
+
+        <div className={styles.panelGroup}>
+          <span className={styles.panelGroupLabel}>Récit de vie</span>
+          {RECIT_SCENARIOS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={styles.panelButton}
+              aria-pressed={showRecit && recitScenario === s.id}
+              onClick={() => applyRecitScenario(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+          {showRecit && (
+            <button type="button" className={styles.panelButton} onClick={() => setShowRecit(false)}>
+              Retour au parcours
+            </button>
+          )}
         </div>
 
         <div className={styles.panelGroup}>

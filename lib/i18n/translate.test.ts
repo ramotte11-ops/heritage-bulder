@@ -21,7 +21,22 @@ describe("translate — each language resolves its own keys", () => {
 
   it("es resolves every key it has translated to its own dictionary entry", () => {
     for (const key of TRANSLATION_KEYS) {
+      // ES no longer translates literally every canonical key — see
+      // dictionaries/es.ts's own note on "recit.a10Fallback"/
+      // "a11Fallback"/"a12Fallback" (deliberately withheld pending QG
+      // validation, per the Récit de vie Handoff's own STOP doctrine
+      // against inventing editorial fallback copy). A key ES hasn't
+      // translated is covered by the fallback-to-en test below instead.
+      if (es[key] === undefined) continue;
       expect(translate("es", key)).toBe(es[key]);
+    }
+  });
+
+  it("a key ES has deliberately not translated falls back to en, never an invented Spanish string", () => {
+    const untranslated = TRANSLATION_KEYS.filter((key) => es[key] === undefined);
+    expect(untranslated.length).toBeGreaterThan(0);
+    for (const key of untranslated) {
+      expect(translate("es", key)).toBe(en[key]);
     }
   });
 });
@@ -47,11 +62,11 @@ describe("translate — unsupported language falls back to en", () => {
 });
 
 describe("translate — a key missing from FR/ES falls back to the same key's en value", () => {
-  // Constructed fixture rather than the real FR/ES dictionaries: the
-  // real ones happen to translate every key that exists today (see
-  // dictionaries/fr.ts, dictionaries/es.ts), so this proves the
-  // fallback *mechanism* directly instead of relying on an
-  // incidentally-incomplete real dictionary.
+  // Constructed fixture rather than the real FR/ES dictionaries: this
+  // proves the fallback *mechanism* directly, independent of which keys
+  // the real dictionaries happen to translate today (FR translates every
+  // key; ES withholds a few deliberately — see dictionaries/es.ts and
+  // the "es resolves every key it has translated" test above).
   const fixtures: Record<Language, Dictionary> = {
     en: { "common.continue": "Continue", "errors.generic": "Something went wrong." },
     fr: { "common.continue": "Continuer" }, // "errors.generic" deliberately absent

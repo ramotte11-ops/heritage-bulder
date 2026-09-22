@@ -349,6 +349,23 @@ export const TRANSLATION_KEYS = [
   "personSheet.a12Question",
   "personSheet.a12Helper",
   "personSheet.skip",
+  // Mission — Récit de vie Intemporel V1.3.1 (the real Memorial renderer
+  // for A10/A11/A12, spec/localization.json's own `recit.*` keys).
+  "recit.title",
+  "recit.person",
+  "recit.loved",
+  "recit.legacy",
+  "recit.decorativeMemories",
+  // Handoff GREEN QG HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT — the
+  // HERITAGE editorial fallback shown in a matter's own body box when
+  // the family's normalized text is empty (never generated, never
+  // inferred, never stored in content.personWords/lovedThings/legacy —
+  // see lib/memorial/life-story-content.ts). FR is QG-validated GREEN
+  // product copy; EN/ES are explicitly NOT validated yet (see the en/es
+  // dictionaries' own docstring note on these three keys).
+  "recit.a10Fallback",
+  "recit.a11Fallback",
+  "recit.a12Fallback",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

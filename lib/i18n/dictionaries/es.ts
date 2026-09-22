@@ -151,4 +151,18 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "personSheet.a12Helper":
     "Un valor, una expresión, un gesto, algo que les enseñó o transmitió, o simplemente lo que siempre recordarán de ella…",
   "personSheet.skip": "Omitir este paso",
+  "recit.title": "EL RELATO DE UNA VIDA",
+  "recit.person": "LA PERSONA QUE ERA",
+  "recit.loved": "LO QUE AMABA",
+  "recit.legacy": "LO QUE DEJA",
+  "recit.decorativeMemories": "Recuerdos que permanecen.",
+  // "recit.a10Fallback"/"a11Fallback"/"a12Fallback" deliberately absent:
+  // ES fallback copy is not yet QG-validated and this Handoff forbids
+  // inventing/auto-translating it (see dictionaries/en.ts's own note on
+  // these same three keys). Omitting them here is this module's
+  // existing, already-documented mechanism for "controlled absence" —
+  // translate() falls back to the en entry (itself now the empty
+  // string — controlled absence, never invented Spanish prose, never a
+  // visible technical marker) rather than a second, parallel fallback
+  // path invented for this mission.
 };
