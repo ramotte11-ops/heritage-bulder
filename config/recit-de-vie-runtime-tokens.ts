@@ -132,19 +132,30 @@ export const RECIT_MOBILE_OVERLAYS: {
   a11Body: { x: 323.704, y: 1129.2, w: 579.656, h: 499.357, align: "left" },
   a12Label: { x: 323.704, y: 1643.613, w: 604.749, h: 45.168, align: "left" },
   a12Body: { x: 323.704, y: 1731.44, w: 579.656, h: 499.357, align: "left" },
-  microcopy: { x: 403.996, y: 2481.729, w: 195.728, h: 90.336, align: "center" },
+  // `microcopy` — corrected by HERITAGE_RDV_HANDOFF_ADDENDUM_MICROCOPY_
+  // MOBILE_V1 (QG GREEN). The withdrawn V1.0 value (x:403.996,
+  // y:2481.729, w:195.728, h:90.336) was the visible GLYPH bbox measured
+  // off the canonical proof, not a CSS composition box — too narrow to
+  // compose "Des souvenirs qui restent." on its documented 2 lines, so
+  // this runtime wrapped it to 4. The addendum's own measurement method
+  // (ADDENDUM.md section 3) reconstructs the true line box around the
+  // glyphs instead of reusing their visible bbox. Mobile-only; Desktop's
+  // own `RECIT_DESKTOP_OVERLAYS.microcopy` is untouched by this addendum.
+  microcopy: { x: 381.418667, y: 2466.674667, w: 240.896, h: 105.392, align: "center" },
 };
 
 /** `geometry/mobile.json`'s `typography_at_375`, verbatim — the
  * "witness width" the Handoff reports these at; scales linearly with
  * viewport width exactly like every position above (see this file's
- * own top docstring). */
+ * own top docstring). `microcopy` corrected by
+ * HERITAGE_RDV_HANDOFF_ADDENDUM_MICROCOPY_MOBILE_V1 (20px/23.6px ->
+ * 16px/21px) — see `RECIT_MOBILE_OVERLAYS.microcopy`'s own comment. */
 export const RECIT_MOBILE_TYPOGRAPHY_AT_375_WITNESS_WIDTH_PX = 375;
 export const RECIT_MOBILE_TYPOGRAPHY = {
   title: { fontSizePx: 22, lineHeightPx: 24.2 },
   label: { fontSizePx: 12, lineHeightPx: 15.36 },
   body: { fontSizePx: 17, lineHeightPx: 24.82 },
-  microcopy: { fontSizePx: 20, lineHeightPx: 23.6 },
+  microcopy: { fontSizePx: 16, lineHeightPx: 21 },
 } as const;
 
 /** `geometry/desktop.json`'s `coordinate_space`, verbatim. */

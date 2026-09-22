@@ -170,15 +170,22 @@
 
 /* ---------------------------------------------------------------------
  * Microcopy — italic, centered both breakpoints; Desktop alone carries
- * the Handoff's own -10deg card rotation
+ * the Handoff's own -10deg card rotation. Mobile font-size/line-height
+ * corrected by HERITAGE_RDV_HANDOFF_ADDENDUM_MICROCOPY_MOBILE_V1 (QG
+ * GREEN): 20px/23.6px -> 16px/21px at the 375 witness width
+ * (16/375*100 = 4.2667vw, 21/375*100 = 5.6vw) — the withdrawn value
+ * measured the glyphs' own visible bbox rather than a composition box,
+ * so "Des souvenirs qui restent." wrapped to 4 lines instead of the
+ * documented 2. Desktop's own microcopy block below is untouched by
+ * this addendum.
  * ------------------------------------------------------------------- */
 
 .microcopy {
   text-align: center;
   font-weight: 400;
   font-style: italic;
-  font-size: 5.3333vw;
-  line-height: 6.2933vw;
+  font-size: 4.2667vw;
+  line-height: 5.6vw;
 }
 
 @media (min-width: 1024px) {
