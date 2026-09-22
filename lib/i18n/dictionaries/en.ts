@@ -156,4 +156,18 @@ export const en: Record<TranslationKey, string> = {
   "recit.loved": "WHAT THEY LOVED",
   "recit.legacy": "WHAT THEY LEAVE BEHIND",
   "recit.decorativeMemories": "Memories that remain.",
+  // STOP condition raised to QG (Handoff GREEN QG
+  // HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT, section 8/16): the FR
+  // fallback strings for A10/A11/A12 are QG-validated GREEN product
+  // copy; EN is explicitly "non validé" and this Handoff forbids
+  // inventing or auto-translating editorial fallback text. This file's
+  // own type (`Record<TranslationKey, string>`, not `Partial`) requires
+  // every key to have SOME English string, so these three are a
+  // deliberately non-editorial technical marker — never an attempted
+  // translation of the FR fallback's meaning — making the gap visible
+  // rather than silently shipping invented prose. Replace with real
+  // QG-validated EN copy before this ships to an English visitor.
+  "recit.a10Fallback": "[HERITAGE fallback text — EN not yet validated by QG]",
+  "recit.a11Fallback": "[HERITAGE fallback text — EN not yet validated by QG]",
+  "recit.a12Fallback": "[HERITAGE fallback text — EN not yet validated by QG]",
 };

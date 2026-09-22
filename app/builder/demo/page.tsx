@@ -97,69 +97,59 @@ const LANGUAGE = QG_RUNTIME_DEMO_LANGUAGE;
 const EDITORIAL_CONTEXT = QG_RUNTIME_DEMO_EDITORIAL_CONTEXT;
 
 /**
- * Récit de vie Runtime V1.3.1 — QG Runtime Demo control panel (mission
- * brief section 14). A dedicated preview mode, entirely additive: it
- * never touches the gated Hero/A01-A03 flow above (`needsPageA` ->
- * ... -> `needsA03`), never mounts `BuilderShell`, and never persists
- * anything beyond this page's own local `useState`. Toggled by
- * `showRecit`, independent from `scenario`/`generation` so switching
- * back to the guided flow resumes exactly where it was left.
- *
- * Content is built through the real `writePersonWords`/`writeLovedThings`/
- * `writeLegacy` functions (lib/memorial/person-words.ts,
- * loved-things.ts, legacy.ts) — the same functions
- * `PersonSheetStep`/Mission 044's combined A10+A11+A12 sheet itself
- * calls — never a hand-shaped `content.personWords`/… object, mirroring
- * `buildQgRuntimeDemoContent`'s own doctrine (this file's top docstring).
+ * Récit de vie — QG Runtime Demo control panel, Handoff GREEN QG
+ * `HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT` (mission section 14's own
+ * QA matrix: "trois fallbacks courts, 80/80/80... 240/240/240, puis
+ * chaque matière à 240 avec les deux autres courtes"). Entirely
+ * additive, exactly like the withdrawn V1.3.1 panel it replaces: never
+ * touches the gated Hero/A01-A03 flow above, never persists anything
+ * beyond this page's own local `useState`. Content is built through the
+ * real `writePersonWords`/`writeLovedThings`/`writeLegacy` functions —
+ * never a hand-shaped `content.personWords`/… object.
  */
-type RecitScenario =
-  | "A10"
-  | "A11"
-  | "A12"
-  | "A10_A11"
-  | "A10_A12"
-  | "A11_A12"
-  | "A10_A11_A12"
-  | "A10_LONG";
+type RecitScenario = "FALLBACKS" | "SHORT" | "STRESS_240" | "MIXED";
 
 const RECIT_SCENARIOS: { id: RecitScenario; label: string }[] = [
-  { id: "A10", label: "A10 seul" },
-  { id: "A11", label: "A11 seul" },
-  { id: "A12", label: "A12 seul" },
-  { id: "A10_A11", label: "A10+A11" },
-  { id: "A10_A12", label: "A10+A12" },
-  { id: "A11_A12", label: "A11+A12" },
-  { id: "A10_A11_A12", label: "A10+A11+A12" },
-  { id: "A10_LONG", label: "A10 long" },
+  { id: "FALLBACKS", label: "3 fallbacks (vide)" },
+  { id: "SHORT", label: "Textes courts" },
+  { id: "STRESS_240", label: "Stress 240/240/240" },
+  { id: "MIXED", label: "Mixte (famille + fallback)" },
 ];
 
-const RECIT_A10_TEXT =
-  "Elle avait un rire qui remplissait toute la pièce, et une patience infinie pour écouter chacun, jusqu'au bout.";
-const RECIT_A11_TEXT =
-  "Le jardin au printemps, les repas dominicaux en famille, et le café du matin pris lentement sur la terrasse.";
-const RECIT_A12_TEXT =
-  "Un héritage de gentillesse, de curiosité, et l'habitude de toujours tendre la main en premier.";
-const RECIT_A10_LONG_TEXT = Array.from(
-  { length: 6 },
-  (_, i) =>
-    `Paragraphe ${i + 1} — un très long texte familial, écrit tel quel par la famille, jamais résumé ni reformulé par HERITAGE, pour vérifier que la section Récit de vie grandit naturellement avec le contenu réel plutôt que d'être bornée à une hauteur fixe.`,
-).join("\n");
+const RECIT_SHORT_A10 = "Élise avançait avec douceur.";
+const RECIT_SHORT_A11 = "Elle aimait les livres et la mer.";
+const RECIT_SHORT_A12 = "Elle laisse une tendresse profonde.";
+
+/** Exactly 240 Unicode code points each, built deterministically so the
+ * length is exact and auditable rather than eyeballed. */
+function repeatToLength(sentence: string, length: number): string {
+  const units = Array.from(sentence.repeat(Math.ceil(length / sentence.length)));
+  return units.slice(0, length).join("");
+}
+const RECIT_STRESS_A10 = repeatToLength("Une présence qui demeure dans chaque souvenir partagé. ", 240);
+const RECIT_STRESS_A11 = repeatToLength("Ce qu'elle aimait continue de vivre dans nos gestes. ", 240);
+const RECIT_STRESS_A12 = repeatToLength("Ce qu'elle nous laisse ne s'efface pas avec le temps. ", 240);
 
 function buildRecitScenarioContent(scenario: RecitScenario): MemorialContent {
   let content: MemorialContent = {};
-  const includeA10 = scenario === "A10" || scenario === "A10_A11" || scenario === "A10_A12" || scenario === "A10_A11_A12" || scenario === "A10_LONG";
-  const includeA11 = scenario === "A11" || scenario === "A10_A11" || scenario === "A11_A12" || scenario === "A10_A11_A12";
-  const includeA12 = scenario === "A12" || scenario === "A10_A12" || scenario === "A11_A12" || scenario === "A10_A11_A12";
+  if (scenario === "FALLBACKS") return content;
 
-  if (includeA10) {
-    content = writePersonWords(content, { text: scenario === "A10_LONG" ? RECIT_A10_LONG_TEXT : RECIT_A10_TEXT });
+  if (scenario === "SHORT") {
+    content = writePersonWords(content, { text: RECIT_SHORT_A10 });
+    content = writeLovedThings(content, { text: RECIT_SHORT_A11 });
+    content = writeLegacy(content, { text: RECIT_SHORT_A12 });
+    return content;
   }
-  if (includeA11) {
-    content = writeLovedThings(content, { text: RECIT_A11_TEXT });
+
+  if (scenario === "STRESS_240") {
+    content = writePersonWords(content, { text: RECIT_STRESS_A10 });
+    content = writeLovedThings(content, { text: RECIT_STRESS_A11 });
+    content = writeLegacy(content, { text: RECIT_STRESS_A12 });
+    return content;
   }
-  if (includeA12) {
-    content = writeLegacy(content, { text: RECIT_A12_TEXT });
-  }
+
+  // MIXED — only A10 filled, A11/A12 fall back.
+  content = writePersonWords(content, { text: RECIT_SHORT_A10 });
   return content;
 }
 
@@ -176,11 +166,10 @@ export default function QgRuntimeDemoPage() {
   // to reset that internal copy.
   const [generation, setGeneration] = useState(0);
 
-  // Récit de vie Runtime V1.3.1 QG Runtime Demo panel — entirely
-  // independent from the gated flow above (see this file's own
-  // `RECIT_SCENARIOS` docstring).
+  // Récit de vie QG Runtime Demo panel — independent from the gated
+  // flow above (see this file's own `RECIT_SCENARIOS` docstring).
   const [showRecit, setShowRecit] = useState(false);
-  const [recitScenario, setRecitScenario] = useState<RecitScenario>("A10_A11_A12");
+  const [recitScenario, setRecitScenario] = useState<RecitScenario>("FALLBACKS");
 
   function applyRecitScenario(next: RecitScenario) {
     setRecitScenario(next);
@@ -366,7 +355,7 @@ export default function QgRuntimeDemoPage() {
         </div>
 
         <div className={styles.panelGroup}>
-          <span className={styles.panelGroupLabel}>Récit de vie V1.3.1</span>
+          <span className={styles.panelGroupLabel}>Récit de vie</span>
           {RECIT_SCENARIOS.map((s) => (
             <button
               key={s.id}

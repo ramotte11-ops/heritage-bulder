@@ -4,14 +4,12 @@ import { cleanup, render } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
- * Récit de vie Runtime V1.3.1 — contract tests for the real Memorial
- * renderer. Same discipline as CeremonyIntemporel.test.tsx/
- * DeathNoticeIntemporel.test.tsx: state/render contracts (what mounts,
- * what text/asset shows for which data, the seven presence states, the
- * rail rules), never computed CSS/pixel layout from a real browser
- * engine — that is QG's own screenshot pass, not a jsdom unit test's
- * job (mission brief section 15/21: "Les tests jsdom ne prétendent pas
- * valider la fidélité pixel").
+ * Récit de vie Runtime — Handoff GREEN QG
+ * `HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT`. Contract tests for the
+ * real Memorial renderer. Same discipline as CeremonyIntemporel.test.tsx:
+ * state/render contracts, never computed CSS/pixel layout from a real
+ * browser engine — that is QG's own screenshot pass (QA.md), not a
+ * jsdom unit test's job.
  */
 
 vi.mock("next/font/google", () => ({
@@ -37,227 +35,151 @@ function contentWith(fields: { personWords?: string | null; lovedThings?: string
   return content;
 }
 
-const ALL_THREE = contentWith({
-  personWords: "Elle avait toujours le mot pour rire.",
-  lovedThings: "Le jardin, les dimanches en famille, le café du matin.",
-  legacy: "Un héritage de gentillesse et de patience.",
-});
-
 function renderRecit(overrides: Partial<React.ComponentProps<typeof RecitDeVieIntemporel>> = {}) {
-  return render(<RecitDeVieIntemporel content={ALL_THREE} language="fr" skinVariant="light" {...overrides} />);
+  return render(
+    <RecitDeVieIntemporel
+      content={contentWith({ personWords: "Texte A10.", lovedThings: "Texte A11.", legacy: "Texte A12." })}
+      language="fr"
+      skinVariant="light"
+      {...overrides}
+    />,
+  );
 }
 
-describe("RecitDeVieIntemporel — presence: the seven valid states, never an eighth", () => {
-  it("all three matters absent: renders nothing at all", () => {
+describe("RecitDeVieIntemporel — always three matters, never a hidden/partial state", () => {
+  it("renders A10, A11 and A12, in canonical order, even with a fully empty content", () => {
     const { container } = renderRecit({ content: {} });
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("all three matters blank/whitespace-only: renders nothing (blanks-only normalizes to absent)", () => {
-    const { container } = renderRecit({
-      content: contentWith({ personWords: "   ", lovedThings: null, legacy: "\n\n" }),
-    });
-    expect(container.firstChild).toBeNull();
-  });
-
-  const cases: Array<[string, Parameters<typeof contentWith>[0], string[]]> = [
-    ["A10", { personWords: "Texte A10." }, ["A10"]],
-    ["A11", { lovedThings: "Texte A11." }, ["A11"]],
-    ["A12", { legacy: "Texte A12." }, ["A12"]],
-    ["A10+A11", { personWords: "Texte A10.", lovedThings: "Texte A11." }, ["A10", "A11"]],
-    ["A10+A12", { personWords: "Texte A10.", legacy: "Texte A12." }, ["A10", "A12"]],
-    ["A11+A12", { lovedThings: "Texte A11.", legacy: "Texte A12." }, ["A11", "A12"]],
-    ["A10+A11+A12", { personWords: "Texte A10.", lovedThings: "Texte A11.", legacy: "Texte A12." }, ["A10", "A11", "A12"]],
-  ];
-
-  it.each(cases)("%s: renders exactly the present matters, in canonical order", (_label, fields, expectedIds) => {
-    const { container } = renderRecit({ content: contentWith(fields) });
     const matterEls = Array.from(container.querySelectorAll("[data-matter]"));
-    expect(matterEls.map((el) => el.getAttribute("data-matter"))).toEqual(expectedIds);
+    expect(matterEls.map((el) => el.getAttribute("data-matter"))).toEqual(["a10", "a11", "a12"]);
+  });
+
+  it("three empty matters -> three fallback bodies visible, section itself never disappears", () => {
+    const { container, getByText } = renderRecit({ content: {} });
+    expect(container.querySelector('[data-testid="recit-de-vie-intemporel"]')).toBeTruthy();
+    expect(getByText("Une vie se raconte aussi dans les souvenirs qu’elle laisse derrière elle.")).toBeTruthy();
+    expect(getByText("Ce sont souvent les choses les plus simples qui deviennent nos souvenirs les plus précieux.")).toBeTruthy();
+    expect(getByText("Il reste parfois un geste, une phrase, un souvenir. Des choses simples que le temps n'efface pas.")).toBeTruthy();
+  });
+
+  it("marks fallback matters via data-fallback, and family-text matters as not-fallback", () => {
+    const { container } = renderRecit({ content: contentWith({ personWords: "Présent." }) });
+    const a10 = container.querySelector('[data-matter="a10"]');
+    const a11 = container.querySelector('[data-matter="a11"]');
+    expect(a10?.getAttribute("data-fallback")).toBe("false");
+    expect(a11?.getAttribute("data-fallback")).toBe("true");
   });
 });
 
-describe("RecitDeVieIntemporel — absence removes label, icon and text together, never a phantom slot", () => {
-  it("A11 absent: no 'CE QU'ELLE AIMAIT' label, no loved icon, no A11 text", () => {
-    const { container, queryByText } = renderRecit({
-      content: contentWith({ personWords: "Texte A10.", legacy: "Texte A12." }),
-    });
-    expect(queryByText("CE QU’ELLE AIMAIT")).toBeNull();
-    expect(container.querySelector('img[src*="icon-loved.png"]')).toBeNull();
-  });
-
-  it("only A11 present: no person/legacy labels, no person/legacy icons", () => {
-    const { container, queryByText } = renderRecit({ content: contentWith({ lovedThings: "Seul." }) });
-    expect(queryByText("LA PERSONNE QU’ELLE ÉTAIT")).toBeNull();
-    expect(queryByText("CE QU’ELLE LAISSE DERRIÈRE ELLE")).toBeNull();
-    expect(container.querySelector('img[src*="icon-person.png"]')).toBeNull();
-    expect(container.querySelector('img[src*="icon-legacy.png"]')).toBeNull();
-  });
-});
-
-describe("RecitDeVieIntemporel — rails: only between present matters, never after the last", () => {
-  it("single matter present: no rail-bearing sibling (only one .matter, itself :last-child)", () => {
-    const { container } = renderRecit({ content: contentWith({ lovedThings: "Seul." }) });
-    const matters = container.querySelectorAll("[data-matter]");
-    expect(matters.length).toBe(1);
-    expect(matters[0].className).toMatch(/matter/);
-  });
-
-  it("three matters present: exactly the middle DOM structure exists for two rail segments (first two are :not(:last-child))", () => {
-    const { container } = renderRecit();
-    const matters = Array.from(container.querySelectorAll("li[data-matter]"));
-    expect(matters).toHaveLength(3);
-    // The CSS timeline rail is a ::before pseudo-element on `:not(:last-child)`
-    // — not a real DOM node — so this asserts the structural precondition
-    // that rule depends on: exactly the first two <li>s have a following
-    // sibling, the last does not.
-    expect(matters[0].nextElementSibling).toBe(matters[1]);
-    expect(matters[1].nextElementSibling).toBe(matters[2]);
-    expect(matters[2].nextElementSibling).toBeNull();
-  });
-});
-
-describe("RecitDeVieIntemporel — family text: verbatim, never reformulated", () => {
-  it("renders A10/A11/A12 text exactly as stored, unmodified", () => {
-    const { getByText } = renderRecit();
-    expect(getByText("Elle avait toujours le mot pour rire.")).toBeTruthy();
-    expect(getByText("Le jardin, les dimanches en famille, le café du matin.")).toBeTruthy();
-    expect(getByText("Un héritage de gentillesse et de patience.")).toBeTruthy();
-  });
-
-  it("renders one paragraph per literal newline, in original order, nothing summarized", () => {
+describe("RecitDeVieIntemporel — family text verbatim, never replaced by fallback", () => {
+  it("renders the family's own words when present", () => {
     const { getByText } = renderRecit({
-      content: contentWith({ personWords: "Première ligne.\nDeuxième ligne.\nTroisième ligne." }),
+      content: contentWith({ personWords: "Elle avait un rire lumineux." }),
     });
-    expect(getByText("Première ligne.")).toBeTruthy();
-    expect(getByText("Deuxième ligne.")).toBeTruthy();
-    expect(getByText("Troisième ligne.")).toBeTruthy();
+    expect(getByText("Elle avait un rire lumineux.")).toBeTruthy();
   });
 
-  it("a long A10 text renders in full, never truncated or ellipsized", () => {
-    const longText = "Un très long texte familial. ".repeat(60).trim();
-    const { getByText } = renderRecit({ content: contentWith({ personWords: longText }) });
-    expect(getByText(longText)).toBeTruthy();
+  it("a stress 240/240/240 case renders every matter's full text, uncollided, untruncated", () => {
+    const text240 = "Un texte familial représentatif qui approche la limite contractuelle de deux cent quarante caractères sans jamais être coupé, résumé, ni tronqué par le runtime HERITAGE, quelle que soit la largeur affichée à l'écran.".slice(0, 240);
+    const { getAllByText } = renderRecit({
+      content: contentWith({ personWords: text240, lovedThings: text240, legacy: text240 }),
+    });
+    expect(getAllByText(text240)).toHaveLength(3);
+  });
+
+  it("mixed: one matter has family text, the other two show their own fallback", () => {
+    const { getByText } = renderRecit({
+      content: contentWith({ personWords: "Mots de la famille." }),
+    });
+    expect(getByText("Mots de la famille.")).toBeTruthy();
+    expect(getByText("Ce sont souvent les choses les plus simples qui deviennent nos souvenirs les plus précieux.")).toBeTruthy();
   });
 });
 
-describe("RecitDeVieIntemporel — Studio assets, never reconstructed or substituted", () => {
-  it("Light: uses the light scene/icon assets, never dark", () => {
+describe("RecitDeVieIntemporel — Studio assets, never a separate runtime icon", () => {
+  it("Light: renders the light Mobile stack and Desktop scene, never dark", () => {
     const { container } = renderRecit({ skinVariant: "light" });
-    expect(container.querySelector('img[src*="/light/desktop-scene-top.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/light/mobile-scene-top.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/light/desktop-scene-bottom.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/light/icon-person.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/mobile/light/top.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/mobile/light/middle.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/mobile/light/bottom.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/desktop/light.png"]')).toBeTruthy();
     expect(container.querySelector('img[src*="/dark/"]')).toBeNull();
   });
 
-  it("Dark: uses the dark scene/icon assets, never light", () => {
+  it("Dark: renders the dark Mobile stack and Desktop scene, never light", () => {
     const { container } = renderRecit({ skinVariant: "dark" });
-    expect(container.querySelector('img[src*="/dark/desktop-scene-top.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/dark/mobile-scene-top.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/dark/desktop-scene-bottom.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/dark/icon-person.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="/light/"]')).toBeNull();
+    expect(container.querySelector('img[src*="/mobile/dark/top.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/desktop/dark.png"]')).toBeTruthy();
+    expect(container.querySelector('img[src*="/mobile/light/"]')).toBeNull();
+    expect(container.querySelector('img[src*="/desktop/light.png"]')).toBeNull();
   });
 
-  it("V1.3.1 runtime asset paths, never a V1.3/V1.2 or Studio reference path", () => {
+  it("exactly four ART images (3 Mobile + 1 Desktop), no separate icon image, no inline SVG", () => {
     const { container } = renderRecit();
-    const imgs = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("src"));
-    for (const src of imgs) {
-      expect(src).toMatch(/^\/assets\/recit-de-vie\/intemporel\/runtime\//);
-    }
-  });
-
-  it("never draws an inline SVG icon — every icon is a Studio PNG", () => {
-    const { container } = renderRecit();
+    expect(container.querySelectorAll("img").length).toBe(4);
     expect(container.querySelector("svg")).toBeNull();
-  });
-
-  it("the body texture never repeats on X (module stylesheet guard)", async () => {
-    const { readFileSync } = await import("node:fs");
-    const path = await import("node:path");
-    const css = readFileSync(path.resolve(import.meta.dirname, "RecitDeVieIntemporel.module.css"), "utf8");
-    expect(css).toMatch(/background-repeat:\s*repeat-y/);
-    expect(css).not.toMatch(/repeat-x/);
   });
 });
 
-describe("RecitDeVieIntemporel — Light/Dark ink custom properties", () => {
-  it("sets the light ink custom properties", () => {
+describe("RecitDeVieIntemporel — Light/Dark ink parity, no layout change", () => {
+  it("sets the light ink custom property", () => {
     const { container } = renderRecit({ skinVariant: "light" });
     const wrap = container.querySelector('[data-testid="recit-de-vie-intemporel"]') as HTMLElement;
-    expect(wrap.style.getPropertyValue("--recit-background")).toBe("#F5EFE3");
-    expect(wrap.style.getPropertyValue("--recit-title")).toBe("#302B22");
+    expect(wrap.style.getPropertyValue("--recit-ink")).toBe("#39332E");
   });
 
-  it("sets the dark ink custom properties", () => {
+  it("sets the dark ink custom property", () => {
     const { container } = renderRecit({ skinVariant: "dark" });
     const wrap = container.querySelector('[data-testid="recit-de-vie-intemporel"]') as HTMLElement;
-    expect(wrap.style.getPropertyValue("--recit-background")).toBe("#211D19");
-    expect(wrap.style.getPropertyValue("--recit-title")).toBe("#F0DEBF");
+    expect(wrap.style.getPropertyValue("--recit-ink")).toBe("#F9F2E4");
   });
 
   it("never uses prefers-color-scheme — skinVariant alone decides", () => {
     const { container } = renderRecit({ skinVariant: "dark" });
     expect(container.innerHTML).not.toContain("prefers-color-scheme");
   });
+
+  it("theme switch changes no DOM structure — same matters, same text, only ink differs", () => {
+    const light = renderRecit({ skinVariant: "light" });
+    const lightMatters = Array.from(light.container.querySelectorAll("[data-matter]")).map((el) => el.textContent);
+    light.unmount();
+
+    const dark = renderRecit({ skinVariant: "dark" });
+    const darkMatters = Array.from(dark.container.querySelectorAll("[data-matter]")).map((el) => el.textContent);
+    expect(darkMatters).toEqual(lightMatters);
+  });
 });
 
-describe("RecitDeVieIntemporel — i18n structural text resolves per language, family text never translated", () => {
-  it("French (default)", () => {
+describe("RecitDeVieIntemporel — i18n structural text resolves per language", () => {
+  it("French", () => {
     const { getByText } = renderRecit({ language: "fr" });
     expect(getByText("LE RÉCIT D’UNE VIE")).toBeTruthy();
     expect(getByText("LA PERSONNE QU’ELLE ÉTAIT")).toBeTruthy();
-    expect(getByText("CE QU’ELLE AIMAIT")).toBeTruthy();
-    expect(getByText("CE QU’ELLE LAISSE DERRIÈRE ELLE")).toBeTruthy();
     expect(getByText("Des souvenirs qui restent.")).toBeTruthy();
   });
 
-  it("English", () => {
-    const { getByText } = renderRecit({ language: "en" });
-    expect(getByText("THE STORY OF A LIFE")).toBeTruthy();
-    expect(getByText("THE PERSON THEY WERE")).toBeTruthy();
-    expect(getByText("WHAT THEY LOVED")).toBeTruthy();
-    expect(getByText("WHAT THEY LEAVE BEHIND")).toBeTruthy();
+  it("English structural labels resolve, without inventing an English fallback translation", () => {
+    const { getByText, getAllByText } = renderRecit({ language: "en", content: {} });
     expect(getByText("Memories that remain.")).toBeTruthy();
-  });
-
-  it("Spanish", () => {
-    const { getByText } = renderRecit({ language: "es" });
-    expect(getByText("EL RELATO DE UNA VIDA")).toBeTruthy();
-    expect(getByText("LA PERSONA QUE ERA")).toBeTruthy();
-    expect(getByText("LO QUE AMABA")).toBeTruthy();
-    expect(getByText("LO QUE DEJA")).toBeTruthy();
-    expect(getByText("Recuerdos que permanecen.")).toBeTruthy();
-  });
-
-  it("family text (French, verbatim) never gets swapped for a translated placeholder in another language", () => {
-    const frenchOnlyText = "Elle avait toujours le mot pour rire.";
-    const { getByText } = renderRecit({ language: "en", content: contentWith({ personWords: frenchOnlyText }) });
-    expect(getByText(frenchOnlyText)).toBeTruthy();
+    // The EN fallback is the explicit, flagged technical marker — never an
+    // invented translation of the FR fallback's editorial meaning. All
+    // three matters show it (all three are empty in this case).
+    expect(getAllByText(/not yet validated by QG/)).toHaveLength(3);
   });
 });
 
 describe("RecitDeVieIntemporel — corrupted content never crashes", () => {
-  it("a corrupted content.personWords (unknown key) renders without throwing", () => {
-    const corrupted = {
-      personWords: { text: "x", extra: "y" },
-      lovedThings: { text: "Present matter." },
-    } as MemorialContent;
-    expect(() => renderRecit({ content: corrupted })).not.toThrow();
-  });
-
-  it("a corrupted content.legacy (wrong type) renders without throwing, corrupted matter treated as absent", () => {
+  it("a corrupted content.legacy renders without throwing, falls back for that matter only", () => {
     const corrupted = {
       legacy: "not an object",
-      personWords: { text: "Present matter." },
+      personWords: { text: "Présent." },
     } as MemorialContent;
+    expect(() => renderRecit({ content: corrupted })).not.toThrow();
     const { container } = renderRecit({ content: corrupted });
-    const matters = container.querySelectorAll("[data-matter]");
-    expect(Array.from(matters).map((el) => el.getAttribute("data-matter"))).toEqual(["A10"]);
+    expect(container.querySelector('[data-matter="a10"]')?.getAttribute("data-fallback")).toBe("false");
+    expect(container.querySelector('[data-matter="a12"]')?.getAttribute("data-fallback")).toBe("true");
   });
 
-  it("entirely absent content renders nothing without throwing", () => {
+  it("entirely absent content renders without throwing", () => {
     expect(() => renderRecit({ content: {} })).not.toThrow();
   });
 });

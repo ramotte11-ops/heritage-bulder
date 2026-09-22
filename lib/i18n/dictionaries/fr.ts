@@ -159,4 +159,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "recit.loved": "CE QU’ELLE AIMAIT",
   "recit.legacy": "CE QU’ELLE LAISSE DERRIÈRE ELLE",
   "recit.decorativeMemories": "Des souvenirs qui restent.",
+  "recit.a10Fallback": "Une vie se raconte aussi dans les souvenirs qu’elle laisse derrière elle.",
+  "recit.a11Fallback": "Ce sont souvent les choses les plus simples qui deviennent nos souvenirs les plus précieux.",
+  "recit.a12Fallback": "Il reste parfois un geste, une phrase, un souvenir. Des choses simples que le temps n'efface pas.",
 };

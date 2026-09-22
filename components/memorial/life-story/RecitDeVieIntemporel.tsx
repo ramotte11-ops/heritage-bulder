@@ -4,78 +4,80 @@ import type { CSSProperties } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
-import { readPersonWords } from "@/lib/memorial/person-words";
-import { readLovedThings } from "@/lib/memorial/loved-things";
-import { readLegacy } from "@/lib/memorial/legacy";
-import { presentLifeStoryMatterIds } from "@/lib/memorial/life-story-section";
+import { resolveLifeStoryContent } from "@/lib/memorial/life-story-content";
 import { translate } from "@/lib/i18n/translate";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
 import {
-  RECIT_DE_VIE_INTEMPOREL_SCENE_SRC,
-  RECIT_DE_VIE_INTEMPOREL_ICON_SRC,
-  RECIT_DE_VIE_INTEMPOREL_INK,
-  RECIT_DE_VIE_LABEL_KEY,
-  type LifeStoryMatterId,
-} from "@/config/recit-de-vie-intemporel-tokens";
+  RECIT_RUNTIME_SCENE_SRC,
+  RECIT_RUNTIME_INK,
+  RECIT_MOBILE_CANVAS,
+  RECIT_MOBILE_OVERLAYS,
+  RECIT_DESKTOP_CANVAS,
+  RECIT_DESKTOP_OVERLAYS,
+  type RecitOverlayBox,
+  type RecitDesktopOverlayBox,
+} from "@/config/recit-de-vie-runtime-tokens";
 import styles from "./RecitDeVieIntemporel.module.css";
 
 /**
  * Récit de vie ("Life Story") Intemporel — the real Memorial renderer for
- * A10 ("Quelques mots sur la personne"), A11 ("Ce qu'elle aimait") and
- * A12 ("Ce qu'elle laisse derrière elle"), Studio pack
- * `RECIT_DE_VIE_STUDIO_RUNTIME_V1_3_1` (QG GREEN pour intégration
- * runtime — see `config/recit-de-vie-intemporel-tokens.ts`'s own
- * docstring for the full architecture reasoning this component
- * implements).
+ * A10/A11/A12, Handoff GREEN QG `HERITAGE_RDV_HANDOFF_RUNTIME_V1_0_QG_AUDIT`
+ * (transmitted via `HERITAGE_RDV_OPUS_RUNTIME_PACKAGE_LIGHT_V1`). This
+ * supersedes the withdrawn V1.3.1 renderer in full — see
+ * `config/recit-de-vie-runtime-tokens.ts`'s own docstring for the
+ * architecture this component implements and why it differs from the
+ * withdrawn package (fixed-height single scene vs. dynamic growth, baked
+ * icons/rail vs. runtime ones, always-3-matters-with-fallback vs.
+ * conditional presence).
  *
- * ## ART Studio locked + runtime data — never a mixed layer
+ * ## One shared overlay DOM tree, CSS-switched at 1024px
  *
- * The three Studio assets (`scene-top`/`body-field`/`scene-bottom`) carry
- * no baked text, label, icon, or rail (V1.3.1's own correction over
- * V1.2/earlier drafts) — every one of those is rendered here, in HTML/
- * CSS, over the Studio pixels. No decorative element (paper, botanicals,
- * seal, sprig) is ever reconstructed in code; no runtime text is ever
- * baked into an asset.
+ * Mirrors `CeremonyIntemporel.tsx`'s own established technique exactly:
+ * the ART layer renders BOTH the Mobile image stack and the Desktop
+ * image (only one ever visible, via `.mobileOnly`/`.desktopOnly`), and
+ * every text overlay (title, 3×(label+body), microcopy) is a SINGLE
+ * element carrying both a Mobile and a Desktop position as CSS custom
+ * properties, switched by the same 1024px media query — never
+ * duplicated markup, so a query like `getByText` only ever matches once.
+ * `.wrap` is `position:relative`; its rendered height comes entirely
+ * from whichever image stack is currently in normal flow (the other has
+ * `display:none` and contributes nothing) — the same mechanism that
+ * makes `HeroIntemporel.tsx`'s dual masters and Ceremony's own overlay
+ * boxes work without any JS measurement.
  *
- * ## Presence — the seven valid states, never an eighth
+ * ## Always three matters — never a fourth, hidden, or partial state
  *
- * `presentLifeStoryMatterIds` (lib/memorial/life-story-section.ts) is the
- * ONE place that decides which of A10/A11/A12 are present, always in
- * canonical order. This component renders `null` outright when that list
- * is empty (contract: "If all matters absent, do not render the
- * section") — a future Memorial assembly page still decides WHETHER to
- * mount this component at all via `isLifeStorySectionActive`, but this
- * component's own job is to never render empty chrome either way.
+ * `resolveLifeStoryContent` (lib/memorial/life-story-content.ts) always
+ * returns exactly three resolved matters, each either the family's own
+ * normalized words or the matter's own localized HERITAGE fallback —
+ * this component has no branch that removes a matter, its label, or its
+ * body box. Fixed-height boxes (`max_lines`-worth of space already
+ * reserved by the ART itself) mean neither a short fallback nor a
+ * 240-character stress case ever changes the layout.
  *
- * A matter that is absent removes its label, its icon, and its text
- * together — never a phantom slot. The rail between two matters exists
- * only between two matters that are BOTH present (rendered as a
- * `:not(:last-child)::before` CSS timeline segment — see the module
- * stylesheet's own docstring for why this needs no JS measurement at
- * all); the last present matter never has an outgoing rail.
+ * ## Icons, medallions and the connecting line are baked ART — never
+ * redrawn
  *
- * ## Family text — verbatim, never touched
+ * `execution-contract.json` lists no icon overlay, and the ART-ONLY
+ * assets already carry the medallion/glyph/line pixels (verified by
+ * inspection) — this component never renders a separate icon `<img>`
+ * or a CSS-drawn rail, unlike the withdrawn V1.3.1 renderer.
  *
- * `text` comes straight from `readPersonWords`/`readLovedThings`/
- * `readLegacy` — the same fail-safe reads every other renderer in this
- * codebase uses (never throws on corrupted content). Rendered exactly as
- * stored, one `<p>` per literal newline the family typed, never
- * summarized, translated, or reformulated (V1.3.1 doctrine: "La famille
- * raconte ; HERITAGE met en forme.").
+ * ## Typography — EB Garamond, same lock as before
  *
- * ## Typography — EB Garamond, V1.3.1 lock
+ * Title and labels: `EB_Garamond` Regular 400 + `font-variant-caps:
+ * small-caps`. Body (family text or fallback): the same family, no caps
+ * variant. Microcopy: `ebGaramondItalic` (EB Garamond Italic 400) — see
+ * `components/builder/fonts.ts`.
  *
- * Title and structural labels: `EB_Garamond` Regular 400 +
- * `font-variant-caps: small-caps` (the OpenType `smcp` feature this same
- * family already exposes — see `components/builder/fonts.ts`'s own
- * `ebGaramond` docstring for why a separate "EB Garamond SC" resource is
- * neither obtainable nor required). Family text: the same `EB_Garamond`
- * Regular 400, no caps variant. Microcopy ("Des souvenirs qui restent.")
- * is the one role that needs a genuinely different font FILE — the
- * italic cut — loaded via this file's own `ebGaramondItalic` export
- * (`components/builder/fonts.ts`), never a synthetic CSS oblique slant
- * applied to the upright face.
+ * ## Ink — measured glyph-core colors, Light/Dark parity
+ *
+ * `RECIT_RUNTIME_INK` is the Handoff's own single Light/Dark pair,
+ * applied to every text role identically (the Handoff specifies no
+ * per-role color, unlike the withdrawn V1.3.1 contract) — "seule
+ * l'image ART-ONLY et la couleur typographique changent selon le
+ * thème... aucun layout conditionnel au thème."
  */
 export interface RecitDeVieIntemporelProps {
   content: MemorialContent;
@@ -83,95 +85,107 @@ export interface RecitDeVieIntemporelProps {
   skinVariant: SkinVariant;
 }
 
-const MATTER_TEXT_READERS: Record<LifeStoryMatterId, (content: MemorialContent) => string | null> = {
-  A10: (content) => readPersonWords(content).text,
-  A11: (content) => readLovedThings(content).text,
-  A12: (content) => readLegacy(content).text,
-};
+function pxBoxToPct(box: { x: number; y: number; w: number; h: number }, canvasW: number, canvasH: number) {
+  return {
+    leftPct: (box.x / canvasW) * 100,
+    topPct: (box.y / canvasH) * 100,
+    widthPct: (box.w / canvasW) * 100,
+    heightPct: (box.h / canvasH) * 100,
+  };
+}
 
-/** `execution-contract.json`'s mobile `minimum_gap_after_last_matter_px_
- * by_count_at_430` has one value per present-matter count — a plain
- * class-per-count map (rather than a dynamic `styles[...]` template
- * lookup) keeps every class name statically greppable in the module
- * stylesheet. */
-const CLOSURE_GAP_MOBILE_CLASS: Record<1 | 2 | 3, string> = {
-  1: styles.closureGapMobile1,
-  2: styles.closureGapMobile2,
-  3: styles.closureGapMobile3,
-};
+type Pct = ReturnType<typeof pxBoxToPct>;
+
+/** Sets both breakpoints' position as CSS custom properties, consumed
+ * by `.posBox` (module stylesheet) — mirrors
+ * `CeremonyIntemporel.tsx`'s own `zoneVars` exactly. */
+function zoneVars(mobile: Pct, desktop: Pct): CSSProperties {
+  return {
+    "--zx": `${mobile.leftPct}%`,
+    "--zy": `${mobile.topPct}%`,
+    "--zw": `${mobile.widthPct}%`,
+    "--zh": `${mobile.heightPct}%`,
+    "--zxd": `${desktop.leftPct}%`,
+    "--zyd": `${desktop.topPct}%`,
+    "--zwd": `${desktop.widthPct}%`,
+    "--zhd": `${desktop.heightPct}%`,
+  } as CSSProperties;
+}
+
+function mobileZone(box: RecitOverlayBox) {
+  return pxBoxToPct(box, RECIT_MOBILE_CANVAS.width, RECIT_MOBILE_CANVAS.height);
+}
+function desktopZone(box: RecitDesktopOverlayBox) {
+  return pxBoxToPct(box, RECIT_DESKTOP_CANVAS.width, RECIT_DESKTOP_CANVAS.height);
+}
+
+const ZONE_TITLE = zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.globalTitle), desktopZone(RECIT_DESKTOP_OVERLAYS.globalTitle));
+const ZONE_MICROCOPY = zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.microcopy), desktopZone(RECIT_DESKTOP_OVERLAYS.microcopy));
+
+const ZONE_LABEL = {
+  a10: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a10Label), desktopZone(RECIT_DESKTOP_OVERLAYS.a10Label)),
+  a11: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a11Label), desktopZone(RECIT_DESKTOP_OVERLAYS.a11Label)),
+  a12: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a12Label), desktopZone(RECIT_DESKTOP_OVERLAYS.a12Label)),
+} as const;
+
+const ZONE_BODY = {
+  a10: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a10Body), desktopZone(RECIT_DESKTOP_OVERLAYS.a10Body)),
+  a11: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a11Body), desktopZone(RECIT_DESKTOP_OVERLAYS.a11Body)),
+  a12: zoneVars(mobileZone(RECIT_MOBILE_OVERLAYS.a12Body), desktopZone(RECIT_DESKTOP_OVERLAYS.a12Body)),
+} as const;
+
+/** Desktop's own `rotation_deg: -10` on the microcopy card — the only
+ * overlay with a rotation, applied only at the desktop breakpoint via
+ * the same media query every other desktop-only value uses. */
+const MICROCOPY_ROTATION_DEG = RECIT_DESKTOP_OVERLAYS.microcopy.rotationDeg ?? 0;
 
 export function RecitDeVieIntemporel({ content, language, skinVariant }: RecitDeVieIntemporelProps) {
-  const presentIds = presentLifeStoryMatterIds(content);
-  if (presentIds.length === 0) return null;
+  const matters = resolveLifeStoryContent(content, language);
+  const scenes = RECIT_RUNTIME_SCENE_SRC[skinVariant];
+  const ink = RECIT_RUNTIME_INK[skinVariant];
 
-  const count = presentIds.length as 1 | 2 | 3;
-  const scenes = RECIT_DE_VIE_INTEMPOREL_SCENE_SRC[skinVariant];
-  const icons = RECIT_DE_VIE_INTEMPOREL_ICON_SRC[skinVariant];
-  const ink = RECIT_DE_VIE_INTEMPOREL_INK[skinVariant];
-
-  const vars = {
-    "--recit-background": ink.background,
-    "--recit-title": ink.title,
-    "--recit-label": ink.label,
-    "--recit-family-text": ink.familyText,
-    "--recit-rail": ink.rail,
-    "--recit-microcopy": ink.microcopy,
-    "--recit-body-bg-desktop": `url(${scenes.desktopBodyField})`,
-    "--recit-body-bg-mobile": `url(${scenes.mobileBodyField})`,
+  const inkVars = {
+    "--recit-ink": ink,
+    "--recit-microcopy-rotation": `${MICROCOPY_ROTATION_DEG}deg`,
   } as CSSProperties;
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div
         className={`${styles.wrap} ${ebGaramond.variable} ${ebGaramondItalic.variable}`}
-        style={vars}
+        style={inkVars}
         data-testid="recit-de-vie-intemporel"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={scenes.desktopSceneTop} alt="" aria-hidden="true" className={`${styles.sceneTop} ${styles.desktopOnly}`} />
+        <img src={scenes.mobileTop} alt="" aria-hidden="true" className={`${styles.mobileImg} ${styles.mobileOnly}`} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={scenes.mobileSceneTop} alt="" aria-hidden="true" className={`${styles.sceneTop} ${styles.mobileOnly}`} />
+        <img src={scenes.mobileMiddle} alt="" aria-hidden="true" className={`${styles.mobileImg} ${styles.mobileOnly}`} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={scenes.mobileBottom} alt="" aria-hidden="true" className={`${styles.mobileImg} ${styles.mobileOnly}`} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={scenes.desktop} alt="" aria-hidden="true" className={`${styles.desktopImg} ${styles.desktopOnly}`} />
 
-        <h2 className={`${styles.title} ${ebGaramond.className}`}>{translate(language, "recit.title")}</h2>
+        <h2 className={`${styles.posBox} ${styles.title} ${ebGaramond.className}`} style={ZONE_TITLE}>
+          {translate(language, "recit.title")}
+        </h2>
 
-        <div className={styles.body}>
-          <ol className={styles.matterList}>
-            {presentIds.map((id) => {
-              const text = MATTER_TEXT_READERS[id](content) ?? "";
-              const lines = text.split(/\n+/).filter((line) => line.trim() !== "");
-              return (
-                <li key={id} className={styles.matter} data-matter={id}>
-                  <div className={styles.railColumn}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={icons[id]} alt="" aria-hidden="true" className={styles.icon} />
-                  </div>
-                  <div className={styles.textColumn}>
-                    <p className={`${styles.label} ${ebGaramond.className}`}>
-                      {translate(language, RECIT_DE_VIE_LABEL_KEY[id])}
-                    </p>
-                    <div className={`${styles.familyText} ${ebGaramond.className}`}>
-                      {lines.map((line, index) => (
-                        <p key={index} className={styles.familyTextLine}>
-                          {line}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
+        {matters.map((matter) => (
+          <div key={matter.id} data-matter={matter.id} data-fallback={matter.isFallback}>
+            <p
+              className={`${styles.posBox} ${styles.label} ${ebGaramond.className}`}
+              style={ZONE_LABEL[matter.id]}
+            >
+              {translate(language, matter.labelKey)}
+            </p>
+            <div className={`${styles.posBox} ${styles.body} ${ebGaramond.className}`} style={ZONE_BODY[matter.id]}>
+              {matter.displayText}
+            </div>
+          </div>
+        ))}
 
-        <div className={`${styles.closureWrap} ${CLOSURE_GAP_MOBILE_CLASS[count]}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={scenes.desktopSceneBottom} alt="" aria-hidden="true" className={`${styles.sceneBottom} ${styles.desktopOnly}`} />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={scenes.mobileSceneBottom} alt="" aria-hidden="true" className={`${styles.sceneBottom} ${styles.mobileOnly}`} />
-          <p className={`${styles.microcopy} ${ebGaramondItalic.className}`}>
-            {translate(language, "recit.decorativeMemories")}
-          </p>
-        </div>
+        <p className={`${styles.posBox} ${styles.microcopy} ${ebGaramondItalic.className}`} style={ZONE_MICROCOPY}>
+          {translate(language, "recit.decorativeMemories")}
+        </p>
       </div>
     </SkinScope>
   );
