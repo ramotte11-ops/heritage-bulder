@@ -157,13 +157,22 @@ describe("RecitDeVieIntemporel — i18n structural text resolves per language", 
     expect(getByText("Des souvenirs qui restent.")).toBeTruthy();
   });
 
-  it("English structural labels resolve, without inventing an English fallback translation", () => {
-    const { getByText, getAllByText } = renderRecit({ language: "en", content: {} });
+  it("English structural labels resolve; the un-validated EN fallback is a controlled absence, never invented prose or a visible marker", () => {
+    const { getByText, container } = renderRecit({ language: "en", content: {} });
     expect(getByText("Memories that remain.")).toBeTruthy();
-    // The EN fallback is the explicit, flagged technical marker — never an
-    // invented translation of the FR fallback's editorial meaning. All
-    // three matters show it (all three are empty in this case).
-    expect(getAllByText(/not yet validated by QG/)).toHaveLength(3);
+    // EN fallback copy is not yet QG-validated: the body box for each
+    // empty matter renders as controlled absence (empty string), never
+    // an invented English translation and never a bracketed/working
+    // technical marker visible to a real visitor.
+    // The body is the only <div> direct child of a [data-matter] element
+    // (the label is a <p>) — robust to the CSS module's hashed class name.
+    const bodies = container.querySelectorAll("[data-matter] > div");
+    expect(bodies).toHaveLength(3);
+    for (const body of Array.from(bodies)) {
+      expect(body.textContent).toBe("");
+    }
+    expect(container.textContent).not.toMatch(/[[\]]/);
+    expect(container.textContent?.toLowerCase()).not.toContain("not yet validated");
   });
 });
 

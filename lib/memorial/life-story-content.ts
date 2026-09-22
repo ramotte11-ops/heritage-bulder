@@ -115,8 +115,12 @@ export interface LifeStoryMatterContent {
    * `null`. Never the raw, un-normalized value. */
   familyText: string | null;
   /** What the renderer actually shows: `familyText` verbatim when
-   * present, otherwise the matter's own localized HERITAGE fallback —
-   * always a non-empty string, so the box is never blank. */
+   * present, otherwise the matter's own localized HERITAGE fallback.
+   * Non-empty for FR (QG-validated GREEN copy). For EN/ES, whose
+   * fallback copy is not yet QG-validated, this resolves to the empty
+   * string rather than invented editorial text or a visible technical
+   * marker — see `lib/i18n/dictionaries/en.ts`'s own note on
+   * `recit.a10Fallback`/`a11Fallback`/`a12Fallback`. */
   displayText: string;
   /** `true` exactly when `displayText` is the HERITAGE fallback rather
    * than the family's own words. */

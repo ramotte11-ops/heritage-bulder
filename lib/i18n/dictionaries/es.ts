@@ -161,7 +161,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   // inventing/auto-translating it (see dictionaries/en.ts's own note on
   // these same three keys). Omitting them here is this module's
   // existing, already-documented mechanism for "controlled absence" —
-  // translate() falls back to the en entry (itself a non-editorial
-  // technical marker, not invented Spanish prose) rather than a second,
-  // parallel fallback path invented for this mission.
+  // translate() falls back to the en entry (itself now the empty
+  // string — controlled absence, never invented Spanish prose, never a
+  // visible technical marker) rather than a second, parallel fallback
+  // path invented for this mission.
 };

@@ -148,15 +148,27 @@ describe("resolveLifeStoryContent — fallback never written back to family data
   });
 });
 
-describe("resolveLifeStoryMatter — i18n architecture: EN/ES never carry invented editorial fallback prose", () => {
-  it("EN resolves to the explicit non-editorial technical marker, not a translation of the FR fallback's meaning", () => {
+describe("resolveLifeStoryMatter — i18n architecture: EN/ES never carry invented editorial fallback prose, and never a visible technical marker", () => {
+  it("EN resolves to the empty string — controlled absence, not a translation of the FR fallback's meaning", () => {
     const result = resolveLifeStoryMatter("a10", {}, "en");
-    expect(result.displayText).toContain("not yet validated by QG");
+    expect(result.displayText).toBe("");
+    expect(result.isFallback).toBe(true);
   });
 
-  it("ES falls back to the same EN technical marker (no invented Spanish prose) via the existing i18n fallback chain", () => {
+  it("ES falls back to the same empty string (no invented Spanish prose) via the existing i18n fallback chain", () => {
     const result = resolveLifeStoryMatter("a10", {}, "es");
-    expect(result.displayText).toContain("not yet validated by QG");
+    expect(result.displayText).toBe("");
+  });
+
+  it("no matter's displayText, in any language, ever contains a bracket or a working-comment-style marker", () => {
+    for (const language of ["fr", "en", "es"] as const) {
+      for (const id of ["a10", "a11", "a12"] as const) {
+        const result = resolveLifeStoryMatter(id, {}, language);
+        expect(result.displayText).not.toMatch(/[[\]]/);
+        expect(result.displayText.toLowerCase()).not.toContain("not yet validated");
+        expect(result.displayText.toLowerCase()).not.toContain("todo");
+      }
+    }
   });
 });
 
