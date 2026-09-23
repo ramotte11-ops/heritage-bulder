@@ -26,6 +26,7 @@ import {
   zoomHeroCrop,
   type HeroCropImageSize,
 } from "@/lib/memorial/hero-crop-geometry";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -145,7 +146,7 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
@@ -315,7 +316,10 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
   const progress = heroStepProgress(editorialContext, content, read.hero);
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "hero.cropTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "hero.cropSubtitle")}</p>

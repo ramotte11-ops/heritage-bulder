@@ -7,6 +7,10 @@ interface BuilderScreenProps {
   /** 0 to 1 — see ProgressBar's own docstring for why this is a
    * fraction, never a step count. Each screen decides its own value. */
   progress: number;
+  /** Builder continuity mission — optional save-status line
+   * (`AutosaveIndicator`), shown right under the progress bar. Absent on
+   * screens that do not autosave: nothing changes for them. */
+  status?: ReactNode;
   children: ReactNode;
 }
 
@@ -28,12 +32,13 @@ interface BuilderScreenProps {
  * future Guided Flow step) cannot silently drift apart the way two
  * hand-copied instances eventually would.
  *
- * Takes only `progress` and `children` — nothing about language,
+ * Takes only `progress`, an optional `status` slot and `children` —
+ * nothing about language,
  * editorial context, or any other domain concept. A screen's own body
  * (title, copy, options, CTA, form) is entirely its own concern,
  * composed as `children`.
  */
-export function BuilderScreen({ progress, children }: BuilderScreenProps) {
+export function BuilderScreen({ progress, status, children }: BuilderScreenProps) {
   return (
     <main className={`${styles.page} ${playfairDisplay.variable} ${inter.variable}`}>
       <p className={styles.signature}>
@@ -51,6 +56,8 @@ export function BuilderScreen({ progress, children }: BuilderScreenProps) {
         </header>
 
         <ProgressBar value={progress} />
+
+        {status}
 
         {children}
       </div>

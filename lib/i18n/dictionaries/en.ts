@@ -176,4 +176,10 @@ export const en: Record<TranslationKey, string> = {
   "recit.a10Fallback": "",
   "recit.a11Fallback": "",
   "recit.a12Fallback": "",
+  // Builder continuity mission — save-status line.
+  "autosave.saving": "Saving…",
+  "autosave.saved": "Saved",
+  "autosave.error": "Your latest changes could not be saved.",
+  "autosave.offline": "You are offline. Your latest changes will be saved once the connection is back.",
+  "autosave.retry": "Try again",
 };

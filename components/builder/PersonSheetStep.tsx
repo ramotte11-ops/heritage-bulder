@@ -16,6 +16,7 @@ import {
   writeLovedThingsFieldText,
   writePersonWordsFieldText,
 } from "@/lib/builder/guided-flow/person-sheet-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -56,7 +57,7 @@ export function PersonSheetStep({ language, editorialContext, content: initialCo
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readPersonSheetForEditing(content);
   const controlsDisabled = isSubmitting;
@@ -150,7 +151,10 @@ export function PersonSheetStep({ language, editorialContext, content: initialCo
   const nothingEntered = read.personWords.text === null && read.lovedThings.text === null && read.legacy.text === null;
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "personSheet.title")}</h1>
       </div>

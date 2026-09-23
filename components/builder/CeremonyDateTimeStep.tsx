@@ -15,6 +15,7 @@ import {
   writeCeremonyDate,
   writeCeremonyTime,
 } from "@/lib/builder/guided-flow/ceremony-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -52,7 +53,7 @@ export function CeremonyDateTimeStep({ language, editorialContext, content: init
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readCeremonyForEditing(content);
   const controlsDisabled = isSubmitting;
@@ -141,7 +142,10 @@ export function CeremonyDateTimeStep({ language, editorialContext, content: init
   const hasAnyValue = read.ceremony.date !== null || read.ceremony.time !== null;
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "ceremony.dateTimeTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "ceremony.dateTimeSubtitle")}</p>

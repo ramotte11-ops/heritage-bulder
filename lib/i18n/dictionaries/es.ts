@@ -165,4 +165,11 @@ export const es: Partial<Record<TranslationKey, string>> = {
   // string — controlled absence, never invented Spanish prose, never a
   // visible technical marker) rather than a second, parallel fallback
   // path invented for this mission.
+
+  // Builder continuity mission — save-status line.
+  "autosave.saving": "Guardando…",
+  "autosave.saved": "Guardado",
+  "autosave.error": "No se han podido guardar tus últimos cambios.",
+  "autosave.offline": "Estás sin conexión. Tus últimos cambios se guardarán en cuanto vuelva la conexión.",
+  "autosave.retry": "Reintentar",
 };

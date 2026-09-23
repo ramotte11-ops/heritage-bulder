@@ -16,6 +16,7 @@ import {
   skipA02,
   writePrecision,
 } from "@/lib/builder/guided-flow/death-notice-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -95,7 +96,7 @@ export function DeathNoticePrecisionsStep({
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readDeathNoticeForEditing(content);
   const controlsDisabled = isSubmitting;
@@ -184,7 +185,10 @@ export function DeathNoticePrecisionsStep({
   const hasAnyPrecision = PRECISION_FIELDS.some(({ field }) => read.deathNotice.precisions[field] !== null);
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "deathNotice.precisionsTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "deathNotice.precisionsSubtitle")}</p>

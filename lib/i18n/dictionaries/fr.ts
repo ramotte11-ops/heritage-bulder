@@ -162,4 +162,10 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "recit.a10Fallback": "Une vie se raconte aussi dans les souvenirs qu’elle laisse derrière elle.",
   "recit.a11Fallback": "Ce sont souvent les choses les plus simples qui deviennent nos souvenirs les plus précieux.",
   "recit.a12Fallback": "Il reste parfois un geste, une phrase, un souvenir. Des choses simples que le temps n'efface pas.",
+  // Builder continuity mission — save-status line.
+  "autosave.saving": "Enregistrement…",
+  "autosave.saved": "Enregistré",
+  "autosave.error": "Vos dernières modifications n'ont pas pu être enregistrées.",
+  "autosave.offline": "Vous êtes hors ligne. Vos dernières modifications seront enregistrées dès le retour de la connexion.",
+  "autosave.retry": "Réessayer",
 };

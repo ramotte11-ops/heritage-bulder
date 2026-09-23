@@ -366,6 +366,14 @@ export const TRANSLATION_KEYS = [
   "recit.a10Fallback",
   "recit.a11Fallback",
   "recit.a12Fallback",
+  // Builder continuity mission — the discreet save-status line every
+  // autosaving Guided Flow screen shows (components/builder/AutosaveIndicator.tsx),
+  // bound to the existing `useAutosave` states, nothing new tracked.
+  "autosave.saving",
+  "autosave.saved",
+  "autosave.error",
+  "autosave.offline",
+  "autosave.retry",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
