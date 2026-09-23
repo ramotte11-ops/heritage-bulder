@@ -18,8 +18,7 @@ export interface SupabaseServiceRoleEnv extends SupabasePublicEnv {
   serviceRoleKey: string;
 }
 
-function readRequired(name: string): string {
-  const value = process.env[name];
+function requireValue(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(
       `Missing environment variable ${name}. Supabase is not configured yet — see .env.example.`,
@@ -28,12 +27,25 @@ function readRequired(name: string): string {
   return value;
 }
 
+function readRequired(name: string): string {
+  return requireValue(name, process.env[name]);
+}
+
 /** URL + anon key only — safe to read from a browser context (both are
- * NEXT_PUBLIC_*). */
+ * NEXT_PUBLIC_*).
+ *
+ * Both are read as LITERAL `process.env.NEXT_PUBLIC_…` expressions, never
+ * through `readRequired`'s dynamic `process.env[name]`: Next.js only
+ * inlines a `NEXT_PUBLIC_*` value into the browser bundle where the
+ * literal expression appears. A dynamic lookup compiles, in the browser,
+ * to a read on an empty `process.env` shim — which is exactly why the
+ * Hero photo's direct browser → Storage upload
+ * (lib/supabase/browser-client.ts) threw "Missing environment variable"
+ * before sending any request, while every server-side read kept working. */
 export function getSupabasePublicEnv(): SupabasePublicEnv {
   return {
-    url: readRequired("NEXT_PUBLIC_SUPABASE_URL"),
-    anonKey: readRequired("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    url: requireValue("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+    anonKey: requireValue("NEXT_PUBLIC_SUPABASE_ANON_KEY", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
   };
 }
 
