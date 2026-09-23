@@ -374,6 +374,13 @@ export const TRANSLATION_KEYS = [
   "autosave.error",
   "autosave.offline",
   "autosave.retry",
+  // Builder continuity mission — the Guided Flow's own resting screen
+  // once every step built so far is behind the family
+  // (components/builder/GuidedFlowPause.tsx). Replaces
+  // `builder.notConfiguredYet` on that path; announces no future step.
+  "flowPause.title",
+  "flowPause.body",
+  "flowPause.backToSpace",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

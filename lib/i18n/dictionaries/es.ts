@@ -166,10 +166,14 @@ export const es: Partial<Record<TranslationKey, string>> = {
   // visible technical marker) rather than a second, parallel fallback
   // path invented for this mission.
 
-  // Builder continuity mission — save-status line.
+  // Builder continuity mission — save-status line + Guided Flow pause screen.
   "autosave.saving": "Guardando…",
   "autosave.saved": "Guardado",
   "autosave.error": "No se han podido guardar tus últimos cambios.",
   "autosave.offline": "Estás sin conexión. Tus últimos cambios se guardarán en cuanto vuelva la conexión.",
   "autosave.retry": "Reintentar",
+  "flowPause.title": "Tus respuestas están guardadas",
+  "flowPause.body":
+    "Has completado todos los pasos disponibles por ahora. Puedes volver en cualquier momento desde tu espacio y continuar exactamente donde lo dejaste.",
+  "flowPause.backToSpace": "Volver a mi espacio",
 };

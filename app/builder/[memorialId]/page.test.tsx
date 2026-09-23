@@ -172,6 +172,11 @@ vi.mock("@/components/builder/TraditionsStep", () => ({ TraditionsStep }));
 const { PersonSheetStep } = vi.hoisted(() => ({ PersonSheetStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/PersonSheetStep", () => ({ PersonSheetStep }));
 
+// Builder continuity mission — the Guided Flow's resting screen, which
+// replaced the old "not configured yet" dead end. Mocked like every step.
+const { GuidedFlowPause } = vi.hoisted(() => ({ GuidedFlowPause: vi.fn(() => null) }));
+vi.mock("@/components/builder/GuidedFlowPause", () => ({ GuidedFlowPause }));
+
 // Mission 033 — PAGE C's own server-side data resolution (the section-14
 // compensation pass + the initial signed read URL) and the wiring that
 // builds its real MediaEngineDeps. Both compose real Mission 030
@@ -732,7 +737,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).not.toBe(ContextStep);
     });
 
-    it("resumes straight past T02 (to the not-yet-configured notice) when language and editorial context are both chosen but slug is not", async () => {
+    it("resumes straight past T02 (to the Guided Flow pause) when language and editorial context are both chosen but slug is not", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -752,8 +757,8 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(BuilderShell).not.toHaveBeenCalled();
       // Localized in the family's own already-chosen language (Spanish
       // in this fixture), not hard-coded French.
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
-      expect(JSON.stringify(result)).not.toContain("Votre mémorial doit encore être configuré");
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(result.props.language).toBe("es");
     });
 
     it("never deduces the editorial context from a death date, an offer, a skin, or a culture — resumeBuilderSession's memorial carries no such signal to ContextStep", async () => {
@@ -1099,7 +1104,7 @@ describe("BuilderMemorialPage — granted access", () => {
       // Falls through to the existing T02-era notice — no later Guided
       // Flow step exists past T07 (Mission 034's own final trunk steps
       // — P01/V02/... — are a later mission's job, not built here).
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
   });
 
@@ -1278,7 +1283,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(BuilderShell).not.toHaveBeenCalled();
       // Falls through to the existing T02-era notice — no later Guided
       // Flow step exists past T07 that this codebase has built yet.
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
       // QG follow-up: T06 being completed does NOT stop the durable
       // retire retry — a stale, non-canonical ready hero media must
       // still be able to get cleaned up on this exact load.
@@ -1543,7 +1548,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(HeroCropStep).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("never renders HeroCropStep once T07 has already been explicitly completed — resumes straight to the next gate", async () => {
@@ -1564,7 +1569,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(HeroCropStep).not.toHaveBeenCalled();
       expect(resolveHeroCropStepData).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("renders BuilderShell once T07 is completed and the memorial is otherwise fully configured", async () => {
@@ -1779,7 +1784,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(HeroRevealStep).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("never renders HeroRevealStep once T08 has already been explicitly completed — resumes straight to the next gate", async () => {
@@ -1799,7 +1804,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(HeroRevealStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("renders BuilderShell once T08 is completed and the memorial is otherwise fully configured", async () => {
@@ -1926,7 +1931,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(DeathNoticeAnnouncementStep).not.toHaveBeenCalled();
       expect(DeathNoticePrecisionsStep).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("renders DeathNoticePrecisionsStep (A02) once A01 is done, never before", async () => {
@@ -2090,7 +2095,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
   });
 
@@ -2193,7 +2198,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(CeremonyMomentStep).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("A04 = no never opens A05-A08 — falls straight through to the not-configured-yet notice", async () => {
@@ -2447,7 +2452,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(result.type).not.toBe(TraditionsStep);
-      expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+      expect(result.type).toBe(GuidedFlowPause);
     });
 
     it("wires TraditionsStep's persist and skin, bound to the AUTHORIZED memorialId", async () => {
@@ -2579,7 +2584,7 @@ describe("BuilderMemorialPage — granted access", () => {
         const result = await callPage();
 
         expect(result.type).not.toBe(PersonSheetStep);
-        expect(JSON.stringify(result)).toContain("Tu memorial todavía debe configurarse");
+        expect(result.type).toBe(GuidedFlowPause);
       });
 
       it("wires PersonSheetStep's persist, bound to the AUTHORIZED memorialId — no skin prop (the sheet narrows nothing)", async () => {
@@ -2668,6 +2673,44 @@ describe("BuilderMemorialPage — granted access", () => {
         const result = await callPage();
 
         expect(result.type).toBe(BuilderShell);
+      });
+
+      it("Builder continuity — past A12 with no slug yet, lands on the Guided Flow pause: no dead end, no BuilderShell, progress still < 1", async () => {
+        getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+        authorizeMemorialForRequest.mockResolvedValue({
+          status: "granted",
+          ownerId: "owner-a",
+          memorialId: MEMORIAL_ID,
+        });
+        // Exactly the real post-A12 state: language + editorial context
+        // chosen, every built step resolved, and `slug` still NULL — no
+        // screen generates one (publication does, later).
+        resumeBuilderSession.mockResolvedValue({
+          status: "resumable",
+          memorial: { ...CONFIGURED_MEMORIAL, slug: null },
+          draft: draftWithA04Yes({
+            A05: { status: "skipped" },
+            A06: { status: "skipped" },
+            A07: { status: "skipped" },
+            A08: { status: "completed" },
+            A09: { status: "skipped" },
+            A10: { status: "completed" },
+            A11: { status: "skipped" },
+            A12: { status: "completed" },
+          }),
+        });
+
+        const result = await callPage();
+
+        expect(result.type).toBe(GuidedFlowPause);
+        expect(result.type).not.toBe(PersonSheetStep);
+        expect(BuilderShell).not.toHaveBeenCalled();
+        expect(result.props.language).toBe("fr");
+        // A13 and the final trunk are still ahead on the real route: the
+        // pause never claims the flow is finished.
+        expect(result.props.progress).toBeGreaterThan(0);
+        expect(result.props.progress).toBeLessThan(1);
+        expect(JSON.stringify(result)).not.toContain("doit encore être configuré");
       });
     });
   });

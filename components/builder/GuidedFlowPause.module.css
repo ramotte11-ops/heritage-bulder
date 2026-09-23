@@ -1,0 +1,45 @@
+/*
+ * Builder continuity mission — reuses the Guided Flow screens' existing
+ * copy grammar (HeroPhraseStep.module.css's .copy/.title/.subtitle
+ * values) and the existing text-link treatment. No new visual language.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.body {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.link {
+  align-self: center;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
