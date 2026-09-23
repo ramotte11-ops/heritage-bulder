@@ -14,9 +14,10 @@ import { getSupabasePublicEnv } from "./env";
  * true for local dev before Mission 004's setup, and for anyone running
  * this repo without a Supabase project), this returns the request
  * unmodified instead of throwing. proxy.ts's matcher already scopes this
- * to /login, /owner and /auth/* only, but this guard means even a
- * misconfigured deployment can't take down those pages with a hard
- * crash, and can never affect "/" or "/builder" (outside the matcher).
+ * to the session-reading routes (/login, /owner, /auth/*, /admin,
+ * /activate, /builder/*), but this guard means even a misconfigured
+ * deployment can't take down those pages with a hard crash, and can
+ * never affect "/" (outside the matcher).
  */
 export async function updateSupabaseSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });

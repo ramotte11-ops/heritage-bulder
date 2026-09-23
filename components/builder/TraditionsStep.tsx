@@ -18,6 +18,7 @@ import {
   traditionsStepProgress,
   updateTraditionsEntry,
 } from "@/lib/builder/guided-flow/traditions-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -98,7 +99,7 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readTraditionsForEditing(content);
   const controlsDisabled = isSubmitting;
@@ -211,7 +212,10 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
   const hasEntry = read.traditions.entries.length > 0;
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "traditions.title")}</h1>
         <p className={styles.subtitle}>{translate(language, "traditions.subtitle")}</p>

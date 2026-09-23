@@ -16,6 +16,7 @@ import {
   writeDeath,
   writeDisplayName,
 } from "@/lib/builder/guided-flow/hero-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import { HeroDateField } from "./HeroDateField";
@@ -98,7 +99,7 @@ export function HeroIdentityStep({
   // section-toggle model — every field write below produces a NEW
   // `content` value (never a mutation), which is what drives the
   // debounced autosave while the family types.
-  useAutosave({ content, persist });
+  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readHeroForEditing(content);
 
@@ -174,7 +175,10 @@ export function HeroIdentityStep({
   const showDisplayNameError = attemptedSubmit && read.hero.displayName === null;
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "hero.identityTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "hero.identitySubtitle")}</p>

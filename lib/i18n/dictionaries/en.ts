@@ -176,4 +176,14 @@ export const en: Record<TranslationKey, string> = {
   "recit.a10Fallback": "",
   "recit.a11Fallback": "",
   "recit.a12Fallback": "",
+  // Builder continuity mission — save-status line + Guided Flow pause screen.
+  "autosave.saving": "Saving…",
+  "autosave.saved": "Saved",
+  "autosave.error": "Your latest changes could not be saved.",
+  "autosave.offline": "You are offline. Your latest changes will be saved once the connection is back.",
+  "autosave.retry": "Try again",
+  "flowPause.title": "Your answers are saved",
+  "flowPause.body":
+    "You have completed every step available for now. You can come back at any time from your space and pick up exactly where you left off.",
+  "flowPause.backToSpace": "Back to my space",
 };

@@ -15,6 +15,7 @@ import {
   writeCeremonyAccess,
   writeCeremonyAddress,
 } from "@/lib/builder/guided-flow/ceremony-step";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
@@ -40,7 +41,7 @@ export function CeremonyAddressStep({ language, editorialContext, content: initi
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readCeremonyForEditing(content);
   const controlsDisabled = isSubmitting;
@@ -129,7 +130,10 @@ export function CeremonyAddressStep({ language, editorialContext, content: initi
   const hasAnyValue = read.ceremony.address !== null || read.ceremony.access !== null;
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen
+      progress={progress}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+    >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "ceremony.addressTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "ceremony.addressSubtitle")}</p>
