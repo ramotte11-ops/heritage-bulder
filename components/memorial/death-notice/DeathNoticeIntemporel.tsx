@@ -137,6 +137,15 @@ export interface DeathNoticeIntemporelProps {
   editorialContext: EditorialContext;
   language: Language;
   skinVariant: SkinVariant;
+  /**
+   * Étape 2 (QG D3) — the heading level this renderer sits at.
+   * `"page"` (default, the historical A03 behavior): title `<h1>`, name
+   * `<h2>`. `"section"` (inside the assembled Memorial, where the Hero's
+   * name is the only `<h1>`): title `<h2>`, name `<h3>`. Pixel-neutral:
+   * `.title`/`.name` pin their own margin, size, weight and line-height,
+   * so only the document outline changes.
+   */
+  headingLevel?: "page" | "section";
 }
 
 const PRECISION_BLOCKS: readonly { field: DeathNoticePrecisionField; labelKey: TranslationKey; icon: string }[] = [
@@ -315,7 +324,10 @@ export function DeathNoticeIntemporel({
   editorialContext,
   language,
   skinVariant,
+  headingLevel = "page",
 }: DeathNoticeIntemporelProps) {
+  const TitleTag = headingLevel === "section" ? "h2" : "h1";
+  const NameTag = headingLevel === "section" ? "h3" : "h2";
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
@@ -372,17 +384,17 @@ export function DeathNoticeIntemporel({
             <p className={styles.eyebrow}>{contextLabel}</p>
             <span className={styles.eyebrowRule} aria-hidden="true" />
           </div>
-          <h1 className={styles.title}>{translate(language, "deathNotice.previewTitle")}</h1>
+          <TitleTag className={styles.title}>{translate(language, "deathNotice.previewTitle")}</TitleTag>
 
           <div className={styles.branchSpace} aria-hidden="true" />
 
-          <h2
+          <NameTag
             ref={nameRef}
             className={`${styles.name} ${nameIsFallback ? styles.nameFallback : ""}`}
             style={nameFontSizePx !== null ? { fontSize: `${nameFontSizePx}px` } : undefined}
           >
             {hero.displayName ?? ""}
-          </h2>
+          </NameTag>
           {dateRangeText !== null && <p className={styles.dates}>{dateRangeText}</p>}
 
           <div className={styles.rule} aria-hidden="true" />

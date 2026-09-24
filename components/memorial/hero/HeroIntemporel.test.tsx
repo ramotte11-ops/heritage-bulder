@@ -518,3 +518,31 @@ describe("HeroIntemporel — displayedName fitting (mission 035 v4, section 6)",
     });
   });
 });
+
+/**
+ * Étape 2 — Assembleur du Memorial (QG C1/D2).
+ */
+describe("HeroIntemporel — Étape 2 assembler contract", () => {
+  it("renders the photo from a bare { readUrl } — no Media row needed", () => {
+    const { container } = renderHero({ photo: { readUrl: "https://storage.test/signed/assembly" } });
+    expect(container.querySelector('img[src="https://storage.test/signed/assembly"]')).toBeTruthy();
+  });
+
+  it("still accepts T08's { media, readUrl } unchanged", () => {
+    const { container } = renderHero({ photo: PHOTO });
+    expect(container.querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+  });
+
+  it("the renderer itself caps its width at the desktop masters' native width (QG D2)", () => {
+    const CSS = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const heroRule = CSS.match(/^\.hero\s*\{([^}]*)\}/m)?.[1] ?? "";
+    for (const variant of ["light", "dark"] as const) {
+      const [desktopWidth] = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[variant].desktop.dimensionsPx;
+      expect(heroRule).toContain(`max-width: ${desktopWidth}px;`);
+    }
+    expect(heroRule).toContain("margin-inline: auto;");
+  });
+});

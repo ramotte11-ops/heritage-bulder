@@ -449,3 +449,36 @@ describe("DeathNoticeIntemporel — no decorative element reconstructed in CSS/J
     expect(images.every((img) => (img.getAttribute("src") ?? "").includes("a03-scene-"))).toBe(true);
   });
 });
+
+/**
+ * Étape 2 — Assembleur du Memorial (QG D3): the heading level is a
+ * document-outline choice only; the default keeps A03 exactly as it was.
+ */
+describe("DeathNoticeIntemporel — heading level (Étape 2, QG D3)", () => {
+  it("defaults to the historical page level: title <h1>, name <h2>", () => {
+    setViewportWidth(1200);
+    const { container } = renderNotice();
+    expect(container.querySelector("h1")?.textContent).toBe("Avis de décès");
+    expect(container.querySelector("h2")?.textContent).toBe("Jean Dupont");
+    expect(container.querySelector("h3")).toBeNull();
+  });
+
+  it("at section level: title <h2>, name <h3>, no <h1>", () => {
+    setViewportWidth(1200);
+    const { container } = renderNotice({ headingLevel: "section" });
+    expect(container.querySelector("h1")).toBeNull();
+    expect(container.querySelector("h2")?.textContent).toBe("Avis de décès");
+    expect(container.querySelector("h3")?.textContent).toBe("Jean Dupont");
+  });
+
+  it("keeps the exact same classes (and so the same pixels) at either level", () => {
+    setViewportWidth(1200);
+    const page = renderNotice();
+    const pageTitle = page.container.querySelector("h1")!.className;
+    const pageName = page.container.querySelector("h2")!.className;
+    cleanup();
+    const section = renderNotice({ headingLevel: "section" });
+    expect(section.container.querySelector("h2")!.className).toBe(pageTitle);
+    expect(section.container.querySelector("h3")!.className).toBe(pageName);
+  });
+});
