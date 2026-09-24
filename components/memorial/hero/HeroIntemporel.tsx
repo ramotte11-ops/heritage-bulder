@@ -5,7 +5,6 @@ import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
 import type { HeroContent } from "@/types/hero";
-import type { Media } from "@/types/media";
 import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
 import {
@@ -114,10 +113,24 @@ import styles from "./HeroIntemporel.module.css";
  * the family's own chosen language — rather than a second, redundant
  * language-switcher UI this Builder has no existing pattern for
  * (T01/`LanguageStep` is the one and only place language is chosen).
+ *
+ * ## Width — capped by the renderer itself (Étape 2, QG D2)
+ *
+ * `.hero` carries its own `max-width` (the desktop master's native
+ * 1536px) in `HeroIntemporel.module.css`, so the Memorial assembler
+ * never has to re-state it. `HeroRevealStep`'s `.stage` still caps at
+ * the same value, which leaves T08 pixel-identical.
  */
 export interface HeroIntemporelProps {
   hero: HeroContent;
-  photo: { media: Media; readUrl: string } | null;
+  /**
+   * Only the short-lived signed URL is consumed — never the `Media` row
+   * (Étape 2, QG C1): the Memorial assembler hands this renderer a
+   * resolved `{ readUrl }` and must never ship `storagePath`/`ownerId`
+   * to the client. Callers that hold a `{ media, readUrl }` (T08) still
+   * pass it unchanged.
+   */
+  photo: { readUrl: string } | null;
   skinVariant: SkinVariant;
   editorialContext: EditorialContext;
   language: Language;

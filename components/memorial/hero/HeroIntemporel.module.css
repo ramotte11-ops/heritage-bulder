@@ -21,6 +21,12 @@
 .hero {
   position: relative;
   width: 100%;
+  /* Étape 2 (QG D2) — the desktop master's own native width
+     (config/hero-intemporel-tokens.ts, desktop `dimensionsPx[0]`), never
+     upscaled past it. Carried by the renderer itself so no caller (T08's
+     `.stage`, the Memorial assembler) is the source of this cap. */
+  max-width: 1536px;
+  margin-inline: auto;
   overflow: hidden;
   isolation: isolate;
   /* Mobile-first: the mobile master's own intrinsic ratio (941×1672). */
