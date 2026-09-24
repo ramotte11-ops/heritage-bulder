@@ -31,6 +31,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "preview.view": "Voir l'aperçu",
   "preview.hide": "Masquer l'aperçu",
   "preview.backToCreation": "Revenir à la création",
+  "preview.unavailable": "L’aperçu n’est pas disponible pour le moment. Réessayez dans un instant.",
   "hero.identityTitle": "Qui souhaitez-vous honorer ?",
   "hero.identitySubtitle":
     "Saisissez le nom exactement comme il doit apparaître. Les dates de naissance et de décès sont facultatives.",

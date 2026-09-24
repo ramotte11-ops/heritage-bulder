@@ -230,6 +230,19 @@ vi.mock("./media-actions", () => ({
 const { saveSkinVariantAction } = vi.hoisted(() => ({ saveSkinVariantAction: vi.fn() }));
 vi.mock("./hero-reveal-actions", () => ({ saveSkinVariantAction }));
 
+// Étape 3 — the Preview host is a pass-through here (its own behavior is
+// covered by components/builder/preview/BuilderPreviewHost.test.tsx);
+// this file only checks which screen it wraps and what the page hands it.
+const { BuilderPreviewHost } = vi.hoisted(() => ({ BuilderPreviewHost: vi.fn(() => null) }));
+vi.mock("@/components/builder/preview/BuilderPreviewHost", () => ({ BuilderPreviewHost }));
+
+const { loadMemorialPreviewAction } = vi.hoisted(() => ({
+  loadMemorialPreviewAction: vi.fn<(memorialId: string) => Promise<{ status: string }>>(() =>
+    Promise.resolve({ status: "locked" }),
+  ),
+}));
+vi.mock("./preview-actions", () => ({ loadMemorialPreviewAction }));
+
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
 
@@ -369,8 +382,16 @@ function paramsFor(memorialId: string) {
   return Promise.resolve({ memorialId });
 }
 
-async function callPage(memorialId = MEMORIAL_ID) {
+/** The page's raw return — the `BuilderPreviewHost` wrapper included. */
+async function callPageRaw(memorialId = MEMORIAL_ID) {
   return BuilderMemorialPage({ params: paramsFor(memorialId) });
+}
+
+/** The screen the page shows, unwrapped from its Étape 3 Preview host
+ * (every pre-existing assertion below is about the screen itself). */
+async function callPage(memorialId = MEMORIAL_ID) {
+  const result = await callPageRaw(memorialId);
+  return result.type === BuilderPreviewHost ? result.props.children : result;
 }
 
 describe("BuilderMemorialPage — no session", () => {
@@ -2836,12 +2857,19 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
    * prevent. `.skin` (word boundary — `.skinVariant` never matches it, no
    * `\w` boundary between "skin" and "Variant") must appear EXACTLY these
    * two places, both a plain `skin={resumed.memorial.skin}` JSX prop,
-   * never anywhere else.
+   * plus Étape 3's own two (QG Q1): the skin is re-validated once
+   * (`resolveSkinRuntime(resumed.memorial.skin)`) and its result read
+   * once, ONLY to ask the renderer registry whether a Hero renderer
+   * exists for it — the Preview's availability, never anything else.
    */
-  it("the two legitimate `memorial.skin` reads (A03's and A09's skin guards) are never used to deduce editorialContext", () => {
+  it("the legitimate `memorial.skin` reads (A03's and A09's skin guards, Étape 3's Hero-renderer check) are never used to deduce editorialContext", () => {
     const skinMatches = CODE.match(/\.skin\b/g) ?? [];
-    expect(skinMatches).toEqual([".skin", ".skin"]); // exactly these two occurrences
+    expect(skinMatches).toHaveLength(4); // exactly these four occurrences
     expect(CODE.match(/skin=\{resumed\.memorial\.skin\}/g) ?? []).toHaveLength(2);
+    expect(CODE.match(/resolveSkinRuntime\(resumed\.memorial\.skin\)/g) ?? []).toHaveLength(1);
+    expect(
+      CODE.match(/resolveSectionRenderer\("hero", memorialSkin\.status === "resolved" \? memorialSkin\.skin : null\)/g) ?? [],
+    ).toHaveLength(1);
     // The original danger this guard exists for: `editorialContext`
     // COMPUTED from `skin` — an assignment or a ternary. There is no
     // `editorialContext =` assignment anywhere in this route at all (it
@@ -2854,5 +2882,117 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
     // assignment (`editorialContext = ...`) is never followed by `{`.
     expect(CODE).not.toMatch(/editorialContext\s*=(?!\{)[^=]/);
     expect(CODE).not.toMatch(/skin\s*===?\s*["'`](?:musulman|juif|hindou|intemporel)["'`]\s*\?/);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Étape 3 — Preview réel: every Guided Flow screen sits in one
+// BuilderPreviewHost; the page alone decides whether the Preview is
+// available on it.
+// ---------------------------------------------------------------------
+
+describe("BuilderMemorialPage — Étape 3 Preview host", () => {
+  const PAST_EVERYTHING_UNCONFIGURED: StoredMemorialConfig = { ...CONFIGURED_MEMORIAL, slug: null };
+
+  function withGuidedFlow(guidedFlow: Record<string, unknown>): MemorialVersion {
+    return {
+      content: { ...REAL_DRAFT.content, guidedFlow } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  function flowWithout(step: string): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(REAL_DRAFT_CONTENT_BASE.guidedFlow).filter(([id]) => id !== step));
+  }
+  const FLOW_WITHOUT_A01 = flowWithout("A01");
+  const FLOW_WITHOUT_T08 = flowWithout("T08");
+
+  beforeEach(() => {
+    getHeritageActor.mockReset();
+    authorizeMemorialForRequest.mockReset();
+    resumeBuilderSession.mockReset();
+    resolveHeroCropStepData.mockReset();
+    reconcileHeroMediaOnResume.mockReset();
+    reconcileHeroMediaOnResume.mockImplementation(
+      (_deps: unknown, _actor: unknown, _memorialId: string, content: unknown) => Promise.resolve(content),
+    );
+    loadMemorialPreviewAction.mockClear();
+    getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+    authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: "authorized-id" });
+  });
+
+  async function hostFor(memorial: StoredMemorialConfig, draft: MemorialVersion) {
+    resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
+    const result = await callPageRaw("claimed-id");
+    expect(result.type).toBe(BuilderPreviewHost);
+    return result;
+  }
+
+  it("T01: wrapped, never available, no language yet", async () => {
+    const host = await hostFor(UNCONFIGURED_MEMORIAL, REAL_DRAFT);
+    expect(host.props.children.type).toBe(LanguageStep);
+    expect(host.props.available).toBe(false);
+    expect(host.props.language).toBeNull();
+  });
+
+  it("before T08: wrapped, never available", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, withGuidedFlow({}));
+    expect(host.props.children.type).not.toBe(GuidedFlowPause);
+    expect(host.props.available).toBe(false);
+  });
+
+  it("T08 Reveal (Hero): never available, even though the Hero is complete", async () => {
+    resolveHeroCropStepData.mockResolvedValue({ media: { id: "m" }, readUrl: "https://storage.test/signed/r" });
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, withGuidedFlow(FLOW_WITHOUT_T08));
+    expect(host.props.children.type).toBe(HeroRevealStep);
+    expect(host.props.available).toBe(false);
+  });
+
+  it("after T08: available on a Guided Flow screen (A01)", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, withGuidedFlow(FLOW_WITHOUT_A01));
+    expect(host.props.children.type).toBe(DeathNoticeAnnouncementStep);
+    expect(host.props.available).toBe(true);
+    expect(host.props.language).toBe("fr");
+  });
+
+  it("A03 Reveal (Avis): never available, though T08 is done", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, withGuidedFlow(REAL_DRAFT_CONTENT_BASE.guidedFlow));
+    expect(host.props.children.type).toBe(DeathNoticePreviewStep);
+    expect(host.props.available).toBe(false);
+  });
+
+  it.each(["announcement", "remembrance"] as const)("the %s resting screen (GuidedFlowPause): available", async (ctx) => {
+    const host = await hostFor({ ...PAST_EVERYTHING_UNCONFIGURED, editorialContext: ctx }, REAL_DRAFT);
+    expect(host.props.children.type).toBe(GuidedFlowPause);
+    expect(host.props.available).toBe(true);
+  });
+
+  it.each(["musulman", "juif", "hindou"] as const)(
+    "QG Q1: a %s memorial (no Hero renderer) never gets the Preview — no Intemporel fallback",
+    async (skin) => {
+      const host = await hostFor({ ...PAST_EVERYTHING_UNCONFIGURED, skin }, REAL_DRAFT);
+      expect(host.props.children.type).toBe(GuidedFlowPause);
+      expect(host.props.available).toBe(false);
+    },
+  );
+
+  it("an invalid stored skin never gets the Preview", async () => {
+    const host = await hostFor(
+      { ...PAST_EVERYTHING_UNCONFIGURED, skin: "occidental" as StoredMemorialConfig["skin"] },
+      REAL_DRAFT,
+    );
+    expect(host.props.available).toBe(false);
+  });
+
+  it("loadPreview is the preview action bound to the AUTHORIZED id — and nothing else", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    await host.props.loadPreview();
+    expect(loadMemorialPreviewAction).toHaveBeenCalledTimes(1);
+    expect(loadMemorialPreviewAction).toHaveBeenCalledWith("authorized-id");
+  });
+
+  it("rendering the page never loads the Preview by itself", async () => {
+    await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    expect(loadMemorialPreviewAction).not.toHaveBeenCalled();
   });
 });

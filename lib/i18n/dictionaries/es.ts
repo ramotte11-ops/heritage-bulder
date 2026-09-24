@@ -28,6 +28,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "preview.view": "Ver vista previa",
   "preview.hide": "Ocultar vista previa",
   "preview.backToCreation": "Volver a la creación",
+  "preview.unavailable": "La vista previa no está disponible en este momento. Vuelva a intentarlo en un instante.",
   "hero.identityTitle": "¿A quién desea honrar?",
   "hero.identitySubtitle":
     "Escriba el nombre exactamente como debe aparecer. Las fechas de nacimiento y fallecimiento son opcionales.",

@@ -31,6 +31,7 @@ export const en: Record<TranslationKey, string> = {
   "preview.view": "View preview",
   "preview.hide": "Hide preview",
   "preview.backToCreation": "Back to creation",
+  "preview.unavailable": "The preview is not available at the moment. Please try again in a moment.",
   "hero.identityTitle": "Who are we honoring?",
   "hero.identitySubtitle":
     "Enter the name exactly as it should appear. Birth and death dates are optional.",

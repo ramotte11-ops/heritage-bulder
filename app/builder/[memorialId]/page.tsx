@@ -4,7 +4,8 @@ import { resumeBuilderSession } from "@/lib/builder/resume-session";
 import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
 import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
-import { isConfiguredMemorial } from "@/types/memorial";
+import type { ReactElement } from "react";
+import { isConfiguredMemorial, type MemorialContent } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
 import { ContextStep } from "@/components/builder/ContextStep";
@@ -24,6 +25,10 @@ import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
+import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
+import { isPreviewUnlocked } from "@/lib/builder/guided-flow/preview-lock";
+import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
+import { resolveSectionRenderer } from "@/config/memorial-section-renderers";
 import {
   heroStepProgress,
   needsPageA,
@@ -31,6 +36,7 @@ import {
   needsPageC,
   needsPageD,
   needsPageE,
+  resolveHeroFlowState,
 } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
@@ -50,6 +56,7 @@ import {
   retireHeroPhotoUploadAction,
 } from "./media-actions";
 import { saveSkinVariantAction } from "./hero-reveal-actions";
+import { loadMemorialPreviewAction } from "./preview-actions";
 import styles from "./page.module.css";
 
 /**
@@ -323,8 +330,40 @@ export default async function BuilderMemorialPage({
   // the raw URL segment, and a bound Server Action rather than a closure
   // over `supabase`/`memorialConfigRepository` — the same reasons
   // Mission 021B already documents for the draft's `persist`.
+  // Étape 3 — Preview réel. Every Guided Flow screen below is returned
+  // inside the SAME `BuilderPreviewHost` wrapper (`withPreview`), locked
+  // or not, so the tree's shape never changes and the host can hide —
+  // never unmount — the current screen while the Preview is open.
+  // `available` is decided here, the one place that knows which screen
+  // is shown: T08 done (`isPreviewUnlocked`, the existing rule, on the
+  // very content that screen renders), a Hero renderer exists for this
+  // memorial's skin (QG Q1 — the existing registry; no Intemporel
+  // fallback for another skin), and never on a Reveal screen (T08 Hero,
+  // A03 Avis — passed `false` explicitly below). The bound
+  // `loadMemorialPreviewAction` re-reads the saved draft server-side;
+  // nothing here is handed to it but the authorized id.
+  const memorialLanguage = resumed.memorial.language;
+  const memorialEditorialContext = resumed.memorial.editorialContext;
+  const memorialSkin = resolveSkinRuntime(resumed.memorial.skin);
+  const heroRendererExists =
+    resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
+  const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
+
+  function previewAvailable(content: MemorialContent): boolean {
+    if (memorialLanguage === null || memorialEditorialContext === null || !heroRendererExists) return false;
+    return isPreviewUnlocked(memorialEditorialContext, resolveHeroFlowState(content, readHero(content)));
+  }
+
+  function withPreview(screen: ReactElement, available: boolean) {
+    return (
+      <BuilderPreviewHost available={available} language={memorialLanguage} loadPreview={loadPreview}>
+        {screen}
+      </BuilderPreviewHost>
+    );
+  }
+
   if (resumed.memorial.language === null) {
-    return <LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />;
+    return withPreview(<LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />, false);
   }
 
   // Mission 024 — T02. Language is now guaranteed non-null (narrowed by
@@ -340,11 +379,12 @@ export default async function BuilderMemorialPage({
   // `saveEditorialContextAction.bind(null, access.memorialId)` mirrors
   // `saveLanguageAction`'s own binding above for the same reasons.
   if (resumed.memorial.editorialContext === null) {
-    return (
+    return withPreview(
       <ContextStep
         language={resumed.memorial.language}
         persist={saveEditorialContextAction.bind(null, access.memorialId)}
-      />
+      />,
+      false,
     );
   }
 
@@ -358,13 +398,14 @@ export default async function BuilderMemorialPage({
   // calm notice instead of a form, rather than this route trying to
   // tell the two cases apart.
   if (needsPageA(resumed.draft.content)) {
-    return (
+    return withPreview(
       <HeroIdentityStep
         language={resumed.memorial.language}
         editorialContext={resumed.memorial.editorialContext}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
-      />
+      />,
+      previewAvailable(resumed.draft.content),
     );
   }
 
@@ -374,13 +415,14 @@ export default async function BuilderMemorialPage({
   // treated once, whichever way (mission brief section 9: absence of a
   // phrase must never re-trigger this page forever).
   if (needsPageB(resumed.draft.content)) {
-    return (
+    return withPreview(
       <HeroPhraseStep
         language={resumed.memorial.language}
         editorialContext={resumed.memorial.editorialContext}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
-      />
+      />,
+      previewAvailable(resumed.draft.content),
     );
   }
 
@@ -401,7 +443,7 @@ export default async function BuilderMemorialPage({
       resumed.draft.content,
     );
 
-    return (
+    return withPreview(
       <HeroPhotoStep
         language={resumed.memorial.language}
         editorialContext={resumed.memorial.editorialContext}
@@ -411,7 +453,8 @@ export default async function BuilderMemorialPage({
         reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
         finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
         retireUpload={retireHeroPhotoUploadAction.bind(null, access.memorialId)}
-      />
+      />,
+      previewAvailable(photoStepData.content),
     );
   }
 
@@ -460,14 +503,15 @@ export default async function BuilderMemorialPage({
     // skip T07, fall through to the same notice every other
     // not-yet-resolvable state below already uses.
     if (cropStepData !== null) {
-      return (
+      return withPreview(
         <HeroCropStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           photo={cropStepData}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
   }
@@ -493,7 +537,7 @@ export default async function BuilderMemorialPage({
     // `needsPageE` being true already implies T07 is complete, which
     // requires a real, usable hero photo.
     if (revealStepData !== null) {
-      return (
+      return withPreview(
         <HeroRevealStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
@@ -502,7 +546,8 @@ export default async function BuilderMemorialPage({
           initialSkinVariant={resumed.memorial.skinVariant}
           persist={saveDraftAction.bind(null, access.memorialId)}
           saveSkinVariant={saveSkinVariantAction.bind(null, access.memorialId)}
-        />
+        />,
+        false /* Reveal */,
       );
     }
   }
@@ -518,13 +563,14 @@ export default async function BuilderMemorialPage({
   // safety" doctrine — a context switch alone never destroys data).
   if (resumed.memorial.editorialContext === "announcement") {
     if (needsA01(heroReconciledContent)) {
-      return (
+      return withPreview(
         <DeathNoticeAnnouncementStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
@@ -532,13 +578,14 @@ export default async function BuilderMemorialPage({
     // before — see `needsA02`'s own guard) and only until A02 itself has
     // been treated once, whichever way (mission brief section 8/9).
     if (needsA02(heroReconciledContent)) {
-      return (
+      return withPreview(
         <DeathNoticePrecisionsStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
@@ -552,7 +599,7 @@ export default async function BuilderMemorialPage({
     // decides whether the real Intemporel renderer shows or an honest
     // "not yet available for this style" notice.
     if (needsA03(heroReconciledContent)) {
-      return (
+      return withPreview(
         <DeathNoticePreviewStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
@@ -560,7 +607,8 @@ export default async function BuilderMemorialPage({
           skin={resumed.memorial.skin}
           skinVariant={resumed.memorial.skinVariant}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        false /* Reveal */,
       );
     }
 
@@ -569,13 +617,14 @@ export default async function BuilderMemorialPage({
     // the family (never before — see `needsA04`'s own guard, which also
     // routes back here on a corrupted stored Ceremony).
     if (needsA04(heroReconciledContent)) {
-      return (
+      return withPreview(
         <CeremonyMomentStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
@@ -585,46 +634,50 @@ export default async function BuilderMemorialPage({
     // until each one has been treated once, whichever way. Every one of
     // the four is facultatif and passable (human-steps.ts).
     if (needsA05(heroReconciledContent)) {
-      return (
+      return withPreview(
         <CeremonyDateTimeStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
     if (needsA06(heroReconciledContent)) {
-      return (
+      return withPreview(
         <CeremonyVenueStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
     if (needsA07(heroReconciledContent)) {
-      return (
+      return withPreview(
         <CeremonyAddressStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
     if (needsA08(heroReconciledContent)) {
-      return (
+      return withPreview(
         <CeremonyNoteStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
@@ -639,14 +692,15 @@ export default async function BuilderMemorialPage({
     // boundary), used ONLY to narrow which catalog suggestions may be
     // shown — never to infer or pre-select a practice.
     if (needsA09(heroReconciledContent)) {
-      return (
+      return withPreview(
         <TraditionsStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           skin={resumed.memorial.skin}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
 
@@ -661,13 +715,14 @@ export default async function BuilderMemorialPage({
     // decided here (mission brief: no renderer, no "Récit de vie"
     // composition in this mission).
     if (needsPersonSheet(heroReconciledContent)) {
-      return (
+      return withPreview(
         <PersonSheetStep
           language={resumed.memorial.language}
           editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           persist={saveDraftAction.bind(null, access.memorialId)}
-        />
+        />,
+        previewAvailable(heroReconciledContent),
       );
     }
   }
@@ -694,7 +749,7 @@ export default async function BuilderMemorialPage({
   // `resumed.memorial.language`/`editorialContext` are narrowed non-null
   // by the earlier `return`s.
   if (!isConfiguredMemorial(resumed.memorial)) {
-    return (
+    return withPreview(
       <GuidedFlowPause
         language={resumed.memorial.language}
         progress={heroStepProgress(
@@ -702,7 +757,8 @@ export default async function BuilderMemorialPage({
           heroReconciledContent,
           readHero(heroReconciledContent),
         )}
-      />
+      />,
+      previewAvailable(heroReconciledContent),
     );
   }
 

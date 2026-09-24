@@ -1,0 +1,67 @@
+/*
+ * Étape 3 — Preview réel. Functional controls only (QG Q3/Q4): no
+ * Studio work, no harmonisation of the Memorial's own sections, which
+ * render exactly as `MemorialAssembly` draws them.
+ */
+
+/* QG Q3 — the same page surface the two Reveal screens already use, so
+ * the device's `prefers-color-scheme` (globals.css `body`) never shows
+ * around the assembled Memorial. Full width: no max-width, no padding —
+ * the renderers assume the viewport's width. */
+.preview {
+  display: block;
+  width: 100%;
+  min-height: 100dvh;
+  background: var(--heritage-surface-page);
+}
+
+/* QG Q4 — a thin sticky bar holding "Revenir à la création". */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--heritage-surface-page);
+  border-bottom: 1px solid var(--heritage-border-soft);
+}
+
+.back,
+.entryButton {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+  cursor: pointer;
+}
+
+.back:focus-visible,
+.entryButton:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.entryButton[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* QG Q4 — "Voir l'aperçu": a discreet control under progress/autosave. */
+.entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.entryError {
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.8125rem;
+  color: var(--heritage-state-error-text);
+}
