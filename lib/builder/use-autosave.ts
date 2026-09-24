@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createAutosaveController } from "./autosave-controller";
 import { hasUnsavedChanges, INITIAL_AUTOSAVE_STATE, type AutosaveState } from "./autosave-state";
 import type { MemorialContent } from "@/types/memorial";
+import { useRegisterPreviewFlush } from "./preview-flush-registry";
 
 /**
  * Mission 009B (runtime + real Builder wiring) / Mission 010 (loss
@@ -210,6 +211,11 @@ export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosa
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [controller]);
+
+  // Étape 3 — lets the Builder's Preview host drain this step's autosave
+  // before reading the saved draft (./preview-flush-registry.ts). A
+  // no-op outside a host, and for a mount with no autosave at all.
+  useRegisterPreviewFlush(controller ? controller.flush : null);
 
   return {
     state,

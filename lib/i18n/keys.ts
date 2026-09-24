@@ -228,6 +228,7 @@ export const TRANSLATION_KEYS = [
   "preview.view",
   "preview.hide",
   "preview.backToCreation",
+  "preview.unavailable",
   // Mission 032 — PAGE A (T03 + T04) and PAGE B (T05).
   "hero.identityTitle",
   "hero.identitySubtitle",
