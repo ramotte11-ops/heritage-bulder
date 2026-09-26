@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import styles from "./DynamicPolaroid.module.css";
 
 /**
@@ -15,8 +16,11 @@ import styles from "./DynamicPolaroid.module.css";
  * manifest angle; the print is placed in that frame from
  * `layoutDynamicPolaroid` (origin = reference centre). Shadows are
  * `box-shadow`s of the print itself, so they rotate with it (contract §6).
- * The caption lives in the print's own bottom band, centred in the slot's
- * caption safe zone — never lifted into a floating layer.
+ * The caption (V2.1) lives in the print's own bottom band as SVG text:
+ * each line is drawn at the exact start x / baseline computed by
+ * `layoutCaption` from the real La Belle Aurore metrics, so the ink the QA
+ * measures is the ink on screen. It is never lifted into a floating layer
+ * and is not rendered at all until the font is confirmed loaded.
  */
 
 export interface DynamicPolaroidProps {
@@ -24,8 +28,9 @@ export interface DynamicPolaroidProps {
   layout: PolaroidLayout;
   src: string;
   alt: string;
-  caption: string | null;
-  /** QA overlays: reference box, anchor, safe zone, source photo bounds. */
+  /** Measured caption, or null (absent, or font not yet confirmed). */
+  caption: CaptionLayout | null;
+  /** QA overlays: reference box, anchor, source photo bounds, ink boxes. */
   qa?: boolean;
 }
 
@@ -67,13 +72,31 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false }:
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={alt} className={styles.photo} style={box(layout.photo)} draggable={false} />
         </div>
-        <figcaption className={styles.safeZone} style={box(layout.safeZone)}>
-          {caption ? (
-            <span className={styles.caption} data-testid={`caption-${slot.slotId}`}>
-              {caption}
-            </span>
-          ) : null}
+        <figcaption className={styles.band} style={box(layout.band)}>
+          {caption ? <span className={styles.srOnly}>{caption.lines.map((l) => l.text).join(" ")}</span> : null}
         </figcaption>
+        {caption ? (
+          <svg
+            className={styles.captionSvg}
+            style={box({ x: 0, y: 0, width: layout.outer.width, height: layout.outer.height })}
+            viewBox={`0 0 ${layout.outer.width} ${layout.outer.height}`}
+            aria-hidden="true"
+            data-testid={`caption-${slot.slotId}`}
+            data-status={caption.status}
+          >
+            {caption.lines.map((l, i) => (
+              <text key={i} x={l.x} y={l.baseline} className={styles.captionText}>
+                {l.text}
+              </text>
+            ))}
+            {qa ? (
+              <>
+                <rect className={styles.qaProtected} {...caption.protectedBox} />
+                <rect className={styles.qaInk} {...caption.ink} />
+              </>
+            ) : null}
+          </svg>
+        ) : null}
         <div className={styles.stroke} aria-hidden="true" />
         {qa ? (
           <>
@@ -87,7 +110,6 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false }:
               })}
               aria-hidden="true"
             />
-            <div className={styles.qaSafeZone} style={box(layout.safeZone)} aria-hidden="true" />
           </>
         ) : null}
       </figure>

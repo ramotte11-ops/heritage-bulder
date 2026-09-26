@@ -161,9 +161,9 @@
     photos.push(c);
   })();
 
-  // 2 — paysage standard 3:2
-  (() => {
-    const w = 1800, h = 1200, c = mk(w, h), x = c.getContext("2d");
+  // 2 — paysage standard (3:2 ; variante 4:3 ajoutée en V2.1, voir fin)
+  function landscape(w, h) {
+    const c = mk(w, h), x = c.getContext("2d");
     sky(x, w, h, [[0, "#b9a38e"], [0.35, "#f0c592"], [0.55, "#f7d9a8"], [1, "#8a6a48"]]);
     sun(x, w * 0.63, h * 0.5, w * 0.45, 1);
     ridge(x, w, h, h * 0.56, 22, 0.004, "#a98a74", 3, 1.2);
@@ -174,8 +174,9 @@
     person(x, w * 0.37, h * 0.87, h * 0.34, "#261c15", { hair: true, dress: true });
     person(x, w * 0.42, h * 0.87, h * 0.38, "#261c15");
     grade(x, w, h, 18, 0.5, "#d69a5c");
-    photos.push(c);
-  })();
+    return c;
+  }
+  photos.push(landscape(1800, 1200));
 
   // 3 — carré
   (() => {
@@ -272,6 +273,10 @@
     grade(x, w, h, 16, 0.4, "#d49a5c");
     photos.push(c);
   })();
+
+  // 7 — V2.1 : paysage standard 4:3 (contrat V2.1 §6 « 4:3 »). Ajouté en
+  // dernier pour ne pas modifier la séquence PRNG des six photos existantes.
+  photos.push(landscape(1600, 1200));
 
   window.__photos = photos;
 })();

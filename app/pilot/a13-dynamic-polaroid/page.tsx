@@ -9,7 +9,7 @@ import { PilotQa } from "./PilotQa";
  * optional local files only. Desktop Light only — no Mobile, no Dark.
  */
 export const metadata: Metadata = {
-  title: "A13 · Dynamic Polaroid · pilote Desktop Light V2",
+  title: "A13 · Dynamic Polaroid · pilote Desktop Light V2.1",
   robots: { index: false, follow: false },
 };
 

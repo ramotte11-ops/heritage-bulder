@@ -88,3 +88,13 @@
   z-index: 202;
   pointer-events: none;
 }
+
+.captionProbe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  font-family: var(--heritage-caption-hand), cursive;
+  font-size: 27px;
+  pointer-events: none;
+}

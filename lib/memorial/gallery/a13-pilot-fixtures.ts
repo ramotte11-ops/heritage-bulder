@@ -4,6 +4,10 @@ import type { PhotoSource } from "@/lib/memorial/gallery/dynamic-polaroid-layout
  * A13 Dynamic Polaroid — PILOT fixtures. The six ratios the QG mission
  * imposes, in the mission's own order (media[i] → slot[i], never sorted).
  *
+ * V2.1 §6 lists the landscape case as 4:3; V1 and V2 used a 3:2 landscape,
+ * kept as `A13_PILOT_MEDIA_LANDSCAPE_3X2` (page preset `?paysage=3x2`) so
+ * the V2 run can be replayed.
+ *
  * The photos are SYNTHETIC scenes (see `scripts/pilot/a13-test-photos.html`):
  * this session had no access to any image bank. They exist to exercise the
  * six ratios; the pilot page also accepts real local files at runtime.
@@ -16,8 +20,8 @@ export interface PilotMedia extends PhotoSource {
   captions: Record<PilotCaptionMode, string | null>;
 }
 
-/** Contract V2 §8 — per slot: 20–24 characters, 32 characters, absent. */
-export const PILOT_CAPTION_MODES = ["courte", "longue", "aucune"] as const;
+/** QA V2.1 — per slot: absent, one line, 24 characters, 32 characters. */
+export const PILOT_CAPTION_MODES = ["aucune", "une-ligne", "24", "32"] as const;
 export type PilotCaptionMode = (typeof PILOT_CAPTION_MODES)[number];
 
 const BASE = "/pilot/a13-dynamic-polaroid";
@@ -29,15 +33,15 @@ export const A13_PILOT_MEDIA: readonly PilotMedia[] = [
     width: 1200,
     height: 1600,
     focal: { x: 0.5, y: 0.38 },
-    captions: { courte: "Maman, un soir de juin", longue: "Maman, un beau soir de juin 1974", aucune: null },
+    captions: { aucune: null, "une-ligne": "Maman", "24": "Maman, un soir à Gordes.", "32": "Maman, un beau soir de juin 1974" },
   },
   {
-    src: `${BASE}/p2-paysage-3x2.jpg`,
-    label: "2 · paysage standard 3:2",
-    width: 1800,
+    src: `${BASE}/p2-paysage-4x3.jpg`,
+    label: "2 · paysage standard 4:3",
+    width: 1600,
     height: 1200,
     focal: { x: 0.39, y: 0.7 },
-    captions: { courte: "Tous deux sur la colline", longue: "Tous les deux, sur les collines.", aucune: null },
+    captions: { aucune: null, "une-ligne": "Tous les deux", "24": "Tous deux sur la colline", "32": "Tous les deux, sur les collines." },
   },
   {
     src: `${BASE}/p3-carre-1x1.jpg`,
@@ -45,7 +49,7 @@ export const A13_PILOT_MEDIA: readonly PilotMedia[] = [
     width: 1400,
     height: 1400,
     focal: { x: 0.48, y: 0.62 },
-    captions: { courte: "Son chapeau de paille", longue: "Son chapeau de paille, été 1982.", aucune: null },
+    captions: { aucune: null, "une-ligne": "Son chapeau", "24": "Son chapeau, l'été 1982.", "32": "Son chapeau de paille, été 1982." },
   },
   {
     src: `${BASE}/p4-portrait-etroit-9x16.jpg`,
@@ -53,7 +57,7 @@ export const A13_PILOT_MEDIA: readonly PilotMedia[] = [
     width: 1080,
     height: 1920,
     focal: { x: 0.52, y: 0.62 },
-    captions: { courte: "Sous l'arche de la ferme", longue: "Sous l'arche de la vieille ferme", aucune: null },
+    captions: { aucune: null, "une-ligne": "Sous l'arche", "24": "Sous l'arche de la ferme", "32": "Sous l'arche de la vieille ferme" },
   },
   {
     src: `${BASE}/p5-paysage-large-16x9.jpg`,
@@ -61,7 +65,7 @@ export const A13_PILOT_MEDIA: readonly PilotMedia[] = [
     width: 1920,
     height: 1080,
     focal: { x: 0.6, y: 0.6 },
-    captions: { courte: "Le ponton du lac, 1998", longue: "Le ponton du lac, un soir d'août", aucune: null },
+    captions: { aucune: null, "une-ligne": "Le ponton", "24": "Le ponton du lac, été 98", "32": "Le ponton du lac, un soir d'août" },
   },
   {
     src: `${BASE}/p6-panorama-3x1.jpg`,
@@ -69,9 +73,18 @@ export const A13_PILOT_MEDIA: readonly PilotMedia[] = [
     width: 2700,
     height: 900,
     focal: { x: 0.9, y: 0.7 },
-    captions: { courte: "Le village, vu du muret", longue: "Le village depuis le vieux muret", aucune: null },
+    captions: { aucune: null, "une-ligne": "Le village", "24": "Le village, vu du muret.", "32": "Le village depuis le vieux muret" },
   },
 ];
+
+/** The V1/V2 landscape (3:2), same scene, same captions as media[1]. */
+export const A13_PILOT_MEDIA_LANDSCAPE_3X2: PilotMedia = {
+  ...A13_PILOT_MEDIA[1],
+  src: `${BASE}/p2-paysage-3x2.jpg`,
+  label: "2 · paysage standard 3:2 (jeu V1/V2)",
+  width: 1800,
+  height: 1200,
+};
 
 /** Runtime title/subtitle — pilot fixture copy, DOM only (V1 geometry kept). */
 export const A13_PILOT_TITLE = {

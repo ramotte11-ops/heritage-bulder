@@ -1,7 +1,4 @@
-import {
-  A13_PILOT_CAPTION_SAFE_ZONE_INTERSECTION_PX,
-  type A13Slot,
-} from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import {
   layoutDynamicPolaroid,
   placeAtAnchor,
@@ -11,18 +8,15 @@ import {
 } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 
 /**
- * A13 Dynamic Polaroid V2 — composition resolution + QA measurements.
+ * A13 Dynamic Polaroid — composition + QA measurements (V2 / V2.1).
  *
- * `resolveComposition` applies the ONE correction the V2 contract allows:
- * when an opaque tirage covers another tirage's caption safe zone, the
- * covering (higher-z) tirage's SURFACE is reduced — comfortable range
- * first, then down to its hard minimum — never its position, anchor,
- * rotation or z-index (§3, §5: "réduire D3 dans sa plage confortable puis,
- * au besoin, jusqu'à son minimum dur. Aucun déplacement."). Anything still
- * colliding at the hard minimum is reported, never hidden.
+ * V2.1 §3: "Aucun tirage n'est réduit pour protéger une portion vide de
+ * bande basse" — the V2 surface-reduction loop is removed. Every tirage is
+ * laid out at its target surface (area factor 1); captions resolve their
+ * own collisions by moving TEXT only (`caption-layout.ts`).
  *
  * Polygons are in the 1670 × 941 canvas frame, each slot rotated around
- * its reference centre — exactly what the renderer draws.
+ * its reference centre — exactly what the renderer draws. Read-only.
  */
 
 export type Point = { x: number; y: number };
@@ -97,89 +91,23 @@ export function outerPolygon(slot: A13Slot, l: PolaroidLayout) {
   return slotRectToCanvas(slot, l.outer);
 }
 
-export function safeZonePolygon(slot: A13Slot, l: PolaroidLayout) {
-  return slotRectToCanvas(slot, offset(l.outer, l.safeZone));
-}
-
 type Placed = { slot: A13Slot; layout: PolaroidLayout };
-
-export interface SafeZoneHit {
-  /** Slot whose caption safe zone is intersected. */
-  covered: string;
-  /** Opaque tirage intersecting it. */
-  by: string;
-  areaPx2: number;
-  /** true = `by` is ABOVE `covered` (its paper hides the caption). */
-  above: boolean;
-}
-
-/** Tolerance for floating-point noise only; contract is 0 px. */
-const ZERO_PX2 = 0.01;
-
-export function safeZoneHits(placed: Placed[]): SafeZoneHit[] {
-  const hits: SafeZoneHit[] = [];
-  for (const s of placed) {
-    const zone = safeZonePolygon(s.slot, s.layout);
-    for (const u of placed) {
-      if (u === s) continue;
-      const area = convexIntersectionArea(zone, outerPolygon(u.slot, u.layout));
-      if (area > A13_PILOT_CAPTION_SAFE_ZONE_INTERSECTION_PX + ZERO_PX2) {
-        hits.push({ covered: s.slot.slotId, by: u.slot.slotId, areaPx2: area, above: u.slot.zIndex > s.slot.zIndex });
-      }
-    }
-  }
-  return hits;
-}
 
 export interface CompositionEntry {
   slot: A13Slot;
   source: PhotoSource | null;
 }
 
-export interface ResolvedComposition {
-  entries: { slot: A13Slot; layout: PolaroidLayout | null }[];
-  /** Surface reductions applied, with the caption they protect. */
-  reductions: { slotId: string; areaFactor: number; protects: string[] }[];
-  /** Covering hits left once every culprit reached its hard minimum. */
-  unresolved: SafeZoneHit[];
+/** Lays every slot out at its V2 target surface — no reduction (V2.1 §3). */
+export function composeSlots(input: CompositionEntry[]) {
+  return input.map(({ slot, source }) => ({ slot, layout: source ? layoutDynamicPolaroid(slot, source) : null }));
 }
 
-export function resolveComposition(input: CompositionEntry[], step = 0.001): ResolvedComposition {
-  const factor = new Map<string, number>(input.map((e) => [e.slot.slotId, 1]));
-  const protects = new Map<string, Set<string>>();
-  const layoutAll = () =>
-    input.map(({ slot, source }) => ({
-      slot,
-      layout: source ? layoutDynamicPolaroid(slot, source, factor.get(slot.slotId)!) : null,
-    }));
-
-  for (let iter = 0; iter < 2000; iter++) {
-    const entries = layoutAll();
-    const placed = entries.filter((e): e is Placed => e.layout !== null);
-    const covering = safeZoneHits(placed).filter((h) => h.above);
-    const culprits = new Set<string>();
-    for (const h of covering) {
-      const slot = input.find((e) => e.slot.slotId === h.by)!.slot;
-      if (factor.get(h.by)! - step >= slot.hardAreaFactor.min - 1e-9) {
-        culprits.add(h.by);
-        if (!protects.has(h.by)) protects.set(h.by, new Set());
-        protects.get(h.by)!.add(h.covered);
-      }
-    }
-    if (culprits.size === 0) {
-      return {
-        entries,
-        reductions: [...protects.entries()].map(([slotId, set]) => ({
-          slotId,
-          areaFactor: factor.get(slotId)!,
-          protects: [...set].sort(),
-        })),
-        unresolved: covering,
-      };
-    }
-    for (const id of culprits) factor.set(id, +(factor.get(id)! - step).toFixed(6));
-  }
-  throw new Error("resolveComposition: did not converge");
+/** Outer polygons of every tirage above `slot` (caption obstacles). */
+export function obstaclesAbove(entries: { slot: A13Slot; layout: PolaroidLayout | null }[], slot: A13Slot) {
+  return entries
+    .filter((e): e is Placed => e.layout !== null && e.slot.zIndex > slot.zIndex)
+    .map((e) => ({ slotId: e.slot.slotId as string, polygon: outerPolygon(e.slot, e.layout) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -267,35 +195,6 @@ export function measureComposition(entries: { slot: A13Slot; layout: PolaroidLay
       });
     }
   }
-  return { slots, pairs, safeZoneHits: safeZoneHits(placed) };
+  return { slots, pairs };
 }
 
-/**
- * Caption TEXT box (measured in the DOM, relative to the print's outer
- * top-left, source px) against every higher-z tirage. 0 px² = the caption
- * is fully readable, whatever the safe-zone verdict.
- */
-export function captionTextHits(
-  entries: { slot: A13Slot; layout: PolaroidLayout | null }[],
-  textRects: Record<string, Rect>,
-) {
-  const placed = entries.filter((e): e is Placed => e.layout !== null);
-  const out: Record<string, { areaPx2: number; by: string[] }> = {};
-  for (const s of placed) {
-    const r = textRects[s.slot.slotId];
-    if (!r) continue;
-    const poly = slotRectToCanvas(s.slot, offset(s.layout.outer, r));
-    let area = 0;
-    const by: string[] = [];
-    for (const u of placed) {
-      if (u.slot.zIndex <= s.slot.zIndex) continue;
-      const a = convexIntersectionArea(poly, outerPolygon(u.slot, u.layout));
-      if (a > ZERO_PX2) {
-        area += a;
-        by.push(u.slot.slotId);
-      }
-    }
-    out[s.slot.slotId] = { areaPx2: area, by };
-  }
-  return out;
-}

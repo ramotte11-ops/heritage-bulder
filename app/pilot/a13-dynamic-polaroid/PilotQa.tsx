@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_PILOT_CANVAS, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
-import { assignMediaToSlots, type Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
-import { captionTextHits, measureComposition, resolveComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
+import {
+  A13_PILOT_CANVAS,
+  A13_PILOT_CAPTION,
+  A13_PILOT_D1_LEFT_EXTENT,
+  A13_PILOT_SLOTS,
+} from "@/config/gallery-a13-pilot-manifest";
+import { assignMediaToSlots } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import { composeSlots, measureComposition, obstaclesAbove } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
+import { layoutCaption, type CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
+import { createCaptionMeasurer, type MeasurerReady } from "@/lib/memorial/gallery/caption-measurer";
 import {
   A13_PILOT_MEDIA,
+  A13_PILOT_MEDIA_LANDSCAPE_3X2,
   A13_PILOT_TITLE,
   PILOT_CAPTION_MODES,
   type PilotCaptionMode,
@@ -15,31 +23,20 @@ import { A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
 import styles from "./page.module.css";
 
 /**
- * QA harness around the pilot scene (CALIBRATION V2). It only switches
+ * QA harness around the pilot scene (CALIBRATION V2.1). It only switches
  * INPUTS (caption state, local photos, overlays) and reports what the pure
- * layout + `resolveComposition` produced — it never adjusts a tirage.
+ * layout and `layoutCaption` produced — it never adjusts a tirage.
  *
- * URL presets (reproducible screenshots): `?qa=1&captions=longue`.
+ * Captions are laid out only once La Belle Aurore is confirmed loaded
+ * (`createCaptionMeasurer`). URL presets for reproducible screenshots:
+ * `?qa=1&captions=32&paysage=3x2`.
  */
 
-interface CaptionMeasure {
-  /** Text box relative to the print's outer top-left, source px. */
-  rect: Rect;
-  lines: number;
-  /** Text box taller or wider than the caption safe zone. */
-  exceedsSafeZone: boolean;
-}
-
-interface Measures {
-  viewport: number;
-  canvas: number;
-  captions: Record<string, CaptionMeasure>;
-}
-
 const CAPTION_LABEL: Record<PilotCaptionMode, string> = {
-  courte: "20–24 caractères",
-  longue: "32 caractères",
   aucune: "absente",
+  "une-ligne": "une ligne",
+  "24": "24 caractères",
+  "32": "32 caractères",
 };
 
 function fmt(n: number, d = 1) {
@@ -69,11 +66,19 @@ function loadLocalFiles(files: File[]): Promise<PilotMedia[]> {
   );
 }
 
+interface DomProof {
+  viewport: number;
+  canvas: number;
+  /** |SVG computed text length − canvas advance|, source px, per slot. */
+  advanceDrift: Record<string, number>;
+}
+
 export function PilotQa() {
   const [media, setMedia] = useState<readonly PilotMedia[]>(A13_PILOT_MEDIA);
-  const [captionMode, setCaptionMode] = useState<PilotCaptionMode>("courte");
+  const [captionMode, setCaptionMode] = useState<PilotCaptionMode>("24");
   const [qa, setQa] = useState(false);
-  const [measures, setMeasures] = useState<Measures | null>(null);
+  const [font, setFont] = useState<MeasurerReady | null>(null);
+  const [proof, setProof] = useState<DomProof | null>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
 
   // URL presets, read once on mount (client only).
@@ -83,12 +88,26 @@ export function PilotQa() {
     if (q.get("qa") === "1") setQa(true);
     const c = q.get("captions") as PilotCaptionMode | null;
     if (c && PILOT_CAPTION_MODES.includes(c)) setCaptionMode(c);
+    if (q.get("paysage") === "3x2") setMedia(A13_PILOT_MEDIA.map((m, i) => (i === 1 ? A13_PILOT_MEDIA_LANDSCAPE_3X2 : m)));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
-  const resolved = useMemo(
+  // Caption measurer — only after La Belle Aurore is confirmed loaded.
+  useEffect(() => {
+    const probe = sceneRef.current?.querySelector<HTMLElement>("[data-caption-probe]");
+    if (!probe) return;
+    let alive = true;
+    void createCaptionMeasurer(probe).then((ready) => {
+      if (alive) setFont(ready);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const entries = useMemo(
     () =>
-      resolveComposition(
+      composeSlots(
         assignMediaToSlots(A13_PILOT_SLOTS, media).map(({ slot, media: m }) => ({
           slot,
           source: m ? { width: m.width, height: m.height, focal: m.focal } : null,
@@ -96,48 +115,41 @@ export function PilotQa() {
       ),
     [media],
   );
-  const entries = resolved.entries;
   const metrics = useMemo(() => measureComposition(entries), [entries]);
 
-  // Real rendered widths + caption text boxes (proof, never layout input).
+  const captions = useMemo(() => {
+    const out: Record<string, CaptionLayout | null> = {};
+    for (const { slot, layout } of entries) {
+      const text = media[slot.mediaIndex]?.captions[captionMode] ?? null;
+      out[slot.slotId] =
+        font && layout && text ? layoutCaption(slot, layout, text, font.measurer, obstaclesAbove(entries, slot)) : null;
+    }
+    return out;
+  }, [entries, media, captionMode, font]);
+
+  // DOM proof: real widths + SVG text length vs canvas advance.
   useEffect(() => {
     const root = sceneRef.current;
     if (!root) return;
     const measure = () => {
       const canvas = root.querySelector("[data-testid=a13-pilot-scene]") as HTMLElement | null;
-      const canvasW = canvas?.getBoundingClientRect().width ?? 0;
-      const k = canvasW / A13_PILOT_CANVAS.width;
-      const captions: Record<string, CaptionMeasure> = {};
-      root.querySelectorAll<HTMLElement>("[data-testid^=caption-]").forEach((el) => {
-        const zone = el.parentElement as HTMLElement;
-        const lh = parseFloat(getComputedStyle(el).lineHeight);
-        captions[el.dataset.testid!.replace("caption-", "")] = {
-          rect: {
-            x: (zone.offsetLeft + el.offsetLeft) / k,
-            y: (zone.offsetTop + el.offsetTop) / k,
-            width: el.offsetWidth / k,
-            height: el.offsetHeight / k,
-          },
-          lines: lh ? Math.round(el.scrollHeight / lh) : 0,
-          exceedsSafeZone: el.offsetHeight > zone.clientHeight + 0.5 || el.offsetWidth > zone.clientWidth + 0.5,
-        };
+      const advanceDrift: Record<string, number> = {};
+      root.querySelectorAll<SVGSVGElement>("svg[data-testid^=caption-]").forEach((svg) => {
+        const id = svg.dataset.testid!.replace("caption-", "");
+        const cap = captions[id];
+        let drift = 0;
+        svg.querySelectorAll("text").forEach((t, i) => {
+          if (cap?.lines[i]) drift = Math.max(drift, Math.abs(t.getComputedTextLength() - cap.lines[i].metrics.width));
+        });
+        advanceDrift[id] = drift;
       });
-      setMeasures({ viewport: window.innerWidth, canvas: canvasW, captions });
+      setProof({ viewport: window.innerWidth, canvas: canvas?.getBoundingClientRect().width ?? 0, advanceDrift });
     };
     measure();
-    void document.fonts?.ready.then(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(root);
     return () => ro.disconnect();
-  }, [entries, captionMode]);
-
-  const textHits = useMemo(
-    () =>
-      measures
-        ? captionTextHits(entries, Object.fromEntries(Object.entries(measures.captions).map(([id, c]) => [id, c.rect])))
-        : {},
-    [entries, measures],
-  );
+  }, [captions]);
 
   const onFiles = async (list: FileList | null) => {
     if (!list || list.length === 0) return;
@@ -148,12 +160,16 @@ export function PilotQa() {
     }
   };
 
-  const k = measures ? measures.canvas / A13_PILOT_CANVAS.width : null;
+  const k = proof ? proof.canvas / A13_PILOT_CANVAS.width : null;
+  const d1 = metrics.slots.find((s) => s.slotId === "D1");
+  const d1Pass = d1 ? Math.abs(d1.extents.minX - A13_PILOT_D1_LEFT_EXTENT.minX) <= A13_PILOT_D1_LEFT_EXTENT.tolerance : false;
+  const unresolved = Object.entries(captions).filter(([, c]) => c?.status === "CAPTION_COLLISION_UNRESOLVED");
+  const placedCaptions = Object.values(captions).filter((c): c is CaptionLayout => c !== null);
 
   return (
     <main className={styles.page}>
       <div className={styles.banner}>
-        A13 · Dynamic Polaroid · Desktop Light — PILOTE QG · CALIBRATION V2 · Foreground O1/O2 : DEFERRED — POST
+        A13 · Dynamic Polaroid · Desktop Light — PILOTE QG · CALIBRATION V2.1 · Foreground O1/O2 : DEFERRED — POST
         PILOT
       </div>
 
@@ -169,7 +185,7 @@ export function PilotQa() {
               layout,
               src: m?.src ?? null,
               alt: m ? `Photo ${slot.mediaIndex + 1}` : "",
-              caption: m?.captions[captionMode] ?? null,
+              caption: captions[slot.slotId] ?? null,
             };
           })}
         />
@@ -188,8 +204,8 @@ export function PilotQa() {
             </select>
           </label>
           <label>
-            <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} /> Calques QA (boîtes de
-            référence, ancres, safe zones, cadre source)
+            <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} /> Diagnostic (boîtes de
+            référence, ancres, cadre source, encre + marge)
           </label>
           <label className={styles.file}>
             Tester 6 photos locales (ordre de sélection = media[0…5]){" "}
@@ -199,11 +215,26 @@ export function PilotQa() {
             Revenir aux 6 photos test
           </button>
           <span className={styles.proof} data-testid="width-proof">
-            viewport {measures?.viewport ?? "…"} px · canvas {measures ? fmt(measures.canvas, 0) : "…"} px · échelle{" "}
+            viewport {proof?.viewport ?? "…"} px · canvas {proof ? fmt(proof.canvas, 0) : "…"} px · échelle{" "}
             {k ? fmt(k, 4) : "…"}
           </span>
         </div>
 
+        <div className={styles.summary} data-testid="qa-summary">
+          <span className={font?.fontCheck ? styles.pass : styles.red}>
+            Police : {font ? (font.fontCheck ? "La Belle Aurore chargée" : "NON chargée") : "en attente…"}
+          </span>
+          <span className={unresolved.length ? styles.red : styles.pass}>
+            {unresolved.length
+              ? `CAPTION_COLLISION_UNRESOLVED_STOP (${unresolved.map(([id]) => id).join(", ")})`
+              : `Captions : ${placedCaptions.length} placées, 0 collision de glyphes`}
+          </span>
+          <span className={d1Pass ? styles.pass : styles.red}>
+            D1 minX {d1 ? fmt(d1.extents.minX, 2) : "…"} px (cible −12 ± 3)
+          </span>
+        </div>
+
+        <h3 className={styles.h}>Ratios et géométrie</h3>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -211,37 +242,30 @@ export function PilotQa() {
               <th>media</th>
               <th>Photo</th>
               <th>Source (px)</th>
-              <th>Ratio</th>
-              <th>Mode image</th>
-              <th>Tirage (px @1670)</th>
-              <th>Référence</th>
+              <th>Ratio média</th>
+              <th>Classe</th>
+              <th>Mode</th>
+              <th>Ratio fenêtre</th>
+              <th>Fenêtre</th>
+              <th>Padding · bande</th>
+              <th>Extérieur</th>
+              <th>Ratio ext. (résultat)</th>
               <th>Surface / cible</th>
-              <th>Ratio tirage</th>
-              <th>Fenêtre photo</th>
-              <th>Marge · bande</th>
-              <th>Respiration papier</th>
-              <th>Rotation</th>
+              <th>Rotation · z</th>
               <th>Dérive ancre</th>
-              <th>Emprise x (canvas)</th>
-              <th>Photo masquée</th>
-              <th>Safe zone couverte (tirage au-dessus)</th>
-              <th>Caption</th>
-              <th>Texte masqué</th>
+              <th>Emprise x</th>
+              <th>Photo visible</th>
             </tr>
           </thead>
           <tbody>
             {entries.map(({ slot, layout }) => {
               const m = media[slot.mediaIndex];
               const s = metrics.slots.find((x) => x.slotId === slot.slotId);
-              const cap = m?.captions[captionMode] ?? null;
-              const cm = measures?.captions[slot.slotId];
-              const zoneHits = metrics.safeZoneHits.filter((h) => h.covered === slot.slotId && h.above);
-              const th = textHits[slot.slotId];
               return (
                 <tr key={slot.slotId}>
                   <td>{slot.slotId}</td>
                   <td>
-                    [{slot.mediaIndex}] {m && A13_PILOT_MEDIA.includes(m) ? "✓" : m ? "local" : "—"}
+                    [{slot.mediaIndex}] {m ? (A13_PILOT_MEDIA.includes(m) || m === A13_PILOT_MEDIA_LANDSCAPE_3X2 ? "✓" : "local") : "—"}
                   </td>
                   <td>{m?.label ?? "—"}</td>
                   {layout && m && s ? (
@@ -249,54 +273,33 @@ export function PilotQa() {
                       <td>
                         {m.width}×{m.height}
                       </td>
-                      <td>{fmt(layout.sourceRatio, 3)}</td>
+                      <td>{fmt(layout.mediaRatio, 3)}</td>
+                      <td>{layout.mediaClass === "inside" ? "dans 0,67–1,78" : layout.mediaClass === "below" ? "< 0,67" : "> 1,78"}</td>
                       <td>{layout.mode}</td>
-                      <td>
-                        {fmt(layout.outer.width)}×{fmt(layout.outer.height)}
-                      </td>
-                      <td>
-                        {slot.referenceSize.width}×{slot.referenceSize.height}
-                      </td>
-                      <td>
-                        {fmt(layout.areaFactor * 100)} % ({s.areaZone === "comfortable" ? "confort" : s.areaZone === "hard" ? "limite dure" : "HORS"})
-                      </td>
-                      <td>
-                        {fmt(layout.outerRatio, 3)}
-                        {layout.outerBounded ? " (borné)" : ""}
-                      </td>
+                      <td>{fmt(layout.windowRatio, 3)}</td>
                       <td>
                         {fmt(layout.window.width)}×{fmt(layout.window.height)}
                       </td>
                       <td>
                         {fmt(layout.margin)} · {fmt(layout.bottomBand)}
+                        {slot.bottomBandOverridePx ? " (fixe V2.1)" : ""}
                       </td>
                       <td>
-                        {layout.mode === "contain-paper"
-                          ? `${fmt(layout.photo.x)} (côtés) · ${fmt(layout.photo.y)} (haut/bas)`
-                          : "—"}
+                        {fmt(layout.outer.width)}×{fmt(layout.outer.height)}
                       </td>
-                      <td>{slot.rotationDeg}°</td>
+                      <td>{fmt(layout.outerRatio, 3)}</td>
+                      <td>{fmt(((layout.outer.width * layout.outer.height) / slot.targetOuterArea) * 100, 2)} %</td>
+                      <td>
+                        {slot.rotationDeg}° · {slot.zIndex}
+                      </td>
                       <td>{fmt(s.anchorDriftPx, 2)} px</td>
                       <td>
-                        {fmt(s.extents.minX)} → {fmt(s.extents.maxX)}
+                        {fmt(s.extents.minX, 1)} → {fmt(s.extents.maxX, 1)}
                       </td>
-                      <td>
-                        {fmt(s.photoOccludedFraction * 100)} %{s.photoOccludedBy.length ? ` (${s.photoOccludedBy.join(", ")})` : ""}
-                      </td>
-                      <td className={zoneHits.length ? styles.red : undefined}>
-                        {zoneHits.length ? zoneHits.map((h) => `${h.by} ${fmt(h.areaPx2, 0)} px²`).join(", ") : "0 px²"}
-                      </td>
-                      <td>
-                        {cap
-                          ? `${[...cap].length} car. · ${cm?.lines ?? "…"} l.${cm?.exceedsSafeZone ? " · DÉBORDE la safe zone" : ""}`
-                          : "absente (bande conservée)"}
-                      </td>
-                      <td className={th && th.areaPx2 > 0 ? styles.red : undefined}>
-                        {cap ? (th ? (th.areaPx2 > 0 ? `${fmt(th.areaPx2, 0)} px² (${th.by.join(", ")})` : "0 px²") : "…") : "—"}
-                      </td>
+                      <td>{fmt(layout.visibleFraction * 100, 0)} %</td>
                     </>
                   ) : (
-                    <td colSpan={17}>slot vide</td>
+                    <td colSpan={14}>slot vide</td>
                   )}
                 </tr>
               );
@@ -304,45 +307,85 @@ export function PilotQa() {
           </tbody>
         </table>
 
+        <h3 className={styles.h}>Captions (glyphes réels, marge 6/4 px)</h3>
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Réduction de surface appliquée (§3/§5)</th>
-              <th>Facteur</th>
-              <th>Pour protéger la safe zone de</th>
+              <th>Slot</th>
+              <th>Texte</th>
+              <th>Car.</th>
+              <th>Lignes</th>
+              <th>Largeur utile</th>
+              <th>Ligne max (avance)</th>
+              <th>Encre (l×h)</th>
+              <th>Boîte protégée dans la bande</th>
+              <th>Décalage X texte</th>
+              <th>Candidats</th>
+              <th>Collision glyphes</th>
+              <th>Écart SVG/canvas</th>
+              <th>Statut</th>
             </tr>
           </thead>
           <tbody>
-            {resolved.reductions.length ? (
-              resolved.reductions.map((r) => (
-                <tr key={r.slotId}>
-                  <td>{r.slotId}</td>
-                  <td>{fmt(r.areaFactor * 100)} %</td>
-                  <td>{r.protects.join(", ")}</td>
+            {entries.map(({ slot, layout }) => {
+              const text = media[slot.mediaIndex]?.captions[captionMode] ?? null;
+              const c = captions[slot.slotId];
+              return (
+                <tr key={slot.slotId}>
+                  <td>{slot.slotId}</td>
+                  {!text ? (
+                    <td colSpan={12}>absente — bande basse conservée ({layout ? fmt(layout.bottomBand) : "—"} px)</td>
+                  ) : !c || !layout ? (
+                    <td colSpan={12}>mesure en attente du chargement de la police…</td>
+                  ) : (
+                    <>
+                      <td>{c.lines.map((l) => `« ${l.text} »`).join(" / ")}</td>
+                      <td>{[...text].length}</td>
+                      <td>{c.lines.length}</td>
+                      <td>{fmt(layout.window.width)}</td>
+                      <td className={c.exceedsUsefulWidth ? styles.red : undefined}>
+                        {fmt(Math.max(...c.lines.map((l) => l.metrics.width)))}
+                      </td>
+                      <td>
+                        {fmt(c.ink.width)}×{fmt(c.ink.height)}
+                      </td>
+                      <td className={c.fitsBandHeight ? undefined : styles.warn}>
+                        {c.fitsBandHeight
+                          ? "oui"
+                          : `non (${fmt(c.protectedBox.height)} px pour ${fmt(layout.bottomBand)} px)`}
+                      </td>
+                      <td>
+                        {c.shiftX === 0 ? "0" : `${c.shiftX > 0 ? "+" : ""}${c.shiftX} px`} (max ±{fmt(c.maxShift)})
+                      </td>
+                      <td>{c.candidatesTried}</td>
+                      <td className={c.collisionAreaPx2 > 0 ? styles.red : styles.pass}>
+                        {c.status === "placed"
+                          ? "0 px²"
+                          : `${fmt(c.collisionAreaPx2, 0)} px² (${c.collidingWith.join(", ")})`}
+                      </td>
+                      <td>{proof?.advanceDrift[slot.slotId] !== undefined ? `${fmt(proof.advanceDrift[slot.slotId], 2)} px` : "…"}</td>
+                      <td className={c.status === "placed" ? styles.pass : styles.red}>{c.status}</td>
+                    </>
+                  )}
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={3}>aucune</td>
-              </tr>
-            )}
-            {resolved.unresolved.map((h) => (
-              <tr key={`${h.covered}-${h.by}`} className={styles.red}>
-                <td>
-                  RED — {h.by} couvre encore la safe zone {h.covered}
-                </td>
-                <td>{fmt(h.areaPx2, 0)} px²</td>
-                <td>{h.by} est à son minimum dur ; aucun déplacement autorisé</td>
-              </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
 
+        <h3 className={styles.h}>Preuve de chargement de la police</h3>
+        <p className={styles.note} data-testid="font-proof">
+          {font
+            ? `document.fonts.check(« 400 ${A13_PILOT_CAPTION.fontSizePx}px ${font.fontFamily} ») = ${font.fontCheck} · FontFace : ${font.faces.join(" ; ") || "—"}`
+            : "en attente…"}
+        </p>
+
+        <h3 className={styles.h}>Chevauchements entre tirages (composition V2, inchangée)</h3>
         <table className={styles.table}>
           <thead>
             <tr>
               <th>Paire (dessous → dessus)</th>
-              <th>Chevauchement tirages (px²)</th>
+              <th>Chevauchement (px²)</th>
             </tr>
           </thead>
           <tbody>

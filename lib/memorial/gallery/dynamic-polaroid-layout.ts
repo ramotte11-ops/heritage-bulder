@@ -6,42 +6,42 @@ import {
 } from "@/config/gallery-a13-pilot-manifest";
 
 /**
- * A13 Dynamic Polaroid — pure geometry, CALIBRATION V2 (Desktop Light).
+ * A13 Dynamic Polaroid — pure geometry, CALIBRATION V2 + V2.1 (Desktop Light).
  *
  * The photograph adapts the FORMAT of the tirage; it never chooses its
  * position. `media[i] → slot[i]` is decided from `slot.mediaIndex`, never
  * here: no sort, no permutation, no masonry, no placement search.
  *
- * ## Algorithm (contract V2 §3 — every constant comes from the manifest)
+ * ## Algorithm (V2.1 §4 — every constant comes from the manifest)
  *
- * 1. Start from the slot's target OUTER area `A × f` (`f` = 1 unless a
- *    caption collision forces a reduction, see `resolveComposition`).
- * 2. Solve the outer width/height of that area whose photo window has the
- *    photo's own ratio, with the V2 paper: side/top margin = 4 % of the
- *    outer width clamped 12–17 px, bottom band = 18 % of the outer height
- *    clamped 58–82 px. The window ratio is monotonic in the width, so a
- *    bisection finds it exactly: EXACT mode, 100 % of the photo visible.
- * 3. If that outer ratio leaves 0.67–1.78, the OUTER format is bounded at
- *    the nearest limit (same area) and the photo goes to CONTAIN, centred,
- *    the rest of the window being paper ("bounded-outer-ratio-plus-contain").
- *    No crop, no stretch: the photo rect always keeps the source ratio.
- * 4. The box is placed so the slot's ANCHOR point of the reference box stays
- *    fixed (e.g. D1 left-bottom: grows right and up). The whole slot frame
- *    rotates by `rotationDeg` around the reference centre.
- *
- * The envelope of V1 no longer exists: size is never "whatever fits".
+ * 1. CLASSIFY on the media ratio only (`mediaWidth / mediaHeight`), before
+ *    any outer geometry exists:
+ *    - inside 0.67–1.78: the photo window takes exactly the media ratio
+ *      (EXACT: whole photo, no crop, no distortion);
+ *    - outside: the format is bounded — the window takes the nearest range
+ *      limit (0.67 or 1.78) — and the photo is shown whole in CONTAIN,
+ *      centred, the rest of the window being paper.
+ * 2. SOLVE the window width so the OUTER area equals the slot's target
+ *    area (V2): outerWidth = window + 2 × side padding, outerHeight =
+ *    window height + top padding + bottom band, side padding = top padding
+ *    = clamp(4 % × outerWidth, 12, 17), band = clamp(18 % × outerHeight,
+ *    58, 82) — except D5, fixed at 72 px (V2.1 §2.4). The outer ratio is a
+ *    RESULT, never an input.
+ * 3. PLACE the box so the slot's ANCHOR point of the reference box stays
+ *    fixed; the whole slot frame rotates by `rotationDeg` around the
+ *    reference centre. No tirage is ever reduced for a caption (V2.1 §3).
  *
  * ## Frame
  *
  * Rects are in the slot's LOCAL frame: origin at the reference centre,
- * before rotation. `outer` is the tirage; `window`, `photo` and `safeZone`
- * are relative to `outer`'s top-left.
+ * before rotation. `outer` is the tirage; `window`, `photo` and `band` are
+ * relative to `outer`'s top-left.
  */
 
 export interface PhotoSource {
   width: number;
   height: number;
-  /** Subject point in [0,1]² — informative in V2 (no crop path is used). */
+  /** Subject point in [0,1]² — never used to classify (V2.1 §4.2). */
   focal?: { x: number; y: number } | null;
 }
 
@@ -57,56 +57,131 @@ export interface Rect {
 export interface PolaroidLayout {
   slotId: A13Slot["slotId"];
   mediaIndex: number;
-  sourceRatio: number;
+  /** Intrinsic media ratio — the ONLY classification input. */
+  mediaRatio: number;
+  /** "inside" the adaptive range, or bounded "below"/"above" it. */
+  mediaClass: "inside" | "below" | "above";
   mode: PolaroidImageMode;
+  /** Ratio given to the photo window (= mediaRatio when inside). */
+  windowRatio: number;
   areaFactor: number;
   /** Outer paper rect, slot-local frame (origin = reference centre). */
   outer: Rect;
+  /** Result only. */
   outerRatio: number;
-  outerBounded: boolean;
   margin: number;
   bottomBand: number;
   /** Photo window, relative to `outer`. */
   window: Rect;
-  /** Full photo rect, relative to `window` (inside it in both modes). */
+  /** Full photo rect, relative to `window` (always inside it). */
   photo: Rect;
-  /** Caption safe zone, relative to `outer`. */
-  safeZone: Rect;
-  /** Fraction of the source photo left visible — always 1 in V2. */
+  /** Bottom band, relative to `outer`. */
+  band: Rect;
+  /** Fraction of the source photo left visible — always 1. */
   visibleFraction: number;
 }
-
-const EPS = 1e-9;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));
 }
 
-export function paperFor(width: number, height: number) {
+/** V2 paper for a given outer box (D5: V2.1 fixed band). */
+export function paperFor(width: number, height: number, bandOverridePx?: number) {
   const { photoSidePadding: sp, bottomBand: bb } = A13_PILOT_POLAROID;
   return {
     margin: clamp(sp.percent * width, sp.minPx, sp.maxPx),
-    bottomBand: clamp(bb.heightFactor * height, bb.minPx, bb.maxPx),
+    bottomBand: bandOverridePx ?? clamp(bb.heightFactor * height, bb.minPx, bb.maxPx),
   };
 }
 
-function windowOf(width: number, height: number) {
-  const { margin, bottomBand } = paperFor(width, height);
-  return { width: width - 2 * margin, height: height - margin - bottomBand, margin, bottomBand };
+/** Outer width from the window width (piecewise-linear, monotonic). */
+function outerWidthFromWindow(winW: number) {
+  const { percent, minPx, maxPx } = A13_PILOT_POLAROID.photoSidePadding;
+  const wMin = winW + 2 * minPx;
+  if (percent * wMin <= minPx) return wMin;
+  const wMax = winW + 2 * maxPx;
+  if (percent * wMax >= maxPx) return wMax;
+  return winW / (1 - 2 * percent);
 }
 
-/** Outer width of area `area` whose photo window has ratio `p`. */
-function solveWidth(area: number, p: number) {
-  let lo = 30;
-  let hi = Math.sqrt(area * 50);
-  for (let i = 0; i < 200; i++) {
-    const w = (lo + hi) / 2;
-    const win = windowOf(w, area / w);
-    const r = win.height > 0 ? win.width / win.height : Infinity;
-    if (r < p) lo = w;
-    else hi = w;
+/** Outer height from the window height and top margin (monotonic). */
+function outerHeightFromWindow(winH: number, margin: number, bandOverridePx?: number) {
+  if (bandOverridePx !== undefined) return winH + margin + bandOverridePx;
+  const { heightFactor, minPx, maxPx } = A13_PILOT_POLAROID.bottomBand;
+  const hMin = winH + margin + minPx;
+  if (heightFactor * hMin <= minPx) return hMin;
+  const hMax = winH + margin + maxPx;
+  if (heightFactor * hMax >= maxPx) return hMax;
+  return (winH + margin) / (1 - heightFactor);
+}
+
+function outerFromWindow(winW: number, windowRatio: number, bandOverridePx?: number) {
+  const W = outerWidthFromWindow(winW);
+  const { margin } = paperFor(W, 0);
+  const H = outerHeightFromWindow(winW / windowRatio, margin, bandOverridePx);
+  return { W, H, margin };
+}
+
+export function classifyMediaRatio(mediaRatio: number) {
+  const { min, max } = A13_PILOT_PHOTO_POLICY.adaptiveMediaRatio;
+  if (mediaRatio < min) return { mediaClass: "below" as const, windowRatio: min };
+  if (mediaRatio > max) return { mediaClass: "above" as const, windowRatio: max };
+  return { mediaClass: "inside" as const, windowRatio: mediaRatio };
+}
+
+export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFactor = 1): PolaroidLayout {
+  if (!(source.width > 0 && source.height > 0)) {
+    throw new Error(`layoutDynamicPolaroid: invalid source size for ${slot.slotId}`);
   }
-  return (lo + hi) / 2;
+  const mediaRatio = source.width / source.height;
+  // 1 — classification, before and independently of any outer geometry.
+  const { mediaClass, windowRatio } = classifyMediaRatio(mediaRatio);
+  const mode: PolaroidImageMode = mediaClass === "inside" ? "exact" : "contain-paper";
+
+  // 2 — window width whose outer box meets the target area (bisection).
+  const area = slot.targetOuterArea * areaFactor;
+  const override = slot.bottomBandOverridePx;
+  let lo = 1;
+  let hi = 4000;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const { W, H } = outerFromWindow(mid, windowRatio, override);
+    if (W * H < area) lo = mid;
+    else hi = mid;
+  }
+  const winW = (lo + hi) / 2;
+  const winH = winW / windowRatio;
+  const { W, H, margin } = outerFromWindow(winW, windowRatio, override);
+  const bottomBand = H - margin - winH;
+
+  let photo: Rect;
+  if (mode === "exact") {
+    photo = { x: 0, y: 0, width: winW, height: winH };
+  } else {
+    const pw = Math.min(winW, winH * mediaRatio);
+    const ph = pw / mediaRatio;
+    photo = { x: (winW - pw) / 2, y: (winH - ph) / 2, width: pw, height: ph };
+  }
+
+  // 3 — anchor.
+  const pos = placeAtAnchor(slot.anchor, slot.referenceSize, W, H);
+  return {
+    slotId: slot.slotId,
+    mediaIndex: slot.mediaIndex,
+    mediaRatio,
+    mediaClass,
+    mode,
+    windowRatio,
+    areaFactor,
+    outer: { x: pos.x, y: pos.y, width: W, height: H },
+    outerRatio: W / H,
+    margin,
+    bottomBand,
+    window: { x: margin, y: margin, width: winW, height: winH },
+    photo,
+    band: { x: 0, y: H - bottomBand, width: W, height: bottomBand },
+    visibleFraction: 1,
+  };
 }
 
 /** Top-left of a W×H box that keeps the reference box's anchor point. */
@@ -127,57 +202,6 @@ export function placeAtAnchor(anchor: A13Anchor, ref: { width: number; height: n
     case "right-bottom":
       return { x: R - w, y: B - h };
   }
-}
-
-export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFactor = 1): PolaroidLayout {
-  if (!(source.width > 0 && source.height > 0)) {
-    throw new Error(`layoutDynamicPolaroid: invalid source size for ${slot.slotId}`);
-  }
-  const { min: rMin, max: rMax } = A13_PILOT_PHOTO_POLICY.adaptiveOuterRatio;
-  const area = slot.targetOuterArea * areaFactor;
-  const p = source.width / source.height;
-
-  let W = solveWidth(area, p);
-  let outerRatio = (W * W) / area;
-  let outerBounded = false;
-  if (outerRatio < rMin - EPS || outerRatio > rMax + EPS) {
-    outerBounded = true;
-    outerRatio = outerRatio < rMin ? rMin : rMax;
-    W = Math.sqrt(area * outerRatio);
-  }
-  const H = area / W;
-  const win = windowOf(W, H);
-
-  let photo: Rect;
-  let mode: PolaroidImageMode;
-  if (!outerBounded) {
-    mode = "exact";
-    photo = { x: 0, y: 0, width: win.width, height: win.height };
-  } else {
-    mode = "contain-paper";
-    const pw = Math.min(win.width, win.height * p);
-    const ph = pw / p;
-    photo = { x: (win.width - pw) / 2, y: (win.height - ph) / 2, width: pw, height: ph };
-  }
-
-  const pos = placeAtAnchor(slot.anchor, slot.referenceSize, W, H);
-  const sz = slot.captionSafeZone;
-  return {
-    slotId: slot.slotId,
-    mediaIndex: slot.mediaIndex,
-    sourceRatio: p,
-    mode,
-    areaFactor,
-    outer: { x: pos.x, y: pos.y, width: W, height: H },
-    outerRatio: W / H,
-    outerBounded,
-    margin: win.margin,
-    bottomBand: win.bottomBand,
-    window: { x: win.margin, y: win.margin, width: win.width, height: win.height },
-    photo,
-    safeZone: { x: sz.xMin * W, y: sz.yMin * H, width: (sz.xMax - sz.xMin) * W, height: (sz.yMax - sz.yMin) * H },
-    visibleFraction: 1,
-  };
 }
 
 /**

@@ -1,5 +1,15 @@
 /**
- * A13 — Dynamic Polaroid — Desktop Light — PILOT manifest, CALIBRATION V2.
+ * A13 — Dynamic Polaroid — Desktop Light — PILOT manifest, CALIBRATION V2
+ * + CALIBRATION V2.1 corrections.
+ *
+ * V2.1 (`A13_G6_DESKTOP_LIGHT_MANIFEST_1670_V2_1.json`, "inherits" V2,
+ * "composition": "UNCHANGED_FROM_V2") only changes three things, all
+ * transcribed below: the caption contract (real glyph bounds, local X text
+ * shift, D5 band 72 px), the ratio contract (classification on the MEDIA
+ * ratio only) and the D1 left extension (−12 ± 3 px). The V2 caption safe
+ * zones are kept as provenance but are no longer a collision rule
+ * ("removedFromV2": whole-caption-band safe-zone inviolability, D3
+ * mechanical area reduction).
  *
  * Transcribed verbatim from `A13_G6_DESKTOP_LIGHT_MANIFEST_1670_V2.json`
  * (package `A13_DYNAMIC_POLAROID_DESKTOP_LIGHT_CALIBRATION_V2`) and its
@@ -62,35 +72,56 @@ export interface A13Slot {
   anchor: A13Anchor;
   expansion: readonly string[];
   zIndex: number;
-  /** Fractions of the tirage's own OUTER box, local unrotated frame. */
+  /** V2 provenance only — V2.1 removed safe-zone inviolability. */
   captionSafeZone: A13SafeZone;
-  /** D1 only — contract §2 "dépassement canvas". */
-  canvasRule?: { leftExtentPx: { target: number; tolerance: number } };
+  /** V2.1 — D5 only: fixed bottom band (outer size and target area unchanged). */
+  bottomBandOverridePx?: number;
 }
 
 export const A13_PILOT_SLOTS: readonly A13Slot[] = [
-  { slotId: "D1", mediaIndex: 0, center: { x: 190, y: 585 }, referenceSize: { width: 334, height: 382 }, targetOuterArea: 127588, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: -9.5, anchor: "left-bottom", expansion: ["right", "up"], zIndex: 30, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 }, canvasRule: { leftExtentPx: { target: 12, tolerance: 3 } } },
+  { slotId: "D1", mediaIndex: 0, center: { x: 190, y: 585 }, referenceSize: { width: 334, height: 382 }, targetOuterArea: 127588, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: -9.5, anchor: "left-bottom", expansion: ["right", "up"], zIndex: 30, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 } },
   { slotId: "D2", mediaIndex: 1, center: { x: 548.5, y: 493 }, referenceSize: { width: 390, height: 500 }, targetOuterArea: 195000, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: 7.5, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 40, captionSafeZone: { xMin: 0.19, xMax: 0.81, yMin: 0.82, yMax: 0.97 } },
   { slotId: "D3", mediaIndex: 2, center: { x: 812, y: 648 }, referenceSize: { width: 326, height: 382 }, targetOuterArea: 124532, comfortableAreaFactor: { min: 0.93, max: 1.07 }, hardAreaFactor: { min: 0.89, max: 1.11 }, rotationDeg: 6.5, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 60, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 } },
   { slotId: "D4", mediaIndex: 3, center: { x: 1085, y: 431 }, referenceSize: { width: 365, height: 342 }, targetOuterArea: 124830, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: -6.5, anchor: "top-center", expansion: ["down", "horizontal-symmetric"], zIndex: 50, captionSafeZone: { xMin: 0.13, xMax: 0.87, yMin: 0.81, yMax: 0.97 } },
-  { slotId: "D5", mediaIndex: 4, center: { x: 1466, y: 467 }, referenceSize: { width: 316, height: 318 }, targetOuterArea: 100488, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: 9, anchor: "right-top", expansion: ["left", "down"], zIndex: 70, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 } },
+  { slotId: "D5", mediaIndex: 4, center: { x: 1466, y: 467 }, referenceSize: { width: 316, height: 318 }, targetOuterArea: 100488, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: 9, anchor: "right-top", expansion: ["left", "down"], zIndex: 70, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 }, bottomBandOverridePx: 72 },
   { slotId: "D6", mediaIndex: 5, center: { x: 1260, y: 753 }, referenceSize: { width: 520, height: 312 }, targetOuterArea: 162240, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: -5, anchor: "right-bottom", expansion: ["left", "up"], zIndex: 35, captionSafeZone: { xMin: 0.15, xMax: 0.85, yMin: 0.82, yMax: 0.97 } },
 ];
 
+/**
+ * V2.1 §4 — the adaptive range applies EXCLUSIVELY to the media's intrinsic
+ * ratio (`mediaWidth / mediaHeight`); the outer ratio is a result, never a
+ * classification input.
+ */
 export const A13_PILOT_PHOTO_POLICY = {
   familyOrderStrict: true,
   sortByRatio: false,
-  adaptiveOuterRatio: { min: 0.67, max: 1.78 },
-  outsideRange: "bounded-outer-ratio-plus-contain",
-  cropVisibleFraction: { withFocalPoint: 0.8, withoutFocalPoint: 0.85 },
-  subjectProtectionOverridesThreshold: true,
+  adaptiveMediaRatio: { min: 0.67, max: 1.78 },
+  insideRange: "photo-window-ratio-equals-media-ratio",
+  outsideRange: "bounded-outer-format-plus-contain",
   distortion: false,
 } as const;
 
-/** Contract §5 / `overlapRules.captionSafeZoneIntersectionPx`. */
-export const A13_PILOT_CAPTION_SAFE_ZONE_INTERSECTION_PX = 0;
+/** V2.1 §5 — D1 rotated bounding box min X, source px ("12 px of the rotated
+ * bounding box is outside the left canvas edge"; never +12). */
+export const A13_PILOT_D1_LEFT_EXTENT = { minX: -12, tolerance: 3 } as const;
 
-/** Contract §6 — `DynamicPolaroid` paper/shadow/caption, source px @1670. */
+/** V2.1 §2 — caption contract. */
+export const A13_PILOT_CAPTION = {
+  maxChars: 32,
+  maxLines: 2,
+  fontSizePx: 27,
+  lineHeight: 1.05,
+  weight: 400,
+  color: "#5A4A3E",
+  fontFamilyResolved: "La Belle Aurore",
+  safetyMarginPx: { x: 6, y: 4 },
+  shiftStepPx: 2,
+  maxShiftFactorOfBandWidth: 0.18,
+  minimumTwoLineContentHeightPx: 65,
+} as const;
+
+/** Contract V2 §6 — `DynamicPolaroid` paper and shadow, source px @1670
+ * (caption typography: `A13_PILOT_CAPTION`, V2.1). */
 export const A13_PILOT_POLAROID = {
   paperColor: "#F4EBDF",
   texture: { maxOpacity: 0.08, maxContrast: 0.04 },
@@ -101,5 +132,4 @@ export const A13_PILOT_POLAROID = {
     contact: { y: 3, blur: 5, color: "rgba(55,39,25,0.20)" },
     diffusion: { y: 14, blur: 24, color: "rgba(55,39,25,0.14)" },
   },
-  caption: { fontSizePx: 27, lineHeight: 1.05, weight: 400, color: "#5A4A3E", maxChars: 32, maxLines: 2 },
 } as const;

@@ -12,8 +12,8 @@
  * - inner stroke 1.2 px rgba(116, 91, 67, 0.24);
  * - two shadows, contact 0 3 5 rgba(55, 39, 25, 0.20) and diffusion
  *   0 14 24 rgba(55, 39, 25, 0.14), cast by the rotated print itself;
- * - caption: `--heritage-caption-hand`, 27 px, line-height 1.05, 400,
- *   #5A4A3E, centred in the safe zone, two lines max, no auto-shrink.
+ * - caption (V2.1): `--heritage-caption-hand`, 27 px, line-height 1.05,
+ *   400, #5A4A3E, placed by `layoutCaption`, two lines max, no auto-shrink.
  *
  * Edge irregularity (contract: "maximale 1,5 px") is left at 0: the
  * contract caps it but specifies no shape, and drawing one would be an
@@ -60,27 +60,36 @@
   user-select: none;
 }
 
-.safeZone {
+.band {
   position: absolute;
   margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.caption {
+/* Caption — contract V2.1: `--heritage-caption-hand` (La Belle Aurore),
+ * 27 px source, 400, #5A4A3E. Positions are SVG user units = source px, so
+ * the text scales with the print; no auto-shrink exists anywhere. */
+.captionSvg {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.captionText {
   font-family: var(--heritage-caption-hand), cursive;
-  font-size: calc(27 * var(--k));
-  line-height: 1.05;
+  font-size: 27px;
   font-weight: 400;
-  color: #5a4a3e;
-  text-align: center;
-  overflow-wrap: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  fill: #5a4a3e;
+  text-rendering: geometricPrecision;
+  white-space: pre;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------------------------
@@ -121,9 +130,17 @@
   z-index: 199;
 }
 
-.qaSafeZone {
-  position: absolute;
-  outline: calc(1.5 * var(--k)) dashed rgb(20 130 60 / 0.95);
-  background: rgb(20 130 60 / 0.08);
-  z-index: 198;
+/* Diagnostic only: ink box (green) and protected box = ink + 6/4 px
+ * (dashed). */
+.qaInk {
+  fill: rgb(20 130 60 / 0.1);
+  stroke: rgb(20 130 60 / 0.95);
+  stroke-width: 1;
+}
+
+.qaProtected {
+  fill: none;
+  stroke: rgb(20 130 60 / 0.95);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
 }

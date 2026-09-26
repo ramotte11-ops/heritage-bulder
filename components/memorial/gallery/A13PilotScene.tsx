@@ -1,6 +1,7 @@
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import { A13_PILOT_BACKGROUND_SRC, A13_PILOT_LAYER_Z } from "@/config/gallery-a13-pilot-manifest";
 import type { PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import { ebGaramond, ebGaramondItalic, laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "./DynamicPolaroid";
 import styles from "./A13PilotScene.module.css";
@@ -21,7 +22,7 @@ export interface A13PilotSceneEntry {
   layout: PolaroidLayout | null;
   src: string | null;
   alt: string;
-  caption: string | null;
+  caption: CaptionLayout | null;
 }
 
 export interface A13PilotSceneProps {
@@ -54,6 +55,10 @@ export function A13PilotScene({ entries, title, subtitle, qa = false }: A13Pilot
           <p className={`${styles.subtitle} ${ebGaramondItalic.className}`}>{subtitle}</p>
         </header>
         {qa ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
+        {/* Resolves `--heritage-caption-hand` for the caption measurer. */}
+        <span className={styles.captionProbe} data-caption-probe="" aria-hidden="true">
+          Aa
+        </span>
       </div>
     </div>
   );

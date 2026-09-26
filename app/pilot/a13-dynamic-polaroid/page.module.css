@@ -67,3 +67,37 @@
   background: #f5dcd3;
   font-weight: 600;
 }
+
+.pass {
+  color: #3f6b3a;
+  background: #e2ecd9;
+  font-weight: 600;
+}
+
+.warn {
+  color: #8a5a12;
+  background: #f6e6c4;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.summary span {
+  padding: 0.3rem 0.6rem;
+}
+
+.h {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.85rem;
+}
+
+.note {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  margin: 0 0 1rem;
+  word-break: break-word;
+}

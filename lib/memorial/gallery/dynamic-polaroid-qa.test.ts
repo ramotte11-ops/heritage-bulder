@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { A13_PILOT_SLOTS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
-import { assignMediaToSlots, paperFor } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import { A13_PILOT_D1_LEFT_EXTENT, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { assignMediaToSlots } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import {
+  composeSlots,
   convexIntersectionArea,
   measureComposition,
+  obstaclesAbove,
   pointInConvex,
-  resolveComposition,
   slotRectToCanvas,
 } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { A13_PILOT_MEDIA } from "@/lib/memorial/gallery/a13-pilot-fixtures";
@@ -17,11 +18,8 @@ const sq = (x: number, y: number, s: number) => [
   { x, y: y + s },
 ];
 
-function referenceSource(s: A13Slot) {
-  const { width: W, height: H } = s.referenceSize;
-  const { margin, bottomBand } = paperFor(W, H);
-  return { width: W - 2 * margin, height: H - margin - bottomBand };
-}
+const fixtures = () =>
+  composeSlots(assignMediaToSlots(A13_PILOT_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }) => ({ slot, source: media })));
 
 describe("polygon helpers", () => {
   it("intersects convex polygons", () => {
@@ -42,47 +40,31 @@ describe("polygon helpers", () => {
   });
 });
 
-describe("resolveComposition — V2 §3/§5", () => {
-  const fixtures = () =>
-    resolveComposition(
-      assignMediaToSlots(A13_PILOT_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }) => ({ slot, source: media })),
-    );
-
-  it("only ever reduces surfaces, within the hard range, and never moves an anchor", () => {
-    const r = fixtures();
-    const m = measureComposition(r.entries);
+describe("composeSlots — V2.1 §3: no tirage is ever reduced", () => {
+  it("keeps every slot at its target surface with a fixed anchor", () => {
+    const m = measureComposition(fixtures());
     for (const s of m.slots) {
-      expect(s.areaZone).not.toBe("OUT");
-      expect(s.areaFactor).toBeLessThanOrEqual(1);
+      expect(s.areaFactor).toBe(1);
       expect(s.anchorDriftPx).toBeLessThan(1e-9);
     }
   });
 
-  it("reduces D3 first to protect the D2 caption safe zone", () => {
-    const r = fixtures();
-    const d3 = r.reductions.find((x) => x.slotId === "D3");
-    expect(d3?.protects).toContain("D2");
+  it("measures D1's rotated bounding box minX (contract: −12 ± 3 px)", () => {
+    // Pinned measurement, reported to QG: with the 3:4 test photo the D1
+    // tirage (target area, left-bottom anchor, −9.5°) reaches −16.4 px,
+    // 1.4 px beyond the tolerance. V2.1 forbids recentring or any other
+    // lever, so the value is reported, never corrected.
+    const d1 = measureComposition(fixtures()).slots.find((s) => s.slotId === "D1")!;
+    expect(d1.extents.minX).toBeCloseTo(-16.375, 2);
+    expect(d1.extents.minX).toBeLessThan(0); // always partly outside, never +12
+    expect(A13_PILOT_D1_LEFT_EXTENT).toEqual({ minX: -12, tolerance: 3 });
   });
 
-  it("reports what the reduction cannot fix instead of hiding it", () => {
-    const r = fixtures();
-    for (const h of r.unresolved) {
-      const culprit = A13_PILOT_SLOTS.find((s) => s.slotId === h.by)!;
-      const f = r.entries.find((e) => e.slot.slotId === h.by)!.layout!.areaFactor;
-      expect(f).toBeCloseTo(culprit.hardAreaFactor.min, 6);
-    }
-  });
-
-  it("D5 covers nothing of its own caption from D6 (D5 above D6)", () => {
-    const r = fixtures();
-    const m = measureComposition(r.entries);
-    expect(m.safeZoneHits.filter((h) => h.covered === "D5" && h.above)).toEqual([]);
-  });
-
-  it("documents the contract's reference geometry itself (Master ratios)", () => {
-    const r = resolveComposition(A13_PILOT_SLOTS.map((slot) => ({ slot, source: referenceSource(slot) })));
-    // Pinned so any change to the reading of the contract is visible in review.
-    expect(r.reductions.map((x) => x.slotId).sort()).toEqual(["D2", "D3"]);
-    expect(r.unresolved.map((h) => `${h.by}>${h.covered}`).sort()).toEqual(["D2>D1", "D3>D4"]);
+  it("lists only higher-z tirages as caption obstacles (D5 above D6)", () => {
+    const entries = fixtures();
+    const d5 = A13_PILOT_SLOTS.find((s) => s.slotId === "D5")!;
+    const d6 = A13_PILOT_SLOTS.find((s) => s.slotId === "D6")!;
+    expect(obstaclesAbove(entries, d5)).toEqual([]);
+    expect(obstaclesAbove(entries, d6).map((o) => o.slotId).sort()).toEqual(["D2", "D3", "D4", "D5"]);
   });
 });
