@@ -9,10 +9,11 @@ import styles from "./A13PilotScene.module.css";
  * A13 G6 Desktop Light — PILOT scene: photo-free GREEN background + six
  * `DynamicPolaroid` + runtime title. Nothing else.
  *
- * - FOREGROUND O1/O2: DEFERRED (QG). Not rendered, not approximated.
+ * - FOREGROUND O1/O2: DEFERRED — POST PILOT (QG). Not rendered, not approximated.
  * - One canvas, 1670 × 941, scaled uniformly with the rendered width and
  *   capped at 1670 (`.stage` max-width): `--k = 100cqw / 1670`.
- * - Slots render in manifest order; stacking is the manifest z-index only.
+ * - Slots render in manifest order; stacking is the manifest z-index only
+ *   (V2: D1 30 → D6 35 → D2 40 → D4 50 → D3 60 → D5 70).
  */
 
 export interface A13PilotSceneEntry {

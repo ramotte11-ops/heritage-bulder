@@ -8,6 +8,15 @@
  */
 
 .stage {
+  /*
+   * Caption hand — contract V2 §6 "police manuscrite déjà utilisée dans le
+   * prototype V1, figée sous le token --heritage-caption-hand". That font is
+   * La Belle Aurore, already authorized in HERITAGE (Hero Intemporel
+   * handoff, Mission 035) and self-hosted by `laBelleAurore` in
+   * components/builder/fonts.ts as `--font-heritage-hero-script`. The token
+   * is an alias of that one resource — no new font is loaded.
+   */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
   container-type: inline-size;
   width: 100%;
   max-width: 1670px;

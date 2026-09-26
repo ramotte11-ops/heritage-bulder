@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_PILOT_CANVAS, A13_PILOT_PHOTO_POLICY, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
-import { assignMediaToSlots, layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
-import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
+import { A13_PILOT_CANVAS, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { assignMediaToSlots, type Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import { captionTextHits, measureComposition, resolveComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import {
   A13_PILOT_MEDIA,
   A13_PILOT_TITLE,
@@ -15,24 +15,31 @@ import { A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
 import styles from "./page.module.css";
 
 /**
- * QA harness around the pilot scene. It only switches INPUTS (caption
- * mode, focal points on/off, local photos) and reports what the pure
- * layout produced — it never adjusts a tirage.
+ * QA harness around the pilot scene (CALIBRATION V2). It only switches
+ * INPUTS (caption state, local photos, overlays) and reports what the pure
+ * layout + `resolveComposition` produced — it never adjusts a tirage.
  *
- * URL presets (for reproducible screenshots): `?qa=1&captions=deux-lignes&focal=0`.
+ * URL presets (reproducible screenshots): `?qa=1&captions=longue`.
  */
+
+interface CaptionMeasure {
+  /** Text box relative to the print's outer top-left, source px. */
+  rect: Rect;
+  lines: number;
+  /** Text box taller or wider than the caption safe zone. */
+  exceedsSafeZone: boolean;
+}
 
 interface Measures {
   viewport: number;
   canvas: number;
-  lines: Record<string, number>;
+  captions: Record<string, CaptionMeasure>;
 }
 
 const CAPTION_LABEL: Record<PilotCaptionMode, string> = {
-  mixte: "mixte (absente / 1 ligne / 2 lignes)",
-  aucune: "aucune caption",
-  "une-ligne": "une ligne",
-  "deux-lignes": "deux lignes (≤ 32 car.)",
+  courte: "20–24 caractères",
+  longue: "32 caractères",
+  aucune: "absente",
 };
 
 function fmt(n: number, d = 1) {
@@ -64,8 +71,7 @@ function loadLocalFiles(files: File[]): Promise<PilotMedia[]> {
 
 export function PilotQa() {
   const [media, setMedia] = useState<readonly PilotMedia[]>(A13_PILOT_MEDIA);
-  const [captionMode, setCaptionMode] = useState<PilotCaptionMode>("mixte");
-  const [focalOn, setFocalOn] = useState(true);
+  const [captionMode, setCaptionMode] = useState<PilotCaptionMode>("courte");
   const [qa, setQa] = useState(false);
   const [measures, setMeasures] = useState<Measures | null>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -75,35 +81,48 @@ export function PilotQa() {
     const q = new URLSearchParams(window.location.search);
     /* eslint-disable react-hooks/set-state-in-effect -- one-shot hydration of URL presets */
     if (q.get("qa") === "1") setQa(true);
-    if (q.get("focal") === "0") setFocalOn(false);
     const c = q.get("captions") as PilotCaptionMode | null;
     if (c && PILOT_CAPTION_MODES.includes(c)) setCaptionMode(c);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
-  const entries = useMemo(
+  const resolved = useMemo(
     () =>
-      assignMediaToSlots(A13_PILOT_SLOTS, media).map(({ slot, media: m }) => ({
-        slot,
-        media: m,
-        layout: m ? layoutDynamicPolaroid(slot, { width: m.width, height: m.height, focal: focalOn ? m.focal : null }) : null,
-      })),
-    [media, focalOn],
+      resolveComposition(
+        assignMediaToSlots(A13_PILOT_SLOTS, media).map(({ slot, media: m }) => ({
+          slot,
+          source: m ? { width: m.width, height: m.height, focal: m.focal } : null,
+        })),
+      ),
+    [media],
   );
+  const entries = resolved.entries;
   const metrics = useMemo(() => measureComposition(entries), [entries]);
 
-  // Real rendered widths + measured caption lines (proof, not layout).
+  // Real rendered widths + caption text boxes (proof, never layout input).
   useEffect(() => {
     const root = sceneRef.current;
     if (!root) return;
     const measure = () => {
       const canvas = root.querySelector("[data-testid=a13-pilot-scene]") as HTMLElement | null;
-      const lines: Record<string, number> = {};
+      const canvasW = canvas?.getBoundingClientRect().width ?? 0;
+      const k = canvasW / A13_PILOT_CANVAS.width;
+      const captions: Record<string, CaptionMeasure> = {};
       root.querySelectorAll<HTMLElement>("[data-testid^=caption-]").forEach((el) => {
+        const zone = el.parentElement as HTMLElement;
         const lh = parseFloat(getComputedStyle(el).lineHeight);
-        lines[el.dataset.testid!.replace("caption-", "")] = lh ? Math.round(el.scrollHeight / lh) : 0;
+        captions[el.dataset.testid!.replace("caption-", "")] = {
+          rect: {
+            x: (zone.offsetLeft + el.offsetLeft) / k,
+            y: (zone.offsetTop + el.offsetTop) / k,
+            width: el.offsetWidth / k,
+            height: el.offsetHeight / k,
+          },
+          lines: lh ? Math.round(el.scrollHeight / lh) : 0,
+          exceedsSafeZone: el.offsetHeight > zone.clientHeight + 0.5 || el.offsetWidth > zone.clientWidth + 0.5,
+        };
       });
-      setMeasures({ viewport: window.innerWidth, canvas: canvas?.getBoundingClientRect().width ?? 0, lines });
+      setMeasures({ viewport: window.innerWidth, canvas: canvasW, captions });
     };
     measure();
     void document.fonts?.ready.then(measure);
@@ -111,6 +130,14 @@ export function PilotQa() {
     ro.observe(root);
     return () => ro.disconnect();
   }, [entries, captionMode]);
+
+  const textHits = useMemo(
+    () =>
+      measures
+        ? captionTextHits(entries, Object.fromEntries(Object.entries(measures.captions).map(([id, c]) => [id, c.rect])))
+        : {},
+    [entries, measures],
+  );
 
   const onFiles = async (list: FileList | null) => {
     if (!list || list.length === 0) return;
@@ -126,7 +153,8 @@ export function PilotQa() {
   return (
     <main className={styles.page}>
       <div className={styles.banner}>
-        A13 · Dynamic Polaroid · Desktop Light — PILOTE QG · Foreground O1/O2 : DEFERRED (hors Gate)
+        A13 · Dynamic Polaroid · Desktop Light — PILOTE QG · CALIBRATION V2 · Foreground O1/O2 : DEFERRED — POST
+        PILOT
       </div>
 
       <div ref={sceneRef}>
@@ -134,13 +162,16 @@ export function PilotQa() {
           qa={qa}
           title={A13_PILOT_TITLE.title}
           subtitle={A13_PILOT_TITLE.subtitle}
-          entries={entries.map(({ slot, media: m, layout }) => ({
-            slot,
-            layout,
-            src: m?.src ?? null,
-            alt: m ? `Photo ${slot.mediaIndex + 1}` : "",
-            caption: m?.captions[captionMode] ?? null,
-          }))}
+          entries={entries.map(({ slot, layout }) => {
+            const m = media[slot.mediaIndex];
+            return {
+              slot,
+              layout,
+              src: m?.src ?? null,
+              alt: m ? `Photo ${slot.mediaIndex + 1}` : "",
+              caption: m?.captions[captionMode] ?? null,
+            };
+          })}
         />
       </div>
 
@@ -157,11 +188,8 @@ export function PilotQa() {
             </select>
           </label>
           <label>
-            <input type="checkbox" checked={focalOn} onChange={(e) => setFocalOn(e.target.checked)} /> Points focaux
-          </label>
-          <label>
-            <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} /> Calques QA (enveloppes,
-            ancres, cadre source)
+            <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} /> Calques QA (boîtes de
+            référence, ancres, safe zones, cadre source)
           </label>
           <label className={styles.file}>
             Tester 6 photos locales (ordre de sélection = media[0…5]){" "}
@@ -184,25 +212,31 @@ export function PilotQa() {
               <th>Photo</th>
               <th>Source (px)</th>
               <th>Ratio</th>
+              <th>Mode image</th>
               <th>Tirage (px @1670)</th>
+              <th>Référence</th>
+              <th>Surface / cible</th>
               <th>Ratio tirage</th>
               <th>Fenêtre photo</th>
-              <th>Mode image</th>
-              <th>Crop</th>
-              <th>Échelle photo (upscale si &gt; 1)</th>
-              <th>Enveloppe inutilisée</th>
-              <th>Ancrage (ax, ay)</th>
-              <th>Photo masquée par tirages sup.</th>
-              <th>Bande caption masquée</th>
-              <th>Dans l’enveloppe</th>
-              <th>Dépasse du canvas</th>
+              <th>Marge · bande</th>
+              <th>Respiration papier</th>
+              <th>Rotation</th>
+              <th>Dérive ancre</th>
+              <th>Emprise x (canvas)</th>
+              <th>Photo masquée</th>
+              <th>Safe zone couverte (tirage au-dessus)</th>
               <th>Caption</th>
+              <th>Texte masqué</th>
             </tr>
           </thead>
           <tbody>
-            {entries.map(({ slot, media: m, layout }) => {
+            {entries.map(({ slot, layout }) => {
+              const m = media[slot.mediaIndex];
               const s = metrics.slots.find((x) => x.slotId === slot.slotId);
               const cap = m?.captions[captionMode] ?? null;
+              const cm = measures?.captions[slot.slotId];
+              const zoneHits = metrics.safeZoneHits.filter((h) => h.covered === slot.slotId && h.above);
+              const th = textHits[slot.slotId];
               return (
                 <tr key={slot.slotId}>
                   <td>{slot.slotId}</td>
@@ -210,14 +244,21 @@ export function PilotQa() {
                     [{slot.mediaIndex}] {m && A13_PILOT_MEDIA.includes(m) ? "✓" : m ? "local" : "—"}
                   </td>
                   <td>{m?.label ?? "—"}</td>
-                  {layout && m ? (
+                  {layout && m && s ? (
                     <>
                       <td>
                         {m.width}×{m.height}
                       </td>
                       <td>{fmt(layout.sourceRatio, 3)}</td>
+                      <td>{layout.mode}</td>
                       <td>
                         {fmt(layout.outer.width)}×{fmt(layout.outer.height)}
+                      </td>
+                      <td>
+                        {slot.referenceSize.width}×{slot.referenceSize.height}
+                      </td>
+                      <td>
+                        {fmt(layout.areaFactor * 100)} % ({s.areaZone === "comfortable" ? "confort" : s.areaZone === "hard" ? "limite dure" : "HORS"})
                       </td>
                       <td>
                         {fmt(layout.outerRatio, 3)}
@@ -226,38 +267,36 @@ export function PilotQa() {
                       <td>
                         {fmt(layout.window.width)}×{fmt(layout.window.height)}
                       </td>
-                      <td>{layout.mode}</td>
                       <td>
-                        {layout.cropAxis === "none"
-                          ? "aucun (100 % visible)"
-                          : `${fmt(layout.visibleFraction * 100)} % visible (axe ${layout.cropAxis})`}
+                        {fmt(layout.margin)} · {fmt(layout.bottomBand)}
                       </td>
                       <td>
-                        ×{fmt(layout.upscale, 3)}{" "}
-                        {layout.upscale <= A13_PILOT_PHOTO_POLICY.upscale.acceptedMax
-                          ? "OK"
-                          : layout.upscale <= A13_PILOT_PHOTO_POLICY.upscale.warningMax
-                            ? "alerte"
-                            : "HORS LIMITE"}
+                        {layout.mode === "contain-paper"
+                          ? `${fmt(layout.photo.x)} (côtés) · ${fmt(layout.photo.y)} (haut/bas)`
+                          : "—"}
                       </td>
-                      <td>{fmt(layout.envelopeUnusedFraction * 100)} %</td>
+                      <td>{slot.rotationDeg}°</td>
+                      <td>{fmt(s.anchorDriftPx, 2)} px</td>
                       <td>
-                        {layout.pins.ax}, {layout.pins.ay}
+                        {fmt(s.extents.minX)} → {fmt(s.extents.maxX)}
                       </td>
                       <td>
-                        {s ? `${fmt(s.photoOccludedFraction * 100)} %${s.occludedBy.length ? ` (${s.occludedBy.join(", ")})` : ""}` : "—"}
+                        {fmt(s.photoOccludedFraction * 100)} %{s.photoOccludedBy.length ? ` (${s.photoOccludedBy.join(", ")})` : ""}
+                      </td>
+                      <td className={zoneHits.length ? styles.red : undefined}>
+                        {zoneHits.length ? zoneHits.map((h) => `${h.by} ${fmt(h.areaPx2, 0)} px²`).join(", ") : "0 px²"}
                       </td>
                       <td>
-                        {s ? `${fmt(s.bandOccludedFraction * 100)} %${s.bandOccludedBy.length ? ` (${s.bandOccludedBy.join(", ")})` : ""}` : "—"}
+                        {cap
+                          ? `${[...cap].length} car. · ${cm?.lines ?? "…"} l.${cm?.exceedsSafeZone ? " · DÉBORDE la safe zone" : ""}`
+                          : "absente (bande conservée)"}
                       </td>
-                      <td>{s?.insideEnvelope ? "oui" : "NON"}</td>
-                      <td>{s && s.canvasOverflow > 0.5 ? `${fmt(s.canvasOverflow)} px` : "non"}</td>
-                      <td>
-                        {cap ? `${[...cap].length} car. · ${measures?.lines[slot.slotId] ?? "…"} l.` : "absente (bande conservée)"}
+                      <td className={th && th.areaPx2 > 0 ? styles.red : undefined}>
+                        {cap ? (th ? (th.areaPx2 > 0 ? `${fmt(th.areaPx2, 0)} px² (${th.by.join(", ")})` : "0 px²") : "…") : "—"}
                       </td>
                     </>
                   ) : (
-                    <td colSpan={15}>slot vide</td>
+                    <td colSpan={17}>slot vide</td>
                   )}
                 </tr>
               );
@@ -268,23 +307,53 @@ export function PilotQa() {
         <table className={styles.table}>
           <thead>
             <tr>
+              <th>Réduction de surface appliquée (§3/§5)</th>
+              <th>Facteur</th>
+              <th>Pour protéger la safe zone de</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resolved.reductions.length ? (
+              resolved.reductions.map((r) => (
+                <tr key={r.slotId}>
+                  <td>{r.slotId}</td>
+                  <td>{fmt(r.areaFactor * 100)} %</td>
+                  <td>{r.protects.join(", ")}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={3}>aucune</td>
+              </tr>
+            )}
+            {resolved.unresolved.map((h) => (
+              <tr key={`${h.covered}-${h.by}`} className={styles.red}>
+                <td>
+                  RED — {h.by} couvre encore la safe zone {h.covered}
+                </td>
+                <td>{fmt(h.areaPx2, 0)} px²</td>
+                <td>{h.by} est à son minimum dur ; aucun déplacement autorisé</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <table className={styles.table}>
+          <thead>
+            <tr>
               <th>Paire (dessous → dessus)</th>
               <th>Chevauchement tirages (px²)</th>
-              <th>Prescrit (enveloppes +12 px se chevauchent)</th>
-              <th>Statut collision</th>
             </tr>
           </thead>
           <tbody>
             {metrics.pairs
-              .filter((p) => p.overlapArea > 0.5 || p.prescribed)
+              .filter((p) => p.overlapArea > 0.5)
               .map((p) => (
                 <tr key={`${p.lower}-${p.upper}`}>
                   <td>
                     {p.lower} → {p.upper}
                   </td>
                   <td>{fmt(p.overlapArea, 0)}</td>
-                  <td>{p.prescribed ? "oui" : "non"}</td>
-                  <td>{p.status}</td>
                 </tr>
               ))}
           </tbody>

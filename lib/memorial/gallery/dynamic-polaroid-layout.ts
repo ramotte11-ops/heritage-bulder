@@ -1,61 +1,51 @@
 import {
-  A13_PILOT_CANVAS,
-  A13_PILOT_PAPER,
+  A13_PILOT_POLAROID,
   A13_PILOT_PHOTO_POLICY,
+  type A13Anchor,
   type A13Slot,
 } from "@/config/gallery-a13-pilot-manifest";
 
 /**
- * A13 Dynamic Polaroid — pure geometry (PILOT, Desktop Light).
+ * A13 Dynamic Polaroid — pure geometry, CALIBRATION V2 (Desktop Light).
  *
  * The photograph adapts the FORMAT of the tirage; it never chooses its
- * position. Every input here is one slot of the manifest plus one photo's
- * intrinsic size (and optional focal point). There is no sort, no
- * permutation, no masonry and no placement search: `media[i] → slot[i]`
- * is decided by the caller from `slot.mediaIndex`, never by this module.
+ * position. `media[i] → slot[i]` is decided from `slot.mediaIndex`, never
+ * here: no sort, no permutation, no masonry, no placement search.
  *
- * ## Algorithm (every constant comes from the manifest or `A13_PILOT_PAPER`)
+ * ## Algorithm (contract V2 §3 — every constant comes from the manifest)
  *
- * 1. EXACT — the largest photo window of the photo's own ratio that fits
- *    the envelope once the paper (border ×2 + bottom band) is added. If the
- *    resulting OUTER ratio lies in `adaptiveOuterRatioRange` (0.67–1.78),
- *    the photo is shown whole: no crop, no paper breathing.
- * 2. Otherwise the OUTER format is bounded at the nearest range limit and
- *    made as large as the envelope allows at that ratio. The window it
- *    leaves has a different ratio than the photo:
- *    - SAFE CROP (`cover`) only if the visible fraction stays ≥ 0.80 with a
- *      focal point, ≥ 0.85 without one; the crop is centred on the focal
- *      point (clamped so it never slides past the photo's edge);
- *    - else CONTAIN with paper breathing: the whole photo, centred, the
- *      remaining window area is paper.
- *    Never a stretch: every photo rect below keeps the source ratio exactly.
+ * 1. Start from the slot's target OUTER area `A × f` (`f` = 1 unless a
+ *    caption collision forces a reduction, see `resolveComposition`).
+ * 2. Solve the outer width/height of that area whose photo window has the
+ *    photo's own ratio, with the V2 paper: side/top margin = 4 % of the
+ *    outer width clamped 12–17 px, bottom band = 18 % of the outer height
+ *    clamped 58–82 px. The window ratio is monotonic in the width, so a
+ *    bisection finds it exactly: EXACT mode, 100 % of the photo visible.
+ * 3. If that outer ratio leaves 0.67–1.78, the OUTER format is bounded at
+ *    the nearest limit (same area) and the photo goes to CONTAIN, centred,
+ *    the rest of the window being paper ("bounded-outer-ratio-plus-contain").
+ *    No crop, no stretch: the photo rect always keeps the source ratio.
+ * 4. The box is placed so the slot's ANCHOR point of the reference box stays
+ *    fixed (e.g. D1 left-bottom: grows right and up). The whole slot frame
+ *    rotates by `rotationDeg` around the reference centre.
  *
- * ## Expansion — how the manifest strings are resolved (QG to confirm)
- *
- * The manifest names a direction ("inward-and-up", …) but does not define
- * it. Resolution used by this pilot, stated so QG can accept or correct it:
- * a tirage smaller than its envelope stays pinned to the envelope edge(s)
- * OPPOSITE its expansion direction, so it "grows" toward that direction.
- * "inward" = toward the canvas centre (835, 470.5) on both axes; the
- * second word overrides one axis: "up" (vertical: grows up), "left"
- * (horizontal: grows left), "vertical" (vertical: both ways, centred),
- * "horizontal" (horizontal: both ways, centred).
+ * The envelope of V1 no longer exists: size is never "whatever fits".
  *
  * ## Frame
  *
- * All rects returned are in the slot's LOCAL frame: origin at the top-left
- * of the envelope, before the slot's own rotation (the whole slot rotates
- * by `rotationDeg` around its anchor, like a physical print).
+ * Rects are in the slot's LOCAL frame: origin at the reference centre,
+ * before rotation. `outer` is the tirage; `window`, `photo` and `safeZone`
+ * are relative to `outer`'s top-left.
  */
 
 export interface PhotoSource {
   width: number;
   height: number;
-  /** Subject point in [0,1]² of the source photo, if the family gave one. */
+  /** Subject point in [0,1]² — informative in V2 (no crop path is used). */
   focal?: { x: number; y: number } | null;
 }
 
-export type PolaroidImageMode = "exact" | "cover-safe-crop" | "contain-paper";
+export type PolaroidImageMode = "exact" | "contain-paper";
 
 export interface Rect {
   x: number;
@@ -64,167 +54,135 @@ export interface Rect {
   height: number;
 }
 
-export interface Pins {
-  /** 0 = pinned left, 1 = pinned right, 0.5 = centred. */
-  ax: number;
-  /** 0 = pinned top, 1 = pinned bottom, 0.5 = centred. */
-  ay: number;
-}
-
 export interface PolaroidLayout {
   slotId: A13Slot["slotId"];
   mediaIndex: number;
   sourceRatio: number;
   mode: PolaroidImageMode;
-  pins: Pins;
-  /** Outer paper rect, slot-local frame. */
+  areaFactor: number;
+  /** Outer paper rect, slot-local frame (origin = reference centre). */
   outer: Rect;
   outerRatio: number;
-  /** True when the outer ratio was bounded at 0.67 or 1.78. */
   outerBounded: boolean;
+  margin: number;
+  bottomBand: number;
   /** Photo window, relative to `outer`. */
   window: Rect;
-  /** The photo's full rendered rect, relative to `window` (may overflow it
-   * in `cover-safe-crop`, always inside it in `contain-paper`). */
+  /** Full photo rect, relative to `window` (inside it in both modes). */
   photo: Rect;
-  /** Fraction of the source photo area left visible (1 = uncropped). */
+  /** Caption safe zone, relative to `outer`. */
+  safeZone: Rect;
+  /** Fraction of the source photo left visible — always 1 in V2. */
   visibleFraction: number;
-  cropAxis: "none" | "x" | "y";
-  /** Rendered photo px (canonical 1670 frame, DPR 1) per source px. */
-  upscale: number;
-  /** Envelope area left unused by the outer paper, in [0,1]. */
-  envelopeUnusedFraction: number;
 }
 
-const EPS = 1e-6;
+const EPS = 1e-9;
 
-export function resolveExpansionPins(slot: A13Slot): Pins {
-  const cx = A13_PILOT_CANVAS.width / 2;
-  const cy = A13_PILOT_CANVAS.height / 2;
-  // "inward": grows toward the canvas centre => pinned on the far side.
-  let ax = slot.anchor.x < cx ? 0 : slot.anchor.x > cx ? 1 : 0.5;
-  let ay = slot.anchor.y < cy ? 0 : slot.anchor.y > cy ? 1 : 0.5;
-  switch (slot.expansion) {
-    case "inward-and-up":
-      ay = 1;
-      break;
-    case "inward-and-vertical":
-      ay = 0.5;
-      break;
-    case "inward-and-horizontal":
-      ax = 0.5;
-      break;
-    case "inward-and-left":
-      ax = 1;
-      break;
+function clamp(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+export function paperFor(width: number, height: number) {
+  const { photoSidePadding: sp, bottomBand: bb } = A13_PILOT_POLAROID;
+  return {
+    margin: clamp(sp.percent * width, sp.minPx, sp.maxPx),
+    bottomBand: clamp(bb.heightFactor * height, bb.minPx, bb.maxPx),
+  };
+}
+
+function windowOf(width: number, height: number) {
+  const { margin, bottomBand } = paperFor(width, height);
+  return { width: width - 2 * margin, height: height - margin - bottomBand, margin, bottomBand };
+}
+
+/** Outer width of area `area` whose photo window has ratio `p`. */
+function solveWidth(area: number, p: number) {
+  let lo = 30;
+  let hi = Math.sqrt(area * 50);
+  for (let i = 0; i < 200; i++) {
+    const w = (lo + hi) / 2;
+    const win = windowOf(w, area / w);
+    const r = win.height > 0 ? win.width / win.height : Infinity;
+    if (r < p) lo = w;
+    else hi = w;
   }
-  return { ax, ay };
+  return (lo + hi) / 2;
 }
 
-/** Largest w×h of ratio `r` (w/h) inside maxW×maxH. */
-function fitRatio(r: number, maxW: number, maxH: number) {
-  const w = Math.min(maxW, maxH * r);
-  return { width: w, height: w / r };
+/** Top-left of a W×H box that keeps the reference box's anchor point. */
+export function placeAtAnchor(anchor: A13Anchor, ref: { width: number; height: number }, w: number, h: number) {
+  const L = -ref.width / 2;
+  const R = ref.width / 2;
+  const T = -ref.height / 2;
+  const B = ref.height / 2;
+  switch (anchor) {
+    case "left-bottom":
+      return { x: L, y: B - h };
+    case "bottom-center":
+      return { x: -w / 2, y: B - h };
+    case "top-center":
+      return { x: -w / 2, y: T };
+    case "right-top":
+      return { x: R - w, y: T };
+    case "right-bottom":
+      return { x: R - w, y: B - h };
+  }
 }
 
-export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource): PolaroidLayout {
+export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFactor = 1): PolaroidLayout {
   if (!(source.width > 0 && source.height > 0)) {
     throw new Error(`layoutDynamicPolaroid: invalid source size for ${slot.slotId}`);
   }
-  const { border, bottomBand } = A13_PILOT_PAPER;
-  const { min: rMin, max: rMax } = A13_PILOT_PHOTO_POLICY.adaptiveOuterRatioRange;
-  const env = slot.maxEnvelope;
-  const padX = 2 * border;
-  const padY = border + bottomBand;
+  const { min: rMin, max: rMax } = A13_PILOT_PHOTO_POLICY.adaptiveOuterRatio;
+  const area = slot.targetOuterArea * areaFactor;
   const p = source.width / source.height;
 
-  // 1 — EXACT: the window takes the photo's own ratio.
-  const exactWin = fitRatio(p, env.width - padX, env.height - padY);
-  const exactOuterRatio = (exactWin.width + padX) / (exactWin.height + padY);
-
-  let outerW: number;
-  let outerH: number;
-  let win: { width: number; height: number };
+  let W = solveWidth(area, p);
+  let outerRatio = (W * W) / area;
   let outerBounded = false;
-
-  if (exactOuterRatio >= rMin - EPS && exactOuterRatio <= rMax + EPS) {
-    win = exactWin;
-    outerW = win.width + padX;
-    outerH = win.height + padY;
-  } else {
-    // 2 — BOUNDED outer format at the nearest range limit.
+  if (outerRatio < rMin - EPS || outerRatio > rMax + EPS) {
     outerBounded = true;
-    const bound = exactOuterRatio < rMin ? rMin : rMax;
-    const o = fitRatio(bound, env.width, env.height);
-    outerW = o.width;
-    outerH = o.height;
-    win = { width: outerW - padX, height: outerH - padY };
+    outerRatio = outerRatio < rMin ? rMin : rMax;
+    W = Math.sqrt(area * outerRatio);
   }
+  const H = area / W;
+  const win = windowOf(W, H);
 
-  const winRatio = win.width / win.height;
-  const ratioGap = Math.min(p, winRatio) / Math.max(p, winRatio);
-  const focal = source.focal ?? null;
-  const threshold = focal
-    ? A13_PILOT_PHOTO_POLICY.cropVisibleFractionWithFocalPoint
-    : A13_PILOT_PHOTO_POLICY.cropVisibleFractionWithoutFocalPoint;
-
-  let mode: PolaroidImageMode;
   let photo: Rect;
-  let visibleFraction = 1;
-  let cropAxis: PolaroidLayout["cropAxis"] = "none";
-
-  if (Math.abs(p - winRatio) <= EPS * Math.max(p, 1)) {
+  let mode: PolaroidImageMode;
+  if (!outerBounded) {
     mode = "exact";
     photo = { x: 0, y: 0, width: win.width, height: win.height };
-  } else if (ratioGap >= threshold - EPS) {
-    mode = "cover-safe-crop";
-    visibleFraction = ratioGap;
-    const scale = Math.max(win.width / source.width, win.height / source.height);
-    const pw = source.width * scale;
-    const ph = source.height * scale;
-    const fx = focal ? focal.x : 0.5;
-    const fy = focal ? focal.y : 0.5;
-    // Centre the crop on the focal point, clamped inside the photo.
-    const x = -Math.min(Math.max(fx * pw - win.width / 2, 0), pw - win.width);
-    const y = -Math.min(Math.max(fy * ph - win.height / 2, 0), ph - win.height);
-    cropAxis = pw > win.width + EPS ? "x" : "y";
-    photo = { x, y, width: pw, height: ph };
   } else {
     mode = "contain-paper";
-    const fit = fitRatio(p, win.width, win.height);
-    photo = { x: (win.width - fit.width) / 2, y: (win.height - fit.height) / 2, width: fit.width, height: fit.height };
+    const pw = Math.min(win.width, win.height * p);
+    const ph = pw / p;
+    photo = { x: (win.width - pw) / 2, y: (win.height - ph) / 2, width: pw, height: ph };
   }
 
-  const pins = resolveExpansionPins(slot);
-  const outer: Rect = {
-    x: (env.width - outerW) * pins.ax,
-    y: (env.height - outerH) * pins.ay,
-    width: outerW,
-    height: outerH,
-  };
-
+  const pos = placeAtAnchor(slot.anchor, slot.referenceSize, W, H);
+  const sz = slot.captionSafeZone;
   return {
     slotId: slot.slotId,
     mediaIndex: slot.mediaIndex,
     sourceRatio: p,
     mode,
-    pins,
-    outer,
-    outerRatio: outerW / outerH,
+    areaFactor,
+    outer: { x: pos.x, y: pos.y, width: W, height: H },
+    outerRatio: W / H,
     outerBounded,
-    window: { x: border, y: border, width: win.width, height: win.height },
+    margin: win.margin,
+    bottomBand: win.bottomBand,
+    window: { x: win.margin, y: win.margin, width: win.width, height: win.height },
     photo,
-    visibleFraction,
-    cropAxis,
-    upscale: photo.width / source.width,
-    envelopeUnusedFraction: 1 - (outerW * outerH) / (env.width * env.height),
+    safeZone: { x: sz.xMin * W, y: sz.yMin * H, width: (sz.xMax - sz.xMin) * W, height: (sz.yMax - sz.yMin) * H },
+    visibleFraction: 1,
   };
 }
 
 /**
  * Family order is the authority: `media[i] → slot whose mediaIndex === i`.
- * A missing media leaves its slot empty; an extra media is ignored. Never
- * a sort, never a permutation.
+ * A missing media leaves its slot empty; an extra media is ignored.
  */
 export function assignMediaToSlots<T>(slots: readonly A13Slot[], media: readonly T[]) {
   return slots.map((slot) => ({ slot, media: media[slot.mediaIndex] ?? null }));
