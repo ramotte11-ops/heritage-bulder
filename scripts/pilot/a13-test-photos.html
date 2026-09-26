@@ -1,0 +1,279 @@
+<!doctype html>
+<!--
+  A13 Dynamic Polaroid — Desktop Light PILOT — générateur des 6 photos test.
+
+  Le conteneur de la session d'exécution n'a accès à aucune banque d'images :
+  les six "photographies" du pilote sont donc des scènes SYNTHÉTIQUES dessinées
+  au canvas (silhouettes à contre-jour, grain argentique, vignettage), dans la
+  palette chaude du Master GREEN. Elles servent uniquement à éprouver les six
+  RATIOS imposés par la mission QG ; elles ne remplacent pas une QA avec de
+  vraies photos de famille (le pilote accepte des fichiers locaux au runtime).
+
+  Usage : ouvrir ce fichier dans Chromium ; chaque canvas expose
+  `window.__photos[i].toDataURL("image/jpeg", 0.86)`. Les JPEG commités sous
+  public/pilot/a13-dynamic-polaroid/ ont été produits ainsi (Playwright).
+  Déterministe : PRNG à graine fixe.
+-->
+<meta charset="utf-8" />
+<body style="margin:0;background:#222">
+<script>
+(function () {
+  let seed = 20260926;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+  function mk(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    document.body.appendChild(c);
+    c.style.width = "300px";
+    return c;
+  }
+  function sky(ctx, w, h, stops) {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    stops.forEach(([o, col]) => g.addColorStop(o, col));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }
+  function sun(ctx, x, y, r, a) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,244,214,${a})`);
+    g.addColorStop(0.12, `rgba(255,226,170,${a * 0.9})`);
+    g.addColorStop(0.45, `rgba(250,190,120,${a * 0.35})`);
+    g.addColorStop(1, "rgba(250,180,110,0)");
+    ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  function bokeh(ctx, w, h, n, rMin, rMax, cols, blur) {
+    ctx.save(); ctx.filter = `blur(${blur}px)`;
+    for (let i = 0; i < n; i++) {
+      const r = rMin + rnd() * (rMax - rMin);
+      ctx.globalAlpha = 0.15 + rnd() * 0.35;
+      ctx.fillStyle = cols[Math.floor(rnd() * cols.length)];
+      ctx.beginPath(); ctx.arc(rnd() * w, rnd() * h, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function ridge(ctx, w, h, baseY, amp, freq, color, blur, phase) {
+    ctx.save(); if (blur) ctx.filter = `blur(${blur}px)`;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(-20, h + 20);
+    for (let x = -20; x <= w + 20; x += 8) {
+      const y = baseY + Math.sin(x * freq + phase) * amp + Math.sin(x * freq * 2.7 + phase * 1.9) * amp * 0.35;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w + 20, h + 20); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  function cypress(ctx, x, baseY, hgt, color) {
+    ctx.fillStyle = color; ctx.beginPath();
+    ctx.moveTo(x, baseY - hgt);
+    ctx.bezierCurveTo(x + hgt * 0.11, baseY - hgt * 0.7, x + hgt * 0.1, baseY - hgt * 0.2, x + hgt * 0.04, baseY);
+    ctx.lineTo(x - hgt * 0.04, baseY);
+    ctx.bezierCurveTo(x - hgt * 0.1, baseY - hgt * 0.2, x - hgt * 0.11, baseY - hgt * 0.7, x, baseY - hgt);
+    ctx.fill();
+  }
+  // Silhouette humaine debout (unité = hauteur totale).
+  function person(ctx, x, footY, H, color, opts = {}) {
+    const s = H;
+    ctx.save(); ctx.fillStyle = color;
+    const headR = s * 0.065;
+    const headY = footY - s + headR;
+    ctx.beginPath(); ctx.ellipse(x, headY, headR * 0.86, headR, 0, 0, Math.PI * 2); ctx.fill();
+    if (opts.hair) {
+      ctx.beginPath(); ctx.ellipse(x - headR * 0.1, headY + headR * 0.5, headR * 1.05, headR * 1.35, 0.1, 0, Math.PI * 2); ctx.fill();
+    }
+    const sh = s * 0.13; // demi-largeur des épaules
+    ctx.beginPath();
+    ctx.moveTo(x - headR * 0.35, headY + headR * 0.9);
+    ctx.quadraticCurveTo(x - sh, footY - s * 0.8, x - sh * 0.95, footY - s * 0.62);
+    ctx.lineTo(x - sh * (opts.dress ? 1.25 : 0.7), footY - s * (opts.dress ? 0.12 : 0.45));
+    ctx.lineTo(x - sh * 0.45, footY);
+    ctx.lineTo(x - sh * 0.1, footY);
+    ctx.lineTo(x, footY - s * 0.4);
+    ctx.lineTo(x + sh * 0.1, footY);
+    ctx.lineTo(x + sh * 0.45, footY);
+    ctx.lineTo(x + sh * (opts.dress ? 1.25 : 0.7), footY - s * (opts.dress ? 0.12 : 0.45));
+    ctx.lineTo(x + sh * 0.95, footY - s * 0.62);
+    ctx.quadraticCurveTo(x + sh, footY - s * 0.8, x + headR * 0.35, headY + headR * 0.9);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // Silhouette assise vue de dos (unité = hauteur assise).
+  function seated(ctx, x, seatY, H, color) {
+    ctx.save(); ctx.fillStyle = color;
+    const headR = H * 0.14;
+    const headY = seatY - H + headR;
+    ctx.beginPath(); ctx.ellipse(x, headY, headR * 0.9, headR, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, headY + headR * 0.2, headR * 1.12, headR * 1.05, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - headR * 0.4, headY + headR * 0.85);
+    ctx.quadraticCurveTo(x - H * 0.36, seatY - H * 0.62, x - H * 0.33, seatY);
+    ctx.lineTo(x + H * 0.33, seatY);
+    ctx.quadraticCurveTo(x + H * 0.36, seatY - H * 0.62, x + headR * 0.4, headY + headR * 0.85);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // Buste à contre-jour avec liseré lumineux (portrait).
+  function bust(ctx, cx, cy, s, color, rim) {
+    ctx.save();
+    const path = new Path2D();
+    path.ellipse(cx, cy, s * 0.21, s * 0.27, -0.08, 0, Math.PI * 2);
+    const hair = new Path2D();
+    hair.ellipse(cx - s * 0.03, cy + s * 0.08, s * 0.29, s * 0.36, -0.1, 0, Math.PI * 2);
+    const body = new Path2D();
+    body.moveTo(cx - s * 0.1, cy + s * 0.22);
+    body.bezierCurveTo(cx - s * 0.2, cy + s * 0.45, cx - s * 0.62, cy + s * 0.5, cx - s * 0.7, cy + s * 1.2);
+    body.lineTo(cx + s * 0.7, cy + s * 1.2);
+    body.bezierCurveTo(cx + s * 0.62, cy + s * 0.5, cx + s * 0.2, cy + s * 0.45, cx + s * 0.1, cy + s * 0.22);
+    body.closePath();
+    // liseré (rim light) : forme dilatée floue, puis forme sombre
+    ctx.filter = `blur(${s * 0.03}px)`;
+    ctx.fillStyle = rim;
+    ctx.save(); ctx.translate(s * 0.02, -s * 0.012); ctx.fill(hair); ctx.fill(body); ctx.restore();
+    ctx.filter = `blur(${s * 0.004}px)`;
+    ctx.fillStyle = color; ctx.fill(hair); ctx.fill(path); ctx.fill(body);
+    ctx.restore();
+  }
+  function grade(ctx, w, h, grain, vignette, warm) {
+    // teinte chaude globale
+    ctx.save(); ctx.globalCompositeOperation = "soft-light";
+    ctx.fillStyle = warm; ctx.fillRect(0, 0, w, h); ctx.restore();
+    // vignettage
+    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.62);
+    g.addColorStop(0, "rgba(40,22,10,0)"); g.addColorStop(1, `rgba(40,22,10,${vignette})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // grain
+    const img = ctx.getImageData(0, 0, w, h); const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (rnd() - 0.5) * grain;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  const photos = [];
+
+  // 1 — portrait standard 3:4
+  (() => {
+    const w = 1200, h = 1600, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#e9c48f"], [0.45, "#c98f58"], [1, "#6b4a30"]]);
+    bokeh(x, w, h, 90, 30, 110, ["#fbe2b0", "#f3c77c", "#9aa36a", "#fff1d0"], 18);
+    sun(x, w * 0.78, h * 0.22, w * 0.7, 0.9);
+    bokeh(x, w, h * 0.6, 40, 10, 40, ["#fff4d8", "#ffd9a0"], 6);
+    bust(x, w * 0.5, h * 0.42, w * 0.7, "#4a3526", "rgba(255,226,170,0.95)");
+    grade(x, w, h, 22, 0.55, "#d9a066");
+    photos.push(c);
+  })();
+
+  // 2 — paysage standard 3:2
+  (() => {
+    const w = 1800, h = 1200, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#b9a38e"], [0.35, "#f0c592"], [0.55, "#f7d9a8"], [1, "#8a6a48"]]);
+    sun(x, w * 0.63, h * 0.5, w * 0.45, 1);
+    ridge(x, w, h, h * 0.56, 22, 0.004, "#a98a74", 3, 1.2);
+    ridge(x, w, h, h * 0.63, 30, 0.003, "#7d6552", 2, 2.4);
+    ridge(x, w, h, h * 0.74, 26, 0.0025, "#4e3d2e", 1, 0.3);
+    for (let i = 0; i < 9; i++) cypress(x, w * (0.05 + i * 0.03), h * 0.76 + rnd() * 10, 140 + rnd() * 80, "#3c2f24");
+    ridge(x, w, h, h * 0.86, 12, 0.002, "#2f251c", 0, 4.1);
+    person(x, w * 0.37, h * 0.87, h * 0.34, "#261c15", { hair: true, dress: true });
+    person(x, w * 0.42, h * 0.87, h * 0.38, "#261c15");
+    grade(x, w, h, 18, 0.5, "#d69a5c");
+    photos.push(c);
+  })();
+
+  // 3 — carré
+  (() => {
+    const w = 1400, h = 1400, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#d9c2a0"], [0.58, "#c2a07a"], [0.59, "#6e4e33"], [1, "#4a3220"]]);
+    // fenêtre lumineuse floue
+    x.save(); x.filter = "blur(30px)"; x.fillStyle = "rgba(255,240,210,0.8)";
+    x.fillRect(w * 0.55, h * 0.05, w * 0.35, h * 0.45); x.restore();
+    bokeh(x, w, h * 0.55, 30, 20, 70, ["#f7e4c1", "#a5a574"], 14);
+    // table : lattes
+    x.save(); x.globalAlpha = 0.25; x.strokeStyle = "#2c1d12"; x.lineWidth = 4;
+    for (let i = 0; i < 6; i++) { x.beginPath(); x.moveTo(0, h * 0.6 + i * 110); x.lineTo(w, h * 0.62 + i * 118); x.stroke(); }
+    x.restore();
+    // chapeau de paille
+    x.save(); x.translate(w * 0.48, h * 0.66);
+    x.fillStyle = "rgba(30,18,10,0.35)"; x.filter = "blur(20px)";
+    x.beginPath(); x.ellipse(40, 70, 430, 110, 0, 0, Math.PI * 2); x.fill(); x.filter = "none";
+    let g = x.createRadialGradient(-80, -40, 30, 0, 0, 440);
+    g.addColorStop(0, "#f2d49a"); g.addColorStop(0.7, "#c99a5a"); g.addColorStop(1, "#8e6636");
+    x.fillStyle = g; x.beginPath(); x.ellipse(0, 0, 420, 120, 0, 0, Math.PI * 2); x.fill();
+    g = x.createRadialGradient(-60, -150, 20, 0, -90, 230);
+    g.addColorStop(0, "#f6dca8"); g.addColorStop(1, "#a97a40");
+    x.fillStyle = g; x.beginPath(); x.ellipse(0, -80, 200, 150, 0, Math.PI, Math.PI * 2); x.ellipse(0, -80, 200, 50, 0, 0, Math.PI); x.fill();
+    x.fillStyle = "#5b4a3a"; x.fillRect(-200, -95, 400, 34);
+    x.restore();
+    // petites fleurs blanches (clin d'œil au Master)
+    for (let i = 0; i < 26; i++) {
+      const fx = w * 0.16 + rnd() * 200, fy = h * 0.3 + rnd() * 260;
+      x.strokeStyle = "rgba(120,110,60,0.7)"; x.lineWidth = 3; x.beginPath(); x.moveTo(w * 0.2, h * 0.62); x.lineTo(fx, fy); x.stroke();
+      x.fillStyle = "#fbf3e2"; x.beginPath(); x.arc(fx, fy, 9 + rnd() * 6, 0, Math.PI * 2); x.fill();
+      x.fillStyle = "#e0a93e"; x.beginPath(); x.arc(fx, fy, 3.5, 0, Math.PI * 2); x.fill();
+    }
+    x.fillStyle = "#e9dfcf"; x.beginPath(); x.ellipse(w * 0.2, h * 0.62, 90, 26, 0, 0, Math.PI * 2); x.fill();
+    x.fillRect(w * 0.2 - 90, h * 0.5, 180, h * 0.12);
+    grade(x, w, h, 16, 0.45, "#d7a36a");
+    photos.push(c);
+  })();
+
+  // 4 — portrait étroit 9:16
+  (() => {
+    const w = 1080, h = 1920, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#5e4633"], [1, "#3a2a1e"]]);
+    // arche lumineuse
+    x.save(); const ag = x.createLinearGradient(0, h * 0.1, 0, h);
+    ag.addColorStop(0, "#f9e3b8"); ag.addColorStop(0.6, "#efc07e"); ag.addColorStop(1, "#b58450");
+    x.fillStyle = ag; x.beginPath();
+    x.moveTo(w * 0.2, h * 0.92); x.lineTo(w * 0.2, h * 0.3);
+    x.arc(w * 0.5, h * 0.3, w * 0.3, Math.PI, 0); x.lineTo(w * 0.8, h * 0.92); x.closePath(); x.fill(); x.restore();
+    bokeh(x, w, h * 0.8, 40, 20, 60, ["#9fa36b", "#fff0cc", "#e3b86e"], 12);
+    x.fillStyle = "#b99a78"; x.fillRect(0, h * 0.92, w, h * 0.08);
+    person(x, w * 0.52, h * 0.9, h * 0.52, "#2b1f16", { hair: true, dress: true });
+    grade(x, w, h, 20, 0.5, "#d09a5e");
+    photos.push(c);
+  })();
+
+  // 5 — paysage large 16:9
+  (() => {
+    const w = 1920, h = 1080, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#c9b39c"], [0.42, "#f4cf9b"], [0.5, "#f9e0b4"], [0.51, "#d9b48a"], [1, "#6c5642"]]);
+    sun(x, w * 0.3, h * 0.46, w * 0.35, 0.95);
+    // reflets
+    x.save(); x.globalAlpha = 0.45; x.fillStyle = "#fff0cf";
+    for (let i = 0; i < 70; i++) x.fillRect(w * 0.3 - 180 + rnd() * 360, h * 0.52 + rnd() * h * 0.35, 30 + rnd() * 90, 3);
+    x.restore();
+    ridge(x, w, h, h * 0.48, 10, 0.003, "#9c8671", 3, 0.7);
+    x.fillStyle = "#6e5b4b"; x.fillRect(0, h * 0.5, w, 3);
+    // ponton
+    x.fillStyle = "#3b2d22"; x.beginPath();
+    x.moveTo(w * 0.52, h * 0.66); x.lineTo(w * 1.02, h * 0.64); x.lineTo(w * 1.02, h * 0.7); x.lineTo(w * 0.52, h * 0.68); x.fill();
+    for (let i = 0; i < 8; i++) x.fillRect(w * (0.54 + i * 0.06), h * 0.66, 8, 70);
+    seated(x, w * 0.6, h * 0.66, h * 0.16, "#241a13");
+    grade(x, w, h, 16, 0.45, "#d49b5f");
+    photos.push(c);
+  })();
+
+  // 6 — panorama difficile 3:1, sujet proche du bord droit
+  (() => {
+    const w = 2700, h = 900, c = mk(w, h), x = c.getContext("2d");
+    sky(x, w, h, [[0, "#b8a28c"], [0.38, "#efc493"], [0.52, "#f6d8a8"], [1, "#7c5f44"]]);
+    sun(x, w * 0.24, h * 0.44, w * 0.25, 0.9);
+    ridge(x, w, h, h * 0.5, 20, 0.0025, "#aa927b", 4, 0.4);
+    ridge(x, w, h, h * 0.58, 26, 0.0019, "#826a55", 2, 1.7);
+    ridge(x, w, h, h * 0.68, 22, 0.0015, "#5a4636", 1, 2.9);
+    for (let i = 0; i < 26; i++) cypress(x, w * (0.03 + rnd() * 0.8), h * 0.7 + rnd() * 20, 90 + rnd() * 90, "#3f3125");
+    // murets de village
+    x.fillStyle = "#a88a6c";
+    for (let i = 0; i < 12; i++) { const bx = w * (0.45 + rnd() * 0.3), by = h * (0.6 + rnd() * 0.05); x.fillRect(bx, by, 50 + rnd() * 50, 30 + rnd() * 20); }
+    // mur de pierre au premier plan
+    x.fillStyle = "#5d4a3a"; x.fillRect(0, h * 0.82, w, h * 0.18);
+    x.save(); x.globalAlpha = 0.35; x.strokeStyle = "#2b2018"; x.lineWidth = 3;
+    for (let i = 0; i < 60; i++) { x.strokeRect(i * 48 + (i % 2) * 20, h * 0.83 + (i % 3) * 30, 48, 30); }
+    x.restore();
+    seated(x, w * 0.9, h * 0.83, h * 0.3, "#231912");
+    grade(x, w, h, 16, 0.4, "#d49a5c");
+    photos.push(c);
+  })();
+
+  window.__photos = photos;
+})();
+</script>
+</body>

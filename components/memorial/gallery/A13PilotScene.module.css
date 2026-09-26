@@ -1,0 +1,81 @@
+/*
+ * A13 G6 Desktop Light — PILOT scene.
+ *
+ * `.stage` is the size container (width 100%, capped at the canonical
+ * 1670); `.canvas` keeps the 1670 × 941 ratio and defines `--k`, one
+ * canonical pixel at the current rendered width. Everything inside is
+ * `N * var(--k)`: uniform scale, no reflow, no breakpoint.
+ */
+
+.stage {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 1670px;
+  margin-inline: auto;
+}
+
+.canvas {
+  --k: calc(100cqw / 1670);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1670 / 941;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Runtime title — upper safe zone of the Master, under the baked leaf
+ * ornament (y ≈ 78) and above the first envelope (D2 top y = 231).
+ * The contract leaves its final measure to a QA overlay; this pilot
+ * box (x 535–1135, y 104–204) is a documented placeholder, not a lock.
+ */
+.titleBlock {
+  position: absolute;
+  left: calc(535 * var(--k));
+  top: calc(104 * var(--k));
+  width: calc(600 * var(--k));
+  height: calc(100 * var(--k));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  color: #3d3024;
+}
+
+.title {
+  margin: 0;
+  font-size: calc(40 * var(--k));
+  line-height: 1.15;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  margin: calc(6 * var(--k)) 0 0;
+  font-size: calc(19 * var(--k));
+  line-height: 1.3;
+  color: #5a4633;
+}
+
+.qaTitleZone {
+  position: absolute;
+  left: calc(535 * var(--k));
+  top: calc(104 * var(--k));
+  width: calc(600 * var(--k));
+  height: calc(100 * var(--k));
+  outline: calc(1.5 * var(--k)) dashed rgb(20 120 60 / 0.85);
+  z-index: 202;
+  pointer-events: none;
+}

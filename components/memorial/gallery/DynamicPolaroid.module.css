@@ -1,0 +1,137 @@
+/*
+ * A13 Dynamic Polaroid — PILOT, Desktop Light.
+ *
+ * Every length is `N * var(--k)` (one canonical 1670-frame px), set inline
+ * by the component from `layoutDynamicPolaroid`. This sheet only carries
+ * the MATERIAL of the print — never a position.
+ *
+ * Material values are QA parameters calibrated against the Master GREEN
+ * panel (contract: "Papier, texture, liseré, bande basse et double ombre
+ * doivent être calibrés par comparaison au Master") — paper colour sampled
+ * on the Master's own bands (D1…D6 ≈ rgb(248 238 229)).
+ */
+
+.slot {
+  position: absolute;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+.print {
+  position: absolute;
+  margin: 0;
+  /* Paper: sampled Master ivory, a faint warm falloff toward the edges and
+   * a fibre grain — a matte print, never a flat white card. */
+  background-color: #f8eee5;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .26  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+    radial-gradient(120% 110% at 42% 38%, rgb(255 251 245 / 0.55) 0%, rgb(255 251 245 / 0) 55%, rgb(214 190 160 / 0.22) 100%);
+  background-size: calc(160 * var(--k)) calc(160 * var(--k)), 100% 100%;
+  border-radius: calc(1.5 * var(--k));
+  /* Liseré (paper edge catching light + a hair of darker cut edge), then
+   * the double shadow: tight contact shadow + soft ambient lift. */
+  box-shadow:
+    inset 0 0 0 calc(0.8 * var(--k)) rgb(255 255 255 / 0.55),
+    0 0 0 calc(0.6 * var(--k)) rgb(122 94 62 / 0.2),
+    0 calc(1.2 * var(--k)) calc(2.4 * var(--k)) rgb(52 34 18 / 0.34),
+    calc(3 * var(--k)) calc(11 * var(--k)) calc(22 * var(--k)) calc(-4 * var(--k)) rgb(52 34 18 / 0.38);
+}
+
+.window {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* The photo sits slightly recessed in the paper, like the emulsion of a
+ * real instant print: a thin darker rim above the image. */
+.windowFramed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 0 calc(0.8 * var(--k)) rgb(58 38 20 / 0.28),
+    inset 0 calc(1 * var(--k)) calc(3 * var(--k)) rgb(40 24 10 / 0.28);
+  pointer-events: none;
+}
+
+.photo {
+  position: absolute;
+  display: block;
+  max-width: none;
+  user-select: none;
+}
+
+/* `contain-paper`: the whole photo floats on the paper; same recessed rim,
+ * drawn around the photo itself. */
+.photoFramed {
+  box-shadow:
+    0 0 0 calc(0.8 * var(--k)) rgb(58 38 20 / 0.28),
+    0 calc(0.6 * var(--k)) calc(2 * var(--k)) rgb(40 24 10 / 0.18);
+}
+
+.band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hand-written caption, fountain-pen sepia ink. No auto-shrink: fixed size,
+ * two lines max (contract), clamp only as a safety net. */
+.caption {
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-size: calc(19 * var(--k));
+  line-height: 1.22;
+  color: rgb(66 48 32 / 0.9);
+  text-align: center;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------
+ * QA overlays (pilot only)
+ * ------------------------------------------------------------------- */
+
+.qaEnvelope {
+  position: absolute;
+  inset: 0;
+  outline: calc(1.5 * var(--k)) dashed rgb(200 30 30 / 0.85);
+  z-index: 200;
+}
+
+.qaLabel {
+  position: absolute;
+  left: 0;
+  top: calc(-18 * var(--k));
+  font: 600 calc(12 * var(--k)) / 1.2 ui-monospace, monospace;
+  color: #fff;
+  background: rgb(200 30 30 / 0.85);
+  padding: 0 calc(4 * var(--k));
+  white-space: nowrap;
+}
+
+.qaAnchor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(10 * var(--k));
+  height: calc(10 * var(--k));
+  margin: calc(-5 * var(--k)) 0 0 calc(-5 * var(--k));
+  border-radius: 50%;
+  background: rgb(200 30 30);
+  z-index: 201;
+}
+
+.qaSource {
+  position: absolute;
+  outline: calc(1.5 * var(--k)) dotted rgb(20 90 200 / 0.9);
+  z-index: 199;
+}

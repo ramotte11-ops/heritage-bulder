@@ -1,0 +1,63 @@
+.page {
+  min-height: 100dvh;
+  background: #efe8dc;
+  color: #2b241c;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.banner {
+  padding: 0.4rem 1rem;
+  background: #3d3024;
+  color: #f8eee5;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.panel {
+  max-width: 1670px;
+  margin: 0 auto;
+  padding: 1rem;
+  font-size: 0.8rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.25rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+
+.file input {
+  font-size: 0.75rem;
+}
+
+.proof {
+  margin-left: auto;
+  font-family: ui-monospace, monospace;
+  background: #fff;
+  border: 1px solid #cbbba4;
+  padding: 0.15rem 0.5rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  background: #fbf7f1;
+}
+
+.table th,
+.table td {
+  border: 1px solid #d8cab5;
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  background: #e6dccb;
+  font-weight: 600;
+}
