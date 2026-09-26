@@ -101,3 +101,11 @@
   margin: 0 0 1rem;
   word-break: break-word;
 }
+
+.absent {
+  max-width: 1670px;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+}

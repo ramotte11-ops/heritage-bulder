@@ -82,4 +82,25 @@ describe("A13PilotScene", () => {
     expect(container.querySelectorAll("figcaption")).toHaveLength(6);
     expect(container.querySelector("h2")!.textContent).toBe("Titre");
   });
+
+  it("renders the 7+ CTA as a real runtime button only when the state passes one", () => {
+    const { queryByTestId, rerender, getByTestId } = render(
+      <A13PilotScene entries={entries([null, null, null, null, null, null])} title="T" subtitle="S" />,
+    );
+    expect(queryByTestId("cta-7plus")).toBeNull();
+    rerender(
+      <A13PilotScene
+        entries={entries([null, null, null, null, null, null])}
+        title="T"
+        subtitle="S"
+        stateId="G6_SIGNATURE_7PLUS"
+        cta={{ label: "Voir plus de souvenirs", lang: "fr" }}
+      />,
+    );
+    const btn = getByTestId("cta-7plus");
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn.getAttribute("type")).toBe("button");
+    expect(btn.getAttribute("lang")).toBe("fr");
+    expect(btn.textContent).toBe("Voir plus de souvenirs");
+  });
 });

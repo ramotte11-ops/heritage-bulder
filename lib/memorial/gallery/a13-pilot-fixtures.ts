@@ -86,6 +86,16 @@ export const A13_PILOT_MEDIA_LANDSCAPE_3X2: PilotMedia = {
   height: 1200,
 };
 
+/**
+ * Multi-state pool: the six V2.1 test media in family order, then a 7th
+ * (the 3:2 landscape) so the ≥ 7 Signature state can be exercised. A state
+ * of N media takes `A13_PILOT_MEDIA_POOL.slice(0, N)` — never a re-sort.
+ */
+export const A13_PILOT_MEDIA_POOL: readonly PilotMedia[] = [
+  ...A13_PILOT_MEDIA,
+  { ...A13_PILOT_MEDIA_LANDSCAPE_3X2, label: "7 · paysage 3:2 (7e média, non affiché)" },
+];
+
 /** Runtime title/subtitle — pilot fixture copy, DOM only (V1 geometry kept). */
 export const A13_PILOT_TITLE = {
   title: "Souvenirs de famille",

@@ -60,7 +60,8 @@ export interface A13SafeZone {
 }
 
 export interface A13Slot {
-  slotId: "D1" | "D2" | "D3" | "D4" | "D5" | "D6";
+  /** "D1"…"D6" for G6 exact; "G2-D1", "G7-D6"… for the multi-state manifests. */
+  slotId: string;
   mediaIndex: number;
   /** Centre of the reference box (Master tirage). Rotation pivot. */
   center: { x: number; y: number };
@@ -72,8 +73,8 @@ export interface A13Slot {
   anchor: A13Anchor;
   expansion: readonly string[];
   zIndex: number;
-  /** V2 provenance only — V2.1 removed safe-zone inviolability. */
-  captionSafeZone: A13SafeZone;
+  /** V2 provenance only (G6 exact) — V2.1 removed safe-zone inviolability. */
+  captionSafeZone?: A13SafeZone;
   /** V2.1 — D5 only: fixed bottom band (outer size and target area unchanged). */
   bottomBandOverridePx?: number;
 }

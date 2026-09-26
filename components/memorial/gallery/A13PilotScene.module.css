@@ -89,6 +89,14 @@
   pointer-events: none;
 }
 
+.probeHost {
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 .captionProbe {
   position: absolute;
   left: 0;
@@ -97,4 +105,49 @@
   font-family: var(--heritage-caption-hand), cursive;
   font-size: 27px;
   pointer-events: none;
+}
+
+/*
+ * CTA_7PLUS_V1 — rest state measured on the 7+ Master
+ * (`QA_OVERLAY_G6_SIGNATURE_7PLUS_1670.png`, "rest: master-authority"):
+ * 1.5 px rule rgb(92 74 41), ~8 px radius, no fill (the common background
+ * shows through), EB Garamond italic 400 34 px / 1.1, ink rgb(54 50 25).
+ * Hover/active: no geometry change (and no visual change is specified, so
+ * none is added). Focus: 2 px solid currentColor, 4 px offset (outline —
+ * never layout space). The box never changes size in any state.
+ */
+.cta {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  border: calc(1.5 * var(--k)) solid rgb(92 74 41);
+  border-radius: calc(8 * var(--k));
+  background: transparent;
+  color: rgb(54 50 25);
+  font-size: calc(34 * var(--k));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cta:focus {
+  outline: none;
+}
+
+.cta:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.ctaLabel {
+  display: inline-block;
+  white-space: nowrap;
 }
