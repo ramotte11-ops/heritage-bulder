@@ -178,3 +178,51 @@
   z-index: 204;
   pointer-events: none;
 }
+
+/* G3 territory study diagnostics: territories (orange), witness centre
+ * (hollow), chosen centre (filled) and displacement, measured title
+ * protection (magenta). QA only — never in the artistic proof. */
+.qaTerritoryLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 205;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaTerritory {
+  fill: rgb(230 120 20 / 0.08);
+  stroke: rgb(230 120 20 / 0.95);
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+}
+
+.qaTerritoryLabel {
+  font: 600 13px ui-monospace, monospace;
+  fill: rgb(170 80 0);
+}
+
+.qaWitness {
+  fill: #fff;
+  stroke: rgb(200 30 30);
+  stroke-width: 3;
+}
+
+.qaChosen {
+  fill: rgb(20 120 200);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.qaMove {
+  stroke: rgb(20 120 200);
+  stroke-width: 3;
+}
+
+.qaTitleInk {
+  fill: rgb(200 30 150 / 0.1);
+  stroke: rgb(200 30 150 / 0.95);
+  stroke-width: 2;
+}

@@ -47,3 +47,18 @@
   color: #9b3522;
   background: #f5dcd3;
 }
+
+.matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  background: #fbf7f1;
+}
+
+.matrix th,
+.matrix td {
+  border: 1px solid #d8cab5;
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}

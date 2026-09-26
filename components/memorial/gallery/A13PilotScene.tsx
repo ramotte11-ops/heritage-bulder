@@ -47,6 +47,15 @@ export interface A13PilotSceneProps {
    * protected title zone, drawn as diagnostic outlines. */
   qaEnvelopes?: { slotId: string; envelope: readonly [number, number, number, number] }[];
   qaProtectedZone?: { x: number; y: number; width: number; height: number } | null;
+  /** QA only (G3 territory study): territories, witness and chosen
+   * centres, displacement and the measured title protection. */
+  qaTerritories?: {
+    slotId: string;
+    territory: { xMin: number; xMax: number; yMin: number; yMax: number };
+    witness: { x: number; y: number };
+    chosen: { x: number; y: number } | null;
+  }[];
+  qaTitleInk?: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
 const g = A13_CTA_7PLUS.geometry;
@@ -60,6 +69,8 @@ export function A13PilotScene({
   qa = false,
   qaEnvelopes = [],
   qaProtectedZone = null,
+  qaTerritories = [],
+  qaTitleInk = null,
 }: A13PilotSceneProps) {
   return (
     <div
@@ -86,7 +97,7 @@ export function A13PilotScene({
           <h2 className={`${styles.title} ${ebGaramond.className}`}>{title}</h2>
           <p className={`${styles.subtitle} ${ebGaramondItalic.className}`}>{subtitle}</p>
         </header>
-        {qa && !qaProtectedZone ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
+        {qa && !qaProtectedZone && !qaTitleInk ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
         {qa && qaProtectedZone ? (
           <div
             className={styles.qaProtectedZone}
@@ -98,6 +109,34 @@ export function A13PilotScene({
               height: `calc(${qaProtectedZone.height} * var(--k))`,
             }}
           />
+        ) : null}
+        {qa && (qaTerritories.length || qaTitleInk) ? (
+          <svg className={styles.qaTerritoryLayer} viewBox="0 0 1670 941" aria-hidden="true" data-testid="qa-territories">
+            {qaTitleInk ? (
+              <rect
+                className={styles.qaTitleInk}
+                x={qaTitleInk.x0}
+                y={qaTitleInk.y0}
+                width={qaTitleInk.x1 - qaTitleInk.x0}
+                height={qaTitleInk.y1 - qaTitleInk.y0}
+              />
+            ) : null}
+            {qaTerritories.map(({ slotId, territory: t, witness: w, chosen: c }) => (
+              <g key={slotId}>
+                <rect className={styles.qaTerritory} x={t.xMin} y={t.yMin} width={t.xMax - t.xMin} height={t.yMax - t.yMin} />
+                <text className={styles.qaTerritoryLabel} x={t.xMin + 4} y={t.yMin + 14}>
+                  {slotId}
+                </text>
+                <circle className={styles.qaWitness} cx={w.x} cy={w.y} r={7} />
+                {c ? (
+                  <>
+                    <line className={styles.qaMove} x1={w.x} y1={w.y} x2={c.x} y2={c.y} />
+                    <circle className={styles.qaChosen} cx={c.x} cy={c.y} r={6} />
+                  </>
+                ) : null}
+              </g>
+            ))}
+          </svg>
         ) : null}
         {qa
           ? qaEnvelopes.map(({ slotId, envelope: [x0, y0, x1, y1] }) => (
