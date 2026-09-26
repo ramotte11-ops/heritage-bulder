@@ -151,3 +151,30 @@
   display: inline-block;
   white-space: nowrap;
 }
+
+/* Calibration V1.1 diagnostics: slot envelopes (blue) and the protected
+ * title zone (magenta). QA only. */
+.qaEnvelope {
+  position: absolute;
+  outline: calc(1.5 * var(--k)) solid rgb(20 140 200 / 0.9);
+  z-index: 203;
+  pointer-events: none;
+}
+
+.qaEnvelope span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font: 600 calc(11 * var(--k)) / 1.2 ui-monospace, monospace;
+  color: #fff;
+  background: rgb(20 140 200 / 0.9);
+  padding: 0 calc(3 * var(--k));
+}
+
+.qaProtectedZone {
+  position: absolute;
+  outline: calc(2 * var(--k)) solid rgb(200 30 150 / 0.95);
+  background: rgb(200 30 150 / 0.08);
+  z-index: 204;
+  pointer-events: none;
+}

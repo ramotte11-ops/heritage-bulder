@@ -252,9 +252,9 @@
     photos.push(c);
   })();
 
-  // 6 — panorama difficile 3:1, sujet proche du bord droit
-  (() => {
-    const w = 2700, h = 900, c = mk(w, h), x = c.getContext("2d");
+  // 6 — panorama difficile 3:1, sujet proche du bord droit (variante 2,39:1 en fin)
+  function panorama(w, h) {
+    const c = mk(w, h), x = c.getContext("2d");
     sky(x, w, h, [[0, "#b8a28c"], [0.38, "#efc493"], [0.52, "#f6d8a8"], [1, "#7c5f44"]]);
     sun(x, w * 0.24, h * 0.44, w * 0.25, 0.9);
     ridge(x, w, h, h * 0.5, 20, 0.0025, "#aa927b", 4, 0.4);
@@ -271,12 +271,17 @@
     x.restore();
     seated(x, w * 0.9, h * 0.83, h * 0.3, "#231912");
     grade(x, w, h, 16, 0.4, "#d49a5c");
-    photos.push(c);
-  })();
+    return c;
+  }
+  photos.push(panorama(2700, 900));
 
   // 7 — V2.1 : paysage standard 4:3 (contrat V2.1 §6 « 4:3 »). Ajouté en
   // dernier pour ne pas modifier la séquence PRNG des six photos existantes.
   photos.push(landscape(1600, 1200));
+
+  // 8 — Calibration V1.1 : panorama 2,39:1 (matrice QA V1.1). Ajouté en
+  // dernier pour ne pas modifier la séquence PRNG des photos existantes.
+  photos.push(panorama(2390, 1000));
 
   window.__photos = photos;
 })();

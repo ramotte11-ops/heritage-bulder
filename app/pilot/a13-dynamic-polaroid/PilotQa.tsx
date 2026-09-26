@@ -15,11 +15,13 @@ import {
   A13_PILOT_MEDIA_LANDSCAPE_3X2,
   A13_PILOT_MEDIA_POOL,
   A13_PILOT_TITLE,
+  rotateMatrixMedia,
   PILOT_CAPTION_MODES,
   type PilotCaptionMode,
   type PilotMedia,
 } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 import { A13CaptionFontProbe, A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
+import { A13_PROTECTED_TITLE_ZONE, A13_SLOT_CALIBRATION, isCalibratedState } from "@/config/gallery-a13-calibration-v1-1";
 import styles from "./page.module.css";
 
 /**
@@ -98,6 +100,10 @@ export function PilotQa() {
     if (l && (LANGUAGES as readonly string[]).includes(l)) setLang(l as Language);
     const n = Number(q.get("medias"));
     if (q.has("medias") && Number.isInteger(n) && n >= 0 && n <= A13_PILOT_MEDIA_POOL.length) setCount(n);
+    const rot = Number(q.get("rotation"));
+    if (q.has("rotation") && Number.isInteger(rot) && rot >= 0 && rot < 6 && n >= 2 && n <= 5) {
+      setPool(rotateMatrixMedia(rot, n));
+    }
     if (q.get("paysage") === "3x2") setPool(A13_PILOT_MEDIA_POOL.map((m, i) => (i === 1 ? A13_PILOT_MEDIA_LANDSCAPE_3X2 : m)));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
@@ -173,6 +179,12 @@ export function PilotQa() {
         <A13PilotScene
           qa={qa}
           stateId={state.stateId}
+          qaProtectedZone={isCalibratedState(state.stateId) ? A13_PROTECTED_TITLE_ZONE : null}
+          qaEnvelopes={
+            isCalibratedState(state.stateId)
+              ? state.entries.map((e) => ({ slotId: e.slot.slotId, envelope: A13_SLOT_CALIBRATION[e.slot.slotId].envelope }))
+              : []
+          }
           title={A13_PILOT_TITLE.title}
           subtitle={A13_PILOT_TITLE.subtitle}
           entries={state.entries.map(({ slot, layout, media: m, caption }) => ({
@@ -299,6 +311,7 @@ export function PilotQa() {
                   <th>Extérieur</th>
                   <th>Réf.</th>
                   <th>Surface / cible</th>
+                  <th>s V1.1 (min)</th>
                   <th>Centre</th>
                   <th>Rot.</th>
                   <th>z</th>
@@ -310,7 +323,7 @@ export function PilotQa() {
                 </tr>
               </thead>
               <tbody>
-                {state.entries.map(({ slot, layout, media: m, caption }) => {
+                {state.entries.map(({ slot, layout, media: m, caption, calibration }) => {
                   const s = metrics.slots.find((x) => x.slotId === slot.slotId)!;
                   return (
                     <tr key={slot.slotId}>
@@ -336,6 +349,13 @@ export function PilotQa() {
                         {slot.referenceSize.width}×{slot.referenceSize.height}
                       </td>
                       <td>{fmt(((layout.outer.width * layout.outer.height) / slot.targetOuterArea) * 100, 2)} %</td>
+                      <td className={calibration && calibration.status !== "placed" ? styles.red : undefined}>
+                        {calibration
+                          ? `${calibration.scale.toFixed(3)} (${calibration.minScale})${calibration.status !== "placed" ? " STOP" : ""}${
+                              calibration.limitedBy.length ? ` · ${calibration.limitedBy.map((f) => f.id).join(", ")}` : ""
+                            }`
+                          : "— (GREEN inchangé)"}
+                      </td>
                       <td>
                         {slot.center.x}, {slot.center.y}
                       </td>

@@ -43,11 +43,24 @@ export interface A13PilotSceneProps {
   stateId?: string;
   cta?: A13SceneCta | null;
   qa?: boolean;
+  /** QA only (calibration V1.1): slot envelopes [x0, y0, x1, y1] and the
+   * protected title zone, drawn as diagnostic outlines. */
+  qaEnvelopes?: { slotId: string; envelope: readonly [number, number, number, number] }[];
+  qaProtectedZone?: { x: number; y: number; width: number; height: number } | null;
 }
 
 const g = A13_CTA_7PLUS.geometry;
 
-export function A13PilotScene({ entries, title, subtitle, stateId, cta = null, qa = false }: A13PilotSceneProps) {
+export function A13PilotScene({
+  entries,
+  title,
+  subtitle,
+  stateId,
+  cta = null,
+  qa = false,
+  qaEnvelopes = [],
+  qaProtectedZone = null,
+}: A13PilotSceneProps) {
   return (
     <div
       className={`${styles.stage} ${laBelleAurore.variable}`}
@@ -73,7 +86,36 @@ export function A13PilotScene({ entries, title, subtitle, stateId, cta = null, q
           <h2 className={`${styles.title} ${ebGaramond.className}`}>{title}</h2>
           <p className={`${styles.subtitle} ${ebGaramondItalic.className}`}>{subtitle}</p>
         </header>
-        {qa ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
+        {qa && !qaProtectedZone ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
+        {qa && qaProtectedZone ? (
+          <div
+            className={styles.qaProtectedZone}
+            aria-hidden="true"
+            style={{
+              left: `calc(${qaProtectedZone.x} * var(--k))`,
+              top: `calc(${qaProtectedZone.y} * var(--k))`,
+              width: `calc(${qaProtectedZone.width} * var(--k))`,
+              height: `calc(${qaProtectedZone.height} * var(--k))`,
+            }}
+          />
+        ) : null}
+        {qa
+          ? qaEnvelopes.map(({ slotId, envelope: [x0, y0, x1, y1] }) => (
+              <div
+                key={slotId}
+                className={styles.qaEnvelope}
+                aria-hidden="true"
+                style={{
+                  left: `calc(${x0} * var(--k))`,
+                  top: `calc(${y0} * var(--k))`,
+                  width: `calc(${x1 - x0} * var(--k))`,
+                  height: `calc(${y1 - y0} * var(--k))`,
+                }}
+              >
+                <span>{slotId}</span>
+              </div>
+            ))
+          : null}
         {cta ? (
           /*
            * CTA_7PLUS_V1 — a real <button>, runtime text, never baked. Box =

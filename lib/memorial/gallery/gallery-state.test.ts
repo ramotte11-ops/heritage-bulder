@@ -94,11 +94,15 @@ describe("buildGalleryState — selection only, engine V2.1", () => {
       const st = buildGalleryState(A13_PILOT_MEDIA_POOL.slice(0, n), noCaption, null)!;
       const m = measureComposition(st.entries.map(({ slot, layout }) => ({ slot, layout })));
       for (const s of m.slots) {
-        expect(s.areaFactor).toBe(1);
+        // areaFactor = s² for calibrated G2–G5 (V1.1), 1 for G6 / 7+.
+        const cal = st.entries.find((e) => e.slot.slotId === s.slotId)!.calibration;
+        expect(s.areaFactor).toBeCloseTo(cal ? cal.scale ** 2 : 1, 12);
         expect(s.anchorDriftPx).toBeLessThan(1e-9);
       }
-      for (const { slot, layout, media } of st.entries) {
-        expect(layout.outer.width * layout.outer.height).toBeCloseTo(slot.targetOuterArea, 3);
+      for (const { slot, layout, media, calibration } of st.entries) {
+        // G2–G5: V1.1 surface × s² (s = calibration.scale); G6/7+: s = 1.
+        const s = calibration ? calibration.scale : 1;
+        expect(layout.outer.width * layout.outer.height).toBeCloseTo(slot.targetOuterArea * s * s, 3);
         expect(layout.visibleFraction).toBe(1);
         expect(layout.photo.width / layout.photo.height).toBeCloseTo(media.width / media.height, 9);
       }

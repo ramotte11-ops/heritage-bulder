@@ -96,6 +96,34 @@ export const A13_PILOT_MEDIA_POOL: readonly PilotMedia[] = [
   { ...A13_PILOT_MEDIA_LANDSCAPE_3X2, label: "7 · paysage 3:2 (7e média, non affiché)" },
 ];
 
+/**
+ * Calibration V1.1 QA ratio set, in the contract's order: 3:4, 4:3, 1:1,
+ * 9:16, 16:9, 2.39:1 (the 2.39:1 panorama is the V1.1 addition, same
+ * generator). `rotateMatrixMedia(r)` gives slot i the ratio (i + r) mod 6.
+ */
+export const A13_MATRIX_MEDIA: readonly PilotMedia[] = [
+  A13_PILOT_MEDIA[0],
+  A13_PILOT_MEDIA[1],
+  A13_PILOT_MEDIA[2],
+  A13_PILOT_MEDIA[3],
+  A13_PILOT_MEDIA[4],
+  {
+    ...A13_PILOT_MEDIA[5],
+    src: `${BASE}/p6b-panorama-239x100.jpg`,
+    label: "6 · panorama 2,39:1",
+    width: 2390,
+    height: 1000,
+  },
+];
+
+export function rotateMatrixMedia(rotation: number, count: number): PilotMedia[] {
+  return Array.from({ length: count }, (_, i) => {
+    const m = A13_MATRIX_MEDIA[(i + rotation) % A13_MATRIX_MEDIA.length];
+    // Family position i keeps its own caption set; only the ratio rotates.
+    return { ...m, captions: A13_PILOT_MEDIA_POOL[i].captions };
+  });
+}
+
 /** Runtime title/subtitle — pilot fixture copy, DOM only (V1 geometry kept). */
 export const A13_PILOT_TITLE = {
   title: "Souvenirs de famille",

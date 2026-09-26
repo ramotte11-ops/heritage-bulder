@@ -51,7 +51,8 @@ export const A13_STATE_SLOTS: Record<A13GalleryStateId, readonly A13Slot[]> = {
     { slotId: "G5-D2", mediaIndex: 1, center: { x: 919.9, y: 383 }, referenceSize: { width: 457.5, height: 362 }, targetOuterArea: 165615, rotationDeg: -7.0, anchor: "top-center", expansion: ["down", "horizontal-symmetric"], zIndex: 50 },
     { slotId: "G5-D3", mediaIndex: 2, center: { x: 1387.3, y: 381 }, referenceSize: { width: 379.5, height: 375 }, targetOuterArea: 142313, rotationDeg: 10.5, anchor: "right-top", expansion: ["left", "down"], zIndex: 60 },
     { slotId: "G5-D4", mediaIndex: 3, center: { x: 781.1, y: 696 }, referenceSize: { width: 457.5, height: 330 }, targetOuterArea: 150975, rotationDeg: 6.7, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 40 },
-    { slotId: "G5-D5", mediaIndex: 4, center: { x: 1287.5, y: 681 }, referenceSize: { width: 349.6, height: 338 }, targetOuterArea: 118165, rotationDeg: -7.5, anchor: "right-bottom", expansion: ["left", "up"], zIndex: 70 },
+    // Calibration V1.1 §6: bottom band fixed at 72 px source, with or without caption.
+    { slotId: "G5-D5", mediaIndex: 4, center: { x: 1287.5, y: 681 }, referenceSize: { width: 349.6, height: 338 }, targetOuterArea: 118165, rotationDeg: -7.5, anchor: "right-bottom", expansion: ["left", "up"], zIndex: 70, bottomBandOverridePx: 72 },
   ]),
   G6: A13_PILOT_SLOTS,
   G6_SIGNATURE_7PLUS: closed([
