@@ -9,7 +9,7 @@ import {
 } from "@/config/gallery-a13-multi-state-manifests";
 import { LANGUAGES, type Language } from "@/config/languages";
 import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import {
   A13_PILOT_MEDIA_LANDSCAPE_3X2,
@@ -110,7 +110,7 @@ export function PilotQa() {
 
   const media = useMemo(() => pool.slice(0, count), [pool, count]);
   const state = useMemo(
-    () => buildGalleryState(media, (m) => m.captions[captionMode], font?.measurer ?? null),
+    () => buildLegacyV11GalleryStateQa(media, (m) => m.captions[captionMode], font?.measurer ?? null),
     [media, captionMode, font],
   );
   const metrics = useMemo(

@@ -7,7 +7,8 @@ import {
   selectGalleryState,
 } from "@/config/gallery-a13-multi-state-manifests";
 import { A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
+import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { A13_PILOT_MEDIA_POOL } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 
@@ -69,29 +70,50 @@ describe("selectGalleryState — product mapping", () => {
   });
 });
 
-describe("buildGalleryState — selection only, engine V2.1", () => {
+describe("buildG6FamilyState — G6 exact and Signature 7+ only (runtime)", () => {
+  it("refuses 0–5 media: it can never produce a G2–G5 layout", () => {
+    for (let n = 0; n <= 5; n++) expect(() => buildG6FamilyState(A13_PILOT_MEDIA_POOL.slice(0, n), noCaption, null)).toThrow(/runDesktopGallery/);
+  });
+
+  it("composes G6 exact (6) and Signature 7+ (≥ 7, first six media, CTA) at target surface, whole photos", () => {
+    for (const n of [6, 7, 14]) {
+      const media = Array.from({ length: n }, (_, i) => A13_PILOT_MEDIA_POOL[i % A13_PILOT_MEDIA_POOL.length]);
+      const st = buildG6FamilyState(media, noCaption, null);
+      expect(st.stateId).toBe(n === 6 ? "G6" : "G6_SIGNATURE_7PLUS");
+      expect(st.hasCta).toBe(n >= 7);
+      expect(st.entries.map((e) => e.media)).toEqual(media.slice(0, 6));
+      for (const { slot, layout, media: m } of st.entries) {
+        expect(layout.outer.width * layout.outer.height).toBeCloseTo(slot.targetOuterArea, 3);
+        expect(layout.visibleFraction).toBe(1);
+        expect(layout.photo.width / layout.photo.height).toBeCloseTo(m.width / m.height, 9);
+      }
+    }
+  });
+});
+
+describe("LEGACY V1.1 QA builder (superseded G2–G5 path, historical harnesses only)", () => {
   it("returns no gallery for 0 and 1 media", () => {
-    expect(buildGalleryState([], noCaption, null)).toBeNull();
-    expect(buildGalleryState(A13_PILOT_MEDIA_POOL.slice(0, 1), noCaption, null)).toBeNull();
+    expect(buildLegacyV11GalleryStateQa([], noCaption, null)).toBeNull();
+    expect(buildLegacyV11GalleryStateQa(A13_PILOT_MEDIA_POOL.slice(0, 1), noCaption, null)).toBeNull();
   });
 
   it("fills each state strictly in family order and shows exactly six memories for ≥ 7", () => {
     for (let n = 2; n <= A13_PILOT_MEDIA_POOL.length; n++) {
       const media = A13_PILOT_MEDIA_POOL.slice(0, n);
-      const st = buildGalleryState(media, noCaption, null)!;
+      const st = buildLegacyV11GalleryStateQa(media, noCaption, null)!;
       expect(st.entries.map((e) => e.media)).toEqual(media.slice(0, Math.min(n, 6)));
       expect(st.hasCta).toBe(n >= 7);
     }
     // More media than the pool: still the first six, still the CTA.
     const many = [...A13_PILOT_MEDIA_POOL, ...A13_PILOT_MEDIA_POOL];
-    const st = buildGalleryState(many, noCaption, null)!;
+    const st = buildLegacyV11GalleryStateQa(many, noCaption, null)!;
     expect(st.stateId).toBe("G6_SIGNATURE_7PLUS");
     expect(st.entries.map((e) => e.media)).toEqual(many.slice(0, 6));
   });
 
   it("lays every state out at target surface, fixed anchors, whole photos, no distortion", () => {
     for (let n = 2; n <= A13_PILOT_MEDIA_POOL.length; n++) {
-      const st = buildGalleryState(A13_PILOT_MEDIA_POOL.slice(0, n), noCaption, null)!;
+      const st = buildLegacyV11GalleryStateQa(A13_PILOT_MEDIA_POOL.slice(0, n), noCaption, null)!;
       const m = measureComposition(st.entries.map(({ slot, layout }) => ({ slot, layout })));
       for (const s of m.slots) {
         // areaFactor = s² for calibrated G2–G5 (V1.1), 1 for G6 / 7+.

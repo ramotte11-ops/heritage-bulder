@@ -1,7 +1,7 @@
 import { selectGalleryState, type A13GalleryStateId } from "@/config/gallery-a13-multi-state-manifests";
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import { solveV2 } from "@/lib/memorial/gallery/gallery-v2";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
 import type { PhotoSource, PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout, CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import type { GlyphMask } from "@/lib/memorial/gallery/title-glyph-mask";
@@ -16,7 +16,7 @@ import type { GlyphMask } from "@/lib/memorial/gallery/title-glyph-mask";
  * - 0–1 media → no Gallery (`GALLERY_ABSENT`);
  * - 2…5 → G2…G5 through the V2 runtime (`solveV2`, simplified manifests V2
  *   + contract patch V2.1 — the GREEN G2–G5 authority);
- * - 6 → G6 exact, ≥ 7 → G6 Signature 7+ through `buildGalleryState`
+ * - 6 → G6 exact, ≥ 7 → G6 Signature 7+ through `buildG6FamilyState`
  *   (closed V2.1 composition, unchanged). Signature shows media[0…5] and
  *   carries the CTA; every other media stays in the Full Album.
  * Nothing is recomputed, reordered or recalibrated here: media[i] → slot[i].
@@ -72,7 +72,7 @@ export function runDesktopGallery<M extends PhotoSource>(
   }
   // Positional wrappers: the family index survives even if two entries share one object.
   const wrapped = media.map((m, i) => ({ width: m.width, height: m.height, focal: m.focal, i }));
-  const gs = buildGalleryState(wrapped, (w) => captionOf(media[w.i], w.i), measurer)!;
+  const gs = buildG6FamilyState(wrapped, (w) => captionOf(media[w.i], w.i), measurer);
   const unresolved = gs.entries.filter((e) => e.caption?.status === "CAPTION_COLLISION_UNRESOLVED").map((e) => e.slot.slotId);
   return {
     stateId: gs.stateId,

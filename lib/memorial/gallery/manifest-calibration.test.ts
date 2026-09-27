@@ -3,7 +3,7 @@ import { A13_STATE_SLOTS } from "@/config/gallery-a13-multi-state-manifests";
 import { A13_OCCLUSION_CAPS, A13_PROTECTED_TITLE_ZONE, A13_SLOT_CALIBRATION } from "@/config/gallery-a13-calibration-v1-1";
 import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import {
   calibrateState,
   clipConvex,
@@ -11,7 +11,7 @@ import {
   outerQuad,
   unionCoverArea,
 } from "@/lib/memorial/gallery/manifest-calibration";
-import { MATRIX_CAPTION_STATES, runCalibrationMatrix } from "@/lib/memorial/gallery/calibration-matrix";
+import { MATRIX_CAPTION_STATES, runCalibrationMatrix } from "@/lib/memorial/gallery/legacy/calibration-matrix-v1-1.legacy-qa";
 
 const sq = (x: number, y: number, s: number) => [
   { x, y },
@@ -107,8 +107,8 @@ describe("calibrateState — V1.1 §4", () => {
 
   it("leaves G6 exact and G6 Signature 7+ uncalibrated", () => {
     const media = Array.from({ length: 7 }, () => ({ width: 4000, height: 3000 }));
-    expect(buildGalleryState(media.slice(0, 6), () => null, null)!.entries.every((e) => e.calibration === null)).toBe(true);
-    expect(buildGalleryState(media, () => null, null)!.entries.every((e) => e.calibration === null)).toBe(true);
+    expect(buildLegacyV11GalleryStateQa(media.slice(0, 6), () => null, null)!.entries.every((e) => e.calibration === null)).toBe(true);
+    expect(buildLegacyV11GalleryStateQa(media, () => null, null)!.entries.every((e) => e.calibration === null)).toBe(true);
   });
 });
 

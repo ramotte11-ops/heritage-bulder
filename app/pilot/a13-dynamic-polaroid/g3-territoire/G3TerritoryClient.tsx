@@ -9,7 +9,7 @@ import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { diagnoseG3Stop, solveG3Territory, type G3Result, type G3StopDiagnosis, type TitleZone } from "@/lib/memorial/gallery/g3-territory";
 import { measureTitleZone, type TitleInk } from "@/lib/memorial/gallery/title-ink";
-import { MATRIX_CAPTION_STATES, MATRIX_RATIOS, matrixCaption, type MatrixCaptionState } from "@/lib/memorial/gallery/calibration-matrix";
+import { MATRIX_CAPTION_STATES, MATRIX_RATIOS, matrixCaption, type MatrixCaptionState } from "@/lib/memorial/gallery/legacy/calibration-matrix-v1-1.legacy-qa";
 import { A13_PILOT_TITLE, rotateMatrixMedia } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneEntry } from "@/components/memorial/gallery/A13PilotScene";
 import styles from "../etats/page.module.css";

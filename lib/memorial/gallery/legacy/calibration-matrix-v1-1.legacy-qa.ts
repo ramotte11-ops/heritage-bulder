@@ -6,17 +6,21 @@ import {
   type A13CalibratedStateId,
 } from "@/config/gallery-a13-calibration-v1-1";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { convexIntersectionArea, measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { TITLE_ZONE_POLYGON, occlusionPercent, outerQuad } from "@/lib/memorial/gallery/manifest-calibration";
 
 /**
+ * ⚠ LEGACY / QA ONLY (dette D6, fermée) — the V1.1 calibration matrix of
+ * the superseded G2–G5 path, kept for the historical `/matrice` harness and
+ * its tests. The G2–G5 authority is the V2 runtime (`runDesktopGallery`).
+ *
  * A13 calibration V1.1 — the QA matrix prescribed by the QG, as data.
  *
  * For each state G2–G5: the six ratios 3:4, 4:3, 1:1, 9:16, 16:9 and
  * 2.39:1, cyclically permuted (rotation r gives slot i the ratio
  * (i + r) mod 6 — family order untouched), × five caption states. Every run
- * goes through the real runtime path (`buildGalleryState`) and is then
+ * goes through the V1.1 builder (`buildLegacyV11GalleryStateQa`) and is then
  * checked against every V1.1 assertion. Read-only: nothing is corrected.
  */
 
@@ -102,7 +106,7 @@ export function runCalibrationMatrix(measurer: CaptionMeasurer | null): MatrixRu
           const r = MATRIX_RATIOS[(i + rotation) % MATRIX_RATIOS.length];
           return { width: r.w * 1000, height: r.h * 1000, ratio: r.name, text: matrixCaption(captions, i) };
         });
-        const st = buildGalleryState(media, (m) => m.text, measurer)!;
+        const st = buildLegacyV11GalleryStateQa(media, (m) => m.text, measurer)!;
         const comp = measureComposition(st.entries.map(({ slot, layout }) => ({ slot, layout })));
         const failures: string[] = [];
 

@@ -8,7 +8,7 @@ import {
   MATRIX_RATIOS,
   runCalibrationMatrix,
   type MatrixRun,
-} from "@/lib/memorial/gallery/calibration-matrix";
+} from "@/lib/memorial/gallery/legacy/calibration-matrix-v1-1.legacy-qa";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13PilotScene";
 import styles from "../page.module.css";
 

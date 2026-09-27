@@ -2,7 +2,7 @@ import { A13_CTA_7PLUS, A13_STATE_SLOTS, type A13GalleryStateId } from "@/config
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import { A13_V2_FIXTURES, A13_V2_MANIFESTS, type V2StateId } from "@/config/gallery-a13-v2-manifests";
 import { fixtureSources, solveV2, type V2Result } from "@/lib/memorial/gallery/gallery-v2";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
 import { paperFor, type PhotoSource, type PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import type { CaptionLayout, CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
@@ -19,7 +19,7 @@ import { A13_PILOT_MEDIA_POOL } from "@/lib/memorial/gallery/a13-pilot-fixtures"
  * `THEME_GEOMETRY_PARITY_STOP` — never corrected with a Dark coordinate.
  *
  * This module is theme-free by construction: it runs the UNCHANGED Light
- * V2.1 engine (`solveV2` for G2–G5, `buildGalleryState` — closed V2.1
+ * V2.1 engine (`solveV2` for G2–G5, `buildG6FamilyState` — closed V2.1
  * composition — for G6 exact and Signature 7+) and serialises its output.
  * It never imports a Dark token: the only theme-dependent things a pipeline
  * can feed it are the ones a browser measures (caption font metrics, title
@@ -156,7 +156,7 @@ export interface EngineRun {
 /**
  * Runs the Light V2.1 engine ONCE for a fixture — exactly the calls the
  * Light pilots make (`V2PilotClient`: `solveV2`; `StatesBoard`:
- * `buildGalleryState`). No theme argument exists.
+ * `buildG6FamilyState`). No theme argument exists.
  */
 export function runLightEngine(fx: ParityFixture, measurer: CaptionMeasurer | null, titleMask: GlyphMask): EngineRun {
   if (isV2(fx.state)) {
@@ -171,7 +171,7 @@ export function runLightEngine(fx: ParityFixture, measurer: CaptionMeasurer | nu
     };
   }
   const texts = new Map(fx.media.map((m, i) => [m.mediaId, fx.captionTexts[i]]));
-  const gs = buildGalleryState(fx.media, (m) => texts.get(m.mediaId) ?? null, measurer)!;
+  const gs = buildG6FamilyState(fx.media, (m) => texts.get(m.mediaId) ?? null, measurer);
   const unresolved = gs.entries.filter((e) => e.caption?.status === "CAPTION_COLLISION_UNRESOLVED").map((e) => e.slot.slotId);
   return {
     fixture: fx,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { A13_STATE_SLOTS, A13_CTA_7PLUS_PILOT_LABELS } from "@/config/gallery-a13-multi-state-manifests";
 import { LANGUAGES, type Language } from "@/config/languages";
-import { buildGalleryState } from "@/lib/memorial/gallery/gallery-state";
+import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { isCalibratedState } from "@/config/gallery-a13-calibration-v1-1";
 import {
@@ -51,7 +51,7 @@ export function StatesBoard() {
   const states = useMemo(
     () =>
       COUNTS.map((n) =>
-        buildGalleryState(
+        buildLegacyV11GalleryStateQa(
           n <= 5 ? rotateMatrixMedia(rotation, n) : A13_PILOT_MEDIA_POOL.slice(0, n),
           (m) => m.captions[captionMode],
           font?.measurer ?? null,
