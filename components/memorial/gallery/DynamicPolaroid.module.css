@@ -144,3 +144,26 @@
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
+
+/* Gallery V2.1 (G2–G5 pilot) — the real Polaroid control is interactive:
+ * neither the slot frame nor the control uses `pointer-events: none` (only
+ * inert decorative layers may). Non-interactive prints (G6, Signature 7+)
+ * keep the frame rule above unchanged. */
+.slot[data-interactive] {
+  pointer-events: auto;
+}
+
+/* Inert layers next to the control (QA overlays) never take the pointer. */
+.slot[data-interactive] > :not(.print) {
+  pointer-events: none;
+}
+
+.print[role="button"] {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.print[role="button"]:focus-visible {
+  outline: calc(3 * var(--k)) solid #2f5d8a;
+  outline-offset: calc(4 * var(--k));
+}

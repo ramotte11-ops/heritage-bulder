@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
@@ -32,6 +32,13 @@ export interface DynamicPolaroidProps {
   caption: CaptionLayout | null;
   /** QA overlays: reference box, anchor, source photo bounds, ink boxes. */
   qa?: boolean;
+  /**
+   * Gallery V2 (G2–G5 pilot): the whole print opens the memory (click, tap,
+   * Enter, Space). Absent — as for G6 exact and Signature 7+ — the print
+   * renders exactly as before (no role, no tab stop, no handler).
+   */
+  onActivate?: () => void;
+  activateLabel?: string;
 }
 
 function k(v: number) {
@@ -49,7 +56,7 @@ function anchorPoint(slot: A13Slot) {
   return { x, y };
 }
 
-export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false }: DynamicPolaroidProps) {
+export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel }: DynamicPolaroidProps) {
   const slotStyle: CSSProperties = {
     left: k(slot.center.x),
     top: k(slot.center.y),
@@ -65,9 +72,28 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false }:
       style={slotStyle}
       data-slot-id={slot.slotId}
       data-media-index={slot.mediaIndex}
+      {...(onActivate ? { "data-interactive": "" } : {})}
       data-mode={layout.mode}
     >
-      <figure className={styles.print} style={box(layout.outer)} data-print={slot.slotId}>
+      <figure
+        className={styles.print}
+        style={box(layout.outer)}
+        data-print={slot.slotId}
+        {...(onActivate
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-label": activateLabel ?? alt,
+              onClick: onActivate,
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onActivate();
+                }
+              },
+            }
+          : {})}
+      >
         <div className={styles.window} style={box(layout.window)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={alt} className={styles.photo} style={box(layout.photo)} draggable={false} />

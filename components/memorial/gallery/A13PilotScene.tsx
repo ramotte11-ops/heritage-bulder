@@ -56,6 +56,10 @@ export interface A13PilotSceneProps {
     chosen: { x: number; y: number } | null;
   }[];
   qaTitleInk?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Gallery V2 pilot (G2–G5): every print opens its memory. Absent for G6 / 7+. */
+  onActivate?: (slotId: string) => void;
+  /** QA only (V2.1 title authority): dilated real-glyph mask as pixel rows. */
+  qaTitleMaskRects?: { x: number; y: number; width: number; height: number }[];
   /** QA only (G3 coupled territory): couple-centre territory, witness and
    * chosen couple centres, witness and chosen D2→D3 vectors, and the
    * relative ellipse drawn around the chosen D2 (admissible D3 centres). */
@@ -81,6 +85,8 @@ export function A13PilotScene({
   qaTerritories = [],
   qaTitleInk = null,
   qaCouple = null,
+  onActivate,
+  qaTitleMaskRects = [],
 }: A13PilotSceneProps) {
   return (
     <div
@@ -98,16 +104,31 @@ export function A13PilotScene({
           style={{ zIndex: A13_PILOT_LAYER_Z.background }}
           draggable={false}
         />
-        {entries.map(({ slot, layout, src, alt, caption }) =>
+        {entries.map(({ slot, layout, src, alt, caption }, i) =>
           layout && src ? (
-            <DynamicPolaroid key={slot.slotId} slot={slot} layout={layout} src={src} alt={alt} caption={caption} qa={qa} />
+            <DynamicPolaroid
+              key={slot.slotId}
+              slot={slot}
+              layout={layout}
+              src={src}
+              alt={alt}
+              caption={caption}
+              qa={qa}
+              {...(onActivate
+                ? {
+                    onActivate: () => onActivate(slot.slotId),
+                    // V2.1: caption when present, otherwise a position label.
+                    activateLabel: caption?.lines.length ? caption.lines.map((l) => l.text).join(" ") : `Souvenir ${i + 1} sur ${entries.length}`,
+                  }
+                : {})}
+            />
           ) : null,
         )}
         <header className={styles.titleBlock} style={{ zIndex: A13_PILOT_LAYER_Z.runtimeText }}>
           <h2 className={`${styles.title} ${ebGaramond.className}`}>{title}</h2>
           <p className={`${styles.subtitle} ${ebGaramondItalic.className}`}>{subtitle}</p>
         </header>
-        {qa && !qaProtectedZone && !qaTitleInk ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
+        {qa && !qaProtectedZone && !qaTitleInk && !qaTitleMaskRects.length ? <div className={styles.qaTitleZone} aria-hidden="true" /> : null}
         {qa && qaProtectedZone ? (
           <div
             className={styles.qaProtectedZone}
@@ -120,7 +141,7 @@ export function A13PilotScene({
             }}
           />
         ) : null}
-        {qa && (qaTerritories.length || qaTitleInk || qaCouple) ? (
+        {qa && (qaTerritories.length || qaTitleInk || qaCouple || qaTitleMaskRects.length) ? (
           <svg className={styles.qaTerritoryLayer} viewBox="0 0 1670 941" aria-hidden="true" data-testid="qa-territories">
             {qaTitleInk ? (
               <rect
@@ -129,6 +150,13 @@ export function A13PilotScene({
                 y={qaTitleInk.y0}
                 width={qaTitleInk.x1 - qaTitleInk.x0}
                 height={qaTitleInk.y1 - qaTitleInk.y0}
+              />
+            ) : null}
+            {qaTitleMaskRects.length ? (
+              <path
+                className={styles.qaTitleInk}
+                d={qaTitleMaskRects.map((r) => `M${r.x} ${r.y}h${r.width}v${r.height}h${-r.width}z`).join("")}
+                data-testid="qa-title-mask"
               />
             ) : null}
             {qaTerritories.map(({ slotId, territory: t, witness: w, chosen: c }) => (
