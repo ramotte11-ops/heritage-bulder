@@ -1,0 +1,107 @@
+/*
+ * A13 Album Desktop LIGHT — extensible memory table (pilot).
+ *
+ * `.stage` is the size container (width 100 %, capped at the canonical
+ * 1670); `.canvas` defines `--k`, one canonical px at the rendered width,
+ * and takes the Album's own height from the layout (set inline). Nothing
+ * reflows: every print box is `N * var(--k)`.
+ */
+
+.stage {
+  /* Caption hand — the Gallery token, one resource (La Belle Aurore). */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  container-type: inline-size;
+  width: 100%;
+  max-width: 1670px;
+  margin-inline: auto;
+}
+
+.canvas {
+  --k: calc(100cqw / 1670);
+  position: relative;
+  width: 100%;
+  /* V1.1 §5: no clipping (no overflow: hidden) and no group isolation; the
+   * Album root alone is a stacking context so its paint order stays its own. */
+  isolation: isolate;
+}
+
+/*
+ * BODY — Light table material (Handoff §10 "couleur/gradient matériel
+ * propre au thème + microtexture non directionnelle, faible contraste").
+ * Colour: Master empty-table mean #F4E4CF. Microtexture: the same
+ * fixed-seed fractal noise technique as the print paper (isotropic, no
+ * recognisable motif), warm fibre tone at 4 % alpha, tiled on a 240 px
+ * canonical cell. No botanical, seal, pen, torn paper or shadow: the body
+ * repeats matter, never a motif.
+ */
+.body {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #f4e4cf;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .42  0 0 0 0 .33  0 0 0 0 .24  0 0 0 .04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: calc(240 * var(--k)) calc(240 * var(--k));
+}
+
+/* Technical group: no box, no stacking context, nothing visible. */
+.group {
+  display: contents;
+}
+
+/* ---------------------------------------------------------------------
+ * QA overlays (pilot only)
+ * ------------------------------------------------------------------- */
+
+.qaLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000000;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaTopZone {
+  fill: rgb(200 30 30 / 0.12);
+  stroke: rgb(200 30 30 / 0.9);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.qaLane {
+  stroke: rgb(120 60 160 / 0.35);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 6;
+}
+
+.qaTop {
+  stroke: rgb(20 90 200 / 0.85);
+  stroke-width: 2;
+  stroke-dasharray: 10 6;
+}
+
+.qaBottom {
+  stroke: rgb(200 90 20 / 0.85);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+.qaLabel {
+  font: 600 18px ui-monospace, monospace;
+  fill: rgb(20 60 140);
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+}
+
+.qaIndex {
+  font: 700 30px ui-monospace, monospace;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgb(40 30 20 / 0.85);
+  stroke-width: 5px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}

@@ -49,6 +49,13 @@ export interface DynamicPolaroidProps {
   activateLabel?: string;
   /** Material theme, applied after the geometry (default Light, unchanged). */
   theme?: A13Theme;
+  /**
+   * A13 Album (extensible memory table): native image loading of the photo.
+   * Absent — as for every Gallery state — no attribute is rendered and the
+   * print is byte-identical to before. The print box is fully sized by the
+   * geometry, so decoding never moves anything.
+   */
+  imageLoading?: "eager" | "lazy";
 }
 
 function k(v: number) {
@@ -66,7 +73,7 @@ function anchorPoint(slot: A13Slot) {
   return { x, y };
 }
 
-export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel, theme = "light" }: DynamicPolaroidProps) {
+export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel, theme = "light", imageLoading }: DynamicPolaroidProps) {
   const slotStyle: CSSProperties = {
     left: k(slot.center.x),
     top: k(slot.center.y),
@@ -106,7 +113,14 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
       >
         <div className={styles.window} style={box(layout.window)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} className={styles.photo} style={box(layout.photo)} draggable={false} />
+          <img
+            src={src}
+            alt={alt}
+            className={styles.photo}
+            style={box(layout.photo)}
+            draggable={false}
+            {...(imageLoading ? { loading: imageLoading, decoding: "async" as const } : {})}
+          />
         </div>
         <figcaption className={styles.band} style={box(layout.band)}>
           {caption ? <span className={styles.srOnly}>{caption.lines.map((l) => l.text).join(" ")}</span> : null}
