@@ -167,3 +167,47 @@
   outline: calc(3 * var(--k)) solid #2f5d8a;
   outline-offset: calc(4 * var(--k));
 }
+
+/*
+ * A13 Desktop DARK V1.1 — MATERIAL ONLY (`dark-material-tokens.v1.1.json`).
+ *
+ * Keyed on the scene's `data-a13-theme="dark"`; the per-print values
+ * (`--a13-dark-paper`, `--a13-dark-grain`, `--a13-dark-sheen`) come from
+ * `theme-material.ts`, seeded by the slotId only. The Dark print stays a
+ * light, warm, patinated paper on the night scene.
+ *
+ * - paper: base #E7D3B2 ± 2.5 % lightness per slot, highlight/lowlight
+ *   sheen (≤ 2 % lightness at the bottom), fibre grain rgb(88,62,39) at
+ *   ≤ 0.09 alpha — all painted inside the paper box, under the photo
+ *   window: the alpha hull and the box are the Light ones;
+ * - edge: rgba(91,64,42,0.34), a 1 px inset rule on the paper's cut edge
+ *   (inside the box — never outside the hull);
+ * - inner stroke: Light width (1.2 px) kept, colour rgba(93,65,42,0.30);
+ * - shadows: contact / main / ambient, visual only (box-shadow never
+ *   takes layout space: excluded from geometry, collision, occlusion);
+ * - caption ink #4A3527 (La Belle Aurore, metrics and arbitration Light);
+ * - focus colour #F1D6A3 (Light width and offset kept).
+ * The photo has NO Dark rule: filter none, opacity 1, blend normal.
+ */
+[data-a13-theme="dark"] .print {
+  background-color: var(--a13-dark-paper, #e7d3b2);
+  background-image: var(--a13-dark-grain), var(--a13-dark-sheen);
+  background-size: calc(160 * var(--k)) calc(160 * var(--k)), 100% 100%;
+  box-shadow:
+    inset 0 0 0 calc(1 * var(--k)) rgba(91, 64, 42, 0.34),
+    0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(6, 4, 3, 0.44),
+    0 calc(13 * var(--k)) calc(27 * var(--k)) rgba(6, 4, 3, 0.36),
+    0 calc(24 * var(--k)) calc(42 * var(--k)) rgba(6, 4, 3, 0.16);
+}
+
+[data-a13-theme="dark"] .stroke {
+  box-shadow: inset 0 0 0 calc(1.2 * var(--k)) rgba(93, 65, 42, 0.3);
+}
+
+[data-a13-theme="dark"] .captionText {
+  fill: #4a3527;
+}
+
+[data-a13-theme="dark"] .print[role="button"]:focus-visible {
+  outline-color: #f1d6a3;
+}

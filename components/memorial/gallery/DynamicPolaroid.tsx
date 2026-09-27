@@ -2,6 +2,8 @@ import type { CSSProperties, KeyboardEvent } from "react";
 import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
 import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
+import type { A13Theme } from "@/config/gallery-a13-dark-material";
+import { darkPrintMaterial } from "@/lib/memorial/gallery/theme-material";
 import styles from "./DynamicPolaroid.module.css";
 
 /**
@@ -21,6 +23,12 @@ import styles from "./DynamicPolaroid.module.css";
  * `layoutCaption` from the real La Belle Aurore metrics, so the ink the QA
  * measures is the ink on screen. It is never lifted into a floating layer
  * and is not rendered at all until the font is confirmed loaded.
+ *
+ * Theme (A13 Desktop Dark V1.1): `theme` is MATERIAL ONLY. It never reaches
+ * a length, a transform, a z-index or the photo: Dark adds, on the print,
+ * the CSS custom properties of its paper (slot-seeded colour, grain,
+ * sheen) that the Dark rules of the stylesheet paint — nothing else. The
+ * geometry styles below are computed identically for both themes.
  */
 
 export interface DynamicPolaroidProps {
@@ -39,6 +47,8 @@ export interface DynamicPolaroidProps {
    */
   onActivate?: () => void;
   activateLabel?: string;
+  /** Material theme, applied after the geometry (default Light, unchanged). */
+  theme?: A13Theme;
 }
 
 function k(v: number) {
@@ -56,7 +66,7 @@ function anchorPoint(slot: A13Slot) {
   return { x, y };
 }
 
-export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel }: DynamicPolaroidProps) {
+export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel, theme = "light" }: DynamicPolaroidProps) {
   const slotStyle: CSSProperties = {
     left: k(slot.center.x),
     top: k(slot.center.y),
@@ -77,7 +87,7 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
     >
       <figure
         className={styles.print}
-        style={box(layout.outer)}
+        style={theme === "dark" ? { ...box(layout.outer), ...(darkPrintMaterial(slot.slotId) as CSSProperties) } : box(layout.outer)}
         data-print={slot.slotId}
         {...(onActivate
           ? {

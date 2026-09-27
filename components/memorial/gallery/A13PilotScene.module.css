@@ -266,3 +266,51 @@
   stroke: rgb(200 30 150 / 0.95);
   stroke-width: 2;
 }
+
+/*
+ * A13 Desktop DARK V1.1 — MATERIAL ONLY (`dark-material-tokens.v1.1.json`).
+ *
+ * Keyed on `.stage[data-a13-theme="dark"]`, set by the scene AFTER the
+ * Light V2.1 engine has fixed the geometry. These rules only recolour:
+ * no length, box, font metric, transform, z-index or overflow is declared
+ * here (materialOnlyGuard, checked by `theme-parity.test.ts`). The title
+ * text-shadow is optical: the title glyph authority rasterises the glyphs
+ * without it. CTA and focus keep the Light box, border width, outline
+ * width and offset; only their colours change.
+ */
+.stage[data-a13-theme="dark"] .titleBlock {
+  color: #d8c39b;
+  text-shadow: 0 calc(1 * var(--k)) calc(1 * var(--k)) rgba(0, 0, 0, 0.22);
+}
+
+.stage[data-a13-theme="dark"] .subtitle {
+  color: #b99b6c;
+}
+
+.stage[data-a13-theme="dark"] .cta {
+  border-color: rgba(198, 158, 94, 0.72);
+  color: #d7bd8e;
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:hover {
+  border-color: rgba(215, 178, 116, 0.9);
+  color: #e5cda2;
+  background-color: rgba(190, 145, 78, 0.08);
+}
+
+.stage[data-a13-theme="dark"] .cta:active {
+  border-color: rgba(220, 181, 117, 0.96);
+  color: #e8d2aa;
+  background-color: rgba(190, 145, 78, 0.13);
+}
+
+.stage[data-a13-theme="dark"] .cta:disabled {
+  border-color: rgba(183, 151, 102, 0.34);
+  color: rgba(215, 189, 142, 0.46);
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:focus-visible {
+  outline-color: #f1d6a3;
+}

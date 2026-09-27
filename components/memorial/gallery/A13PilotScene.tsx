@@ -3,6 +3,7 @@ import { A13_PILOT_BACKGROUND_SRC, A13_PILOT_LAYER_Z } from "@/config/gallery-a1
 import type { PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import { A13_CTA_7PLUS } from "@/config/gallery-a13-multi-state-manifests";
+import { A13_DARK_BACKGROUND, type A13Theme } from "@/config/gallery-a13-dark-material";
 import type { Language } from "@/config/languages";
 import { ebGaramond, ebGaramondItalic, laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "./DynamicPolaroid";
@@ -18,6 +19,14 @@ import styles from "./A13PilotScene.module.css";
  *   capped at 1670 (`.stage` max-width): `--k = 100cqw / 1670`.
  * - Slots render in manifest order; stacking is the manifest z-index only
  *   (V2: D1 30 → D6 35 → D2 40 → D4 50 → D3 60 → D5 70).
+ * - Theme (A13 Desktop Dark V1.1): MATERIAL ONLY, applied after the engine.
+ *   Dark swaps the background source for the Dark GREEN asset (same `<img>`,
+ *   same box, same transform) and marks the stage `data-a13-theme="dark"`,
+ *   which the Dark stylesheet rules key on (paper, edge, shadows, inks, CTA
+ *   colours, focus colour). Entries, geometry, order, z-index, captions,
+ *   title and CTA box are received already computed and are rendered by
+ *   the same code for both themes. Light (default) renders exactly as
+ *   before — no attribute, same background.
  */
 
 export interface A13PilotSceneEntry {
@@ -41,6 +50,8 @@ export interface A13PilotSceneProps {
   subtitle: string;
   /** Manifest state rendered (diagnostic attribute only). */
   stateId?: string;
+  /** Material theme (default Light). Never an input of the geometry. */
+  theme?: A13Theme;
   cta?: A13SceneCta | null;
   qa?: boolean;
   /** QA only (calibration V1.1): slot envelopes [x0, y0, x1, y1] and the
@@ -78,6 +89,7 @@ export function A13PilotScene({
   title,
   subtitle,
   stateId,
+  theme = "light",
   cta = null,
   qa = false,
   qaEnvelopes = [],
@@ -93,11 +105,12 @@ export function A13PilotScene({
       className={`${styles.stage} ${laBelleAurore.variable}`}
       data-testid="a13-pilot-scene"
       data-state={stateId}
+      {...(theme === "dark" ? { "data-a13-theme": "dark" } : {})}
     >
       <div className={styles.canvas}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={A13_PILOT_BACKGROUND_SRC}
+          src={theme === "dark" ? A13_DARK_BACKGROUND.src : A13_PILOT_BACKGROUND_SRC}
           alt=""
           aria-hidden="true"
           className={styles.background}
@@ -114,6 +127,7 @@ export function A13PilotScene({
               alt={alt}
               caption={caption}
               qa={qa}
+              theme={theme}
               {...(onActivate
                 ? {
                     onActivate: () => onActivate(slot.slotId),
