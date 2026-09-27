@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13PilotScene";
 import { AlbumMemoryTable, type AlbumMemoryTableMedia } from "@/components/memorial/album/AlbumMemoryTable";
+import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { layoutAlbum, albumPrintQa, albumSeamQa, albumGeometrySnapshot, verifyAlbumDeterminism, type AlbumLayout } from "@/lib/memorial/album/album-layout";
 import { domGeometrySnapshot, sceneMaterialReport } from "@/lib/memorial/gallery/theme-dom-snapshot";
@@ -39,6 +40,10 @@ import styles from "./page.module.css";
  * `THEME_GEOMETRY_PARITY_STOP` with the first differing path.
  * `negatif=transform|padding|filter` injects a deliberate Dark leak
  * (negative control, QA only).
+ *
+ * Viewer Desktop V2: activating a print opens the shared `MemoryViewer`
+ * in the Album's theme (Album origin); the witness callback is kept and
+ * the reports are published on `window.__viewerQa`. The table is unchanged.
  */
 
 declare global {
@@ -182,9 +187,17 @@ export function AlbumPilotClient() {
     alt: `Photo de test ${i + 1}`,
   }));
 
+  const viewer = useMemoryViewer((r) => {
+    window.__viewerQa ??= { reports: [], validation: null, media: null };
+    window.__viewerQa.reports.push(r);
+  });
+
   const onActivate = (mediaId: string, mediaIndex: number) => {
     setLast(`${mediaId} (média ${mediaIndex + 1})`);
     window.__albumPilot?.activations.push({ mediaId, mediaIndex });
+    const m = media[mediaIndex];
+    const natural = m.cropToRatio ? { w: 1400, h: Math.round(1400 / m.cropToRatio) } : { w: m.width, h: m.height };
+    viewer.open({ mediaId, src: tableMedia[mediaIndex].src, alt: tableMedia[mediaIndex].alt, naturalWidth: natural.w, naturalHeight: natural.h, caption: m.caption }, theme, "album");
   };
 
   const href = (p: Record<string, string | number>) => {
@@ -336,6 +349,7 @@ export function AlbumPilotClient() {
           </pre>
         </div>
       )}
+      {viewer.node}
     </div>
   );
 }

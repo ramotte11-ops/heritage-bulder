@@ -20,6 +20,7 @@ import {
 } from "@/lib/memorial/gallery/theme-parity";
 import { domGeometrySnapshot, sceneMaterialReport } from "@/lib/memorial/gallery/theme-dom-snapshot";
 import { A13CaptionFontProbe, A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
+import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
 import styles from "../etats/page.module.css";
 
 /**
@@ -45,6 +46,10 @@ import styles from "../etats/page.module.css";
  * they are reported separately and never counted in the 36.
  *
  * `?cas=G2:master-like:none,…` restricts the run to some fixtures.
+ *
+ * Viewer Desktop V2: activating a print opens the shared `MemoryViewer`
+ * in the scene's theme (Gallery origin); its reports are published on
+ * `window.__viewerQa`. The scenes themselves are unchanged.
  */
 
 const BASE = "/pilot/a13-dynamic-polaroid";
@@ -157,6 +162,10 @@ export function DarkPilotClient() {
   const [bg, setBg] = useState<{ sha256: string; width: number; height: number } | null>(null);
   const [activated, setActivated] = useState("");
   const gridRef = useRef<HTMLDivElement>(null);
+  const viewer = useMemoryViewer((r) => {
+    window.__viewerQa ??= { reports: [], validation: null, media: null };
+    window.__viewerQa.reports.push(r);
+  });
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("cas");
@@ -296,7 +305,21 @@ export function DarkPilotClient() {
           subtitle={A13_PILOT_TITLE.subtitle}
           entries={run.entries.map((e, i) => ({ slot: e.slot, layout: e.layout, src: srcFor(e.media), alt: `Souvenir ${i + 1}`, caption: e.caption }))}
           cta={run.hasCta ? { label: A13_CTA_7PLUS_PILOT_LABELS.fr.text, lang: "fr", onActivate: () => setActivated(`${p.fixture.id}|${theme}|CTA`) } : null}
-          {...(interactive ? { onActivate: (id: string) => setActivated(`${p.fixture.id}|${theme}|${id}`) } : {})}
+          {...(interactive
+            ? {
+                onActivate: (id: string) => {
+                  setActivated(`${p.fixture.id}|${theme}|${id}`);
+                  const e = run.entries.find((x) => x.slot.slotId === id);
+                  const src = e ? srcFor(e.media) : null;
+                  if (e && src)
+                    viewer.open(
+                      { mediaId: `${p.fixture.id}|${id}`, src, alt: `Souvenir ${e.slot.mediaIndex + 1}`, naturalWidth: e.media.width, naturalHeight: e.media.height, caption: p.fixture.captionTexts[e.slot.mediaIndex] ?? null },
+                      theme,
+                      "gallery",
+                    );
+                },
+              }
+            : {})}
         />
       </section>
     );
@@ -391,6 +414,7 @@ export function DarkPilotClient() {
           })}
         </pre>
       ) : null}
+      {viewer.node}
     </main>
   );
 }
