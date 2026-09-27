@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { A13_STATE_SLOTS } from "@/config/gallery-a13-multi-state-manifests";
 import { G3_RELATIONS, G3_TERRITORY_SLOTS } from "@/config/gallery-a13-g3-territory";
+import { G3_COUPLE } from "@/config/gallery-a13-g3-coupled-territory";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { convexDistance, solveG3Territory } from "@/lib/memorial/gallery/g3-territory";
 
@@ -26,6 +27,20 @@ describe("G3 territory — transcription", () => {
       [{ x: 1087.7, y: 690 }, 0.82],
     ]);
     G3.forEach((s, i) => expect(s.center).toEqual(G3_TERRITORY_SLOTS[i].witnessCenter));
+  });
+
+  it("transcribes the coupled contract consistently with the witnesses", () => {
+    const [, t2, t3] = G3_TERRITORY_SLOTS;
+    expect(G3_COUPLE.witness.d2Center).toEqual(t2.witnessCenter);
+    expect(G3_COUPLE.witness.d3Center).toEqual(t3.witnessCenter);
+    const R = { x: t3.witnessCenter.x - t2.witnessCenter.x, y: t3.witnessCenter.y - t2.witnessCenter.y };
+    expect(R.x).toBeCloseTo(G3_COUPLE.witness.relativeVector.x, 9);
+    expect(R.y).toBeCloseTo(G3_COUPLE.witness.relativeVector.y, 9);
+    expect(G3_COUPLE.relativeVector.ellipse.center).toEqual(G3_COUPLE.witness.relativeVector);
+    expect((t2.witnessCenter.x + t3.witnessCenter.x) / 2).toBeCloseTo(G3_COUPLE.witness.coupleCenter.x, 9);
+    expect((t2.witnessCenter.y + t3.witnessCenter.y) / 2).toBeCloseTo(G3_COUPLE.witness.coupleCenter.y, 9);
+    expect(Math.hypot(R.x, R.y)).toBeCloseTo(G3_COUPLE.witness.centerDistancePx, 1);
+    expect((Math.atan2(R.y, R.x) * 180) / Math.PI).toBeCloseTo(G3_COUPLE.witness.angleDeg, 1);
   });
 
   it("measures polygon distances", () => {
@@ -63,14 +78,34 @@ describe("solveG3Territory", () => {
     const m = res.metrics!;
     expect(Math.max(...m.titleIntersectionPx2)).toBeLessThanOrEqual(1e-6);
     expect(m.d2PhotoOcclusionPercent).toBeLessThanOrEqual(G3_RELATIONS.maximumD2PhotoOcclusionPercent + 1e-9);
-    expect(m.d2d3GapPx).toBeLessThanOrEqual(G3_RELATIONS.maximumContourGapPx + 1e-9);
+    expect(m.d2d3GapPx).toBeLessThanOrEqual(G3_COUPLE.contourRelation.maximumGapWhenNotOverlappingPx + 1e-9);
     expect(m.d1RightWindowGapPx).toBeGreaterThanOrEqual(G3_RELATIONS.minimumPhotoWindowGapPx - 1e-9);
     expect(Math.max(...m.captionCollisionPx2)).toBe(0);
     expect(m.d1Dominant).toBe(true);
     expect(res.slots[1].center.y).toBeLessThan(res.slots[2].center.y);
   });
 
-  it("returns G3_SLOT_TERRITORY_UNRESOLVED_STOP instead of improvising", () => {
+  it("keeps D2/D3 a couple: centre territory, ellipse, distance, angle", () => {
+    const c = res.metrics!.couple;
+    const T = G3_COUPLE.coupleCenterTerritory;
+    const rv = G3_COUPLE.relativeVector;
+    expect(c.center.x).toBeGreaterThanOrEqual(T.xMin);
+    expect(c.center.x).toBeLessThanOrEqual(T.xMax);
+    expect(c.center.y).toBeGreaterThanOrEqual(T.yMin);
+    expect(c.center.y).toBeLessThanOrEqual(T.yMax);
+    expect(c.relativeVector.x).toBeLessThan(0);
+    expect(c.relativeVector.y).toBeGreaterThan(0);
+    expect(c.ellipseValue).toBeLessThanOrEqual(1 + 1e-9);
+    expect(c.distancePx).toBeGreaterThanOrEqual(rv.distancePx.min);
+    expect(c.distancePx).toBeLessThanOrEqual(rv.distancePx.max);
+    expect(c.angleDeg).toBeGreaterThanOrEqual(rv.angleDeg.min);
+    expect(c.angleDeg).toBeLessThanOrEqual(rv.angleDeg.max);
+    const [, d2, d3] = res.slots;
+    expect(d3.center.x - d2.center.x).toBeCloseTo(c.relativeVector.x, 9);
+    expect(d3.center.y - d2.center.y).toBeCloseTo(c.relativeVector.y, 9);
+  });
+
+  it("returns G3_COUPLED_TERRITORY_UNRESOLVED_STOP instead of improvising", () => {
     const blocked = solveG3Territory({
       slots: G3,
       sources: [src(3, 4), src(4, 3), src(1, 1)],
@@ -78,7 +113,7 @@ describe("solveG3Territory", () => {
       measurer: null,
       title: { x0: 0, y0: 0, x1: 1670, y1: 941 },
     });
-    expect(blocked.status).toBe("G3_SLOT_TERRITORY_UNRESOLVED_STOP");
+    expect(blocked.status).toBe("G3_COUPLED_TERRITORY_UNRESOLVED_STOP");
     expect(blocked.slots).toEqual([]);
   });
 });

@@ -221,6 +221,46 @@
   stroke-width: 3;
 }
 
+.qaCoupleTerritory {
+  fill: rgb(20 140 90 / 0.08);
+  stroke: rgb(20 140 90 / 0.95);
+  stroke-width: 2.5;
+}
+
+.qaCoupleLabel {
+  font: 700 14px ui-monospace, monospace;
+  fill: rgb(10 110 70);
+}
+
+.qaCoupleWitnessVector {
+  stroke: rgb(200 30 30 / 0.9);
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+}
+
+.qaCoupleWitnessCenter {
+  fill: #fff;
+  stroke: rgb(200 30 30);
+  stroke-width: 3;
+}
+
+.qaCoupleEllipse {
+  fill: rgb(130 60 200 / 0.08);
+  stroke: rgb(130 60 200 / 0.95);
+  stroke-width: 2.5;
+}
+
+.qaCoupleVector {
+  stroke: rgb(20 120 200);
+  stroke-width: 4;
+}
+
+.qaCoupleCenter {
+  fill: rgb(20 140 90);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
 .qaTitleInk {
   fill: rgb(200 30 150 / 0.1);
   stroke: rgb(200 30 150 / 0.95);

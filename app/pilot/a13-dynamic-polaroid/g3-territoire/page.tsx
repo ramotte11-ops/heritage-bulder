@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { G3TerritoryClient } from "./G3TerritoryClient";
 
 /**
- * A13 — G3 Desktop Light — SLOT TERRITORY pilot (study V1). Artistic board
+ * A13 — G3 Desktop Light — SLOT TERRITORY pilot (study V1), D2/D3 coupled
+ * (Coupled Slot Territory calibration V1). Artistic board
  * (Master witness vs hard runtime solutions), a separate diagnostic view and
  * the full QA matrix. G3 only; pilot route, noindex, no persistence.
  */
 export const metadata: Metadata = {
-  title: "A13 · G3 · territoires de slot",
+  title: "A13 · G3 · territoires de slot couplés",
   robots: { index: false, follow: false },
 };
 

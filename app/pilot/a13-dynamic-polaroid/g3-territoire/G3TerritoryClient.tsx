@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { A13_STATE_SLOTS } from "@/config/gallery-a13-multi-state-manifests";
 import { G3_TERRITORY_SLOTS } from "@/config/gallery-a13-g3-territory";
+import { G3_COUPLE } from "@/config/gallery-a13-g3-coupled-territory";
 import { composeSlots, obstaclesAbove } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
-import { solveG3Territory, type G3Result, type TitleZone } from "@/lib/memorial/gallery/g3-territory";
+import { diagnoseG3Stop, solveG3Territory, type G3Result, type G3StopDiagnosis, type TitleZone } from "@/lib/memorial/gallery/g3-territory";
 import { measureTitleZone, type TitleInk } from "@/lib/memorial/gallery/title-ink";
 import { MATRIX_CAPTION_STATES, MATRIX_RATIOS, matrixCaption, type MatrixCaptionState } from "@/lib/memorial/gallery/calibration-matrix";
 import { A13_PILOT_TITLE, rotateMatrixMedia } from "@/lib/memorial/gallery/a13-pilot-fixtures";
@@ -14,11 +15,13 @@ import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneEntry } from "@/c
 import styles from "../etats/page.module.css";
 
 /**
- * G3 slot-territory pilot. Views (`?vue=`):
+ * G3 slot-territory pilot, D2/D3 coupled (Coupled Slot Territory V1).
+ * Views (`?vue=`):
  * - `planche` (default): Master witness position vs six hard runtime
  *   solutions (every cyclic ratio permutation), artistic render only;
  * - `diagnostic`: the same solutions with territories, witness/chosen
- *   centres, displacements, contours and the measured title protection;
+ *   centres, displacements, contours, the measured title protection, and
+ *   the couple (centre territory, witness vs chosen D2→D3 vector, ellipse);
  * - `matrice`: the 30 QA cases (6 rotations × 5 caption states), exposed as
  *   JSON in `[data-testid=g3-matrix-json]`.
  * `?captions=` picks the caption state of the board (default 32 chars).
@@ -32,6 +35,8 @@ interface Case {
   captions: MatrixCaptionState;
   result: G3Result;
   ms: number;
+  /** STOP only: exact diagnosis, phases A and B. */
+  stop?: G3StopDiagnosis[];
 }
 
 function sceneEntries(rotation: number, captions: MatrixCaptionState, result: G3Result | null, witness: boolean, font: ReturnType<typeof useCaptionMeasurer>): A13PilotSceneEntry[] {
@@ -107,14 +112,17 @@ export function G3TerritoryClient() {
       const t = todo[i];
       const media = rotateMatrixMedia(t.rotation, 3);
       const t0 = performance.now();
-      const result = solveG3Territory({
+      const input = {
         slots: G3,
         sources: media,
         captions: [0, 1, 2].map((k) => matrixCaption(t.captions, k)),
         measurer: font.measurer,
         title: title.zone as TitleZone,
-      });
-      out.push({ ...t, result, ms: Math.round(performance.now() - t0) });
+      };
+      const result = solveG3Territory(input);
+      const ms = Math.round(performance.now() - t0);
+      const stop = result.status === "solved" ? undefined : (["A", "B"] as const).map((ph) => diagnoseG3Stop(input, ph));
+      out.push({ ...t, result, ms, stop });
       setCases([...out]);
       setTimeout(() => step(i + 1), 0);
     };
@@ -133,9 +141,19 @@ export function G3TerritoryClient() {
       chosen: result && result.status === "solved" ? result.slots[i].center : null,
     }));
 
+  const couple = (result: G3Result | null) => ({
+    territory: G3_COUPLE.coupleCenterTerritory,
+    witness: { d2: G3_COUPLE.witness.d2Center, d3: G3_COUPLE.witness.d3Center, center: G3_COUPLE.witness.coupleCenter },
+    chosen:
+      result && result.status === "solved" && result.metrics
+        ? { d2: result.slots[1].center, d3: result.slots[2].center, center: result.metrics.couple.center }
+        : null,
+    ellipse: G3_COUPLE.relativeVector.ellipse,
+  });
+
   const panel = (label: string, entries: A13PilotSceneEntry[], result: G3Result | null, key: string, ref?: React.Ref<HTMLDivElement>) => (
     <section key={key} className={styles.cell} data-testid={`g3-${key}`} ref={ref}>
-      <h2 className={styles.label}>{label}</h2>
+      <h2 className={result && result.status !== "solved" ? `${styles.label} ${styles.stop}` : styles.label}>{label}</h2>
       <A13PilotScene
         stateId="G3"
         title={A13_PILOT_TITLE.title}
@@ -144,16 +162,19 @@ export function G3TerritoryClient() {
         qa={diag}
         qaTerritories={diag ? territories(result) : []}
         qaTitleInk={diag && title ? title.zone : null}
+        qaCouple={diag ? couple(result) : null}
       />
     </section>
   );
 
   const solvedLabel = (c: Case) => {
     const r = c.result;
-    if (r.status !== "solved") return `r${c.rotation} · ${ROT_LABEL(c.rotation)} · G3_SLOT_TERRITORY_UNRESOLVED_STOP`;
+    if (r.status !== "solved")
+      return `r${c.rotation} · ${ROT_LABEL(c.rotation)} · ${r.status} — aucune solution runtime ; affichage = position témoin s = 1, non livrable, pour lecture du conflit`;
+    const k = r.metrics!.couple;
     return `r${c.rotation} · ${ROT_LABEL(c.rotation)} · phase ${r.phase} · ${r.slots
       .map((s) => `${s.slotId.slice(3)} s ${s.scale.toFixed(3)} Δ(${s.delta.x.toFixed(1)}, ${s.delta.y.toFixed(1)})`)
-      .join(" · ")}`;
+      .join(" · ")} · R(${k.relativeVector.x.toFixed(1)}, ${k.relativeVector.y.toFixed(1)}) ${k.distancePx.toFixed(1)} px ${k.angleDeg.toFixed(1)}° ell ${k.ellipseValue.toFixed(3)}`;
   };
 
   return (
@@ -166,7 +187,7 @@ export function G3TerritoryClient() {
         <A13PilotScene stateId="G3" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
       </div>
       <header className={styles.head}>
-        <h1 className={styles.h1}>A13 · G3 Desktop Light · territoires de slot — {view}</h1>
+        <h1 className={styles.h1}>A13 · G3 Desktop Light · territoires de slot couplés D2/D3 — {view}</h1>
         <div className={styles.controls}>
           <span data-testid="g3-font">{font?.fontCheck ? "La Belle Aurore chargée" : "police en attente…"}</span>
           <span data-testid="g3-title">
@@ -199,6 +220,7 @@ export function G3TerritoryClient() {
                 <th>Titre (px²)</th>
                 <th>Occl. D2</th>
                 <th>D2–D3</th>
+                <th>Couple C · R · dist · angle · ellipse · E</th>
                 <th>D1↔droite</th>
                 <th>Glyphes (px²)</th>
                 <th>ms</th>
@@ -213,7 +235,15 @@ export function G3TerritoryClient() {
                     <td>
                       r{c.rotation} ({ROT_LABEL(c.rotation)}) · {c.captions}
                     </td>
-                    <td>{r.status === "solved" ? `OK · phase ${r.phase}` : r.status}</td>
+                    <td>
+                      {r.status === "solved" ? `OK · phase ${r.phase}` : r.status}
+                      {c.stop?.map((d) => (
+                        <div key={d.phase}>
+                          phase {d.phase} @ planchers : R vecteur {d.relative.vector} → contour {d.relative.contourGap} → occl. {d.relative.occlusion} → caption D2 {d.relative.d2Caption} · couples {d.couples} · min occl.{" "}
+                          {d.minOcclusionPercent?.toFixed(2) ?? "—"} % · min intrusion caption D2 {d.minD2CaptionIntrusionPx2?.toFixed(0) ?? "—"} px² · grille {d.gridFeasible}/{d.gridChecked}
+                        </div>
+                      ))}
+                    </td>
                     <td>
                       {r.slots.map((s) => (
                         <div key={s.slotId}>
@@ -225,6 +255,11 @@ export function G3TerritoryClient() {
                     <td>{m ? m.titleIntersectionPx2.map((v) => v.toFixed(0)).join(" / ") : "—"}</td>
                     <td>{m ? `${m.d2PhotoOcclusionPercent.toFixed(1)} %` : "—"}</td>
                     <td>{m ? (m.d2d3OverlapPx2 > 0 ? `chevauch. ${Math.round(m.d2d3OverlapPx2)} px²` : `écart ${m.d2d3GapPx.toFixed(1)} px`) : "—"}</td>
+                    <td>
+                      {m
+                        ? `C(${m.couple.center.x.toFixed(1)}, ${m.couple.center.y.toFixed(1)}) · R(${m.couple.relativeVector.x.toFixed(1)}, ${m.couple.relativeVector.y.toFixed(1)}) · ${m.couple.distancePx.toFixed(1)} px · ${m.couple.angleDeg.toFixed(1)}° · ${m.couple.ellipseValue.toFixed(3)} · E ${m.couple.e.toFixed(3)}`
+                        : "—"}
+                    </td>
                     <td>{m ? `${m.d1RightWindowGapPx.toFixed(1)} px` : "—"}</td>
                     <td>{m ? m.captionCollisionPx2.map((v) => v.toFixed(0)).join(" / ") : "—"}</td>
                     <td>{c.ms}</td>
@@ -243,6 +278,7 @@ export function G3TerritoryClient() {
                   status: c.result.status,
                   phase: c.result.phase,
                   ms: c.ms,
+                  stop: c.stop ?? null,
                   slots: c.result.slots.map((s) => ({
                     slotId: s.slotId,
                     center: s.center,

@@ -56,6 +56,15 @@ export interface A13PilotSceneProps {
     chosen: { x: number; y: number } | null;
   }[];
   qaTitleInk?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** QA only (G3 coupled territory): couple-centre territory, witness and
+   * chosen couple centres, witness and chosen D2→D3 vectors, and the
+   * relative ellipse drawn around the chosen D2 (admissible D3 centres). */
+  qaCouple?: {
+    territory: { xMin: number; xMax: number; yMin: number; yMax: number };
+    witness: { d2: { x: number; y: number }; d3: { x: number; y: number }; center: { x: number; y: number } };
+    chosen: { d2: { x: number; y: number }; d3: { x: number; y: number }; center: { x: number; y: number } } | null;
+    ellipse: { center: { x: number; y: number }; radiusX: number; radiusY: number };
+  } | null;
 }
 
 const g = A13_CTA_7PLUS.geometry;
@@ -71,6 +80,7 @@ export function A13PilotScene({
   qaProtectedZone = null,
   qaTerritories = [],
   qaTitleInk = null,
+  qaCouple = null,
 }: A13PilotSceneProps) {
   return (
     <div
@@ -110,7 +120,7 @@ export function A13PilotScene({
             }}
           />
         ) : null}
-        {qa && (qaTerritories.length || qaTitleInk) ? (
+        {qa && (qaTerritories.length || qaTitleInk || qaCouple) ? (
           <svg className={styles.qaTerritoryLayer} viewBox="0 0 1670 941" aria-hidden="true" data-testid="qa-territories">
             {qaTitleInk ? (
               <rect
@@ -136,6 +146,47 @@ export function A13PilotScene({
                 ) : null}
               </g>
             ))}
+            {qaCouple ? (
+              <g data-testid="qa-couple">
+                <rect
+                  className={styles.qaCoupleTerritory}
+                  x={qaCouple.territory.xMin}
+                  y={qaCouple.territory.yMin}
+                  width={qaCouple.territory.xMax - qaCouple.territory.xMin}
+                  height={qaCouple.territory.yMax - qaCouple.territory.yMin}
+                />
+                <text className={styles.qaCoupleLabel} x={qaCouple.territory.xMin + 4} y={qaCouple.territory.yMax - 6}>
+                  C
+                </text>
+                <line
+                  className={styles.qaCoupleWitnessVector}
+                  x1={qaCouple.witness.d2.x}
+                  y1={qaCouple.witness.d2.y}
+                  x2={qaCouple.witness.d3.x}
+                  y2={qaCouple.witness.d3.y}
+                />
+                <rect className={styles.qaCoupleWitnessCenter} x={qaCouple.witness.center.x - 6} y={qaCouple.witness.center.y - 6} width={12} height={12} />
+                {qaCouple.chosen ? (
+                  <>
+                    <ellipse
+                      className={styles.qaCoupleEllipse}
+                      cx={qaCouple.chosen.d2.x + qaCouple.ellipse.center.x}
+                      cy={qaCouple.chosen.d2.y + qaCouple.ellipse.center.y}
+                      rx={qaCouple.ellipse.radiusX}
+                      ry={qaCouple.ellipse.radiusY}
+                    />
+                    <line
+                      className={styles.qaCoupleVector}
+                      x1={qaCouple.chosen.d2.x}
+                      y1={qaCouple.chosen.d2.y}
+                      x2={qaCouple.chosen.d3.x}
+                      y2={qaCouple.chosen.d3.y}
+                    />
+                    <rect className={styles.qaCoupleCenter} x={qaCouple.chosen.center.x - 5} y={qaCouple.chosen.center.y - 5} width={10} height={10} />
+                  </>
+                ) : null}
+              </g>
+            ) : null}
           </svg>
         ) : null}
         {qa
