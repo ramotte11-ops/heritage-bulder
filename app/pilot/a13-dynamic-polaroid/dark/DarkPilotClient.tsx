@@ -20,7 +20,9 @@ import {
 } from "@/lib/memorial/gallery/theme-parity";
 import { domGeometrySnapshot, sceneMaterialReport } from "@/lib/memorial/gallery/theme-dom-snapshot";
 import { A13CaptionFontProbe, A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
-import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
+import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
+import { A13DesktopFullAlbum } from "@/components/memorial/album/A13DesktopFullAlbum";
+import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import styles from "../etats/page.module.css";
 
 /**
@@ -50,6 +52,12 @@ import styles from "../etats/page.module.css";
  * Viewer Desktop V2: activating a print opens the shared `MemoryViewer`
  * in the scene's theme (Gallery origin); its reports are published on
  * `window.__viewerQa`. The scenes themselves are unchanged.
+ *
+ * Desktop zero-debt closure: every state is interactive (G6 exact and
+ * Signature 7+ included), and the Signature 7+ CTA opens the Full Album of
+ * THAT fixture's media (all seven, family order, same theme) in place of
+ * the grid (`#album=<fixture>|<theme>`, Back returns). The Full Album is
+ * offered once the rendered parity is measured (the grid stays mounted).
  */
 
 const BASE = "/pilot/a13-dynamic-polaroid";
@@ -161,11 +169,13 @@ export function DarkPilotClient() {
   const [dom, setDom] = useState<{ pairs: DomPair[]; material: Material[]; hashes: Record<string, { light: string; dark: string }> } | null>(null);
   const [bg, setBg] = useState<{ sha256: string; width: number; height: number } | null>(null);
   const [activated, setActivated] = useState("");
+  const [albumOf, setAlbumOf] = useState<{ id: string; theme: A13Theme } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  const viewer = useMemoryViewer((r) => {
+  const reportViewer = (r: ViewerReport) => {
     window.__viewerQa ??= { reports: [], validation: null, media: null };
     window.__viewerQa.reports.push(r);
-  });
+  };
+  const viewer = useMemoryViewer(reportViewer);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("cas");
@@ -289,9 +299,32 @@ export function DarkPilotClient() {
   const srcFor = (m: ParityMedia) =>
     (m.ratioId.startsWith("master:") ? master?.[m.ratioId] : m.ratioId.startsWith("pool:") ? A13_PILOT_MEDIA_POOL[Number(m.ratioId.slice(5))].src : RATIO_IMAGES[m.ratioId]) ?? null;
 
+  // Back/forward between the grid and a fixture's Full Album.
+  useEffect(() => {
+    const read = () => {
+      const m = /^#album=(.+)\|(light|dark)$/.exec(decodeURIComponent(window.location.hash));
+      setAlbumOf(m ? { id: m[1], theme: m[2] as A13Theme } : null);
+    };
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, []);
+
+  const albumMedia = (fx: ParityFixture): A13FamilyMedia[] =>
+    fx.media.map((m, i) => ({ mediaId: m.mediaId, src: srcFor(m) ?? "", alt: `Souvenir ${i + 1}`, width: m.width, height: m.height, focal: m.focal, caption: fx.captionTexts[i] ?? null }));
+
+  const openAlbum = (p: Pair, theme: A13Theme) => {
+    setActivated(`${p.fixture.id}|${theme}|CTA`);
+    if (!dom) {
+      setActivated(`${p.fixture.id}|${theme}|CTA — Album complet disponible à la fin de la mesure de parité`);
+      return;
+    }
+    window.history.pushState(null, "", `${window.location.pathname}${window.location.search}#album=${encodeURIComponent(`${p.fixture.id}|${theme}`)}`);
+    setAlbumOf({ id: p.fixture.id, theme });
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+
   const scene = (p: Pair, theme: A13Theme) => {
     const run = theme === "light" ? p.light : p.dark;
-    const interactive = run.v2 !== null;
     return (
       <section key={`${p.fixture.id}|${theme}`} className={styles.cell} data-parity-scene={`${p.fixture.id}|${theme}`} data-testid={`dark-${p.fixture.id}-${theme}`}>
         <h2 className={styles.label}>
@@ -304,22 +337,18 @@ export function DarkPilotClient() {
           title={A13_PILOT_TITLE.title}
           subtitle={A13_PILOT_TITLE.subtitle}
           entries={run.entries.map((e, i) => ({ slot: e.slot, layout: e.layout, src: srcFor(e.media), alt: `Souvenir ${i + 1}`, caption: e.caption }))}
-          cta={run.hasCta ? { label: A13_CTA_7PLUS_PILOT_LABELS.fr.text, lang: "fr", onActivate: () => setActivated(`${p.fixture.id}|${theme}|CTA`) } : null}
-          {...(interactive
-            ? {
-                onActivate: (id: string) => {
-                  setActivated(`${p.fixture.id}|${theme}|${id}`);
-                  const e = run.entries.find((x) => x.slot.slotId === id);
-                  const src = e ? srcFor(e.media) : null;
-                  if (e && src)
-                    viewer.open(
-                      { mediaId: `${p.fixture.id}|${id}`, src, alt: `Souvenir ${e.slot.mediaIndex + 1}`, naturalWidth: e.media.width, naturalHeight: e.media.height, caption: p.fixture.captionTexts[e.slot.mediaIndex] ?? null },
-                      theme,
-                      "gallery",
-                    );
-                },
-              }
-            : {})}
+          cta={run.hasCta ? { label: A13_CTA_7PLUS_PILOT_LABELS.fr.text, lang: "fr", onActivate: () => openAlbum(p, theme) } : null}
+          onActivate={(id: string) => {
+            setActivated(`${p.fixture.id}|${theme}|${id}`);
+            const e = run.entries.find((x) => x.slot.slotId === id);
+            const src = e ? srcFor(e.media) : null;
+            if (e && src)
+              viewer.open(
+                { mediaId: `${p.fixture.id}|${id}`, src, alt: `Souvenir ${e.slot.mediaIndex + 1}`, naturalWidth: e.media.width, naturalHeight: e.media.height, caption: p.fixture.captionTexts[e.slot.mediaIndex] ?? null },
+                theme,
+                "gallery",
+              );
+          }}
         />
       </section>
     );
@@ -331,89 +360,101 @@ export function DarkPilotClient() {
   const bgDimOk = !!bg && bg.width === A13_DARK_BACKGROUND.width && bg.height === A13_DARK_BACKGROUND.height;
   const photoOk = !!dom && dom.material.every((m) => m.photos.every((ph) => !ph.processed));
 
+  const albumPair = albumOf ? pairs.find((p) => p.fixture.id === albumOf.id) : null;
+
   return (
     <main className={styles.page}>
       {light.probe}
       {dark.probe}
-      <header className={styles.head}>
-        <h1 className={styles.h1}>A13 · Desktop Dark · pilote runtime V1.1 — parité Light/Dark ({fixtures.length} paires)</h1>
-        <div className={styles.controls}>
-          <span data-testid="dark-pipelines">
-            Light {light.font?.fontCheck && light.title?.fontsChecked ? "prêt" : "…"} · Dark {dark.font?.fontCheck && dark.title?.fontsChecked ? "prêt" : "…"}
-          </span>
-          <span data-testid="dark-progress">{dom ? `terminé (${pairs.length})` : done ? `rendu ${pairs.length}…` : `calcul ${pairs.length}…`}</span>
-          <span data-testid="dark-verdict">
-            {dom
-              ? engineOk && domOk
-                ? "BYTE_IDENTICAL_GEOMETRY_SNAPSHOT"
-                : A13_DARK_PARITY_CONTRACT.failure
-              : "…"}
-            {bg ? ` · fond ${bgOk ? "hash OK" : "DARK_BACKGROUND_HASH_MISMATCH_STOP"} · ${bgDimOk ? `${bg.width}×${bg.height}` : "DARK_BACKGROUND_DIMENSION_MISMATCH_STOP"}` : ""}
-            {dom ? ` · photos ${photoOk ? "naturelles" : "DARK_PHOTO_PROCESSING_STOP"}` : ""}
-          </span>
-          <span data-testid="dark-activated">{activated}</span>
-        </div>
-      </header>
-
-      <table className={styles.matrix} data-testid="dark-parity">
-        <thead>
-          <tr>
-            <th>Paire</th>
-            <th>Statut moteur</th>
-            <th>Snapshot moteur L/D</th>
-            <th>Snapshot DOM rendu L/D</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pairs.map((p) => {
-            const d = dom?.pairs.find((x) => x.id === p.fixture.id);
-            return (
-              <tr key={p.fixture.id}>
-                <td>{p.fixture.id}</td>
-                <td>{p.light.status}</td>
-                <td className={p.engineIdentical ? undefined : styles.stop}>{p.engineIdentical ? `identique (${p.bytes} octets)` : `THEME_GEOMETRY_PARITY_STOP ${p.engineDiff}`}</td>
-                <td className={!d || d.identical ? undefined : styles.stop}>{d ? (d.identical ? `identique (${d.bytes} octets)` : `THEME_GEOMETRY_PARITY_STOP ${d.diff}`) : "…"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <div className={styles.grid} ref={gridRef}>
-        {master ? pairs.flatMap((p) => [scene(p, "light"), scene(p, "dark")]) : null}
-      </div>
-
-      {dom ? (
-        <pre hidden data-testid="dark-json">
-          {JSON.stringify({
-            contract: { required: A13_DARK_PARITY_CONTRACT.required, pairs: A13_DARK_PARITY_CONTRACT.minimalPilotMatrix.geometryPairs },
-            pipelines: Object.fromEntries(
-              (["light", "dark"] as const).map((t) => {
-                const p = t === "light" ? light : dark;
-                return [t, { fontFamily: p.font?.fontFamily, fontCheck: p.font?.fontCheck, title: p.title ? { heading: p.title.heading, microcopy: p.title.microcopy, maskBounds: p.title.mask.bounds, fontsChecked: p.title.fontsChecked } : null }];
-              }),
-            ),
-            background: bg,
-            verdict: { engine: engineOk, dom: domOk, background: bgOk && bgDimOk, photos: photoOk },
-            pairs: pairs.map((p) => ({
-              id: p.fixture.id,
-              supplementary: p.fixture.ratioSet === "reference-green",
-              status: p.light.status,
-              engineIdentical: p.engineIdentical,
-              engineDiff: p.engineDiff,
-              engineBytes: p.bytes,
-              engineSha256: engineHashes[p.fixture.id] ?? null,
-              dom: dom.pairs.find((x) => x.id === p.fixture.id) ?? null,
-              domSha256: dom.hashes[p.fixture.id] ?? null,
-              hasCta: p.light.hasCta,
-              captionLines: p.light.entries.map((e) => e.caption?.lines.length ?? 0),
-              captionStatus: p.light.entries.map((e) => e.caption?.status ?? null),
-            })),
-            snapshots: pairs.map((p) => p.snapLight),
-            material: dom.material,
-          })}
-        </pre>
+      {albumOf && albumPair ? (
+        <section data-testid="dark-full-album" data-album-fixture={albumOf.id} data-album-theme={albumOf.theme}>
+          <h2 className={styles.label}>
+            Album complet · {albumOf.id} · {albumOf.theme.toUpperCase()} · {albumPair.fixture.media.length} médias (ordre famille) — ouvert par le CTA Signature 7+
+          </h2>
+          <A13DesktopFullAlbum media={albumMedia(albumPair.fixture)} theme={albumOf.theme} onViewerReport={reportViewer} />
+        </section>
       ) : null}
+      <div hidden={!!albumOf}>
+        <header className={styles.head}>
+          <h1 className={styles.h1}>A13 · Desktop Dark · pilote runtime V1.1 — parité Light/Dark ({fixtures.length} paires)</h1>
+          <div className={styles.controls}>
+            <span data-testid="dark-pipelines">
+              Light {light.font?.fontCheck && light.title?.fontsChecked ? "prêt" : "…"} · Dark {dark.font?.fontCheck && dark.title?.fontsChecked ? "prêt" : "…"}
+            </span>
+            <span data-testid="dark-progress">{dom ? `terminé (${pairs.length})` : done ? `rendu ${pairs.length}…` : `calcul ${pairs.length}…`}</span>
+            <span data-testid="dark-verdict">
+              {dom
+                ? engineOk && domOk
+                  ? "BYTE_IDENTICAL_GEOMETRY_SNAPSHOT"
+                  : A13_DARK_PARITY_CONTRACT.failure
+                : "…"}
+              {bg ? ` · fond ${bgOk ? "hash OK" : "DARK_BACKGROUND_HASH_MISMATCH_STOP"} · ${bgDimOk ? `${bg.width}×${bg.height}` : "DARK_BACKGROUND_DIMENSION_MISMATCH_STOP"}` : ""}
+              {dom ? ` · photos ${photoOk ? "naturelles" : "DARK_PHOTO_PROCESSING_STOP"}` : ""}
+            </span>
+            <span data-testid="dark-activated">{activated}</span>
+          </div>
+        </header>
+
+        <table className={styles.matrix} data-testid="dark-parity">
+          <thead>
+            <tr>
+              <th>Paire</th>
+              <th>Statut moteur</th>
+              <th>Snapshot moteur L/D</th>
+              <th>Snapshot DOM rendu L/D</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pairs.map((p) => {
+              const d = dom?.pairs.find((x) => x.id === p.fixture.id);
+              return (
+                <tr key={p.fixture.id}>
+                  <td>{p.fixture.id}</td>
+                  <td>{p.light.status}</td>
+                  <td className={p.engineIdentical ? undefined : styles.stop}>{p.engineIdentical ? `identique (${p.bytes} octets)` : `THEME_GEOMETRY_PARITY_STOP ${p.engineDiff}`}</td>
+                  <td className={!d || d.identical ? undefined : styles.stop}>{d ? (d.identical ? `identique (${d.bytes} octets)` : `THEME_GEOMETRY_PARITY_STOP ${d.diff}`) : "…"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className={styles.grid} ref={gridRef}>
+          {master ? pairs.flatMap((p) => [scene(p, "light"), scene(p, "dark")]) : null}
+        </div>
+
+        {dom ? (
+          <pre hidden data-testid="dark-json">
+            {JSON.stringify({
+              contract: { required: A13_DARK_PARITY_CONTRACT.required, pairs: A13_DARK_PARITY_CONTRACT.minimalPilotMatrix.geometryPairs },
+              pipelines: Object.fromEntries(
+                (["light", "dark"] as const).map((t) => {
+                  const p = t === "light" ? light : dark;
+                  return [t, { fontFamily: p.font?.fontFamily, fontCheck: p.font?.fontCheck, title: p.title ? { heading: p.title.heading, microcopy: p.title.microcopy, maskBounds: p.title.mask.bounds, fontsChecked: p.title.fontsChecked } : null }];
+                }),
+              ),
+              background: bg,
+              verdict: { engine: engineOk, dom: domOk, background: bgOk && bgDimOk, photos: photoOk },
+              pairs: pairs.map((p) => ({
+                id: p.fixture.id,
+                supplementary: p.fixture.ratioSet === "reference-green",
+                status: p.light.status,
+                engineIdentical: p.engineIdentical,
+                engineDiff: p.engineDiff,
+                engineBytes: p.bytes,
+                engineSha256: engineHashes[p.fixture.id] ?? null,
+                dom: dom.pairs.find((x) => x.id === p.fixture.id) ?? null,
+                domSha256: dom.hashes[p.fixture.id] ?? null,
+                hasCta: p.light.hasCta,
+                captionLines: p.light.entries.map((e) => e.caption?.lines.length ?? 0),
+                captionStatus: p.light.entries.map((e) => e.caption?.status ?? null),
+              })),
+              snapshots: pairs.map((p) => p.snapLight),
+              material: dom.material,
+            })}
+          </pre>
+        ) : null}
+      </div>
       {viewer.node}
     </main>
   );
