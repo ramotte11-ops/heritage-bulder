@@ -5,7 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13PilotScene";
 import { AlbumMemoryTable, type AlbumMemoryTableMedia } from "@/components/memorial/album/AlbumMemoryTable";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
-import { layoutAlbum, albumPrintQa, albumSeamQa, verifyAlbumDeterminism, type AlbumLayout } from "@/lib/memorial/album/album-layout";
+import { layoutAlbum, albumPrintQa, albumSeamQa, albumGeometrySnapshot, verifyAlbumDeterminism, type AlbumLayout } from "@/lib/memorial/album/album-layout";
+import { domGeometrySnapshot, sceneMaterialReport } from "@/lib/memorial/gallery/theme-dom-snapshot";
+import type { AlbumTheme } from "@/config/album-a13-dark-material";
 import { partitionSizes } from "@/lib/memorial/album/album-partition";
 import {
   ALBUM_CAPTION_SETS,
@@ -26,6 +28,17 @@ import styles from "./page.module.css";
  * callback records the resolved `mediaId` (no Viewer is built). Captions are
  * laid out once La Belle Aurore is confirmed; the geometry does not depend
  * on them (the same layout is computed before and after the font).
+ *
+ * Album Desktop Dark V1 (material only): `theme=dark` renders the SAME
+ * layout with the Dark material; `vue=snapshot` publishes the RENDERED
+ * geometry snapshot of the table (`domGeometrySnapshot`, the Gallery Dark
+ * parity instrument) and its material report on `window.__albumSnapshot`.
+ * The QA loads the Light and the Dark page of the same media separately
+ * (same page position — no sub-pixel offset between the two tables) and
+ * compares the two snapshots → `GEOMETRY DIVERGENCE LIGHT/DARK: NONE` or
+ * `THEME_GEOMETRY_PARITY_STOP` with the first differing path.
+ * `negatif=transform|padding|filter` injects a deliberate Dark leak
+ * (negative control, QA only).
  */
 
 declare global {
@@ -34,6 +47,13 @@ declare global {
       summary: unknown;
       activations: { mediaId: string; mediaIndex: number }[];
       fontReady: boolean;
+    };
+    __albumSnapshot?: {
+      theme: AlbumTheme;
+      geometry: unknown;
+      engine: string;
+      photosProcessed: number;
+      negative: string | null;
     };
   }
 }
@@ -113,6 +133,10 @@ export function AlbumPilotClient() {
   const board = q.get("planche") === "1";
   // Pilot only: one distinct URL per print, so network requests prove lazy loading.
   const unique = q.get("unique") === "1";
+  const theme: AlbumTheme = q.get("theme") === "dark" ? "dark" : "light";
+  const snapshotView = q.get("vue") === "snapshot";
+  const negative = ["transform", "padding", "filter"].includes(q.get("negatif") ?? "") ? (q.get("negatif") as string) : null;
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const root = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(root);
@@ -168,8 +192,38 @@ export function AlbumPilotClient() {
     return `?${s.toString()}`;
   };
 
+  // Snapshot view: publish the RENDERED geometry of this table once the
+  // caption font is confirmed and every photo is decoded.
+  useEffect(() => {
+    if (!snapshotView || !font || layout.status === "ALBUM_ABSENT") return;
+    let alive = true;
+    const t = window.setTimeout(async () => {
+      const scene = tableRef.current?.querySelector<HTMLElement>("[data-testid=album-memory-table]");
+      if (!scene) return;
+      await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+      if (!alive) return;
+      window.scrollTo(0, 0);
+      window.__albumSnapshot = {
+        theme,
+        // Hit tests run per theme in the browser QA, not in this snapshot.
+        geometry: domGeometrySnapshot(scene, Number.MAX_SAFE_INTEGER),
+        engine: albumGeometrySnapshot(layout),
+        photosProcessed: sceneMaterialReport(scene).photos.filter((p) => p.processed).length,
+        negative,
+      };
+    }, 300);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [snapshotView, font, layout, negative, theme]);
+
   return (
-    <div ref={root} className={`${styles.page} ${board ? styles.board : ""}`}>
+    <div ref={root} className={`${styles.page} ${board ? (theme === "dark" ? styles.boardDark : styles.board) : ""}`}>
+      {negative ? (
+        // QA negative control ONLY: a deliberate Dark leak the parity check must catch.
+        <style>{negative === "transform" ? `[data-a13-theme="dark"] [data-print]{transform:translateY(2px)}` : negative === "padding" ? `[data-a13-theme="dark"] [data-print]{padding:3px}` : `[data-a13-theme="dark"] [data-print] img{filter:saturate(0.8)}`}</style>
+      ) : null}
       <A13CaptionFontProbe />
       {board ? null : (
         <div className={styles.panel}>
@@ -270,7 +324,11 @@ export function AlbumPilotClient() {
           </table>
         </div>
       )}
-      {layout.status === "ALBUM_ABSENT" ? null : <AlbumMemoryTable layout={layout} media={tableMedia} onActivate={onActivate} qa={qa} />}
+      {layout.status === "ALBUM_ABSENT" ? null : (
+        <div ref={tableRef}>
+          <AlbumMemoryTable layout={layout} media={tableMedia} onActivate={onActivate} qa={qa} theme={theme} />
+        </div>
+      )}
       {board ? null : (
         <div className={styles.panel}>
           <pre className={styles.pre} data-testid="album-summary-json">

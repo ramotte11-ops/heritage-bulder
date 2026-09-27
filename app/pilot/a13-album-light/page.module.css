@@ -10,6 +10,10 @@
   background: #f4e4cf;
 }
 
+.boardDark {
+  background: #27160a;
+}
+
 .panel {
   max-width: 1670px;
   margin: 0 auto;

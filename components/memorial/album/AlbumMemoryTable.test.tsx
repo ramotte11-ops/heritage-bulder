@@ -93,4 +93,30 @@ describe("A13 Album — memory table render contracts", () => {
     expect(img.hasAttribute("decoding")).toBe(false);
     expect(img.getAttributeNames().sort()).toEqual(["alt", "class", "draggable", "src", "style"]);
   });
+  it("Dark renders the SAME geometry DOM as Light (material only) and never processes a photo", () => {
+    const fx = albumFixture(20, "natural-mix", "mixed");
+    const layout = layoutAlbum(fx.map(({ mediaId, width, height, caption }) => ({ mediaId, width, height, caption })), fake);
+    const media = fx.map((m, i) => ({ mediaId: m.mediaId, src: `/p${i}.jpg`, alt: `Photo ${i + 1}` }));
+    const geometry = (root: HTMLElement) =>
+      [...root.querySelectorAll<HTMLElement>("[data-slot-id]")].map((slot) => {
+        const clean = (el: Element) => [...(el as HTMLElement).style].filter((p) => !p.startsWith("--a13-dark-")).map((p) => `${p}:${(el as HTMLElement).style.getPropertyValue(p)}`).join(";");
+        return [slot.dataset.slotId, slot.dataset.mediaIndex, clean(slot), ...[...slot.querySelectorAll("*")].map((e) => `${e.tagName}|${clean(e)}|${e.getAttribute("role") ?? ""}|${e.getAttribute("aria-label") ?? ""}|${e.getAttribute("tabindex") ?? ""}`)].join("\n");
+      });
+    const light = render(<AlbumMemoryTable layout={layout} media={media} theme="light" />).container;
+    const lightGeometry = geometry(light);
+    const lightRoot = light.querySelector("[data-testid=album-memory-table]")!;
+    expect(lightRoot.hasAttribute("data-a13-theme")).toBe(false);
+    expect(lightRoot.getAttribute("style")).toBeNull();
+    cleanup();
+    const dark = render(<AlbumMemoryTable layout={layout} media={media} theme="dark" />).container;
+    const darkRoot = dark.querySelector<HTMLElement>("[data-testid=album-memory-table]")!;
+    expect(darkRoot.getAttribute("data-a13-theme")).toBe("dark");
+    expect(darkRoot.style.getPropertyValue("--a13-dark-album-top")).toContain("a13-album-desktop-dark-top-photo-free-v1.png");
+    expect(geometry(dark)).toEqual(lightGeometry);
+    for (const img of dark.querySelectorAll("img")) {
+      expect(img.style.filter).toBe("");
+      expect(img.style.opacity).toBe("");
+      expect(img.style.mixBlendMode).toBe("");
+    }
+  });
 });

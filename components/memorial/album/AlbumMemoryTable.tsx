@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { AlbumLayout } from "@/lib/memorial/album/album-layout";
 import { A13_ALBUM_CANVAS, A13_ALBUM_TOP_ZONE } from "@/config/album-a13-grammars";
+import { A13_ALBUM_DARK_BACKGROUNDS, type AlbumTheme } from "@/config/album-a13-dark-material";
 import { laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "@/components/memorial/gallery/DynamicPolaroid";
 import styles from "./AlbumMemoryTable.module.css";
@@ -29,7 +30,15 @@ import styles from "./AlbumMemoryTable.module.css";
  *   free by the first group. BODY: the Light table material (colour
  *   sampled on the Master + a quiet non-directional microtexture), one
  *   layer for the whole height, no repeated decor;
- * - Light only (this mission). The geometry has no theme input.
+ * - The geometry has no theme input (Light V1.2 is the geometry authority).
+ * - Theme (Album Desktop Dark V1): MATERIAL ONLY, applied after the layout.
+ *   Dark marks the root `data-a13-theme="dark"` (the key of the Dark rules
+ *   of this sheet and of `DynamicPolaroid`) and passes `theme="dark"` to the
+ *   same `DynamicPolaroid` (slot-seeded paper, grain, sheen, visual
+ *   shadows, caption ink, focus colour). The body layer paints the Studio
+ *   TOP once, then the BODY repeated downward. The layout, the DOM order,
+ *   every box, transform and z-index are the Light ones; Light renders
+ *   exactly as before (no attribute, no theme prop).
  * - V1.1 §5: paint order = (depositEpoch, localZRank, mediaIndex), carried
  *   by each slot's z-index; no group clipping, no `overflow: hidden`, no
  *   group isolation — an incoming group is painted over the table.
@@ -50,11 +59,13 @@ export interface AlbumMemoryTableProps {
   eagerGroups?: number;
   qa?: boolean;
   label?: string;
+  /** Material theme (default Light). Never an input of the geometry. */
+  theme?: AlbumTheme;
 }
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 
-export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, label = "Album de souvenirs" }: AlbumMemoryTableProps) {
+export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, label = "Album de souvenirs", theme = "light" }: AlbumMemoryTableProps) {
   const n = layout.prints.length;
   return (
     <section
@@ -64,6 +75,16 @@ export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, q
       data-album-count={layout.count}
       data-album-groups={layout.groups.length}
       data-album-status={layout.status}
+      {...(theme === "dark"
+        ? {
+            "data-a13-theme": "dark",
+            // Material only: the Studio backgrounds, painted by the Dark rule of `.body`.
+            style: {
+              "--a13-dark-album-top": `url("${A13_ALBUM_DARK_BACKGROUNDS.top.src}")`,
+              "--a13-dark-album-body": `url("${A13_ALBUM_DARK_BACKGROUNDS.body.src}")`,
+            } as CSSProperties,
+          }
+        : {})}
     >
       <div className={styles.canvas} style={{ height: k(layout.height) } as CSSProperties} data-album-height={layout.height.toFixed(2)}>
         <div className={styles.body} aria-hidden="true" />
@@ -92,6 +113,7 @@ export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, q
                     caption={p.caption}
                     qa={qa}
                     imageLoading={g.index < eagerGroups ? "eager" : "lazy"}
+                    {...(theme === "dark" ? { theme: "dark" as const } : {})}
                     {...(onActivate ? { onActivate: () => onActivate(p.mediaId, p.mediaIndex), activateLabel: name } : {})}
                   />
                 );

@@ -105,3 +105,26 @@
   text-anchor: middle;
   dominant-baseline: middle;
 }
+
+/*
+ * A13 Album Desktop DARK V1 — MATERIAL ONLY (keyed on the root
+ * `data-a13-theme="dark"`). The Studio TOP (1670 × 941, photo-free) is
+ * painted ONCE at the top of the canvas; the Studio BODY (1670 × 941,
+ * silent, vertically seamless: its first and last rows are identical, and
+ * the TOP's last row equals its first row) repeats downward from y = 941
+ * for the whole Album height. Painted inside this layer's own box: nothing
+ * overflows, nothing is clipped, no size is read by the layout. Fallback
+ * colour = BODY mean rgb(39, 22, 10). The prints' Dark material lives in
+ * `DynamicPolaroid.module.css` (same keys).
+ */
+[data-a13-theme="dark"] .body {
+  background-color: #27160a;
+  background-image: var(--a13-dark-album-top), var(--a13-dark-album-body);
+  background-repeat: no-repeat, repeat-y;
+  background-size:
+    calc(1670 * var(--k)) calc(941 * var(--k)),
+    calc(1670 * var(--k)) calc(941 * var(--k));
+  background-position:
+    0 0,
+    0 calc(941 * var(--k));
+}
