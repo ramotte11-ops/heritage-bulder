@@ -133,6 +133,8 @@ export class SupabaseMediaRepository implements MediaRepository {
     mediaId: string;
     mimeType: string;
     sizeBytes: number;
+    width: number | null;
+    height: number | null;
   }): Promise<Media | null> {
     const { data, error } = await this.client
       .from("media")
@@ -144,6 +146,11 @@ export class SupabaseMediaRepository implements MediaRepository {
         // measured rather than claimed.
         mime_type: input.mimeType,
         size_bytes: input.sizeBytes,
+        // Dette D1: MEASURED from the stored bytes, never declared by the
+        // client (lib/media/image-dimensions.ts). The columns' own
+        // `> 0` CHECKs are the database's second lock.
+        width: input.width,
+        height: input.height,
       })
       .eq("id", input.mediaId)
       // Scoped to the memorial the caller proved it owns. Without this

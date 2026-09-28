@@ -13,10 +13,10 @@ import {
   isPathWithinMemorial,
 } from "./media-path";
 import {
-  IMAGE_SIGNATURE_BYTES,
   detectImageMimeType,
   isAllowedImageMimeType,
 } from "./image-signature";
+import { IMAGE_HEADER_BYTES, readImageDimensions } from "./image-dimensions";
 import type { MediaEngineDeps } from "./media-engine";
 
 /**
@@ -166,11 +166,24 @@ export async function reserveMediaUpload(
  * Idempotent: finalizing an already-finalized media returns it
  * unchanged. Retrying after a lost response is a normal thing for a
  * browser on a bad connection to do, and it must not be punished.
+ *
+ * Dette D1 — natural dimensions. The same header read also measures
+ * `width`/`height` from the stored bytes (lib/media/image-dimensions.ts),
+ * never from anything the client sent. A Gallery media MUST have them
+ * (the A13 Gallery lays photographs out at their natural ratio): one
+ * whose dimensions cannot be established is refused like any other
+ * unusable file. Any other purpose keeps its pre-D1 behaviour — the
+ * dimensions are recorded when readable and left `null` otherwise, so a
+ * Hero upload is never refused over them.
+ *
+ * `expectedPurpose` lets a purpose-bound caller (the Gallery actions)
+ * refuse to finalize a media reserved for something else — answered as
+ * `access_denied`, like every "not yours to touch" case.
  */
 export async function finalizeMediaUpload(
   deps: MediaEngineDeps,
   actor: HeritageActor,
-  input: { memorialId: string; mediaId: string },
+  input: { memorialId: string; mediaId: string; expectedPurpose?: MediaPurpose },
 ): Promise<MediaResult<Media>> {
   const access = await authorizeMemorialAccess(deps, actor, input.memorialId);
   if (access.status !== "granted") {
@@ -192,6 +205,10 @@ export async function finalizeMediaUpload(
   // Collapsed into `access_denied` so this cannot be used to probe
   // whether a media id is real somewhere else.
   if (media === null) {
+    return mediaFailure("access_denied");
+  }
+
+  if (input.expectedPurpose !== undefined && media.purpose !== input.expectedPurpose) {
     return mediaFailure("access_denied");
   }
 
@@ -232,9 +249,12 @@ export async function finalizeMediaUpload(
 
   let head: Uint8Array | null;
   try {
+    // One ranged read serves both checks: the signature needs its first
+    // bytes, the dimensions need the header (IMAGE_HEADER_BYTES at most,
+    // never the whole photograph).
     head = await deps.objectStore.readObjectHead({
       path: media.storagePath,
-      byteCount: IMAGE_SIGNATURE_BYTES,
+      byteCount: IMAGE_HEADER_BYTES,
     });
   } catch {
     return mediaFailure("storage_unavailable");
@@ -267,6 +287,15 @@ export async function finalizeMediaUpload(
     return mediaFailure("invalid_file");
   }
 
+  // Dette D1 — measured, never declared. Required for a Gallery media
+  // (natural-ratio layout); best effort for any other purpose, whose
+  // pre-D1 behaviour is kept.
+  const dimensions = readImageDimensions(head, actualMimeType);
+  if (dimensions === null && media.purpose === "gallery") {
+    await discardUnusableUpload(deps, media);
+    return mediaFailure("invalid_file");
+  }
+
   let ready: Media | null;
   try {
     // Conditional on the row still being `pending` — see
@@ -278,6 +307,8 @@ export async function finalizeMediaUpload(
       mediaId: input.mediaId,
       mimeType: actualMimeType,
       sizeBytes: stat.sizeBytes,
+      width: dimensions?.width ?? null,
+      height: dimensions?.height ?? null,
     });
   } catch {
     return mediaFailure("storage_unavailable");
