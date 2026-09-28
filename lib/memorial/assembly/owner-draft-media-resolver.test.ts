@@ -46,16 +46,36 @@ async function upload(
 }
 
 describe("createOwnerDraftMediaResolver", () => {
-  it("resolves the Owner's own ready Hero media to { mediaId, readUrl } — nothing else", async () => {
+  it("resolves the Owner's own ready Hero media to { mediaId, readUrl, width, height } — never an internal column", async () => {
     const engine = createTestEngine();
     const mediaId = await upload(engine);
     const resolve = createOwnerDraftMediaResolver(engine, ownerActor(OWNER_A), MEMORIAL_A);
 
     const resolved = await resolve({ mediaId, purpose: "hero" });
     expect(resolved).not.toBeNull();
-    expect(Object.keys(resolved ?? {}).sort()).toEqual(["mediaId", "readUrl"]);
+    expect(Object.keys(resolved ?? {}).sort()).toEqual(["height", "mediaId", "readUrl", "width"]);
+    // No internal column crosses: the only locator is the short-lived signed URL itself.
+    expect(Object.keys(resolved ?? {})).not.toContain("storagePath");
+    expect(Object.keys(resolved ?? {})).not.toContain("ownerId");
     expect(resolved?.mediaId).toBe(mediaId);
     expect(resolved?.readUrl).toContain("signed");
+  });
+
+  it("dettes D2–D4: resolves a ready Gallery media with its MEASURED natural dimensions", async () => {
+    const engine = createTestEngine();
+    const mediaId = await upload(engine, { purpose: "gallery" });
+    const resolve = createOwnerDraftMediaResolver(engine, ownerActor(OWNER_A), MEMORIAL_A);
+    const resolved = await resolve({ mediaId, purpose: "gallery" });
+    expect(resolved).toMatchObject({ mediaId, width: 1200, height: 1600 });
+    expect(resolved?.readUrl).toContain("signed");
+    expect(resolved?.readUrl).toContain("expires=300");
+  });
+
+  it("refuses a Hero media asked for as a Gallery one, and the reverse", async () => {
+    const engine = createTestEngine();
+    const hero = await upload(engine, { purpose: "hero" });
+    const resolve = createOwnerDraftMediaResolver(engine, ownerActor(OWNER_A), MEMORIAL_A);
+    expect(await resolve({ mediaId: hero, purpose: "gallery" })).toBeNull();
   });
 
   it("refuses a media of another purpose (the check createMediaReadUrl does not make)", async () => {

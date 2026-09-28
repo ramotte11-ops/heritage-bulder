@@ -1,4 +1,5 @@
 import { A13_DESKTOP_CAPTION } from "@/config/gallery-a13-desktop-manifest";
+import { selectGalleryState } from "@/config/gallery-a13-multi-state-manifests";
 import { isMediaIdentifier } from "@/lib/media/media-path";
 import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_GALLERY_CONTENT, type GalleryContent, type GalleryItem } from "@/types/gallery";
@@ -165,4 +166,17 @@ export function reorderGallery(gallery: GalleryContent, orderedMediaIds: readonl
 export function setGalleryCaption(gallery: GalleryContent, mediaId: string, caption: string | null): GalleryEditResult {
   if (!gallery.items.some((item) => item.mediaId === mediaId)) return { ok: false, reason: "unknownMediaId" };
   return parseGalleryContent({ items: gallery.items.map((item) => (item.mediaId === mediaId ? { mediaId, caption } : item)) });
+}
+
+/**
+ * Dettes D2–D4 — does the draft give the Gallery real matter? True when
+ * `content.gallery` is valid and its photograph count selects a Gallery
+ * state — the A13 runtime's own rule (`selectGalleryState`: 0–1 → none,
+ * 2…6 → G2…G6, 7+ → Signature), read, never re-implemented. Content
+ * only: which of those media are actually usable is decided at assembly,
+ * where they are resolved. `enabled_sections` plays no part.
+ */
+export function hasGalleryMatter(content: MemorialContent): boolean {
+  const read = inspectGallery(content);
+  return read.status === "valid" && selectGalleryState(read.gallery.items.length) !== null;
 }

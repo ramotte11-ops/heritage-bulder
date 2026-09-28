@@ -5,6 +5,7 @@ import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
 import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import { CeremonyIntemporel } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
+import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntemporel";
 
 /**
  * Étape 2 — Assembleur du Memorial: the renderer key → real component
@@ -18,4 +19,5 @@ export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<R
   DeathNoticeIntemporel,
   CeremonyIntemporel,
   RecitDeVieIntemporel,
+  GalleryIntemporel,
 };

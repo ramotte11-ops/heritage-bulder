@@ -16,6 +16,7 @@ import { inspectPersonWords } from "@/lib/memorial/person-words";
 import { inspectLovedThings } from "@/lib/memorial/loved-things";
 import { inspectLegacy } from "@/lib/memorial/legacy";
 import { readHero } from "@/lib/memorial/hero";
+import { hasGalleryMatter } from "@/lib/memorial/gallery-content";
 import { isPageEComplete, resolveHeroFlowState } from "@/lib/builder/guided-flow/hero-step";
 import { isA03Complete } from "@/lib/builder/guided-flow/death-notice-step";
 import {
@@ -145,6 +146,8 @@ type ReadinessRule = (content: MemorialContent) => boolean;
  * - story: the A10–A12 sheet resolved (QG decision above).
  * - traditions: A09 resolved — it will surface as `noRenderer` until a
  *   renderer exists.
+ * - gallery (dettes D2–D4): a valid `content.gallery` whose photograph
+ *   count selects an A13 Gallery state (2+ photographs) — `hasGalleryMatter`.
  */
 export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule>>> = {
   hero: isPageEComplete,
@@ -158,6 +161,7 @@ export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule
     !needsA08(content),
   story: isPersonSheetResolved,
   traditions: isA09Resolved,
+  gallery: hasGalleryMatter,
 };
 
 function hasText(value: string | null): boolean {
@@ -175,6 +179,8 @@ function hasText(value: string | null): boolean {
  *   wrote at least one of them or the sheet has been resolved (QG
  *   decision: a resolved, entirely empty sheet is still the Récit's
  *   matter — rendered with HERITAGE fallbacks).
+ * - gallery: a valid `content.gallery` with enough photographs for an A13
+ *   Gallery state (`hasGalleryMatter`) — never `enabled_sections`.
  * - ceremony is not listed: A04 decides it inside section-selection,
  *   before this signal is ever consulted. hero is structural.
  */
@@ -199,6 +205,9 @@ export function resolveExplicitContentSectionIds(content: MemorialContent): Sect
       hasText(personWords.personWords.text) || hasText(lovedThings.lovedThings.text) || hasText(legacy.legacy.text);
     if (familyWrote || isPersonSheetResolved(content)) ids.push("story");
   }
+
+  // Dettes D2–D4: photographs the family added, enough for a Gallery state.
+  if (hasGalleryMatter(content)) ids.push("gallery");
 
   return ids;
 }
