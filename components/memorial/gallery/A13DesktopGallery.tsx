@@ -26,6 +26,13 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
  * scene once the fonts are loaded, exactly as the GREEN pilots do; until
  * then the scene's box is reserved (hidden, inert), so the section never
  * shifts the page when the prints arrive (CLS 0).
+ *
+ * STOP policy (dette D7): the run's `outcome` is exposed (`onRun`,
+ * `data-gallery-outcome` = absent | resolved | unresolved). When the V2
+ * runtime cannot resolve G2–G5, NO Gallery is rendered — no empty scene,
+ * no other engine — and the anomaly is logged once (`console.error`, the
+ * repo's convention); nothing technical reaches the visitor. A visible
+ * replacement, if any, is the product host's decision, not this section's.
  */
 
 /** The scene's material theme (kept off the Dark token module: only the rendering layer reads it). */
@@ -64,12 +71,22 @@ export function A13DesktopGallery({ media, theme, title, subtitle, ctaLabel, onS
   }, [font]);
 
   const run = useMemo(() => (font && titleMask ? runDesktopGallery(media, (m) => m.caption, font.measurer, titleMask.mask) : null), [media, font, titleMask]);
+  // One log per distinct anomaly (a re-render or a recomputation never duplicates it).
+  const logged = useRef<string | null>(null);
   useEffect(() => {
-    if (run) onRun?.(run);
+    if (!run) return;
+    if (run.outcome === "unresolved") {
+      const key = `${run.stateId}|${run.mediaCount}|${run.anomaly?.code}|${run.anomaly?.detail}`;
+      if (logged.current !== key) {
+        logged.current = key;
+        console.error("Gallery Desktop: composition unresolved (no Gallery rendered):", run.stateId, run.anomaly?.code, run.anomaly?.rule, run.anomaly?.detail);
+      }
+    } else logged.current = null;
+    onRun?.(run);
   }, [run, onRun]);
 
   return (
-    <div ref={rootRef} data-testid="a13-desktop-gallery" data-gallery-state={run?.stateId ?? (run ? "absent" : "pending")} data-gallery-status={run?.status ?? "pending"}>
+    <div ref={rootRef} data-testid="a13-desktop-gallery" data-gallery-state={run?.stateId ?? (run ? "absent" : "pending")} data-gallery-outcome={run?.outcome ?? "pending"} data-gallery-status={run?.status ?? "pending"}>
       <A13CaptionFontProbe />
       {/* Title glyph mask source: the same scene, empty, at scale 1 (1670 px), off-screen. */}
       <div ref={titleRef} style={{ position: "absolute", width: 1670, left: -20000, top: 0 }} aria-hidden="true" inert>
@@ -81,7 +98,7 @@ export function A13DesktopGallery({ media, theme, title, subtitle, ctaLabel, onS
           <A13PilotScene stateId="pending" theme={theme} title={title} subtitle={subtitle} entries={[]} />
         </div>
       ) : null}
-      {run && run.stateId ? (
+      {run?.outcome === "resolved" && run.stateId ? (
         <A13PilotScene
           stateId={run.stateId}
           theme={theme}

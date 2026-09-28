@@ -42,7 +42,9 @@ declare global {
       mediaIds: string[];
       gallery: null | {
         stateId: string | null;
+        outcome: "absent" | "resolved" | "unresolved";
         status: string;
+        anomaly: { code: string; rule: string; detail: string } | null;
         hasCta: boolean;
         ctaLabel: { text: string; status: string; lang: Language };
         visible: { slotId: string; mediaId: string; mediaIndex: number; src: string; caption: string | null }[];
@@ -85,7 +87,9 @@ export function DesktopFlowClient() {
         gallery: r
           ? {
               stateId: r.stateId,
+              outcome: r.outcome,
               status: r.status,
+              anomaly: r.anomaly,
               hasCta: r.hasCta,
               ctaLabel: { text: cta.text, status: cta.status, lang },
               visible: r.entries.map((e) => ({ slotId: e.slot.slotId, mediaId: e.media.mediaId, mediaIndex: e.mediaIndex, src: e.media.src, caption: e.media.caption })),
@@ -155,7 +159,9 @@ export function DesktopFlowClient() {
               {view === "album"
                 ? `album complet · ${n} médias (ordre famille)`
                 : run
-                  ? run.stateId
+                  ? run.outcome === "unresolved"
+                    ? `${n} médias → ${run.stateId} · NON RÉSOLU (${run.status}) · aucune Galerie`
+                    : run.stateId
                     ? `${n} médias → ${run.stateId} · ${run.entries.length} tirages interactifs · ${run.hasCta ? "CTA" : "sans CTA"} · ${run.status}`
                     : `${n} média(s) → Galerie absente`
                   : "…"}
@@ -168,6 +174,11 @@ export function DesktopFlowClient() {
         <A13DesktopFullAlbum media={media} theme={theme} onViewerReport={onViewerReport} />
       ) : (
         <>
+          {run?.outcome === "unresolved" ? (
+            <p className={styles.panel} data-testid="gallery-unresolved">
+              Diagnostic pilote (non produit) — composition {run.stateId} non résolue par le runtime V2 : {run.anomaly?.code} ({run.anomaly?.rule}). Aucune Galerie rendue, aucun autre moteur.
+            </p>
+          ) : null}
           {run && !run.stateId ? (
             <p className={styles.panel} data-testid="gallery-absent">
               Galerie absente ({n} média{n === 1 ? "" : "s"}) — contrat produit : 0–1 média, aucune Galerie.
