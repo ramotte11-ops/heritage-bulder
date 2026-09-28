@@ -223,6 +223,7 @@ export function V2PilotClient() {
         entries={entries}
         qa={qa}
         qaTitleMaskRects={qa ? maskOverlay : []}
+        language="fr"
         {...(interactive ? { onActivate: (id: string) => setActivated(`${key}|${id}`) } : {})}
       />
     </section>

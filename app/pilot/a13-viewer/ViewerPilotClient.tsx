@@ -171,7 +171,7 @@ export function ViewerPilotClient() {
             type="button"
             data-viewer-trigger=""
             aria-label={`Ouvrir le souvenir — ${caption ?? media.alt}`}
-            onClick={() => viewer.open(media, theme, "gallery")}
+            onClick={() => viewer.open(media, theme, "gallery", "fr")}
             style={{ padding: 0, border: 0, background: "none", cursor: "pointer" }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}

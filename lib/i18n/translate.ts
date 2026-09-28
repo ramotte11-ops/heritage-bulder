@@ -116,3 +116,28 @@ function resolveMissingKey(key: string): string {
   }
   return key;
 }
+
+/**
+ * `translate()` for a text carrying `{name}` placeholders (dette D5 — the
+ * first keys that need one: "memory.position", "viewer.dialogLabel").
+ * Each `{name}` is replaced by `params[name]`, inserted AS IS: a param is
+ * a number or a piece of family content (a caption, an alt text), never
+ * translated here. Same failure policy as a missing key: a missing param
+ * or a placeholder left unresolved throws in development/test and, in
+ * production, leaves the placeholder untouched rather than crash.
+ */
+export function translateWith(
+  language: string,
+  key: TranslationKey,
+  params: Readonly<Record<string, string | number>>,
+  dictionaries: Record<Language, Dictionary> = DICTIONARIES,
+): string {
+  const text = translate(language, key, dictionaries);
+  return text.replace(/\{(\w+)\}/g, (placeholder, name: string) => {
+    if (Object.hasOwn(params, name)) return String(params[name]);
+    if (process.env.NODE_ENV !== "production") {
+      throw new Error(`i18n: translation key "${key}" expects the parameter "${name}", which the call site did not provide.`);
+    }
+    return placeholder;
+  });
+}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { selectGalleryState } from "@/config/gallery-a13-multi-state-manifests";
 import type { Language } from "@/config/languages";
+import { translate } from "@/lib/i18n/translate";
 import { measureTitleGlyphMask, type TitleGlyphMeasure } from "@/lib/memorial/gallery/title-glyph-mask";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { runDesktopGallery, type A13FamilyMedia, type DesktopGalleryRun } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -43,8 +44,12 @@ export interface A13DesktopGalleryProps {
   theme: GalleryTheme;
   title: string;
   subtitle: string;
-  /** CTA label resolved by the host (i18n authority lives outside A13). */
-  ctaLabel: { text: string; lang: Language };
+  /**
+   * Language of the product text: CTA, print and Viewer accessible names
+   * (i18n authority `lib/i18n`, dette D5). The title, subtitle, captions
+   * and alt texts are received as is and never translated here.
+   */
+  language: Language;
   /** Signature 7+ CTA action: open the Full Album of these media. */
   onSeeMore: () => void;
   onViewerReport?: (report: ViewerReport) => void;
@@ -52,7 +57,7 @@ export interface A13DesktopGalleryProps {
   onRun?: (run: DesktopGalleryRun<A13FamilyMedia>) => void;
 }
 
-export function A13DesktopGallery({ media, theme, title, subtitle, ctaLabel, onSeeMore, onViewerReport, onRun }: A13DesktopGalleryProps) {
+export function A13DesktopGallery({ media, theme, title, subtitle, language, onSeeMore, onViewerReport, onRun }: A13DesktopGalleryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
@@ -105,12 +110,13 @@ export function A13DesktopGallery({ media, theme, title, subtitle, ctaLabel, onS
           title={title}
           subtitle={subtitle}
           entries={run.entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption }))}
-          cta={run.hasCta ? { label: ctaLabel.text, lang: ctaLabel.lang, onActivate: onSeeMore } : null}
+          cta={run.hasCta ? { label: translate(language, "gallery.seeMoreMemories"), lang: language, onActivate: onSeeMore } : null}
+          language={language}
           onActivate={(slotId) => {
             const e = run.entries.find((x) => x.slot.slotId === slotId);
             if (!e) return;
             const m = e.media;
-            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "gallery");
+            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "gallery", language);
           }}
         />
       ) : null}

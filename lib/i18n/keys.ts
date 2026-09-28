@@ -382,6 +382,20 @@ export const TRANSLATION_KEYS = [
   "flowPause.title",
   "flowPause.body",
   "flowPause.backToSpace",
+  // A13 Desktop (dette D5) — the HERITAGE product text of the Gallery,
+  // the Full Album and the Viewer. Family content (captions, alt texts,
+  // the deceased's name) is never a key. `memory.position` takes
+  // `{index}`/`{total}` and `viewer.dialogLabel` takes `{subject}`
+  // (a family caption or alt text, inserted untranslated) — resolved with
+  // `translateWith`. Titles/subtitles of the Gallery are NOT keys (QG, D5):
+  // they stay props provided by the host, untranslated — their product
+  // authority belongs to D2 (host integration); they drive the G2–G5
+  // title-glyph authority.
+  "gallery.seeMoreMemories",
+  "memory.position",
+  "album.label",
+  "viewer.close",
+  "viewer.dialogLabel",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

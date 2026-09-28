@@ -1,5 +1,4 @@
 import { A13_PILOT_SLOTS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
-import type { Language } from "@/config/languages";
 
 /**
  * A13 — Dynamic Polaroid — Desktop Light — MULTI-STATE manifests V1.
@@ -86,17 +85,3 @@ export const A13_CTA_7PLUS = {
   minimumHitAreaCssPx: { width: 44, height: 44 },
   focus: { widthPx: 2, offsetPx: 4 },
 } as const satisfies { state: A13GalleryStateId } & Record<string, unknown>;
-
-/**
- * CTA labels for the PILOT only — deliberately NOT in the product i18n
- * dictionaries. Package report: "Son texte témoin ne devient pas contenu
- * produit" and "Les libellés CTA définitifs EN/ES ne sont pas encore
- * fournis". FR is the package's witness text; EN/ES are pilot candidates
- * awaiting QG/translation validation. Each is measured at runtime against
- * `maxRenderedWidthPx` (overflow ⇒ QG STOP, never ellipsis/auto-shrink).
- */
-export const A13_CTA_7PLUS_PILOT_LABELS: Record<Language, { text: string; status: "witness" | "pilot-candidate" }> = {
-  fr: { text: "Voir plus de souvenirs", status: "witness" },
-  en: { text: "See more memories", status: "pilot-candidate" },
-  es: { text: "Ver más recuerdos", status: "pilot-candidate" },
-};

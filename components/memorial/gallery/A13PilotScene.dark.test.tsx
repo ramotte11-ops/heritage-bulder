@@ -55,6 +55,7 @@ function scene(theme: "light" | "dark" | undefined, interactive: boolean, cta: b
       stateId={cta ? "G6_SIGNATURE_7PLUS" : "G6"}
       {...(theme ? { theme } : {})}
       cta={cta ? { label: "Voir plus de souvenirs", lang: "fr" } : null}
+      language="fr"
       {...(interactive ? { onActivate: () => {} } : {})}
     />
   );

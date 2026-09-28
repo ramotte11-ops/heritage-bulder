@@ -197,7 +197,7 @@ export function AlbumPilotClient() {
     window.__albumPilot?.activations.push({ mediaId, mediaIndex });
     const m = media[mediaIndex];
     const natural = m.cropToRatio ? { w: 1400, h: Math.round(1400 / m.cropToRatio) } : { w: m.width, h: m.height };
-    viewer.open({ mediaId, src: tableMedia[mediaIndex].src, alt: tableMedia[mediaIndex].alt, naturalWidth: natural.w, naturalHeight: natural.h, caption: m.caption }, theme, "album");
+    viewer.open({ mediaId, src: tableMedia[mediaIndex].src, alt: tableMedia[mediaIndex].alt, naturalWidth: natural.w, naturalHeight: natural.h, caption: m.caption }, theme, "album", "fr");
   };
 
   const href = (p: Record<string, string | number>) => {
@@ -339,7 +339,7 @@ export function AlbumPilotClient() {
       )}
       {layout.status === "ALBUM_ABSENT" ? null : (
         <div ref={tableRef}>
-          <AlbumMemoryTable layout={layout} media={tableMedia} onActivate={onActivate} qa={qa} theme={theme} />
+          <AlbumMemoryTable layout={layout} media={tableMedia} onActivate={onActivate} qa={qa} theme={theme} language="fr" />
         </div>
       )}
       {board ? null : (

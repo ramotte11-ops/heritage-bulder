@@ -187,4 +187,10 @@ export const en: Record<TranslationKey, string> = {
   "flowPause.body":
     "You have completed every step available for now. You can come back at any time from your space and pick up exactly where you left off.",
   "flowPause.backToSpace": "Back to my space",
+  // A13 Desktop (dette D5) — wording validated by the QG.
+  "gallery.seeMoreMemories": "See more memories",
+  "memory.position": "Memory {index} of {total}",
+  "album.label": "Memory album",
+  "viewer.close": "Close memory",
+  "viewer.dialogLabel": "Memory — {subject}",
 };

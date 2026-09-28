@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from "react";
 import type { AlbumTheme } from "@/config/album-a13-dark-material";
+import type { Language } from "@/config/languages";
 import { layoutAlbum } from "@/lib/memorial/album/album-layout";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -21,11 +22,12 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
 export interface A13DesktopFullAlbumProps {
   media: readonly A13FamilyMedia[];
   theme: AlbumTheme;
-  label?: string;
+  /** Language of the product text (Album and Viewer — i18n, dette D5). Family content is never translated. */
+  language: Language;
   onViewerReport?: (report: ViewerReport) => void;
 }
 
-export function A13DesktopFullAlbum({ media, theme, label, onViewerReport }: A13DesktopFullAlbumProps) {
+export function A13DesktopFullAlbum({ media, theme, language, onViewerReport }: A13DesktopFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -39,10 +41,10 @@ export function A13DesktopFullAlbum({ media, theme, label, onViewerReport }: A13
           layout={layout}
           media={media.map(({ mediaId, src, alt }) => ({ mediaId, src, alt }))}
           theme={theme}
-          {...(label ? { label } : {})}
+          language={language}
           onActivate={(_mediaId, mediaIndex) => {
             const m = media[mediaIndex];
-            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album");
+            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album", language);
           }}
         />
       )}

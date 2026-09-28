@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useSt
 import { createPortal } from "react-dom";
 import { laBelleAurore } from "@/components/builder/fonts";
 import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
+import type { Language } from "@/config/languages";
+import { translate, translateWith } from "@/lib/i18n/translate";
 import { createCaptionMeasurer, type MeasurerReady } from "@/lib/memorial/gallery/caption-measurer";
 import { layoutViewer, normalizeViewerCaption, viewerGeometrySnapshot, type ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
 import { viewerDomSnapshot, viewerDomStops, type MotionRecord, type ViewerStopFinding } from "@/lib/memorial/viewer/viewer-dom-qa";
@@ -84,6 +86,8 @@ export interface MemoryViewerProps {
   media: MemoryViewerMedia;
   theme: ViewerTheme;
   origin: ViewerOrigin;
+  /** Language of the product text (dialog name, close button — i18n, dette D5). The caption and alt text are family content, never translated. */
+  language: Language;
   /** The print that opened the Viewer (focus is given back to it). */
   trigger: HTMLElement | null;
   /** Nearest Gallery/Album container — focus fallback. */
@@ -168,7 +172,7 @@ function Paper({ g, theme }: { g: ViewerGeometry; theme: ViewerTheme }) {
   );
 }
 
-export function MemoryViewer({ media, theme, origin, trigger, container, onClosed, onReport }: MemoryViewerProps) {
+export function MemoryViewer({ media, theme, origin, language, trigger, container, onClosed, onReport }: MemoryViewerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLElement>(null);
   const envRef = useRef<HTMLDivElement>(null);
@@ -367,7 +371,8 @@ export function MemoryViewer({ media, theme, origin, trigger, container, onClose
     "--viewer-close-ink": mat.closeInk,
   } as CSSProperties;
   const g = geometry;
-  const label = `${C.accessibility.dialogLabel} — ${caption ?? media.alt}`;
+  // Product prefix in the active language + the family caption / alt text, untranslated.
+  const label = translateWith(language, C.accessibility.dialogLabelKey, { subject: caption ?? media.alt });
 
   const node: ReactNode = (
     <div
@@ -422,7 +427,7 @@ export function MemoryViewer({ media, theme, origin, trigger, container, onClose
           type="button"
           className={styles.close}
           data-viewer-close=""
-          aria-label={C.close.label}
+          aria-label={translate(language, C.close.labelKey)}
           style={g ? { top: g.close.offset, right: g.close.offset } : { top: 28, right: 28 }}
           onClick={() => void close("button")}
         >
@@ -440,16 +445,16 @@ export function MemoryViewer({ media, theme, origin, trigger, container, onClose
  * and unmounts it once closed.
  */
 export function useMemoryViewer(onReport?: (r: ViewerReport) => void) {
-  const [req, setReq] = useState<{ media: MemoryViewerMedia; theme: ViewerTheme; origin: ViewerOrigin; trigger: HTMLElement | null; container: HTMLElement | null; n: number } | null>(null);
+  const [req, setReq] = useState<{ media: MemoryViewerMedia; theme: ViewerTheme; origin: ViewerOrigin; language: Language; trigger: HTMLElement | null; container: HTMLElement | null; n: number } | null>(null);
   const count = useRef(0);
-  const open = useCallback((media: MemoryViewerMedia, theme: ViewerTheme, origin: ViewerOrigin, trigger?: HTMLElement | null) => {
+  const open = useCallback((media: MemoryViewerMedia, theme: ViewerTheme, origin: ViewerOrigin, language: Language, trigger?: HTMLElement | null) => {
     const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const t = trigger ?? active;
     const container = t?.closest<HTMLElement>(origin === "album" ? "[data-testid=album-memory-table]" : "[data-testid=a13-pilot-scene]") ?? null;
     count.current += 1;
-    setReq({ media, theme, origin, trigger: t, container, n: count.current });
+    setReq({ media, theme, origin, language, trigger: t, container, n: count.current });
   }, []);
   const onClosed = useCallback(() => setReq(null), []);
-  const node = req ? <MemoryViewer key={req.n} media={req.media} theme={req.theme} origin={req.origin} trigger={req.trigger} container={req.container} onClosed={onClosed} onReport={onReport} /> : null;
+  const node = req ? <MemoryViewer key={req.n} media={req.media} theme={req.theme} origin={req.origin} language={req.language} trigger={req.trigger} container={req.container} onClosed={onClosed} onReport={onReport} /> : null;
   return { open, node, isOpen: req !== null };
 }

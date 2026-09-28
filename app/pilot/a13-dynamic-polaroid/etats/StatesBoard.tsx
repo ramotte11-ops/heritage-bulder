@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_STATE_SLOTS, A13_CTA_7PLUS_PILOT_LABELS } from "@/config/gallery-a13-multi-state-manifests";
+import { A13_STATE_SLOTS } from "@/config/gallery-a13-multi-state-manifests";
 import { LANGUAGES, type Language } from "@/config/languages";
+import { translate } from "@/lib/i18n/translate";
 import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { isCalibratedState } from "@/config/gallery-a13-calibration-v1-1";
@@ -143,7 +144,7 @@ export function StatesBoard() {
                 alt: `Photo ${slot.mediaIndex + 1}`,
                 caption,
               }))}
-              cta={s.hasCta ? { label: A13_CTA_7PLUS_PILOT_LABELS[lang].text, lang } : null}
+              cta={s.hasCta ? { label: translate(lang, "gallery.seeMoreMemories"), lang } : null}
             />
           </section>
         ))}

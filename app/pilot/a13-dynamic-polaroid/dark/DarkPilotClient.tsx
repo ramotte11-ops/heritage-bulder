@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { A13_DARK_BACKGROUND, A13_DARK_PARITY_CONTRACT, type A13Theme } from "@/config/gallery-a13-dark-material";
-import { A13_CTA_7PLUS_PILOT_LABELS } from "@/config/gallery-a13-multi-state-manifests";
+import { translate } from "@/lib/i18n/translate";
 import { measureTitleGlyphMask, type TitleGlyphMeasure } from "@/lib/memorial/gallery/title-glyph-mask";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { A13_PILOT_MEDIA_POOL, A13_PILOT_TITLE } from "@/lib/memorial/gallery/a13-pilot-fixtures";
@@ -337,7 +337,8 @@ export function DarkPilotClient() {
           title={A13_PILOT_TITLE.title}
           subtitle={A13_PILOT_TITLE.subtitle}
           entries={run.entries.map((e, i) => ({ slot: e.slot, layout: e.layout, src: srcFor(e.media), alt: `Souvenir ${i + 1}`, caption: e.caption }))}
-          cta={run.hasCta ? { label: A13_CTA_7PLUS_PILOT_LABELS.fr.text, lang: "fr", onActivate: () => openAlbum(p, theme) } : null}
+          cta={run.hasCta ? { label: translate("fr", "gallery.seeMoreMemories"), lang: "fr", onActivate: () => openAlbum(p, theme) } : null}
+          language="fr"
           onActivate={(id: string) => {
             setActivated(`${p.fixture.id}|${theme}|${id}`);
             const e = run.entries.find((x) => x.slot.slotId === id);
@@ -347,6 +348,7 @@ export function DarkPilotClient() {
                 { mediaId: `${p.fixture.id}|${id}`, src, alt: `Souvenir ${e.slot.mediaIndex + 1}`, naturalWidth: e.media.width, naturalHeight: e.media.height, caption: p.fixture.captionTexts[e.slot.mediaIndex] ?? null },
                 theme,
                 "gallery",
+                "fr",
               );
           }}
         />
@@ -371,7 +373,7 @@ export function DarkPilotClient() {
           <h2 className={styles.label}>
             Album complet · {albumOf.id} · {albumOf.theme.toUpperCase()} · {albumPair.fixture.media.length} médias (ordre famille) — ouvert par le CTA Signature 7+
           </h2>
-          <A13DesktopFullAlbum media={albumMedia(albumPair.fixture)} theme={albumOf.theme} onViewerReport={reportViewer} />
+          <A13DesktopFullAlbum media={albumMedia(albumPair.fixture)} theme={albumOf.theme} language="fr" onViewerReport={reportViewer} />
         </section>
       ) : null}
       <div hidden={!!albumOf}>

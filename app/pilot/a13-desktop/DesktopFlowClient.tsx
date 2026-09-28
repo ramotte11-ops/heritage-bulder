@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { A13_CTA_7PLUS_PILOT_LABELS } from "@/config/gallery-a13-multi-state-manifests";
 import { LANGUAGES, type Language } from "@/config/languages";
+import { translate } from "@/lib/i18n/translate";
 import { A13_PILOT_TITLE } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 import { A13_FLOW_CAPTION_SETS, a13FamilyFixture, type A13FlowCaptionSet } from "@/lib/memorial/a13-desktop-flow-fixtures";
 import type { A13FamilyMedia, DesktopGalleryRun } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -46,7 +46,7 @@ declare global {
         status: string;
         anomaly: { code: string; rule: string; detail: string } | null;
         hasCta: boolean;
-        ctaLabel: { text: string; status: string; lang: Language };
+        ctaLabel: { text: string; lang: Language };
         visible: { slotId: string; mediaId: string; mediaIndex: number; src: string; caption: string | null }[];
       };
     };
@@ -65,7 +65,8 @@ export function DesktopFlowClient() {
   const view = q.get("vue") === "album" ? "album" : "galerie";
   const board = q.get("planche") === "1";
   const media = useMemo(() => a13FamilyFixture(n, captions), [n, captions]);
-  const cta = A13_CTA_7PLUS_PILOT_LABELS[lang];
+  // Product text comes from the i18n authority (dette D5).
+  const ctaText = translate(lang, "gallery.seeMoreMemories");
   const [run, setRun] = useState<DesktopGalleryRun<A13FamilyMedia> | null>(null);
 
   const href = useCallback(
@@ -91,13 +92,13 @@ export function DesktopFlowClient() {
               status: r.status,
               anomaly: r.anomaly,
               hasCta: r.hasCta,
-              ctaLabel: { text: cta.text, status: cta.status, lang },
+              ctaLabel: { text: ctaText, lang },
               visible: r.entries.map((e) => ({ slotId: e.slot.slotId, mediaId: e.media.mediaId, mediaIndex: e.mediaIndex, src: e.media.src, caption: e.media.caption })),
             }
           : null,
       };
     },
-    [view, n, theme, lang, media, cta],
+    [view, n, theme, lang, media, ctaText],
   );
 
   const onRun = useCallback(
@@ -139,13 +140,12 @@ export function DesktopFlowClient() {
               ))}
             </span>
             <span>
-              CTA :{" "}
+              langue (textes produit) :{" "}
               {LANGUAGES.map((l) => (
                 <a key={l} href={href({ lang: l })} aria-current={l === lang}>
                   {l}{" "}
                 </a>
               ))}
-              ({cta.status})
             </span>
             <span>
               captions :{" "}
@@ -171,7 +171,7 @@ export function DesktopFlowClient() {
         </div>
       )}
       {view === "album" ? (
-        <A13DesktopFullAlbum media={media} theme={theme} onViewerReport={onViewerReport} />
+        <A13DesktopFullAlbum media={media} theme={theme} language={lang} onViewerReport={onViewerReport} />
       ) : (
         <>
           {run?.outcome === "unresolved" ? (
@@ -190,7 +190,7 @@ export function DesktopFlowClient() {
               theme={theme}
               title={A13_PILOT_TITLE.title}
               subtitle={A13_PILOT_TITLE.subtitle}
-              ctaLabel={{ text: cta.text, lang }}
+              language={lang}
               onSeeMore={() => router.push(href({ vue: "album" }))}
               onViewerReport={onViewerReport}
               onRun={onRun}

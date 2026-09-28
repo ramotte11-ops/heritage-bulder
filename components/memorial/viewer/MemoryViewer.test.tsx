@@ -48,7 +48,7 @@ function host() {
 
 async function open(theme: "light" | "dark", h = host()) {
   const onClosed = vi.fn();
-  render(<MemoryViewer media={media} theme={theme} origin="album" trigger={h.trigger} container={h.container} onClosed={onClosed} />, { container: document.createElement("div") });
+  render(<MemoryViewer media={media} theme={theme} origin="album" language="fr" trigger={h.trigger} container={h.container} onClosed={onClosed} />, { container: document.createElement("div") });
   const root = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
   await waitFor(() => expect(root.dataset.viewerState).toBe("open"));
   return { root, onClosed, ...h };

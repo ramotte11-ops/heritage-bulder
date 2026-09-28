@@ -50,7 +50,7 @@ afterEach(() => {
 
 function gallery(n: number) {
   const onSeeMore = vi.fn();
-  const view = render(<A13DesktopGallery media={a13FamilyFixture(n, "mixte")} theme="dark" title="Souvenirs de famille" subtitle="Les instants" ctaLabel={{ text: "Voir plus de souvenirs", lang: "fr" }} onSeeMore={onSeeMore} />);
+  const view = render(<A13DesktopGallery media={a13FamilyFixture(n, "mixte")} theme="dark" title="Souvenirs de famille" subtitle="Les instants" language="fr" onSeeMore={onSeeMore} />);
   const root = view.container.querySelector<HTMLElement>("[data-testid=a13-desktop-gallery]")!;
   return { root, onSeeMore };
 }
@@ -99,7 +99,7 @@ describe("A13 Desktop — Gallery section interactions (zero debt)", () => {
 
   it("Full Album: every media once, in family order, each print opening the Viewer (origin Album)", async () => {
     const media = a13FamilyFixture(12, "mixte");
-    const view = render(<A13DesktopFullAlbum media={media} theme="light" />);
+    const view = render(<A13DesktopFullAlbum media={media} theme="light" language="fr" />);
     const table = view.container.querySelector<HTMLElement>("[data-testid=album-memory-table]")!;
     const prints = [...table.querySelectorAll<HTMLElement>("[data-print][role=button]")];
     expect(prints.map((p) => p.querySelector("img")!.getAttribute("src"))).toEqual(media.map((m) => m.src));

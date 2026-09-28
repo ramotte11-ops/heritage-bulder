@@ -48,7 +48,7 @@ afterEach(() => {
 function mount(n: number) {
   const onRun = vi.fn();
   const onSeeMore = vi.fn();
-  const view = render(<A13DesktopGallery media={a13FamilyFixture(n, "mixte")} theme="light" title="Souvenirs de famille" subtitle="Les instants" ctaLabel={{ text: "Voir plus de souvenirs", lang: "fr" }} onSeeMore={onSeeMore} onRun={onRun} />);
+  const view = render(<A13DesktopGallery media={a13FamilyFixture(n, "mixte")} theme="light" title="Souvenirs de famille" subtitle="Les instants" language="fr" onSeeMore={onSeeMore} onRun={onRun} />);
   return { root: view.container.querySelector<HTMLElement>("[data-testid=a13-desktop-gallery]")!, onRun };
 }
 const scene = (root: HTMLElement) => root.querySelector(":scope > [data-testid=a13-pilot-scene]");

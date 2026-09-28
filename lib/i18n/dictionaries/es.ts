@@ -177,4 +177,10 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "flowPause.body":
     "Has completado todos los pasos disponibles por ahora. Puedes volver en cualquier momento desde tu espacio y continuar exactamente donde lo dejaste.",
   "flowPause.backToSpace": "Volver a mi espacio",
+  // A13 Desktop (dette D5) — wording validated by the QG.
+  "gallery.seeMoreMemories": "Ver más recuerdos",
+  "memory.position": "Recuerdo {index} de {total}",
+  "album.label": "Álbum de recuerdos",
+  "viewer.close": "Cerrar el recuerdo",
+  "viewer.dialogLabel": "Recuerdo — {subject}",
 };

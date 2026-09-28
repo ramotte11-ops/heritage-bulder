@@ -173,4 +173,10 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "flowPause.body":
     "Vous avez terminé toutes les étapes disponibles pour le moment. Vous pourrez revenir à tout moment depuis votre espace et reprendre exactement là où vous vous êtes arrêté.",
   "flowPause.backToSpace": "Retour à mon espace",
+  // A13 Desktop (dette D5) — FR is the HERITAGE authority wording, unchanged.
+  "gallery.seeMoreMemories": "Voir plus de souvenirs",
+  "memory.position": "Souvenir {index} sur {total}",
+  "album.label": "Album de souvenirs",
+  "viewer.close": "Fermer le souvenir",
+  "viewer.dialogLabel": "Souvenir — {subject}",
 };

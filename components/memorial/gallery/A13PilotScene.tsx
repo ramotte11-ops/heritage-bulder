@@ -5,6 +5,7 @@ import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import { A13_CTA_7PLUS } from "@/config/gallery-a13-multi-state-manifests";
 import { A13_DARK_BACKGROUND, type A13Theme } from "@/config/gallery-a13-dark-material";
 import type { Language } from "@/config/languages";
+import { translateWith } from "@/lib/i18n/translate";
 import { ebGaramond, ebGaramondItalic, laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "./DynamicPolaroid";
 import styles from "./A13PilotScene.module.css";
@@ -44,7 +45,7 @@ export interface A13SceneCta {
   onActivate?: () => void;
 }
 
-export interface A13PilotSceneProps {
+interface A13PilotSceneBaseProps {
   entries: A13PilotSceneEntry[];
   title: string;
   subtitle: string;
@@ -67,8 +68,6 @@ export interface A13PilotSceneProps {
     chosen: { x: number; y: number } | null;
   }[];
   qaTitleInk?: { x0: number; y0: number; x1: number; y1: number } | null;
-  /** Gallery V2 pilot (G2–G5): every print opens its memory. Absent for G6 / 7+. */
-  onActivate?: (slotId: string) => void;
   /** QA only (V2.1 title authority): dilated real-glyph mask as pixel rows. */
   qaTitleMaskRects?: { x: number; y: number; width: number; height: number }[];
   /** QA only (G3 coupled territory): couple-centre territory, witness and
@@ -81,6 +80,19 @@ export interface A13PilotSceneProps {
     ellipse: { center: { x: number; y: number }; radiusX: number; radiusY: number };
   } | null;
 }
+
+/**
+ * Interactive prints: every print opens its memory (`onActivate`). The
+ * accessible name of a print without caption is the product position
+ * label (i18n "memory.position"), so an interactive scene always says in
+ * which `language` it speaks (dette D5). A caption is family content and
+ * is used as is, never translated.
+ */
+type A13SceneActivation =
+  | { onActivate?: (slotId: string) => void; language: Language }
+  | { onActivate?: undefined; language?: Language };
+
+export type A13PilotSceneProps = A13PilotSceneBaseProps & A13SceneActivation;
 
 const g = A13_CTA_7PLUS.geometry;
 
@@ -98,6 +110,7 @@ export function A13PilotScene({
   qaTitleInk = null,
   qaCouple = null,
   onActivate,
+  language,
   qaTitleMaskRects = [],
 }: A13PilotSceneProps) {
   return (
@@ -128,11 +141,11 @@ export function A13PilotScene({
               caption={caption}
               qa={qa}
               theme={theme}
-              {...(onActivate
+              {...(onActivate && language
                 ? {
                     onActivate: () => onActivate(slot.slotId),
-                    // V2.1: caption when present, otherwise a position label.
-                    activateLabel: caption?.lines.length ? caption.lines.map((l) => l.text).join(" ") : `Souvenir ${i + 1} sur ${entries.length}`,
+                    // V2.1: caption when present (family content, as is), otherwise the product position label.
+                    activateLabel: caption?.lines.length ? caption.lines.map((l) => l.text).join(" ") : translateWith(language, "memory.position", { index: i + 1, total: entries.length }),
                   }
                 : {})}
             />

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   A13_CTA_7PLUS,
-  A13_CTA_7PLUS_PILOT_LABELS,
   A13_GALLERY_STATES,
   A13_STATE_SLOTS,
   selectGalleryState,
 } from "@/config/gallery-a13-multi-state-manifests";
 import { A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { translate } from "@/lib/i18n/translate";
 import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
 import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
@@ -139,9 +139,10 @@ describe("CTA_7PLUS_V1", () => {
     expect(A13_CTA_7PLUS.zIndex).toBe(80);
   });
 
-  it("has a runtime label for FR, EN and ES; FR is the package witness", () => {
-    expect(A13_CTA_7PLUS_PILOT_LABELS.fr).toEqual({ text: "Voir plus de souvenirs", status: "witness" });
-    expect(A13_CTA_7PLUS_PILOT_LABELS.en.status).toBe("pilot-candidate");
-    expect(A13_CTA_7PLUS_PILOT_LABELS.es.status).toBe("pilot-candidate");
+  it("has its label for FR, EN and ES in the i18n authority (dette D5) — no label left in the manifest", () => {
+    expect(translate("fr", "gallery.seeMoreMemories")).toBe("Voir plus de souvenirs");
+    expect(translate("en", "gallery.seeMoreMemories")).toBe("See more memories");
+    expect(translate("es", "gallery.seeMoreMemories")).toBe("Ver más recuerdos");
+    expect(JSON.stringify(A13_CTA_7PLUS)).not.toMatch(/souvenirs|memories|recuerdos/i);
   });
 });

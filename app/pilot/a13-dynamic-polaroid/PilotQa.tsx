@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { A13_PILOT_CANVAS, A13_PILOT_CAPTION, A13_PILOT_D1_LEFT_EXTENT } from "@/config/gallery-a13-pilot-manifest";
 import {
   A13_CTA_7PLUS,
-  A13_CTA_7PLUS_PILOT_LABELS,
   A13_STATE_SLOTS,
 } from "@/config/gallery-a13-multi-state-manifests";
 import { LANGUAGES, type Language } from "@/config/languages";
+import { translate } from "@/lib/i18n/translate";
 import { measureComposition } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
@@ -117,7 +117,8 @@ export function PilotQa() {
     () => (state ? measureComposition(state.entries.map(({ slot, layout }) => ({ slot, layout }))) : null),
     [state],
   );
-  const ctaLabel = A13_CTA_7PLUS_PILOT_LABELS[lang];
+  // Product CTA text: i18n authority (dette D5).
+  const ctaLabel = { text: translate(lang, "gallery.seeMoreMemories") };
 
   // DOM proof: real widths, SVG text vs canvas advance, CTA label width.
   useEffect(() => {
@@ -276,7 +277,7 @@ export function PilotQa() {
           ) : null}
           <span className={state?.hasCta ? (ctaOverflow ? styles.red : styles.pass) : styles.pass} data-testid="qa-cta">
             {state?.hasCta
-              ? `CTA présent · ${LANG_LABEL[lang]} « ${ctaLabel.text} » (${ctaLabel.status === "witness" ? "témoin" : "candidat pilote"}) · ${
+              ? `CTA présent · ${LANG_LABEL[lang]} « ${ctaLabel.text} » · ${
                   proof?.ctaLabelWidth != null ? fmt(proof.ctaLabelWidth) : "…"
                 } / ${A13_CTA_7PLUS.maxRenderedWidthPx} px${ctaOverflow ? " · QG STOP (dépassement)" : ""}`
               : "CTA absent (état sans CTA)"}

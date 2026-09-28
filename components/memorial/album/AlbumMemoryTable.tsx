@@ -2,6 +2,8 @@ import type { CSSProperties } from "react";
 import type { AlbumLayout } from "@/lib/memorial/album/album-layout";
 import { A13_ALBUM_CANVAS, A13_ALBUM_TOP_ZONE } from "@/config/album-a13-grammars";
 import { A13_ALBUM_DARK_BACKGROUNDS, type AlbumTheme } from "@/config/album-a13-dark-material";
+import type { Language } from "@/config/languages";
+import { translate, translateWith } from "@/lib/i18n/translate";
 import { laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "@/components/memorial/gallery/DynamicPolaroid";
 import styles from "./AlbumMemoryTable.module.css";
@@ -58,15 +60,17 @@ export interface AlbumMemoryTableProps {
   /** Groups whose photos load eagerly (default: the first). */
   eagerGroups?: number;
   qa?: boolean;
-  label?: string;
+  /** Language of the product text (section name, position labels — i18n, dette D5). Captions and alt texts are family content, never translated. */
+  language: Language;
   /** Material theme (default Light). Never an input of the geometry. */
   theme?: AlbumTheme;
 }
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 
-export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, label = "Album de souvenirs", theme = "light" }: AlbumMemoryTableProps) {
+export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, language, theme = "light" }: AlbumMemoryTableProps) {
   const n = layout.prints.length;
+  const label = translate(language, "album.label");
   return (
     <section
       className={`${styles.stage} ${laBelleAurore.variable}`}
@@ -102,7 +106,7 @@ export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, q
               .filter((p) => p.groupIndex === g.index)
               .map((p) => {
                 const m = media[p.mediaIndex];
-                const name = p.caption?.lines.length ? p.caption.lines.map((l) => l.text).join(" ") : `Souvenir ${p.mediaIndex + 1} sur ${n}`;
+                const name = p.caption?.lines.length ? p.caption.lines.map((l) => l.text).join(" ") : translateWith(language, "memory.position", { index: p.mediaIndex + 1, total: n });
                 return (
                   <DynamicPolaroid
                     key={p.slot.slotId}

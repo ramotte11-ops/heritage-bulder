@@ -17,7 +17,11 @@
 export const A13_VIEWER_THEMES = ["light", "dark"] as const;
 export type ViewerTheme = (typeof A13_VIEWER_THEMES)[number];
 
-/** Geometry, typography, close, motion, accessibility — theme-free. */
+/**
+ * Geometry, typography, close, motion, accessibility — theme-free.
+ * Accessible names are i18n keys (dette D5: FR / EN / ES under
+ * `lib/i18n`), never a literal of one language here.
+ */
 export const A13_VIEWER_CONTRACT = {
   contractId: "A13_VIEWER_DESKTOP_V2_RUNTIME_HANDOFF_V1",
   referenceCanvas: { width: 1670, height: 941 },
@@ -26,13 +30,13 @@ export const A13_VIEWER_CONTRACT = {
   photo: { maxW: 1112, maxH: 622, guaranteedRatioRange: [0.5, 4.0] as const, objectFit: "contain" as const },
   paper: { edgePerS: 40, edgeMin: 14, edgeMax: 42, topEdgeFactor: 0.75, bandNoneExtraPerS: 14, bandTextExtraPerS: 20, radiusPxMax: 1 },
   caption: { maxCharacters: 32, maxLines: 2, fontSizePerS: 27, fontSizeMin: 20, fontSizeMax: 27, lineHeight: 1.05, usableInsetPerS: 16, usableInsetMin: 12 },
-  close: { glyph: "×", visualSizePx: 26, fontWeight: 300, targetMinPx: 48, offsetPerS: 28, offsetMin: 16, focusWidthPx: 2, focusOffsetPx: 4, label: "Fermer le souvenir" },
+  close: { glyph: "×", visualSizePx: 26, fontWeight: 300, targetMinPx: 48, offsetPerS: 28, offsetMin: 16, focusWidthPx: 2, focusOffsetPx: 4, labelKey: "viewer.close" },
   motion: {
     open: { durationMs: 240, easing: "cubic-bezier(.22,1,.36,1)", from: { opacity: 0, translateYPerS: 12, scale: 0.985 }, to: { opacity: 1, translateY: 0, scale: 1 } },
     close: { durationMs: 160, easing: "cubic-bezier(.4,0,1,1)", to: { opacity: 0, translateYPerS: 6, scale: 0.99 } },
     reduced: { durationMs: 0, spatialTransform: false },
   },
-  accessibility: { modalDialog: true, initialFocus: "close", focusTrap: true, escape: true, restoreTriggerFocus: true, restoreScroll: true, backgroundInert: true, dialogLabel: "Souvenir" },
+  accessibility: { modalDialog: true, initialFocus: "close", focusTrap: true, escape: true, restoreTriggerFocus: true, restoreScroll: true, backgroundInert: true, dialogLabelKey: "viewer.dialogLabel" },
   /**
    * Readings stated for QG (the contract leaves them implicit):
    * - the 64×64 reserved close zone is centred on the 48×48 target (8 px
