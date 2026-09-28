@@ -1,4 +1,4 @@
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   layoutDynamicPolaroid,
   placeAtAnchor,

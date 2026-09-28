@@ -10,7 +10,7 @@ import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
 import { obstaclesAbove } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { A13_PILOT_TITLE } from "@/lib/memorial/gallery/a13-pilot-fixtures";
-import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneEntry } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe, A13GalleryScene, type A13GallerySceneEntry } from "@/components/memorial/gallery/A13GalleryScene";
 import styles from "../etats/page.module.css";
 
 /**
@@ -101,7 +101,7 @@ interface Case {
 
 type Font = ReturnType<typeof useCaptionMeasurer>;
 
-function entriesFor(c: Case, master: Record<string, string>): A13PilotSceneEntry[] {
+function entriesFor(c: Case, master: Record<string, string>): A13GallerySceneEntry[] {
   return (c.result?.slots ?? []).map((s, i) => ({
     slot: s.slot,
     layout: s.layout,
@@ -112,7 +112,7 @@ function entriesFor(c: Case, master: Record<string, string>): A13PilotSceneEntry
 }
 
 /** Master media ratios at given transforms (witness: Δ 0, s 1). */
-function witnessEntries(state: V2StateId, captions: V2CaptionState, font: Font, master: Record<string, string>, solution?: V2SelfCheck["solution"]): A13PilotSceneEntry[] {
+function witnessEntries(state: V2StateId, captions: V2CaptionState, font: Font, master: Record<string, string>, solution?: V2SelfCheck["solution"]): A13GallerySceneEntry[] {
   const m = A13_V2_MANIFESTS[state];
   const placed = m.slots.map((s, i) => {
     const t = solution?.[i]?.translation ?? { x: 0, y: 0 };
@@ -213,10 +213,10 @@ export function V2PilotClient() {
   }, [font, title, view, picked]);
 
   const maskOverlay = title ? maskRects(title.mask) : [];
-  const scene = (key: string, label: string, entries: A13PilotSceneEntry[], stop: boolean, interactive: boolean, qa: boolean) => (
+  const scene = (key: string, label: string, entries: A13GallerySceneEntry[], stop: boolean, interactive: boolean, qa: boolean) => (
     <section key={key} className={styles.cell} data-testid={`v2-${key}`}>
       <h2 className={stop ? `${styles.label} ${styles.stop}` : styles.label}>{label}</h2>
-      <A13PilotScene
+      <A13GalleryScene
         stateId={key}
         title={A13_PILOT_TITLE.title}
         subtitle={A13_PILOT_TITLE.subtitle}
@@ -241,7 +241,7 @@ export function V2PilotClient() {
     <main className={styles.page} ref={rootRef}>
       <A13CaptionFontProbe />
       <div ref={titleSceneRef} style={{ position: "absolute", width: 1670, left: -20000, top: 0 }} aria-hidden="true">
-        <A13PilotScene stateId="title" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
+        <A13GalleryScene stateId="title" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
       </div>
       <header className={styles.head}>
         <h1 className={styles.h1}>A13 · Desktop Light · G2→G5 · manifests simplifiés V2 — {view}</h1>

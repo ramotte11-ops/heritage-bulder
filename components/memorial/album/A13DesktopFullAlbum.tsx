@@ -6,7 +6,7 @@ import type { Language } from "@/config/languages";
 import { layoutAlbum } from "@/lib/memorial/album/album-layout";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
-import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GalleryScene";
 import { AlbumMemoryTable } from "@/components/memorial/album/AlbumMemoryTable";
 import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
 

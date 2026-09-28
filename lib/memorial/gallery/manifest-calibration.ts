@@ -1,4 +1,4 @@
-import { A13_PILOT_CANVAS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CANVAS, type A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   A13_OCCLUSION_CAPS,
   A13_PROTECTED_TITLE_ZONE,
@@ -171,7 +171,7 @@ export function calibrateState(
       const q = outerQuad(slot, l);
       const xs = q.map((p) => p.x);
       const ys = q.map((p) => p.y);
-      const canvasOver = Math.max(0, -Math.min(...xs), -Math.min(...ys), Math.max(...xs) - A13_PILOT_CANVAS.width, Math.max(...ys) - A13_PILOT_CANVAS.height);
+      const canvasOver = Math.max(0, -Math.min(...xs), -Math.min(...ys), Math.max(...xs) - A13_DESKTOP_CANVAS.width, Math.max(...ys) - A13_DESKTOP_CANVAS.height);
       if (canvasOver > 1e-9) fails.push({ id: "canvas", detail: "hors canvas", excess: canvasOver });
       const envOver = Math.max(0, ex0 - Math.min(...xs), ey0 - Math.min(...ys), Math.max(...xs) - ex1, Math.max(...ys) - ey1);
       if (envOver > 1e-9) fails.push({ id: "envelope", detail: `enveloppe dépassée`, excess: envOver });

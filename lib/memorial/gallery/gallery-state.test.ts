@@ -5,7 +5,7 @@ import {
   A13_STATE_SLOTS,
   selectGalleryState,
 } from "@/config/gallery-a13-multi-state-manifests";
-import { A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { translate } from "@/lib/i18n/translate";
 import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
 import { buildLegacyV11GalleryStateQa } from "@/lib/memorial/gallery/legacy/gallery-state-v1-1.legacy-qa";
@@ -27,7 +27,7 @@ describe("multi-state manifests — transcription", () => {
   });
 
   it("uses the V2.1 GREEN manifest itself for G6 exact — never a copy or a recalibration", () => {
-    expect(A13_STATE_SLOTS.G6).toBe(A13_PILOT_SLOTS);
+    expect(A13_STATE_SLOTS.G6).toBe(A13_DESKTOP_G6_SLOTS);
   });
 
   it("maps media[i] → slot[i] in every state, never 1672 values", () => {

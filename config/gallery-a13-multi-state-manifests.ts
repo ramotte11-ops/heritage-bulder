@@ -1,4 +1,4 @@
-import { A13_PILOT_SLOTS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_G6_SLOTS, type A13Slot } from "@/config/gallery-a13-desktop-manifest";
 
 /**
  * A13 — Dynamic Polaroid — Desktop Light — MULTI-STATE manifests V1.
@@ -11,7 +11,7 @@ import { A13_PILOT_SLOTS, type A13Slot } from "@/config/gallery-a13-pilot-manife
  *
  * - the NUMBER of media selects a manifest (`selectGalleryState`); it never
  *   computes a composition — no reflow, no masonry, no derivation from G6;
- * - G6 exact IS the V2.1 GREEN manifest (`A13_PILOT_SLOTS`), referenced, not
+ * - G6 exact IS the V2.1 GREEN manifest (`A13_DESKTOP_G6_SLOTS`), referenced, not
  *   copied or recalibrated (accepted pilot deviation D1 = −16.4 px);
  * - every other value below is the package's own number. The JSON's shared
  *   area factors ([0.94, 1.06] / [0.90, 1.10]) are spelled out per slot;
@@ -53,7 +53,7 @@ export const A13_STATE_SLOTS: Record<A13GalleryStateId, readonly A13Slot[]> = {
     // Calibration V1.1 §6: bottom band fixed at 72 px source, with or without caption.
     { slotId: "G5-D5", mediaIndex: 4, center: { x: 1287.5, y: 681 }, referenceSize: { width: 349.6, height: 338 }, targetOuterArea: 118165, rotationDeg: -7.5, anchor: "right-bottom", expansion: ["left", "up"], zIndex: 70, bottomBandOverridePx: 72 },
   ]),
-  G6: A13_PILOT_SLOTS,
+  G6: A13_DESKTOP_G6_SLOTS,
   G6_SIGNATURE_7PLUS: closed([
     { slotId: "G7-D1", mediaIndex: 0, center: { x: 204, y: 580 }, referenceSize: { width: 320, height: 375 }, targetOuterArea: 120000, rotationDeg: -10.0, anchor: "left-bottom", expansion: ["right", "up"], zIndex: 30 },
     { slotId: "G7-D2", mediaIndex: 1, center: { x: 550, y: 490 }, referenceSize: { width: 390, height: 490 }, targetOuterArea: 191100, rotationDeg: 7.5, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 40 },

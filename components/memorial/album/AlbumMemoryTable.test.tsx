@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { layoutAlbum } from "@/lib/memorial/album/album-layout";
 import { albumFixture } from "@/lib/memorial/album/album-pilot-fixtures";
-import { A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 
 vi.mock("next/font/google", () => ({
@@ -86,7 +86,7 @@ describe("A13 Album — memory table render contracts", () => {
   });
 
   it("Gallery prints stay byte-identical: no loading attribute without imageLoading", () => {
-    const slot = A13_PILOT_SLOTS[0];
+    const slot = A13_DESKTOP_G6_SLOTS[0];
     const view = render(<DynamicPolaroid slot={slot} layout={layoutDynamicPolaroid(slot, { width: 1200, height: 1600 })} src="/x.jpg" alt="x" caption={null} />);
     const img = view.container.querySelector("img")!;
     expect(img.hasAttribute("loading")).toBe(false);

@@ -65,7 +65,7 @@ const ENGINE_ENTRIES = [
   "lib/memorial/gallery/theme-parity.ts",
   "config/gallery-a13-v2-manifests.ts",
   "config/gallery-a13-multi-state-manifests.ts",
-  "config/gallery-a13-pilot-manifest.ts",
+  "config/gallery-a13-desktop-manifest.ts",
 ];
 const DARK_MODULES = ["config/gallery-a13-dark-material.ts", "lib/memorial/gallery/theme-material.ts"];
 
@@ -91,7 +91,7 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
     const readers = files.filter((f) => /gallery-a13-dark-material|theme-material/.test(readFileSync(f, "utf8").match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
     expect(readers).toEqual([
       "app/pilot/a13-dynamic-polaroid/dark/DarkPilotClient.tsx",
-      "components/memorial/gallery/A13PilotScene.tsx",
+      "components/memorial/gallery/A13GalleryScene.tsx",
       "components/memorial/gallery/DynamicPolaroid.tsx",
       "lib/memorial/gallery/theme-material.ts",
     ]);
@@ -108,7 +108,7 @@ function darkRules(file: string) {
 }
 
 describe("Dark V1.1 — stylesheets are material only", () => {
-  const files = ["components/memorial/gallery/A13PilotScene.module.css", "components/memorial/gallery/DynamicPolaroid.module.css"];
+  const files = ["components/memorial/gallery/A13GalleryScene.module.css", "components/memorial/gallery/DynamicPolaroid.module.css"];
   const rules = files.flatMap(darkRules);
   const forbidden = new Set<string>(A13_DARK_MATERIAL.materialOnlyGuard.forbiddenProperties);
   // Shorthands/longhands that carry a forbidden length or a photo process.

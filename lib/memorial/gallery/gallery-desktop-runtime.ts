@@ -1,5 +1,5 @@
 import { selectGalleryState, type A13GalleryStateId } from "@/config/gallery-a13-multi-state-manifests";
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import { solveV2, type V2Stop } from "@/lib/memorial/gallery/gallery-v2";
 import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";
 import type { PhotoSource, PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";

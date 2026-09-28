@@ -1,9 +1,9 @@
 import {
-  A13_PILOT_POLAROID,
-  A13_PILOT_PHOTO_POLICY,
+  A13_DESKTOP_POLAROID,
+  A13_DESKTOP_PHOTO_POLICY,
   type A13Anchor,
   type A13Slot,
-} from "@/config/gallery-a13-pilot-manifest";
+} from "@/config/gallery-a13-desktop-manifest";
 
 /**
  * A13 Dynamic Polaroid — pure geometry, CALIBRATION V2 + V2.1 (Desktop Light).
@@ -87,7 +87,7 @@ function clamp(v: number, lo: number, hi: number) {
 
 /** V2 paper for a given outer box (D5: V2.1 fixed band). */
 export function paperFor(width: number, height: number, bandOverridePx?: number) {
-  const { photoSidePadding: sp, bottomBand: bb } = A13_PILOT_POLAROID;
+  const { photoSidePadding: sp, bottomBand: bb } = A13_DESKTOP_POLAROID;
   return {
     margin: clamp(sp.percent * width, sp.minPx, sp.maxPx),
     bottomBand: bandOverridePx ?? clamp(bb.heightFactor * height, bb.minPx, bb.maxPx),
@@ -96,7 +96,7 @@ export function paperFor(width: number, height: number, bandOverridePx?: number)
 
 /** Outer width from the window width (piecewise-linear, monotonic). */
 function outerWidthFromWindow(winW: number) {
-  const { percent, minPx, maxPx } = A13_PILOT_POLAROID.photoSidePadding;
+  const { percent, minPx, maxPx } = A13_DESKTOP_POLAROID.photoSidePadding;
   const wMin = winW + 2 * minPx;
   if (percent * wMin <= minPx) return wMin;
   const wMax = winW + 2 * maxPx;
@@ -107,7 +107,7 @@ function outerWidthFromWindow(winW: number) {
 /** Outer height from the window height and top margin (monotonic). */
 function outerHeightFromWindow(winH: number, margin: number, bandOverridePx?: number) {
   if (bandOverridePx !== undefined) return winH + margin + bandOverridePx;
-  const { heightFactor, minPx, maxPx } = A13_PILOT_POLAROID.bottomBand;
+  const { heightFactor, minPx, maxPx } = A13_DESKTOP_POLAROID.bottomBand;
   const hMin = winH + margin + minPx;
   if (heightFactor * hMin <= minPx) return hMin;
   const hMax = winH + margin + maxPx;
@@ -123,7 +123,7 @@ function outerFromWindow(winW: number, windowRatio: number, bandOverridePx?: num
 }
 
 export function classifyMediaRatio(mediaRatio: number) {
-  const { min, max } = A13_PILOT_PHOTO_POLICY.adaptiveMediaRatio;
+  const { min, max } = A13_DESKTOP_PHOTO_POLICY.adaptiveMediaRatio;
   if (mediaRatio < min) return { mediaClass: "below" as const, windowRatio: min };
   if (mediaRatio > max) return { mediaClass: "above" as const, windowRatio: max };
   return { mediaClass: "inside" as const, windowRatio: mediaRatio };

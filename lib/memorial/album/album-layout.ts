@@ -1,4 +1,4 @@
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import { A13_ALBUM_GRAMMARS, type AlbumGrammarId, type AlbumRole, type AlbumStop } from "@/config/album-a13-grammars";
 import { A13_ALBUM_V1_1, A13_ALBUM_V1_1_READINGS as READ, type AlbumSeamStateId } from "@/config/album-a13-runtime-calibration-v1-1";
 import { A13_ALBUM_V1_2 } from "@/config/album-a13-long-sequence-v1-2";

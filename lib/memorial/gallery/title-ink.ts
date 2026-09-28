@@ -1,4 +1,4 @@
-import { A13_PILOT_CANVAS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CANVAS } from "@/config/gallery-a13-desktop-manifest";
 import { G3_TITLE_PROTECTION } from "@/config/gallery-a13-g3-territory";
 import type { TitleZone } from "@/lib/memorial/gallery/g3-territory";
 
@@ -33,7 +33,7 @@ export async function measureTitleZone(scene: HTMLElement): Promise<TitleInk | n
   if (!texts.length) return null;
   await document.fonts.ready;
   const box = canvasEl.getBoundingClientRect();
-  const k = box.width / A13_PILOT_CANVAS.width;
+  const k = box.width / A13_DESKTOP_CANVAS.width;
   const ctx = document.createElement("canvas").getContext("2d")!;
   let x0 = Infinity;
   let y0 = Infinity;

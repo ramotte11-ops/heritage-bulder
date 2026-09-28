@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GalleryScene";
 import { AlbumMemoryTable, type AlbumMemoryTableMedia } from "@/components/memorial/album/AlbumMemoryTable";
 import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";

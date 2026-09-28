@@ -4,7 +4,7 @@
  * Every length is `N * var(--k)` (one canonical 1670-frame px), set inline
  * by the component from `layoutDynamicPolaroid`. This sheet only carries
  * the material of the print, transcribed from contract V2 §6 /
- * `A13_PILOT_POLAROID` — no value here is a free aesthetic choice:
+ * `A13_DESKTOP_POLAROID` — no value here is a free aesthetic choice:
  *
  * - paper #F4EBDF;
  * - deterministic CSS texture (fixed-seed fractal noise, a warm paper

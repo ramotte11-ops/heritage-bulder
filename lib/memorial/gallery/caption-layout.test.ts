@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { A13_PILOT_CAPTION, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CAPTION, A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { breakCaption, layoutCaption, type CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { slotRectToCanvas } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
@@ -17,7 +17,7 @@ const fake: CaptionMeasurer = {
   fontDescent: 8,
 };
 
-const d3 = A13_PILOT_SLOTS.find((s) => s.slotId === "D3")!;
+const d3 = A13_DESKTOP_G6_SLOTS.find((s) => s.slotId === "D3")!;
 const layout = layoutDynamicPolaroid(d3, { width: 1000, height: 1000 });
 
 describe("breakCaption — V2.1 §2.3", () => {
@@ -50,7 +50,7 @@ describe("layoutCaption — V2.1 §2", () => {
 
   it("dilates the ink by the contractual 6/4 px margin", () => {
     const c = layoutCaption(d3, layout, "Son chapeau", fake, []);
-    const { x, y } = A13_PILOT_CAPTION.safetyMarginPx;
+    const { x, y } = A13_DESKTOP_CAPTION.safetyMarginPx;
     expect(c.protectedBox.width).toBeCloseTo(c.ink.width + 2 * x, 9);
     expect(c.protectedBox.height).toBeCloseTo(c.ink.height + 2 * y, 9);
   });
@@ -68,11 +68,11 @@ describe("layoutCaption — V2.1 §2", () => {
     const c = layoutCaption(d3, layout, "Son chapeau", fake, [{ slotId: "DX", polygon: obstacle }]);
     expect(c.status).toBe("placed");
     expect(c.shiftX).toBeLessThan(0);
-    expect(Math.abs(c.shiftX) % A13_PILOT_CAPTION.shiftStepPx).toBe(0);
+    expect(Math.abs(c.shiftX) % A13_DESKTOP_CAPTION.shiftStepPx).toBe(0);
     expect(c.collisionAreaPx2).toBe(0);
     // The previous candidate still collided: the shift is minimal.
     expect(Math.abs(c.shiftX)).toBeGreaterThanOrEqual(p.width * 0.2);
-    expect(Math.abs(c.shiftX)).toBeLessThanOrEqual(p.width * 0.2 + A13_PILOT_CAPTION.shiftStepPx);
+    expect(Math.abs(c.shiftX)).toBeLessThanOrEqual(p.width * 0.2 + A13_DESKTOP_CAPTION.shiftStepPx);
     // The print itself is untouched.
     expect(layout.outer).toEqual(layoutDynamicPolaroid(d3, { width: 1000, height: 1000 }).outer);
   });

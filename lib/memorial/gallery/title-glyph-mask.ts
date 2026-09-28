@@ -1,4 +1,4 @@
-import { A13_PILOT_CANVAS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CANVAS } from "@/config/gallery-a13-desktop-manifest";
 import { A13_V2_1_TITLE } from "@/config/gallery-a13-v2-manifests";
 import type { Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 
@@ -166,10 +166,10 @@ export async function measureTitleGlyphMask(scene: HTMLElement): Promise<TitleGl
   if (!heading || !micro) return null;
   await document.fonts.ready;
   const box = canvasEl.getBoundingClientRect();
-  const k = box.width / A13_PILOT_CANVAS.width;
+  const k = box.width / A13_DESKTOP_CANVAS.width;
   if (Math.abs(k - 1) > 1e-6) throw new Error("measureTitleGlyphMask: the scene must be rendered at 1670 px (scale 1)");
-  const W = A13_PILOT_CANVAS.width;
-  const H = A13_PILOT_CANVAS.height;
+  const W = A13_DESKTOP_CANVAS.width;
+  const H = A13_DESKTOP_CANVAS.height;
   let fontsChecked = true;
 
   const raster = async (el: HTMLElement) => {

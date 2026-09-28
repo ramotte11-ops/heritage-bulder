@@ -1,5 +1,5 @@
 import { A13_CTA_7PLUS, A13_STATE_SLOTS, type A13GalleryStateId } from "@/config/gallery-a13-multi-state-manifests";
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import { A13_V2_FIXTURES, A13_V2_MANIFESTS, type V2StateId } from "@/config/gallery-a13-v2-manifests";
 import { fixtureSources, solveV2, type V2Result } from "@/lib/memorial/gallery/gallery-v2";
 import { buildG6FamilyState } from "@/lib/memorial/gallery/gallery-state";

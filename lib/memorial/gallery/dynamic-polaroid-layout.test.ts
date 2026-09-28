@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { A13_PILOT_PHOTO_POLICY, A13_PILOT_SLOTS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_PHOTO_POLICY, A13_DESKTOP_G6_SLOTS, type A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   assignMediaToSlots,
   layoutDynamicPolaroid,
@@ -9,8 +9,8 @@ import {
 } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { A13_PILOT_MEDIA, PILOT_CAPTION_MODES } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 
-const slot = (id: A13Slot["slotId"]) => A13_PILOT_SLOTS.find((s) => s.slotId === id)!;
-const { min: R_MIN, max: R_MAX } = A13_PILOT_PHOTO_POLICY.adaptiveMediaRatio;
+const slot = (id: A13Slot["slotId"]) => A13_DESKTOP_G6_SLOTS.find((s) => s.slotId === id)!;
+const { min: R_MIN, max: R_MAX } = A13_DESKTOP_PHOTO_POLICY.adaptiveMediaRatio;
 
 /** A source whose window ratio reproduces the slot's reference box. */
 function referenceSource(s: A13Slot) {
@@ -21,11 +21,11 @@ function referenceSource(s: A13Slot) {
 
 describe("A13 manifest V2 transcription", () => {
   it("is a single 1670 frame — no 1672 value anywhere at runtime", () => {
-    expect(JSON.stringify(A13_PILOT_SLOTS)).not.toContain("1672");
+    expect(JSON.stringify(A13_DESKTOP_G6_SLOTS)).not.toContain("1672");
   });
 
   it("maps mediaIndex i to slot D(i+1), strictly", () => {
-    expect(A13_PILOT_SLOTS.map((s) => [s.slotId, s.mediaIndex])).toEqual([
+    expect(A13_DESKTOP_G6_SLOTS.map((s) => [s.slotId, s.mediaIndex])).toEqual([
       ["D1", 0],
       ["D2", 1],
       ["D3", 2],
@@ -37,24 +37,24 @@ describe("A13 manifest V2 transcription", () => {
 
   it("carries the V2 corrections: D6 at −5°, contractual depth order, D5 in front of D6", () => {
     expect(slot("D6").rotationDeg).toBe(-5);
-    const order = [...A13_PILOT_SLOTS].sort((a, b) => a.zIndex - b.zIndex).map((s) => s.slotId);
+    const order = [...A13_DESKTOP_G6_SLOTS].sort((a, b) => a.zIndex - b.zIndex).map((s) => s.slotId);
     expect(order).toEqual(["D1", "D6", "D2", "D4", "D3", "D5"]);
     expect(slot("D5").zIndex).toBeGreaterThan(slot("D6").zIndex);
   });
 
   it("keeps target area = reference width × height", () => {
-    for (const s of A13_PILOT_SLOTS) expect(s.targetOuterArea).toBe(s.referenceSize.width * s.referenceSize.height);
+    for (const s of A13_DESKTOP_G6_SLOTS) expect(s.targetOuterArea).toBe(s.referenceSize.width * s.referenceSize.height);
   });
 });
 
 describe("assignMediaToSlots — family order is the authority", () => {
   it("never sorts or permutes by ratio", () => {
     const media = ["panorama", "portrait", "square", "narrow", "wide", "landscape"];
-    expect(assignMediaToSlots(A13_PILOT_SLOTS, media).map((e) => e.media)).toEqual(media);
+    expect(assignMediaToSlots(A13_DESKTOP_G6_SLOTS, media).map((e) => e.media)).toEqual(media);
   });
 
   it("leaves missing media slots empty rather than reflowing", () => {
-    expect(assignMediaToSlots(A13_PILOT_SLOTS, ["a", "b"]).map((e) => e.media)).toEqual(["a", "b", null, null, null, null]);
+    expect(assignMediaToSlots(A13_DESKTOP_G6_SLOTS, ["a", "b"]).map((e) => e.media)).toEqual(["a", "b", null, null, null, null]);
   });
 });
 
@@ -66,7 +66,7 @@ describe("paperFor — contract V2 §6", () => {
   });
 
   it("gives D5 its fixed V2.1 band of 72 px, and only D5", () => {
-    expect(A13_PILOT_SLOTS.filter((s) => s.bottomBandOverridePx !== undefined).map((s) => [s.slotId, s.bottomBandOverridePx])).toEqual([
+    expect(A13_DESKTOP_G6_SLOTS.filter((s) => s.bottomBandOverridePx !== undefined).map((s) => [s.slotId, s.bottomBandOverridePx])).toEqual([
       ["D5", 72],
     ]);
     expect(paperFor(316, 318, 72).bottomBand).toBe(72);
@@ -85,7 +85,7 @@ describe("classifyMediaRatio — V2.1 §4: media ratio only", () => {
   });
 
   it("never lets the outer ratio change the class (3:4 in every slot → exact)", () => {
-    for (const s of A13_PILOT_SLOTS) {
+    for (const s of A13_DESKTOP_G6_SLOTS) {
       const l = layoutDynamicPolaroid(s, { width: 1200, height: 1600 });
       expect(l.outerRatio).toBeLessThan(0.67); // the outer box is taller than 0.67…
       expect(l.mode).toBe("exact"); // …and it does not matter.
@@ -98,7 +98,7 @@ describe("layoutDynamicPolaroid — V2", () => {
   it("reproduces the Master reference box exactly for a reference-ratio photo", () => {
     // D6's own reference window (≈ 2.05) lies above 1.78: it is bounded by
     // the media-ratio rule like any panorama, so it is checked separately.
-    for (const s of A13_PILOT_SLOTS.filter((x) => x.slotId !== "D6")) {
+    for (const s of A13_DESKTOP_G6_SLOTS.filter((x) => x.slotId !== "D6")) {
       const l = layoutDynamicPolaroid(s, referenceSource(s));
       expect(l.mode).toBe("exact");
       expect(l.outer.width).toBeCloseTo(s.referenceSize.width, 6);
@@ -109,7 +109,7 @@ describe("layoutDynamicPolaroid — V2", () => {
   });
 
   it("sizes from the target surface — never from an envelope — for every slot × ratio", () => {
-    for (const s of A13_PILOT_SLOTS) {
+    for (const s of A13_DESKTOP_G6_SLOTS) {
       for (const r of [3 / 4, 3 / 2, 1, 9 / 16, 16 / 9, 3, 0.4, 5]) {
         const l = layoutDynamicPolaroid(s, { width: 1000 * r, height: 1000 });
         expect(l.outer.width * l.outer.height).toBeCloseTo(s.targetOuterArea, 3);
@@ -151,7 +151,7 @@ describe("layoutDynamicPolaroid — V2", () => {
       x: s.anchor.startsWith("left") ? b.x : s.anchor.startsWith("right") ? b.x + b.width : b.x + b.width / 2,
       y: s.anchor.includes("bottom") ? b.y + b.height : b.y,
     });
-    for (const s of A13_PILOT_SLOTS) {
+    for (const s of A13_DESKTOP_G6_SLOTS) {
       const ref = { ...placeAtAnchor(s.anchor, s.referenceSize, s.referenceSize.width, s.referenceSize.height), ...s.referenceSize };
       const want = anchorOf(s, ref);
       for (const r of [0.5625, 1, 3]) {

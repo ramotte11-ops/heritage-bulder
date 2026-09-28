@@ -1,6 +1,7 @@
 /**
- * A13 — Dynamic Polaroid — Desktop Light — PILOT manifest, CALIBRATION V2
- * + CALIBRATION V2.1 corrections.
+ * A13 — Dynamic Polaroid — Desktop Light — DESKTOP manifest (runtime
+ * authority; formerly named the "pilot" manifest — renamed by dette D10,
+ * values unchanged), CALIBRATION V2 + CALIBRATION V2.1 corrections.
  *
  * V2.1 (`A13_G6_DESKTOP_LIGHT_MANIFEST_1670_V2_1.json`, "inherits" V2,
  * "composition": "UNCHANGED_FROM_V2") only changes three things, all
@@ -34,19 +35,19 @@
  * ## Foreground O1/O2 — DEFERRED, POST PILOT (not reopened by V2)
  */
 
-export const A13_PILOT_CANVAS = { width: 1670, height: 941 } as const;
+export const A13_DESKTOP_CANVAS = { width: 1670, height: 941 } as const;
 
 /** Runtime background (photo-free GREEN), 1670 × 941, byte-identical to
  * `A13_G6_DESKTOP_LIGHT_BACKGROUND_PHOTO_FREE_V1.png` (SHA-256 3215073f…3c95d). */
-export const A13_PILOT_BACKGROUND_SRC = "/assets/gallery/a13-pilot/g6-desktop-light-background-photo-free-v1.png";
+export const A13_DESKTOP_BACKGROUND_SRC = "/assets/gallery/a13-pilot/g6-desktop-light-background-photo-free-v1.png";
 
-export const A13_PILOT_LAYER_Z = {
+export const A13_DESKTOP_LAYER_Z = {
   background: 0,
   runtimeText: 60,
 } as const;
 
 /** Contract §8: ±2 px source, ±0.3°. */
-export const A13_PILOT_GEOMETRY_TOLERANCE = { positionPx: 2, sizePx: 2, rotationDeg: 0.3 } as const;
+export const A13_DESKTOP_GEOMETRY_TOLERANCE = { positionPx: 2, sizePx: 2, rotationDeg: 0.3 } as const;
 
 /** Point of the (unrotated) reference box that stays fixed when the ratio
  * changes. The tirage grows away from it (manifest `expansion`). */
@@ -79,7 +80,7 @@ export interface A13Slot {
   bottomBandOverridePx?: number;
 }
 
-export const A13_PILOT_SLOTS: readonly A13Slot[] = [
+export const A13_DESKTOP_G6_SLOTS: readonly A13Slot[] = [
   { slotId: "D1", mediaIndex: 0, center: { x: 190, y: 585 }, referenceSize: { width: 334, height: 382 }, targetOuterArea: 127588, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: -9.5, anchor: "left-bottom", expansion: ["right", "up"], zIndex: 30, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 } },
   { slotId: "D2", mediaIndex: 1, center: { x: 548.5, y: 493 }, referenceSize: { width: 390, height: 500 }, targetOuterArea: 195000, comfortableAreaFactor: { min: 0.94, max: 1.06 }, hardAreaFactor: { min: 0.9, max: 1.1 }, rotationDeg: 7.5, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 40, captionSafeZone: { xMin: 0.19, xMax: 0.81, yMin: 0.82, yMax: 0.97 } },
   { slotId: "D3", mediaIndex: 2, center: { x: 812, y: 648 }, referenceSize: { width: 326, height: 382 }, targetOuterArea: 124532, comfortableAreaFactor: { min: 0.93, max: 1.07 }, hardAreaFactor: { min: 0.89, max: 1.11 }, rotationDeg: 6.5, anchor: "bottom-center", expansion: ["up", "horizontal-symmetric"], zIndex: 60, captionSafeZone: { xMin: 0.12, xMax: 0.88, yMin: 0.81, yMax: 0.97 } },
@@ -93,7 +94,7 @@ export const A13_PILOT_SLOTS: readonly A13Slot[] = [
  * ratio (`mediaWidth / mediaHeight`); the outer ratio is a result, never a
  * classification input.
  */
-export const A13_PILOT_PHOTO_POLICY = {
+export const A13_DESKTOP_PHOTO_POLICY = {
   familyOrderStrict: true,
   sortByRatio: false,
   adaptiveMediaRatio: { min: 0.67, max: 1.78 },
@@ -104,10 +105,10 @@ export const A13_PILOT_PHOTO_POLICY = {
 
 /** V2.1 §5 — D1 rotated bounding box min X, source px ("12 px of the rotated
  * bounding box is outside the left canvas edge"; never +12). */
-export const A13_PILOT_D1_LEFT_EXTENT = { minX: -12, tolerance: 3 } as const;
+export const A13_DESKTOP_D1_LEFT_EXTENT = { minX: -12, tolerance: 3 } as const;
 
 /** V2.1 §2 — caption contract. */
-export const A13_PILOT_CAPTION = {
+export const A13_DESKTOP_CAPTION = {
   maxChars: 32,
   maxLines: 2,
   fontSizePx: 27,
@@ -122,8 +123,8 @@ export const A13_PILOT_CAPTION = {
 } as const;
 
 /** Contract V2 §6 — `DynamicPolaroid` paper and shadow, source px @1670
- * (caption typography: `A13_PILOT_CAPTION`, V2.1). */
-export const A13_PILOT_POLAROID = {
+ * (caption typography: `A13_DESKTOP_CAPTION`, V2.1). */
+export const A13_DESKTOP_POLAROID = {
   paperColor: "#F4EBDF",
   texture: { maxOpacity: 0.08, maxContrast: 0.04 },
   innerStroke: { widthPx: 1.2, color: "rgba(116,91,67,0.24)" },

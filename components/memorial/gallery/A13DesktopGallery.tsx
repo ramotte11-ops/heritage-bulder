@@ -7,7 +7,7 @@ import { translate } from "@/lib/i18n/translate";
 import { measureTitleGlyphMask, type TitleGlyphMeasure } from "@/lib/memorial/gallery/title-glyph-mask";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import { runDesktopGallery, type A13FamilyMedia, type DesktopGalleryRun } from "@/lib/memorial/gallery/gallery-desktop-runtime";
-import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneProps } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe, A13GalleryScene, type A13GallerySceneProps } from "@/components/memorial/gallery/A13GalleryScene";
 import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
 
 /**
@@ -37,7 +37,7 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
  */
 
 /** The scene's material theme (kept off the Dark token module: only the rendering layer reads it). */
-type GalleryTheme = NonNullable<A13PilotSceneProps["theme"]>;
+type GalleryTheme = NonNullable<A13GallerySceneProps["theme"]>;
 
 export interface A13DesktopGalleryProps {
   media: readonly A13FamilyMedia[];
@@ -95,16 +95,16 @@ export function A13DesktopGallery({ media, theme, title, subtitle, language, onS
       <A13CaptionFontProbe />
       {/* Title glyph mask source: the same scene, empty, at scale 1 (1670 px), off-screen. */}
       <div ref={titleRef} style={{ position: "absolute", width: 1670, left: -20000, top: 0 }} aria-hidden="true" inert>
-        <A13PilotScene stateId="title" theme={theme} title={title} subtitle={subtitle} entries={[]} />
+        <A13GalleryScene stateId="title" theme={theme} title={title} subtitle={subtitle} entries={[]} />
       </div>
       {!run && selectGalleryState(media.length) ? (
         // Pending (font + title mask): the scene's exact box is reserved, invisible — no layout shift when the prints arrive.
         <div style={{ visibility: "hidden" }} aria-hidden="true" inert data-testid="a13-desktop-gallery-pending">
-          <A13PilotScene stateId="pending" theme={theme} title={title} subtitle={subtitle} entries={[]} />
+          <A13GalleryScene stateId="pending" theme={theme} title={title} subtitle={subtitle} entries={[]} />
         </div>
       ) : null}
       {run?.outcome === "resolved" && run.stateId ? (
-        <A13PilotScene
+        <A13GalleryScene
           stateId={run.stateId}
           theme={theme}
           title={title}

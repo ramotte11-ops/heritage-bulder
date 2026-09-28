@@ -1,4 +1,4 @@
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   A13_V2_CONTRACT,
   A13_V2_FIXTURES,

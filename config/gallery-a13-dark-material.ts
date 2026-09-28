@@ -10,7 +10,7 @@
  * DARK MATERIALS ONLY.
  *
  * This file is MATERIAL ONLY: colours, grain, visual shadows, inks, focus.
- * It is read by the rendering components (`A13PilotScene`,
+ * It is read by the rendering components (`A13GalleryScene`,
  * `DynamicPolaroid`) AFTER the Light V2.1 engine has produced its final
  * geometry — never by the solver, the manifests, the layout, the caption
  * arbitration or the title glyph authority (`DARK_TOKEN_READ_BY_SOLVER_STOP`,

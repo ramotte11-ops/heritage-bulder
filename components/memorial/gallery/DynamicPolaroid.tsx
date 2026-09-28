@@ -1,5 +1,5 @@
 import type { CSSProperties, KeyboardEvent } from "react";
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import type { A13Theme } from "@/config/gallery-a13-dark-material";

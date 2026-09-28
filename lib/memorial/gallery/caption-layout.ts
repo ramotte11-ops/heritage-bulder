@@ -1,4 +1,4 @@
-import { A13_PILOT_CAPTION, A13_PILOT_CANVAS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CAPTION, A13_DESKTOP_CANVAS, type A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { convexIntersectionArea, slotRectToCanvas, type Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 
@@ -117,7 +117,7 @@ function unionInk(lines: CaptionLine[]): Rect {
 }
 
 function dilate(r: Rect): Rect {
-  const { x, y } = A13_PILOT_CAPTION.safetyMarginPx;
+  const { x, y } = A13_DESKTOP_CAPTION.safetyMarginPx;
   return { x: r.x - x, y: r.y - y, width: r.width + 2 * x, height: r.height + 2 * y };
 }
 
@@ -151,7 +151,7 @@ export function layoutCaption(
   /** Outer polygons (canvas frame) of every tirage ABOVE this one. */
   obstacles: { slotId: string; polygon: Point[] }[],
 ): CaptionLayout {
-  const { fontSizePx, lineHeight, shiftStepPx, maxShiftFactorOfBandWidth } = A13_PILOT_CAPTION;
+  const { fontSizePx, lineHeight, shiftStepPx, maxShiftFactorOfBandWidth } = A13_DESKTOP_CAPTION;
   const L = fontSizePx * lineHeight;
   const band = layout.band;
   const usefulWidth = layout.window.width;
@@ -180,7 +180,7 @@ export function layoutCaption(
     height: 0,
   });
   const towardCentre =
-    Math.cos(a) * (A13_PILOT_CANVAS.width / 2 - c.x) + Math.sin(a) * (A13_PILOT_CANVAS.height / 2 - c.y) >= 0 ? 1 : -1;
+    Math.cos(a) * (A13_DESKTOP_CANVAS.width / 2 - c.x) + Math.sin(a) * (A13_DESKTOP_CANVAS.height / 2 - c.y) >= 0 ? 1 : -1;
 
   const maxShift = maxShiftFactorOfBandWidth * band.width;
   const candidates: number[] = [0];

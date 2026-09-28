@@ -1,4 +1,4 @@
-import { A13_PILOT_CANVAS, type A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CANVAS, type A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   G3_RELATIONS,
   G3_SEARCH,
@@ -226,7 +226,7 @@ function inTerritory(terr: G3TerritorySlot, d: Vec) {
 }
 
 function insideCanvas(q: Point[]) {
-  return q.every((p) => p.x >= -1e-9 && p.y >= -1e-9 && p.x <= A13_PILOT_CANVAS.width + 1e-9 && p.y <= A13_PILOT_CANVAS.height + 1e-9);
+  return q.every((p) => p.x >= -1e-9 && p.y >= -1e-9 && p.x <= A13_DESKTOP_CANVAS.width + 1e-9 && p.y <= A13_DESKTOP_CANVAS.height + 1e-9);
 }
 
 // ── Couple geometry ────────────────────────────────────────────────────

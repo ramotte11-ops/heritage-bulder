@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { A13_PILOT_D1_LEFT_EXTENT, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_D1_LEFT_EXTENT, A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { assignMediaToSlots } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import {
   composeSlots,
@@ -19,7 +19,7 @@ const sq = (x: number, y: number, s: number) => [
 ];
 
 const fixtures = () =>
-  composeSlots(assignMediaToSlots(A13_PILOT_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }) => ({ slot, source: media })));
+  composeSlots(assignMediaToSlots(A13_DESKTOP_G6_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }) => ({ slot, source: media })));
 
 describe("polygon helpers", () => {
   it("intersects convex polygons", () => {
@@ -33,7 +33,7 @@ describe("polygon helpers", () => {
   });
 
   it("rotates slot-local rects around the reference centre (CSS clockwise sign)", () => {
-    const s = { ...A13_PILOT_SLOTS[0], center: { x: 100, y: 100 }, rotationDeg: 90 };
+    const s = { ...A13_DESKTOP_G6_SLOTS[0], center: { x: 100, y: 100 }, rotationDeg: 90 };
     const [tl] = slotRectToCanvas(s, { x: -20, y: -10, width: 40, height: 20 });
     expect(tl.x).toBeCloseTo(110, 6);
     expect(tl.y).toBeCloseTo(80, 6);
@@ -57,13 +57,13 @@ describe("composeSlots — V2.1 §3: no tirage is ever reduced", () => {
     const d1 = measureComposition(fixtures()).slots.find((s) => s.slotId === "D1")!;
     expect(d1.extents.minX).toBeCloseTo(-16.375, 2);
     expect(d1.extents.minX).toBeLessThan(0); // always partly outside, never +12
-    expect(A13_PILOT_D1_LEFT_EXTENT).toEqual({ minX: -12, tolerance: 3 });
+    expect(A13_DESKTOP_D1_LEFT_EXTENT).toEqual({ minX: -12, tolerance: 3 });
   });
 
   it("lists only higher-z tirages as caption obstacles (D5 above D6)", () => {
     const entries = fixtures();
-    const d5 = A13_PILOT_SLOTS.find((s) => s.slotId === "D5")!;
-    const d6 = A13_PILOT_SLOTS.find((s) => s.slotId === "D6")!;
+    const d5 = A13_DESKTOP_G6_SLOTS.find((s) => s.slotId === "D5")!;
+    const d6 = A13_DESKTOP_G6_SLOTS.find((s) => s.slotId === "D6")!;
     expect(obstaclesAbove(entries, d5)).toEqual([]);
     expect(obstaclesAbove(entries, d6).map((o) => o.slotId).sort()).toEqual(["D2", "D3", "D4", "D5"]);
   });

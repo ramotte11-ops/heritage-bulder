@@ -1,4 +1,4 @@
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import type { V2Slot } from "@/config/gallery-a13-v2-manifests";
 import { A13_ALBUM_CANVAS, A13_ALBUM_HARD, A13_ALBUM_TOP_ZONE, type AlbumGrammar } from "@/config/album-a13-grammars";
 import { A13_ALBUM_MASTER_PRINTS } from "@/config/album-a13-master-measurements";

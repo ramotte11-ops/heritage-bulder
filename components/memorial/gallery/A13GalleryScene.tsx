@@ -1,5 +1,5 @@
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
-import { A13_PILOT_BACKGROUND_SRC, A13_PILOT_LAYER_Z } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
+import { A13_DESKTOP_BACKGROUND_SRC, A13_DESKTOP_LAYER_Z } from "@/config/gallery-a13-desktop-manifest";
 import type { PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import { A13_CTA_7PLUS } from "@/config/gallery-a13-multi-state-manifests";
@@ -8,7 +8,7 @@ import type { Language } from "@/config/languages";
 import { translateWith } from "@/lib/i18n/translate";
 import { ebGaramond, ebGaramondItalic, laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "./DynamicPolaroid";
-import styles from "./A13PilotScene.module.css";
+import styles from "./A13GalleryScene.module.css";
 
 /**
  * A13 Desktop Light — scene: the ONE common photo-free GREEN background +
@@ -30,7 +30,7 @@ import styles from "./A13PilotScene.module.css";
  *   before — no attribute, same background.
  */
 
-export interface A13PilotSceneEntry {
+export interface A13GallerySceneEntry {
   slot: A13Slot;
   layout: PolaroidLayout | null;
   src: string | null;
@@ -45,8 +45,8 @@ export interface A13SceneCta {
   onActivate?: () => void;
 }
 
-interface A13PilotSceneBaseProps {
-  entries: A13PilotSceneEntry[];
+interface A13GallerySceneBaseProps {
+  entries: A13GallerySceneEntry[];
   title: string;
   subtitle: string;
   /** Manifest state rendered (diagnostic attribute only). */
@@ -92,11 +92,11 @@ type A13SceneActivation =
   | { onActivate?: (slotId: string) => void; language: Language }
   | { onActivate?: undefined; language?: Language };
 
-export type A13PilotSceneProps = A13PilotSceneBaseProps & A13SceneActivation;
+export type A13GallerySceneProps = A13GallerySceneBaseProps & A13SceneActivation;
 
 const g = A13_CTA_7PLUS.geometry;
 
-export function A13PilotScene({
+export function A13GalleryScene({
   entries,
   title,
   subtitle,
@@ -112,7 +112,7 @@ export function A13PilotScene({
   onActivate,
   language,
   qaTitleMaskRects = [],
-}: A13PilotSceneProps) {
+}: A13GallerySceneProps) {
   return (
     <div
       className={`${styles.stage} ${laBelleAurore.variable}`}
@@ -123,11 +123,11 @@ export function A13PilotScene({
       <div className={styles.canvas}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={theme === "dark" ? A13_DARK_BACKGROUND.src : A13_PILOT_BACKGROUND_SRC}
+          src={theme === "dark" ? A13_DARK_BACKGROUND.src : A13_DESKTOP_BACKGROUND_SRC}
           alt=""
           aria-hidden="true"
           className={styles.background}
-          style={{ zIndex: A13_PILOT_LAYER_Z.background }}
+          style={{ zIndex: A13_DESKTOP_LAYER_Z.background }}
           draggable={false}
         />
         {entries.map(({ slot, layout, src, alt, caption }, i) =>
@@ -151,7 +151,7 @@ export function A13PilotScene({
             />
           ) : null,
         )}
-        <header className={styles.titleBlock} style={{ zIndex: A13_PILOT_LAYER_Z.runtimeText }}>
+        <header className={styles.titleBlock} style={{ zIndex: A13_DESKTOP_LAYER_Z.runtimeText }}>
           <h2 className={`${styles.title} ${ebGaramond.className}`}>{title}</h2>
           <p className={`${styles.subtitle} ${ebGaramondItalic.className}`}>{subtitle}</p>
         </header>

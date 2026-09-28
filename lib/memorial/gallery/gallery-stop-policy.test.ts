@@ -99,7 +99,7 @@ describe("D7 — no fallback can be wired into the runtime (architecture)", () =
         "@/config/gallery-a13-multi-state-manifests",
         "@/lib/memorial/gallery/gallery-state",
         "@/lib/memorial/gallery/gallery-v2",
-        "type @/config/gallery-a13-pilot-manifest",
+        "type @/config/gallery-a13-desktop-manifest",
         "type @/lib/memorial/gallery/caption-layout",
         "type @/lib/memorial/gallery/dynamic-polaroid-layout",
         "type @/lib/memorial/gallery/title-glyph-mask",

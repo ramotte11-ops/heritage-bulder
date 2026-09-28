@@ -19,7 +19,7 @@ import {
   type ParityMedia,
 } from "@/lib/memorial/gallery/theme-parity";
 import { domGeometrySnapshot, sceneMaterialReport } from "@/lib/memorial/gallery/theme-dom-snapshot";
-import { A13CaptionFontProbe, A13PilotScene } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe, A13GalleryScene } from "@/components/memorial/gallery/A13GalleryScene";
 import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
 import { A13DesktopFullAlbum } from "@/components/memorial/album/A13DesktopFullAlbum";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -128,7 +128,7 @@ function usePipeline(theme: A13Theme) {
     <div ref={rootRef} data-pipeline={theme}>
       <A13CaptionFontProbe />
       <div ref={titleRef} style={{ position: "absolute", width: 1670, left: -20000, top: 0 }} aria-hidden="true">
-        <A13PilotScene stateId={`title-${theme}`} theme={theme} title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
+        <A13GalleryScene stateId={`title-${theme}`} theme={theme} title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
       </div>
     </div>
   );
@@ -331,7 +331,7 @@ export function DarkPilotClient() {
           {theme.toUpperCase()} · {p.fixture.id} · {run.status}
           {run.hasCta ? " · CTA" : ""}
         </h2>
-        <A13PilotScene
+        <A13GalleryScene
           stateId={run.stateId}
           theme={theme}
           title={A13_PILOT_TITLE.title}

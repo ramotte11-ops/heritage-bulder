@@ -1,4 +1,4 @@
-import { A13_PILOT_CAPTION } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_CAPTION } from "@/config/gallery-a13-desktop-manifest";
 import type { CaptionMeasurer, LineMetrics } from "@/lib/memorial/gallery/caption-layout";
 
 /**
@@ -26,7 +26,7 @@ export async function createCaptionMeasurer(probe: HTMLElement): Promise<Measure
   // "… Fallback" face on `local()` sources; when that local font is absent
   // the face errors and `document.fonts.load()` of the whole list rejects.
   const primary = fontFamily.split(",")[0].trim();
-  const { weight, fontSizePx } = A13_PILOT_CAPTION;
+  const { weight, fontSizePx } = A13_DESKTOP_CAPTION;
   const spec = `${weight} ${fontSizePx}px ${primary}`;
   await document.fonts.load(spec, "Maman, un soir");
   await document.fonts.ready;

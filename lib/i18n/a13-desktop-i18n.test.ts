@@ -115,7 +115,7 @@ describe("D5 — guard: no A13 product text hardcoded outside lib/i18n", () => {
   });
 
   it("the A13 product components resolve their text through lib/i18n", () => {
-    for (const rel of ["components/memorial/gallery/A13PilotScene.tsx", "components/memorial/gallery/A13DesktopGallery.tsx", "components/memorial/album/AlbumMemoryTable.tsx", "components/memorial/viewer/MemoryViewer.tsx"]) {
+    for (const rel of ["components/memorial/gallery/A13GalleryScene.tsx", "components/memorial/gallery/A13DesktopGallery.tsx", "components/memorial/album/AlbumMemoryTable.tsx", "components/memorial/viewer/MemoryViewer.tsx"]) {
       const text = readFileSync(path.join(ROOT, rel), "utf8");
       expect(text, rel).toMatch(/from "@\/lib\/i18n\/translate"/);
       expect(text, rel).not.toMatch(/aria-label="[^"]+"/);

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
-import { A13_PILOT_BACKGROUND_SRC, A13_PILOT_SLOTS } from "@/config/gallery-a13-pilot-manifest";
+import { A13_DESKTOP_BACKGROUND_SRC, A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { A13_DARK_BACKGROUND } from "@/config/gallery-a13-dark-material";
 import { assignMediaToSlots, layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { A13_PILOT_MEDIA } from "@/lib/memorial/gallery/a13-pilot-fixtures";
@@ -28,11 +28,11 @@ vi.mock("next/font/google", () => ({
   EB_Garamond: () => ({ variable: "v-eb", className: "" }),
 }));
 
-const { A13PilotScene } = await import("./A13PilotScene");
+const { A13GalleryScene } = await import("./A13GalleryScene");
 
 afterEach(cleanup);
 
-const entries = assignMediaToSlots(A13_PILOT_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }, i) => {
+const entries = assignMediaToSlots(A13_DESKTOP_G6_SLOTS, A13_PILOT_MEDIA).map(({ slot, media }, i) => {
   const layout = layoutDynamicPolaroid(slot, media!);
   return { slot, layout, src: media!.src, alt: `Photo ${i + 1}`, caption: i % 2 ? layoutCaption(slot, layout, "Maman, un soir à Gordes.", fake, []) : null };
 });
@@ -41,14 +41,14 @@ const entries = assignMediaToSlots(A13_PILOT_SLOTS, A13_PILOT_MEDIA).map(({ slot
 function stripMaterial(root: HTMLElement) {
   root.querySelector("[data-a13-theme]")?.removeAttribute("data-a13-theme");
   const bg = root.querySelector("img")!;
-  if (bg.getAttribute("src") === A13_DARK_BACKGROUND.src) bg.setAttribute("src", A13_PILOT_BACKGROUND_SRC);
+  if (bg.getAttribute("src") === A13_DARK_BACKGROUND.src) bg.setAttribute("src", A13_DESKTOP_BACKGROUND_SRC);
   for (const p of root.querySelectorAll<HTMLElement>("[data-print]")) for (const k of ["--a13-dark-paper", "--a13-dark-grain", "--a13-dark-sheen"]) p.style.removeProperty(k);
   return root.innerHTML;
 }
 
 function scene(theme: "light" | "dark" | undefined, interactive: boolean, cta: boolean) {
   return (
-    <A13PilotScene
+    <A13GalleryScene
       entries={entries}
       title="Souvenirs de famille"
       subtitle="Les instants que nous gardons près de nous"
@@ -61,13 +61,13 @@ function scene(theme: "light" | "dark" | undefined, interactive: boolean, cta: b
   );
 }
 
-describe("A13PilotScene — Dark V1.1 material only", () => {
+describe("A13GalleryScene — Dark V1.1 material only", () => {
   it("Light (default) is unchanged: no theme marker, Light background, no Dark custom property", () => {
     const { container } = render(scene(undefined, true, true));
     const html = container.innerHTML;
     expect(html).not.toContain("data-a13-theme");
     expect(html).not.toContain("--a13-dark-");
-    expect(container.querySelector("img")!.getAttribute("src")).toBe(A13_PILOT_BACKGROUND_SRC);
+    expect(container.querySelector("img")!.getAttribute("src")).toBe(A13_DESKTOP_BACKGROUND_SRC);
     const explicit = render(scene("light", true, true)).container.innerHTML;
     expect(explicit).toBe(html);
   });

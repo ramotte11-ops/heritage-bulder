@@ -1,5 +1,5 @@
 import { A13_STATE_SLOTS, selectGalleryState, type A13GalleryStateId } from "@/config/gallery-a13-multi-state-manifests";
-import type { A13Slot } from "@/config/gallery-a13-pilot-manifest";
+import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import { isCalibratedState } from "@/config/gallery-a13-calibration-v1-1";
 import { assignMediaToSlots, type PhotoSource, type PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { composeSlots, obstaclesAbove } from "@/lib/memorial/gallery/dynamic-polaroid-qa";

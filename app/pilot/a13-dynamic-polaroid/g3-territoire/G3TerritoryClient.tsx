@@ -11,7 +11,7 @@ import { diagnoseG3Stop, solveG3Territory, type G3Result, type G3StopDiagnosis, 
 import { measureTitleZone, type TitleInk } from "@/lib/memorial/gallery/title-ink";
 import { MATRIX_CAPTION_STATES, MATRIX_RATIOS, matrixCaption, type MatrixCaptionState } from "@/lib/memorial/gallery/legacy/calibration-matrix-v1-1.legacy-qa";
 import { A13_PILOT_TITLE, rotateMatrixMedia } from "@/lib/memorial/gallery/a13-pilot-fixtures";
-import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneEntry } from "@/components/memorial/gallery/A13PilotScene";
+import { A13CaptionFontProbe, A13GalleryScene, type A13GallerySceneEntry } from "@/components/memorial/gallery/A13GalleryScene";
 import styles from "../etats/page.module.css";
 
 /**
@@ -42,7 +42,7 @@ interface Case {
   stop?: G3StopDiagnosis[];
 }
 
-function sceneEntries(rotation: number, captions: MatrixCaptionState, result: G3Result | null, witness: boolean, font: ReturnType<typeof useCaptionMeasurer>): A13PilotSceneEntry[] {
+function sceneEntries(rotation: number, captions: MatrixCaptionState, result: G3Result | null, witness: boolean, font: ReturnType<typeof useCaptionMeasurer>): A13GallerySceneEntry[] {
   const media = rotateMatrixMedia(rotation, 3);
   if (witness || !result || result.status !== "solved") {
     // Master witness: the V1 G3 manifest as is (centres, s = 1), V2.1 engine.
@@ -154,10 +154,10 @@ export function G3TerritoryClient() {
     ellipse: G3_COUPLE.relativeVector.ellipse,
   });
 
-  const panel = (label: string, entries: A13PilotSceneEntry[], result: G3Result | null, key: string, ref?: React.Ref<HTMLDivElement>) => (
+  const panel = (label: string, entries: A13GallerySceneEntry[], result: G3Result | null, key: string, ref?: React.Ref<HTMLDivElement>) => (
     <section key={key} className={styles.cell} data-testid={`g3-${key}`} ref={ref}>
       <h2 className={result && result.status !== "solved" ? `${styles.label} ${styles.stop}` : styles.label}>{label}</h2>
-      <A13PilotScene
+      <A13GalleryScene
         stateId="G3"
         title={A13_PILOT_TITLE.title}
         subtitle={A13_PILOT_TITLE.subtitle}
@@ -187,7 +187,7 @@ export function G3TerritoryClient() {
           the canonical 1670 px (scale 1:1), whatever the visible panel size:
           glyph rasterisation varies slightly with the rendered size. */}
       <div ref={titleSceneRef} style={{ position: "absolute", width: 1670, left: -20000, top: 0 }} aria-hidden="true">
-        <A13PilotScene stateId="G3" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
+        <A13GalleryScene stateId="G3" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
       </div>
       <header className={styles.head}>
         <p className={styles.stop} data-testid="legacy-qa-banner">
