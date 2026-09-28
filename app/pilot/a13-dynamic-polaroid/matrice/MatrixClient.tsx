@@ -35,7 +35,10 @@ export function MatrixClient() {
   return (
     <main className={styles.page} ref={rootRef}>
       <A13CaptionFontProbe />
-      <div className={styles.banner}>A13 · Desktop Light · calibration V1.1 — matrice QA (G2–G5)</div>
+      <div className={styles.banner} data-testid="legacy-qa-banner">
+        <span className={styles.red}>LEGACY · QA historique · non produit</span> A13 · Desktop Light · calibration V1.1 — matrice QA (G2–G5). Chemin
+        remplacé : ne représente pas le runtime A13 (G2–G5 = solveV2, voir /pilot/a13-desktop).
+      </div>
       <section className={styles.panel}>
         {!runs ? (
           <p data-testid="matrix-status">Chargement de La Belle Aurore…</p>

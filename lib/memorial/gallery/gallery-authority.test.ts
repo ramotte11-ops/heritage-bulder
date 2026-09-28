@@ -42,15 +42,31 @@ function sourceFiles(): string[] {
 
 const isTest = (f: string) => /\.test\.tsx?$/.test(f);
 const isLegacy = (f: string) => rel(f).startsWith("lib/memorial/gallery/legacy/");
-const importSpecs = (src: string) => [...src.matchAll(/(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2]);
+// `import … from "x"`, `export … from "x"`, bare `import "x"` and `import("x")`.
+const importSpecs = (src: string) => [...src.matchAll(/(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 const importsName = (src: string, name: string) => [...src.matchAll(/import\s*\{([^}]*)\}\s*from/g)].some((m) => m[1].split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]).includes(name));
 
-/** The historical QA harnesses allowed to show the superseded path. */
+/**
+ * The historical QA harnesses allowed to show a superseded path — exactly
+ * these, each marked LEGACY (dette D8: the former PilotQa and StatesBoard
+ * pages, which rendered G2–G5 through the legacy builder as if current,
+ * are removed).
+ */
 const LEGACY_QA_HARNESSES = [
-  "app/pilot/a13-dynamic-polaroid/PilotQa.tsx",
-  "app/pilot/a13-dynamic-polaroid/etats/StatesBoard.tsx",
   "app/pilot/a13-dynamic-polaroid/matrice/MatrixClient.tsx",
   "app/pilot/a13-dynamic-polaroid/g3-territoire/G3TerritoryClient.tsx",
+];
+/** The G3 territory study (solver + its title measurement), superseded by the V2 runtime. */
+const G3_STUDY = ["lib/memorial/gallery/g3-territory.ts", "lib/memorial/gallery/title-ink.ts"];
+/** Superseded G2–G5 engines kept for history: the V1/V1.1 builder (legacy/) and the G3 territory study. */
+const isSupersededEngine = (f: string) => isLegacy(f) || G3_STUDY.includes(rel(f));
+/** The representative A13 Desktop pilots: current authority only. */
+const REPRESENTATIVE_PILOTS = [
+  "app/pilot/a13-desktop/DesktopFlowClient.tsx",
+  "app/pilot/a13-dynamic-polaroid/dark/DarkPilotClient.tsx",
+  "app/pilot/a13-dynamic-polaroid/v2/V2PilotClient.tsx",
+  "app/pilot/a13-album-light/AlbumPilotClient.tsx",
+  "app/pilot/a13-viewer/ViewerPilotClient.tsx",
 ];
 
 function resolveImport(from: string, spec: string): string | null {
@@ -80,7 +96,8 @@ describe("D6 — one runtime authority per Gallery state (import guard)", () => 
 
   it("the legacy G2–G5 builder and matrix are imported only by legacy/, the listed QA harnesses and tests", () => {
     const offenders = files.filter((f) => !isTest(f) && !isLegacy(f) && importSpecs(readFileSync(f, "utf8")).some((s) => s.includes("/gallery/legacy/"))).map(rel);
-    expect(offenders.filter((f) => !LEGACY_QA_HARNESSES.includes(f))).toEqual([]);
+    // exactly the listed harnesses: a new importer fails, and so does a stale entry
+    expect(offenders.sort()).toEqual([...LEGACY_QA_HARNESSES].sort());
   });
 
   it("the V1.1 calibration engine (`calibrateState`) is reachable only from legacy/ and tests", () => {
@@ -100,6 +117,39 @@ describe("D6 — one runtime authority per Gallery state (import guard)", () => 
     ]);
     expect(graph.filter(isLegacy).map(rel)).toEqual([]);
     expect(graph.filter((f) => importsName(readFileSync(f, "utf8"), "calibrateState")).map(rel)).toEqual([]);
+  });
+
+  it("D8 — the G3 territory study is reachable only from its LEGACY study page and tests", () => {
+    const importers = files
+      .filter((f) => !isTest(f) && !G3_STUDY.includes(rel(f)) && importSpecs(readFileSync(f, "utf8")).some((s) => /\/gallery\/(g3-territory|title-ink)$/.test(s)))
+      .map(rel);
+    expect(importers).toEqual(["app/pilot/a13-dynamic-polaroid/g3-territoire/G3TerritoryClient.tsx"]);
+  });
+
+  it("D8 — the representative A13 Desktop pilots reach neither a superseded engine nor `calibrateState`", () => {
+    for (const entry of REPRESENTATIVE_PILOTS) {
+      const graph = importGraph([entry]);
+      expect(graph.filter(isSupersededEngine).map(rel), entry).toEqual([]);
+      expect(graph.filter((f) => importsName(readFileSync(f, "utf8"), "calibrateState")).map(rel), entry).toEqual([]);
+    }
+  });
+
+  it("D8 — every route that renders a superseded engine is a marked LEGACY page (title + visible banner), and only the listed ones", () => {
+    const pages = files.filter((f) => rel(f).startsWith("app/") && /(^|\/)page\.tsx$/.test(rel(f)));
+    expect(pages.length).toBeGreaterThan(REPRESENTATIVE_PILOTS.length);
+    const legacyPages = pages.filter((p) => importGraph([rel(p)]).some(isSupersededEngine)).map(rel).sort();
+    expect(legacyPages).toEqual(LEGACY_QA_HARNESSES.map((h) => `${path.posix.dirname(h)}/page.tsx`).sort());
+    for (const p of legacyPages) expect(readFileSync(path.join(ROOT, p), "utf8"), p).toMatch(/title:\s*"LEGACY · [^"]*\(non produit\)"/);
+    for (const h of LEGACY_QA_HARNESSES) {
+      const src = readFileSync(path.join(ROOT, h), "utf8");
+      expect(src, h).toMatch(/data-testid="legacy-qa-banner"/);
+      expect(src, h).toMatch(/LEGACY · [^<]*non produit/);
+    }
+  });
+
+  it("D8 — product components and runtime libraries never import a pilot page", () => {
+    const offenders = files.filter((f) => !isTest(f) && !rel(f).startsWith("app/") && importSpecs(readFileSync(f, "utf8")).some((s) => s.startsWith("@/app/pilot/") || s.includes("/pilot/"))).map(rel);
+    expect(offenders).toEqual([]);
   });
 
   it("no runtime module exports the former ambiguous all-states builder", () => {

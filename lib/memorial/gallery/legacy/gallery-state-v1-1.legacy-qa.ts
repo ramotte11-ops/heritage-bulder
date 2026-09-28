@@ -10,16 +10,17 @@ import { calibrateState, type CalibratedSlot } from "@/lib/memorial/gallery/mani
  * ⚠ LEGACY / QA ONLY — NOT A RUNTIME API (dette D6, fermée).
  *
  * The multi-state builder of the Desktop Light MULTI-STATE V1 era, kept
- * verbatim for the historical QA harnesses that document it (`/pilot/
- * a13-dynamic-polaroid` PilotQa, `/etats` StatesBoard, `/matrice` via the
- * V1.1 calibration matrix) and for their tests. Its G2–G5 branch (V1
+ * verbatim for the historical `/matrice` harness (via the V1.1 calibration
+ * matrix, marked LEGACY) and for the tests that prove the runtime differs
+ * from it (D6, D7). The former PilotQa and StatesBoard pages that rendered
+ * it are removed (dette D8). Its G2–G5 branch (V1
  * manifests + V1.1 calibration) is SUPERSEDED: the only G2–G5 authority is
  * the V2 runtime (`solveV2`, simplified manifests V2 + patch V2.1), reached
  * through `runDesktopGallery`. G6 exact and Signature 7+ are the closed
  * V2.1 composition (`buildG6FamilyState`, the runtime one).
  *
  * Import guard: `gallery-authority.test.ts` fails if any module outside
- * `lib/memorial/gallery/legacy/`, the listed QA harnesses or tests imports
+ * `lib/memorial/gallery/legacy/`, the listed LEGACY QA harnesses or tests imports
  * this file or the V1.1 calibration engine.
  */
 

@@ -15,9 +15,12 @@ import { A13CaptionFontProbe, A13PilotScene, type A13PilotSceneEntry } from "@/c
 import styles from "../etats/page.module.css";
 
 /**
+ * ⚠ LEGACY / ÉTUDE HISTORIQUE / NON PRODUIT (dette D8) — not the A13
+ * runtime (G3 = `solveV2` through `runDesktopGallery`).
+ *
  * G3 slot-territory pilot, D2/D3 coupled (Coupled Slot Territory V1).
  * Views (`?vue=`):
- * - `planche` (default): Master witness position vs six hard runtime
+ * - `planche` (default): Master witness position vs six hard study
  *   solutions (every cyclic ratio permutation), artistic render only;
  * - `diagnostic`: the same solutions with territories, witness/chosen
  *   centres, displacements, contours, the measured title protection, and
@@ -187,6 +190,9 @@ export function G3TerritoryClient() {
         <A13PilotScene stateId="G3" title={A13_PILOT_TITLE.title} subtitle={A13_PILOT_TITLE.subtitle} entries={[]} />
       </div>
       <header className={styles.head}>
+        <p className={styles.stop} data-testid="legacy-qa-banner">
+          LEGACY · étude historique · non produit — solveur d&apos;étude G3 remplacé : ne représente pas le runtime A13 (G3 = solveV2, voir /pilot/a13-desktop).
+        </p>
         <h1 className={styles.h1}>A13 · G3 Desktop Light · territoires de slot couplés D2/D3 — {view}</h1>
         <div className={styles.controls}>
           <span data-testid="g3-font">{font?.fontCheck ? "La Belle Aurore chargée" : "police en attente…"}</span>

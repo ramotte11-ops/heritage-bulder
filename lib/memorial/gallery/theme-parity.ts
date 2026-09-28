@@ -155,8 +155,8 @@ export interface EngineRun {
 
 /**
  * Runs the Light V2.1 engine ONCE for a fixture — exactly the calls the
- * Light pilots make (`V2PilotClient`: `solveV2`; `StatesBoard`:
- * `buildG6FamilyState`). No theme argument exists.
+ * Desktop runtime makes (`runDesktopGallery`: `solveV2` for G2–G5,
+ * `buildG6FamilyState` for G6 / Signature 7+). No theme argument exists.
  */
 export function runLightEngine(fx: ParityFixture, measurer: CaptionMeasurer | null, titleMask: GlyphMask): EngineRun {
   if (isV2(fx.state)) {

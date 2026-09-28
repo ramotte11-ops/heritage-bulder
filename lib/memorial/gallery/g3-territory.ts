@@ -11,6 +11,11 @@ import { layoutCaption, type CaptionLayout, type CaptionMeasurer } from "@/lib/m
 import { convexIntersectionArea, slotRectToCanvas, type Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 
 /**
+ * ⚠ LEGACY / STUDY ONLY — NOT A RUNTIME API (dette D8). Used only by the
+ * `/g3-territoire` historical study page and its tests; the G3 authority is
+ * the V2 runtime (`solveV2` through `runDesktopGallery`). Import guard:
+ * `gallery-authority.test.ts`.
+ *
  * A13 — G3 Desktop Light — SLOT TERRITORY (study V1) + COUPLED SLOT
  * TERRITORY (calibration V1, D2 ↔ D3 only). Solver for the three G3 slots.
  *

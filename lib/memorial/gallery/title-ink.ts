@@ -3,6 +3,10 @@ import { G3_TITLE_PROTECTION } from "@/config/gallery-a13-g3-territory";
 import type { TitleZone } from "@/lib/memorial/gallery/g3-territory";
 
 /**
+ * ⚠ LEGACY / STUDY ONLY (dette D8) — part of the `/g3-territoire`
+ * historical study; the runtime title authority is the glyph mask
+ * (`title-glyph-mask.ts`). Import guard: `gallery-authority.test.ts`.
+ *
  * Browser-only — G3 territory study §2: the title protection is the UNION
  * of the rendered ink of the title and the microcopy, measured after the
  * fonts are confirmed loaded, plus 18 px (x) / 12 px (y) source.
