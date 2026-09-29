@@ -67,14 +67,40 @@ function hasOnlyKnownKeys(raw: Record<string, unknown>, known: ReadonlySet<strin
 
 type CaptionResult = { ok: true; caption: string | null } | { ok: false; reason: "caption" | "captionTooLong" };
 
+function collapseCaptionWhitespace(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim();
+}
+
 /** Whitespace normalization only; blank → null; ≤ 32 code points. */
 export function normalizeGalleryCaption(raw: unknown): CaptionResult {
   if (raw === null || raw === undefined) return { ok: true, caption: null };
   if (typeof raw !== "string" || CONTROL_CHARACTER.test(raw)) return { ok: false, reason: "caption" };
-  const caption = raw.replace(/\s+/g, " ").trim();
+  const caption = collapseCaptionWhitespace(raw);
   if (caption === "") return { ok: true, caption: null };
   if ([...caption].length > GALLERY_CAPTION_MAX_CHARACTERS) return { ok: false, reason: "captionTooLong" };
   return { ok: true, caption };
+}
+
+/**
+ * How many characters `raw` counts for once normalized — exactly what
+ * `normalizeGalleryCaption` measures against the limit, so a Builder
+ * counter can never disagree with the stored rule.
+ */
+export function galleryCaptionLength(raw: string): number {
+  return [...collapseCaptionWhitespace(raw)].length;
+}
+
+/**
+ * What a caption field may hold while the family types: their raw text,
+ * minus control characters the domain would refuse, cut (by code point)
+ * to the first prefix that still normalizes within the limit — so a long
+ * paste stops at the limit instead of being silently rejected. Typing
+ * spaces is never altered (normalization happens only when stored).
+ */
+export function clampGalleryCaptionInput(raw: string): string {
+  let points = [...raw.replace(new RegExp(CONTROL_CHARACTER.source, "g"), "")];
+  while (galleryCaptionLength(points.join("")) > GALLERY_CAPTION_MAX_CHARACTERS) points = points.slice(0, -1);
+  return points.join("");
 }
 
 /**
@@ -166,6 +192,30 @@ export function reorderGallery(gallery: GalleryContent, orderedMediaIds: readonl
 export function setGalleryCaption(gallery: GalleryContent, mediaId: string, caption: string | null): GalleryEditResult {
   if (!gallery.items.some((item) => item.mediaId === mediaId)) return { ok: false, reason: "unknownMediaId" };
   return parseGalleryContent({ items: gallery.items.map((item) => (item.mediaId === mediaId ? { mediaId, caption } : item)) });
+}
+
+/**
+ * Swaps the photograph of one memory for another: same position, same
+ * caption — only the reference changes. Refuses an unknown current
+ * photograph and a replacement already present elsewhere (one
+ * photograph, one place).
+ */
+export function replaceGalleryMedia(gallery: GalleryContent, currentMediaId: string, nextMediaId: string): GalleryEditResult {
+  if (!gallery.items.some((item) => item.mediaId === currentMediaId)) return { ok: false, reason: "unknownMediaId" };
+  return parseGalleryContent({
+    items: gallery.items.map((item) => (item.mediaId === currentMediaId ? { mediaId: nextMediaId, caption: item.caption } : item)),
+  });
+}
+
+/** Moves one memory one place up (-1) or down (+1); its caption travels with it. */
+export function moveGalleryMedia(gallery: GalleryContent, mediaId: string, offset: -1 | 1): GalleryEditResult {
+  const ids = galleryMediaIds(gallery);
+  const from = ids.indexOf(mediaId);
+  if (from === -1) return { ok: false, reason: "unknownMediaId" };
+  const to = from + offset;
+  if (to < 0 || to >= ids.length) return { ok: false, reason: "notAPermutation" };
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  return reorderGallery(gallery, ids);
 }
 
 /**

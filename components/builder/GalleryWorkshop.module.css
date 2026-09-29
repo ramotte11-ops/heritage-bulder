@@ -1,0 +1,364 @@
+/*
+ * A13 — the family's photographic register. Chrome lives in
+ * BuilderScreen.module.css; every value below reuses the existing
+ * HERITAGE tokens and the conventions already shipped by PersonSheet
+ * (hairline-separated blocks), Traditions (field label, text input,
+ * dashed add action, secondary action), HeroPhoto (dropzone, hidden
+ * input, text link) and HeroCrop (move buttons). No new token, colour,
+ * typeface or shadow: one continuous surface, memories separated by a
+ * hairline — never a card per photograph, never a Gallery look-alike.
+ */
+
+.workshop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-lg);
+}
+
+/* One continuous surface — the textarea/dropzone material — with rows separated by PersonSheet's hairline. */
+.register,
+.pending {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto 4.5rem 1fr;
+  grid-template-areas:
+    "number thumbnail moves"
+    "body body body";
+  column-gap: var(--heritage-space-md);
+  row-gap: var(--heritage-space-md);
+  align-items: start;
+  padding: var(--heritage-space-lg);
+}
+
+.item + .item,
+.pendingItem + .pendingItem {
+  border-top: 1px solid var(--heritage-border-soft);
+}
+
+@media (min-width: 40rem) {
+  .item {
+    grid-template-columns: auto 5.5rem 1fr auto;
+    grid-template-areas: "number thumbnail body moves";
+  }
+}
+
+.number {
+  grid-area: number;
+  min-width: 1.5rem;
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 500;
+  font-size: 1rem;
+  line-height: 1.5;
+  /* Playfair's default old-style figures read "o1"; the order must read 01, 02, 03. */
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--heritage-text-secondary);
+}
+
+/* The neutral thumbnail: the whole photograph (contain) on a quiet ground — never a crop, never a frame. */
+.thumbnail {
+  grid-area: thumbnail;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-selected);
+  overflow: hidden;
+}
+
+.thumbnailImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.body {
+  grid-area: body;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+.fieldLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-primary);
+}
+
+.textInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.9375rem;
+  color: var(--heritage-text-primary);
+}
+
+.textInput:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 1px;
+}
+
+.textInput:read-only {
+  color: var(--heritage-text-secondary);
+}
+
+.counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--heritage-text-secondary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--heritage-space-lg);
+}
+
+/* HeroPhoto's text link, given a comfortable touch height. */
+.textAction,
+.textActionQuiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+/* "Retirer" stays sober — the skip link's secondary tone, never an alarm. */
+.textActionQuiet {
+  color: var(--heritage-text-secondary);
+}
+
+.textAction:disabled,
+.textActionQuiet:disabled,
+.textAction[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.textAction:focus-visible,
+.textActionQuiet:focus-visible,
+.textAction:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+  padding-block-start: var(--heritage-space-xs);
+}
+
+.confirmQuestion {
+  font-size: 0.875rem;
+  color: var(--heritage-text-primary);
+}
+
+/* Traditions' secondary action. */
+.confirmAction {
+  min-height: 2.75rem;
+  background: none;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  padding: 0.5rem 0.875rem;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+}
+
+.confirmAction:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+  border-color: var(--heritage-state-disabled-surface);
+}
+
+.confirmAction:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.moves {
+  grid-area: moves;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+/* HeroCrop's move buttons, at a 44px touch size. */
+.moveButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
+  color: var(--heritage-text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.moveButton:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+  background: var(--heritage-state-disabled-surface);
+}
+
+.moveButton:not(:disabled):hover {
+  background: var(--heritage-surface-selected);
+}
+
+.moveButton:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.pendingItem {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  column-gap: var(--heritage-space-md);
+  align-items: start;
+  padding: var(--heritage-space-lg);
+}
+
+.pendingItem .thumbnail {
+  grid-area: auto;
+}
+
+.pendingBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--heritage-space-xs);
+}
+
+.fileName {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--heritage-text-primary);
+}
+
+.statusText,
+.hint {
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}
+
+/* HeroPhoto's hidden-but-focusable file input. */
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* HeroPhoto's big, calm add zone — shown only while the register is empty. */
+.dropzone,
+.addRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background-color var(--heritage-motion-fast) var(--heritage-easing-standard),
+    border-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.dropzone {
+  min-height: 10rem;
+  padding: var(--heritage-space-xl);
+}
+
+/* Traditions' dashed add action, once memories exist. */
+.addRow {
+  min-height: 3.5rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.addLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--heritage-accent-primary);
+}
+
+.dropzone[aria-disabled="true"],
+.addRow[aria-disabled="true"] {
+  cursor: default;
+  background: var(--heritage-state-disabled-surface);
+}
+
+.dropzone[aria-disabled="true"] .addLabel,
+.addRow[aria-disabled="true"] .addLabel {
+  color: var(--heritage-state-disabled-text);
+}
+
+.dropzone:has(.hiddenInput:focus-visible),
+.addRow:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

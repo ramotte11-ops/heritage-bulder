@@ -1,0 +1,73 @@
+/*
+ * A13 — "Vos souvenirs en images". Chrome lives in
+ * BuilderScreen.module.css; heading, form rhythm, actions and skip link
+ * are PersonSheetStep.module.css / TraditionsStep.module.css verbatim —
+ * no new Builder design direction. The register itself is styled by
+ * GalleryWorkshop.module.css.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-breathing);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-md);
+}
+
+.skipLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.skipLink:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.skipLink:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}

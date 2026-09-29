@@ -382,6 +382,40 @@ export const TRANSLATION_KEYS = [
   "flowPause.title",
   "flowPause.body",
   "flowPause.backToSpace",
+  // A13 Builder — "Vos souvenirs en images" (components/builder/GalleryStep.tsx),
+  // the family's photographic register: one key per distinct piece of
+  // text, none named after a component. `itemLabel` ({index}) names a
+  // memory for assistive technology; `captionCounter` ({count}/{max})
+  // appears only near the limit; `moved` ({position}/{total}), `added`,
+  // `replaced` and `removed` are polite announcements. The upload
+  // errors reuse `mediaErrorTranslationKey` (lib/media/media-error-copy.ts),
+  // Continue reuses `common.continue`, Cancel `common.cancel`, and a
+  // corrupted stored Gallery `hero.dataUnavailable`.
+  "galleryStep.title",
+  "galleryStep.subtitle",
+  "galleryStep.addPhotos",
+  "galleryStep.listLabel",
+  "galleryStep.itemLabel",
+  "galleryStep.captionLabel",
+  "galleryStep.captionCounter",
+  "galleryStep.replace",
+  "galleryStep.remove",
+  "galleryStep.removeQuestion",
+  "galleryStep.removeConfirm",
+  "galleryStep.moveUp",
+  "galleryStep.moveDown",
+  "galleryStep.moved",
+  "galleryStep.added",
+  "galleryStep.replaced",
+  "galleryStep.removed",
+  "galleryStep.uploading",
+  "galleryStep.replacing",
+  "galleryStep.photoUnavailable",
+  "galleryStep.dismiss",
+  "galleryStep.removeFailed",
+  "galleryStep.singleHint",
+  "galleryStep.signatureHint",
+  "galleryStep.skip",
   // A13 Desktop (dette D5) — the HERITAGE product text of the Gallery,
   // the Full Album and the Viewer. Family content (captions, alt texts,
   // the deceased's name) is never a key. `memory.position` takes

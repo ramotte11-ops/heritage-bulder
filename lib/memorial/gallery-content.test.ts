@@ -6,12 +6,16 @@ import {
   GALLERY_CAPTION_MAX_CHARACTERS,
   addGalleryMedia,
   galleryMediaIds,
+  clampGalleryCaptionInput,
+  galleryCaptionLength,
   inspectGallery,
+  moveGalleryMedia,
   normalizeGalleryCaption,
   parseGalleryContent,
   readGallery,
   removeGalleryMedia,
   reorderGallery,
+  replaceGalleryMedia,
   setGalleryCaption,
   updateGallery,
 } from "./gallery-content";
@@ -152,5 +156,46 @@ describe("pure edits keep the family's order", () => {
     expect(cleared.ok && cleared.gallery.items[0].caption).toBeNull();
     expect(setGalleryCaption(gallery, id(9), "x")).toEqual({ ok: false, reason: "unknownMediaId" });
     expect(setGalleryCaption(gallery, A, "x".repeat(33))).toEqual({ ok: false, reason: "captionTooLong" });
+  });
+
+  it("replace swaps only the reference: same position, same caption; unknown or duplicate refused", () => {
+    const E = id(5);
+    const replaced = replaceGalleryMedia(gallery, C, E);
+    expect(replaced.ok && replaced.gallery.items).toEqual([{ mediaId: A, caption: "a" }, { mediaId: B, caption: null }, { mediaId: E, caption: "c" }, { mediaId: D, caption: null }]);
+    expect(replaceGalleryMedia(gallery, id(9), E)).toEqual({ ok: false, reason: "unknownMediaId" });
+    expect(replaceGalleryMedia(gallery, C, A)).toEqual({ ok: false, reason: "duplicateMediaId" });
+    expect(replaceGalleryMedia(gallery, C, "https://x/original.jpg")).toEqual({ ok: false, reason: "mediaId" });
+    expect(galleryMediaIds(gallery)).toEqual([A, B, C, D]); // input never mutated
+  });
+
+  it("move shifts one place, the caption travels with its photograph; the ends refuse to go further", () => {
+    const down = moveGalleryMedia(gallery, A, 1);
+    expect(down.ok && down.gallery.items.slice(0, 2)).toEqual([{ mediaId: B, caption: null }, { mediaId: A, caption: "a" }]);
+    const up = moveGalleryMedia(gallery, C, -1);
+    expect(up.ok && galleryMediaIds(up.gallery)).toEqual([A, C, B, D]);
+    expect(moveGalleryMedia(gallery, A, -1)).toEqual({ ok: false, reason: "notAPermutation" });
+    expect(moveGalleryMedia(gallery, D, 1)).toEqual({ ok: false, reason: "notAPermutation" });
+    expect(moveGalleryMedia(gallery, id(9), 1)).toEqual({ ok: false, reason: "unknownMediaId" });
+    expect(galleryMediaIds(gallery)).toEqual([A, B, C, D]);
+  });
+
+  it("galleryCaptionLength counts exactly what normalizeGalleryCaption measures (code points, collapsed spaces)", () => {
+    expect(galleryCaptionLength("  Tous   les deux ")).toBe(13);
+    expect(galleryCaptionLength("😀".repeat(32))).toBe(32);
+    expect(normalizeGalleryCaption("😀".repeat(32)).ok).toBe(true);
+    expect(galleryCaptionLength("😀".repeat(33))).toBe(GALLERY_CAPTION_MAX_CHARACTERS + 1);
+    expect(normalizeGalleryCaption("😀".repeat(33))).toEqual({ ok: false, reason: "captionTooLong" });
+    expect(galleryCaptionLength("   ")).toBe(0);
+  });
+
+  it("clampGalleryCaptionInput keeps typing intact and stops a long paste exactly at the stored limit", () => {
+    expect(clampGalleryCaptionInput("Tous les deux ")).toBe("Tous les deux ");
+    expect(clampGalleryCaptionInput("x".repeat(40))).toBe("x".repeat(32));
+    expect(clampGalleryCaptionInput("😀".repeat(40))).toBe("😀".repeat(32));
+    expect(clampGalleryCaptionInput("  " + "x".repeat(40))).toBe("  " + "x".repeat(32)); // leading spaces do not count once stored
+    expect(clampGalleryCaptionInput("a\u0001b")).toBe("ab");
+    const clamped = clampGalleryCaptionInput("Le village de ma grand-mère, été 1966");
+    expect(normalizeGalleryCaption(clamped).ok).toBe(true);
+    expect(galleryCaptionLength(clamped)).toBe(GALLERY_CAPTION_MAX_CHARACTERS);
   });
 });
