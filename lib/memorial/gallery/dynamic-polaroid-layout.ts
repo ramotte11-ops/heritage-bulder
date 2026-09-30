@@ -85,9 +85,21 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/**
+ * The paper rule of a profile: side/top padding and bottom band, each a
+ * clamp of a proportional value. Desktop is `A13_DESKTOP_POLAROID` (the
+ * default everywhere below, unchanged); the Mobile profile passes its fixed
+ * tokens (`percent` / `heightFactor` 0, `minPx` = `maxPx`), which the same
+ * formulas resolve to constants.
+ */
+export interface PaperProfile {
+  photoSidePadding: { percent: number; minPx: number; maxPx: number };
+  bottomBand: { heightFactor: number; minPx: number; maxPx: number };
+}
+
 /** V2 paper for a given outer box (D5: V2.1 fixed band). */
-export function paperFor(width: number, height: number, bandOverridePx?: number) {
-  const { photoSidePadding: sp, bottomBand: bb } = A13_DESKTOP_POLAROID;
+export function paperFor(width: number, height: number, bandOverridePx?: number, paper: PaperProfile = A13_DESKTOP_POLAROID) {
+  const { photoSidePadding: sp, bottomBand: bb } = paper;
   return {
     margin: clamp(sp.percent * width, sp.minPx, sp.maxPx),
     bottomBand: bandOverridePx ?? clamp(bb.heightFactor * height, bb.minPx, bb.maxPx),
@@ -95,8 +107,8 @@ export function paperFor(width: number, height: number, bandOverridePx?: number)
 }
 
 /** Outer width from the window width (piecewise-linear, monotonic). */
-function outerWidthFromWindow(winW: number) {
-  const { percent, minPx, maxPx } = A13_DESKTOP_POLAROID.photoSidePadding;
+function outerWidthFromWindow(winW: number, paper: PaperProfile) {
+  const { percent, minPx, maxPx } = paper.photoSidePadding;
   const wMin = winW + 2 * minPx;
   if (percent * wMin <= minPx) return wMin;
   const wMax = winW + 2 * maxPx;
@@ -105,9 +117,9 @@ function outerWidthFromWindow(winW: number) {
 }
 
 /** Outer height from the window height and top margin (monotonic). */
-function outerHeightFromWindow(winH: number, margin: number, bandOverridePx?: number) {
+function outerHeightFromWindow(winH: number, margin: number, paper: PaperProfile, bandOverridePx?: number) {
   if (bandOverridePx !== undefined) return winH + margin + bandOverridePx;
-  const { heightFactor, minPx, maxPx } = A13_DESKTOP_POLAROID.bottomBand;
+  const { heightFactor, minPx, maxPx } = paper.bottomBand;
   const hMin = winH + margin + minPx;
   if (heightFactor * hMin <= minPx) return hMin;
   const hMax = winH + margin + maxPx;
@@ -115,10 +127,10 @@ function outerHeightFromWindow(winH: number, margin: number, bandOverridePx?: nu
   return (winH + margin) / (1 - heightFactor);
 }
 
-function outerFromWindow(winW: number, windowRatio: number, bandOverridePx?: number) {
-  const W = outerWidthFromWindow(winW);
-  const { margin } = paperFor(W, 0);
-  const H = outerHeightFromWindow(winW / windowRatio, margin, bandOverridePx);
+function outerFromWindow(winW: number, windowRatio: number, paper: PaperProfile, bandOverridePx?: number) {
+  const W = outerWidthFromWindow(winW, paper);
+  const { margin } = paperFor(W, 0, undefined, paper);
+  const H = outerHeightFromWindow(winW / windowRatio, margin, paper, bandOverridePx);
   return { W, H, margin };
 }
 
@@ -129,7 +141,7 @@ export function classifyMediaRatio(mediaRatio: number) {
   return { mediaClass: "inside" as const, windowRatio: mediaRatio };
 }
 
-export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFactor = 1): PolaroidLayout {
+export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFactor = 1, paper: PaperProfile = A13_DESKTOP_POLAROID): PolaroidLayout {
   if (!(source.width > 0 && source.height > 0)) {
     throw new Error(`layoutDynamicPolaroid: invalid source size for ${slot.slotId}`);
   }
@@ -145,13 +157,13 @@ export function layoutDynamicPolaroid(slot: A13Slot, source: PhotoSource, areaFa
   let hi = 4000;
   for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
-    const { W, H } = outerFromWindow(mid, windowRatio, override);
+    const { W, H } = outerFromWindow(mid, windowRatio, paper, override);
     if (W * H < area) lo = mid;
     else hi = mid;
   }
   const winW = (lo + hi) / 2;
   const winH = winW / windowRatio;
-  const { W, H, margin } = outerFromWindow(winW, windowRatio, override);
+  const { W, H, margin } = outerFromWindow(winW, windowRatio, paper, override);
   const bottomBand = H - margin - winH;
 
   let photo: Rect;
@@ -201,6 +213,8 @@ export function placeAtAnchor(anchor: A13Anchor, ref: { width: number; height: n
       return { x: R - w, y: T };
     case "right-bottom":
       return { x: R - w, y: B - h };
+    case "center":
+      return { x: -w / 2, y: -h / 2 };
   }
 }
 

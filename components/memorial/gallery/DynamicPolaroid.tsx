@@ -56,6 +56,14 @@ export interface DynamicPolaroidProps {
    * geometry, so decoding never moves anything.
    */
   imageLoading?: "eager" | "lazy";
+  /**
+   * A13 Mobile Light: caption font size in the print's source px (the
+   * caption SVG's user units), resolved per viewport from the Mobile CSS
+   * token — the size the Mobile caption layout measured with. Absent — as
+   * for every Desktop state — no attribute is rendered and the stylesheet's
+   * Desktop 27 px applies, byte-identical to before.
+   */
+  captionFontSizePx?: number;
 }
 
 function k(v: number) {
@@ -73,7 +81,7 @@ function anchorPoint(slot: A13Slot) {
   return { x, y };
 }
 
-export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel, theme = "light", imageLoading }: DynamicPolaroidProps) {
+export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, onActivate, activateLabel, theme = "light", imageLoading, captionFontSizePx }: DynamicPolaroidProps) {
   const slotStyle: CSSProperties = {
     left: k(slot.center.x),
     top: k(slot.center.y),
@@ -135,7 +143,7 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
             data-status={caption.status}
           >
             {caption.lines.map((l, i) => (
-              <text key={i} x={l.x} y={l.baseline} className={styles.captionText}>
+              <text key={i} x={l.x} y={l.baseline} className={styles.captionText} {...(captionFontSizePx !== undefined ? { style: { fontSize: `${captionFontSizePx}px` } } : {})}>
                 {l.text}
               </text>
             ))}

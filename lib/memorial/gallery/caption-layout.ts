@@ -47,6 +47,30 @@ export interface CaptionMeasurer {
   fontDescent: number;
 }
 
+/**
+ * The profile values the caption logic reads, in the profile's own source
+ * pixels. Desktop is the default (`A13_DESKTOP_CAPTION` on the 1670 × 941
+ * canvas, unchanged); the Mobile profile passes its per-viewport values
+ * (its measurer must measure at `fontSizePx`).
+ */
+export interface CaptionProfile {
+  fontSizePx: number;
+  lineHeight: number;
+  safetyMarginPx: { x: number; y: number };
+  shiftStepPx: number;
+  maxShiftFactorOfBandWidth: number;
+  canvas: { width: number; height: number };
+}
+
+export const DESKTOP_CAPTION_PROFILE: CaptionProfile = {
+  fontSizePx: A13_DESKTOP_CAPTION.fontSizePx,
+  lineHeight: A13_DESKTOP_CAPTION.lineHeight,
+  safetyMarginPx: A13_DESKTOP_CAPTION.safetyMarginPx,
+  shiftStepPx: A13_DESKTOP_CAPTION.shiftStepPx,
+  maxShiftFactorOfBandWidth: A13_DESKTOP_CAPTION.maxShiftFactorOfBandWidth,
+  canvas: A13_DESKTOP_CANVAS,
+};
+
 export interface CaptionLine {
   text: string;
   /** Text start x (alignment point), relative to the print's outer box. */
@@ -116,8 +140,8 @@ function unionInk(lines: CaptionLine[]): Rect {
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
-function dilate(r: Rect): Rect {
-  const { x, y } = A13_DESKTOP_CAPTION.safetyMarginPx;
+function dilate(r: Rect, margin: CaptionProfile["safetyMarginPx"]): Rect {
+  const { x, y } = margin;
   return { x: r.x - x, y: r.y - y, width: r.width + 2 * x, height: r.height + 2 * y };
 }
 
@@ -150,8 +174,9 @@ export function layoutCaption(
   m: CaptionMeasurer,
   /** Outer polygons (canvas frame) of every tirage ABOVE this one. */
   obstacles: { slotId: string; polygon: Point[] }[],
+  profile: CaptionProfile = DESKTOP_CAPTION_PROFILE,
 ): CaptionLayout {
-  const { fontSizePx, lineHeight, shiftStepPx, maxShiftFactorOfBandWidth } = A13_DESKTOP_CAPTION;
+  const { fontSizePx, lineHeight, shiftStepPx, maxShiftFactorOfBandWidth, safetyMarginPx, canvas } = profile;
   const L = fontSizePx * lineHeight;
   const band = layout.band;
   const usefulWidth = layout.window.width;
@@ -180,14 +205,14 @@ export function layoutCaption(
     height: 0,
   });
   const towardCentre =
-    Math.cos(a) * (A13_DESKTOP_CANVAS.width / 2 - c.x) + Math.sin(a) * (A13_DESKTOP_CANVAS.height / 2 - c.y) >= 0 ? 1 : -1;
+    Math.cos(a) * (canvas.width / 2 - c.x) + Math.sin(a) * (canvas.height / 2 - c.y) >= 0 ? 1 : -1;
 
   const maxShift = maxShiftFactorOfBandWidth * band.width;
   const candidates: number[] = [0];
   for (let d = shiftStepPx; d <= maxShift + 1e-9; d += shiftStepPx) candidates.push(towardCentre * d, -towardCentre * d);
 
   const exceedsUsefulWidth = metrics.some((mm) => mm.width > usefulWidth + 1e-9);
-  const base = collision(slot, layout, dilate(inkCentre0), obstacles);
+  const base = collision(slot, layout, dilate(inkCentre0, safetyMarginPx), obstacles);
   let tried = 0;
   for (const dx of candidates) {
     const lines = at(dx);
@@ -195,7 +220,7 @@ export function layoutCaption(
     tried++;
     // The translation stays inside the bottom band (ink on the paper).
     if (dx !== 0 && (ink.x < band.x - 1e-9 || ink.x + ink.width > band.x + band.width + 1e-9)) continue;
-    const prot = dilate(ink);
+    const prot = dilate(ink, safetyMarginPx);
     const hit = collision(slot, layout, prot, obstacles);
     if (hit.area <= ZERO_PX2) {
       return {
@@ -215,7 +240,7 @@ export function layoutCaption(
   }
   const lines = at(0);
   const ink = unionInk(lines);
-  const prot = dilate(ink);
+  const prot = dilate(ink, safetyMarginPx);
   return {
     status: "CAPTION_COLLISION_UNRESOLVED",
     lines,

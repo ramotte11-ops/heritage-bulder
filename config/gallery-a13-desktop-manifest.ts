@@ -50,8 +50,11 @@ export const A13_DESKTOP_LAYER_Z = {
 export const A13_DESKTOP_GEOMETRY_TOLERANCE = { positionPx: 2, sizePx: 2, rotationDeg: 0.3 } as const;
 
 /** Point of the (unrotated) reference box that stays fixed when the ratio
- * changes. The tirage grows away from it (manifest `expansion`). */
-export type A13Anchor = "left-bottom" | "bottom-center" | "top-center" | "right-top" | "right-bottom";
+ * changes. The tirage grows away from it (manifest `expansion`).
+ * `center` is used by no Desktop manifest: it is the Mobile profile's
+ * frame, whose slot centre IS the paper centre (the Mobile `anchorPivot`
+ * is applied in canvas space by `gallery-mobile-runtime.ts`). */
+export type A13Anchor = "left-bottom" | "bottom-center" | "top-center" | "right-top" | "right-bottom" | "center";
 
 export interface A13SafeZone {
   xMin: number;

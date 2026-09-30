@@ -1,0 +1,202 @@
+/*
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.4).
+ *
+ * `.stage` is the size container (full-bleed, 375–430 px); `.canvas` keeps
+ * the 941 × 1672 frame and defines `--k`, one source pixel at the current
+ * width, which the shared DynamicPolaroid reads: uniform scale, no reflow,
+ * no internal breakpoint. Text sizes are the contract's CSS clamp tokens
+ * (`vw` of the contract = `cqw` of the full-bleed stage), never raster-scaled.
+ */
+
+.stage {
+  /* Caption hand: the shared token (La Belle Aurore, self-hosted). */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  container-type: inline-size;
+  width: 100%;
+}
+
+.canvas {
+  --k: calc(100cqw / 941);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 941 / 1672;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/*
+ * Touch: no browser tap highlight on a print (Mobile browsers paint it over
+ * the print's axis-aligned bounds, i.e. over its neighbours). Keyboard focus
+ * keeps the shared `:focus-visible` ring of DynamicPolaroid.
+ */
+.canvas [data-print] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The one common background: width 100%, height auto, no crop. */
+.background {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Runtime title — layout box [160, 54, 621 × 174] (layout only, never an
+ * exclusion zone; the collision authority is the rendered glyph mask).
+ * Shared A13 title tokens (EB Garamond small caps / italic, Desktop inks),
+ * Mobile sizes. One line each, centred on the box centre. Inert for the
+ * pointer: a print under the box stays reachable.
+ */
+.titleBlock {
+  position: absolute;
+  left: calc(160 * var(--k));
+  top: calc(54 * var(--k));
+  width: calc(621 * var(--k));
+  height: calc(174 * var(--k));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  color: #3d3024;
+  pointer-events: none;
+}
+
+/* Line offsets measured on the rendered ink (EB Garamond, 375–430 px): the
+ * title ink sits on its glyph box [210, 68, 521 × 58] (y 69 → 122) with no
+ * offset; the subtitle ink is centred on its box [250, 132, 441 × 28]
+ * (−15 source px). Widths are the runtime text's own (one line, centred). */
+.title {
+  margin: 0;
+  font-size: clamp(30px, 8.1cqw, 35px);
+  line-height: 1.1;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.subtitle {
+  margin: calc(-15 * var(--k)) 0 0;
+  font-size: clamp(14px, 3.85cqw, 16px);
+  line-height: 1.1;
+  color: #5a4633;
+  white-space: nowrap;
+}
+
+/*
+ * Signature 7+ CTA — a real <button>, runtime i18n text, one line. Box =
+ * contract [247, 1553, 446 × 77]; shared A13 CTA tokens (rule, radius, inks,
+ * EB Garamond italic), Mobile size clamp(16px, 4.6vw, 20px). The drawn box
+ * is the contract box; the touch target is extended to ≥ 44 CSS px high by
+ * a transparent pseudo-element, centred, which stays inside the safe box
+ * [220, 1530, 500 × 124]. Focus is an outline (never layout space).
+ */
+.cta {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: calc(1.5 * var(--k)) solid rgb(92 74 41);
+  border-radius: calc(8 * var(--k));
+  background: transparent;
+  color: rgb(54 50 25);
+  font-size: clamp(16px, 4.6cqw, 20px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cta::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: max(100%, 44px);
+  transform: translateY(-50%);
+}
+
+.cta:focus {
+  outline: none;
+}
+
+.cta:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.ctaLabel {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* QA overlay (pilot only): territories, witnesses, centres, glyph mask, targets. */
+.qaLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaTerritory {
+  fill: rgb(230 120 20 / 0.1);
+  stroke: rgb(230 120 20);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.qaWitness {
+  fill: none;
+  stroke: rgb(0 90 255);
+  stroke-width: 2.5;
+  stroke-dasharray: 10 6;
+}
+
+.qaCenter {
+  fill: rgb(0 90 255);
+}
+
+.qaPivotCenter {
+  fill: #fff;
+  stroke: rgb(0 90 255);
+  stroke-width: 2;
+}
+
+.qaMask {
+  fill: rgb(200 30 150 / 0.28);
+}
+
+.qaHit {
+  fill: rgb(20 160 70 / 0.18);
+  stroke: rgb(20 160 70);
+  stroke-width: 2;
+}
+
+.qaSafe {
+  fill: none;
+  stroke: rgb(220 0 0);
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+}
+
+.qaLabel {
+  font: 600 18px ui-monospace, monospace;
+  fill: rgb(0 60 200);
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+}
