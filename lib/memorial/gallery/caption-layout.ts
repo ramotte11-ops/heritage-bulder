@@ -60,6 +60,12 @@ export interface CaptionProfile {
   shiftStepPx: number;
   maxShiftFactorOfBandWidth: number;
   canvas: { width: number; height: number };
+  /**
+   * Horizontal inset of the text inside the bottom band. Absent (Desktop):
+   * the useful width is the photo window width, unchanged. Present (Mobile
+   * V1.5): useful width = band width − 2 × inset.
+   */
+  bandInsetPx?: number;
 }
 
 export const DESKTOP_CAPTION_PROFILE: CaptionProfile = {
@@ -179,7 +185,7 @@ export function layoutCaption(
   const { fontSizePx, lineHeight, shiftStepPx, maxShiftFactorOfBandWidth, safetyMarginPx, canvas } = profile;
   const L = fontSizePx * lineHeight;
   const band = layout.band;
-  const usefulWidth = layout.window.width;
+  const usefulWidth = profile.bandInsetPx === undefined ? layout.window.width : band.width - 2 * profile.bandInsetPx;
   const texts = breakCaption(text, usefulWidth, (t) => m.measure(t));
   const metrics = texts.map((t) => m.measure(t));
 

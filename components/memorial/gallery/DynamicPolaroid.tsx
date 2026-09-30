@@ -66,6 +66,32 @@ export interface DynamicPolaroidProps {
   captionFontSizePx?: number;
 }
 
+/**
+ * A13 Mobile Light V1.5 — a narrow print whose caption needed a WIDER
+ * bottom band (`layout.band` reaching past the paper's sides): one paper
+ * in a T shape. Its material, texture (aligned tiles), inner stroke (inset
+ * along the T outline) and double shadow (drop shadows of the whole shape)
+ * are the Light print's own. Never produced on Desktop, where the band is
+ * the paper's width: the print renders exactly as before.
+ */
+function widenedStroke(layout: PolaroidLayout) {
+  const { width: W, height: H } = layout.outer;
+  const { x: bx, y: by, width: bw } = layout.band;
+  const d = 0.6;
+  return [
+    [d, d],
+    [W - d, d],
+    [W - d, by + d],
+    [bx + bw - d, by + d],
+    [bx + bw - d, H - d],
+    [bx + d, H - d],
+    [bx + d, by + d],
+    [d, by + d],
+  ]
+    .map(([x, y]) => `${x},${y}`)
+    .join(" ");
+}
+
 function k(v: number) {
   return `calc(${v} * var(--k))`;
 }
@@ -90,6 +116,7 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
   };
   const ref = slot.referenceSize;
   const anchor = anchorPoint(slot);
+  const widened = layout.band.x < -1e-9;
 
   return (
     <div
@@ -101,7 +128,7 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
       data-mode={layout.mode}
     >
       <figure
-        className={styles.print}
+        className={widened ? `${styles.print} ${styles.printWidened}` : styles.print}
         style={theme === "dark" ? { ...box(layout.outer), ...(darkPrintMaterial(slot.slotId) as CSSProperties) } : box(layout.outer)}
         data-print={slot.slotId}
         {...(onActivate
@@ -119,6 +146,7 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
             }
           : {})}
       >
+        {widened ? <div className={styles.bandWing} style={{ ...box(layout.band), backgroundPosition: `${k(-layout.band.x)} ${k(-layout.band.y)}` }} aria-hidden="true" data-band-wing="" /> : null}
         <div className={styles.window} style={box(layout.window)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -155,7 +183,18 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
             ) : null}
           </svg>
         ) : null}
-        <div className={styles.stroke} aria-hidden="true" />
+        {widened ? (
+          <svg
+            className={styles.strokeShape}
+            style={box({ x: 0, y: 0, width: layout.outer.width, height: layout.outer.height })}
+            viewBox={`0 0 ${layout.outer.width} ${layout.outer.height}`}
+            aria-hidden="true"
+          >
+            <polygon points={widenedStroke(layout)} />
+          </svg>
+        ) : (
+          <div className={styles.stroke} aria-hidden="true" />
+        )}
         {qa ? (
           <>
             <div

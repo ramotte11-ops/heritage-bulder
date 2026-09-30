@@ -1,26 +1,31 @@
 /**
- * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.4).
+ * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.5).
  *
- * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_4`
+ * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_5`
  * (`contract/mobile-gallery.json`, `contract/ANCHOR_AND_CANVAS_SEMANTICS.md`,
- * `geometry/g2…g6.json`, `geometry/g7plus.json`). V1.4 = V1.3 + the Studio's
- * final arbitration of G6-D5 (centre 642,1212 · 350 × 300 · 17° · D5 in
- * front of D6); Signature 7+ inherits `g6.json` exactly.
+ * `contract/TITLE_CAPTION_TRANSLATION_V1_5.md`, `geometry/g2…g6.json`,
+ * `geometry/g7plus.json`). V1.5 keeps every slot of V1.4 (incl. the Studio's
+ * G6-D5 arbitration) and adds: the canonical title block (runtime separator,
+ * title, subtitle, protected block), one vertical translation per state for
+ * the whole photo group with the matching stage extension, the 12 / 14.5 px
+ * captions with their `captionSafeZone`, and the translated 7+ CTA.
  *
- * Mobile ONLY: the 941 × 1672 stage, the state manifests, the centre
- * territories, the title glyph boxes, the CTA box, the Mobile paper tokens
+ * Mobile ONLY: the stage, the state manifests and group translations, the
+ * centre territories, the title block, the CTA box, the Mobile paper tokens
  * and the common Mobile background. Everything else is the SHARED A13
  * engine (state selection, DynamicPolaroid, ratio policy, caption logic,
  * interaction, i18n, STOP policy). No Desktop value is read or changed
  * here, and nothing here is a free aesthetic choice.
  *
- * Units: source pixels of the 941 × 1672 reference frame (origin top-left),
+ * Units: source pixels of the 941-wide reference frame (origin top-left),
  * unless a name says `Css`. At a stage width W, one source pixel is
- * `W / 941` CSS px (`--k`). Text metrics are CSS `clamp()` tokens and are
- * never raster-scaled (contract `responsive`).
+ * `W / 941` CSS px (`--k`). Slot coordinates are in the GROUP frame (before
+ * the state's group translation); the title block, the CTA and the stage
+ * height are in the STAGE frame. Text metrics are CSS px, never
+ * raster-scaled (contract `responsive`).
  */
 
-export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_4" as const;
+export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_5" as const;
 
 export const A13_MOBILE_CANVAS = { width: 941, height: 1672 } as const;
 
@@ -44,7 +49,7 @@ export const A13_MOBILE_BACKGROUND = {
   sha256: "825439dd5bb6793caf6dbe3cc37a8221a72d43ece32364476fa0dc705fa83b2d",
 } as const;
 
-/** Contract `layers`: background 0, prints = their paint order, title 900, CTA 950. */
+/** Contract `layers`: background 0, prints = their paint order, title block (title + separator) 900, CTA 950. */
 export const A13_MOBILE_LAYER_Z = { background: 0, runtimeTitle: 900, cta: 950 } as const;
 
 export type A13MobileStateId = "G2" | "G3" | "G4" | "G5" | "G6" | "G7PLUS";
@@ -213,45 +218,134 @@ export function resolveCssClamp(t: A13CssClampToken, stageWidth: number): number
 }
 
 /**
- * Title / subtitle. Collision authority = the RENDERED glyph masks + 8 CSS px
- * (converted per viewport: margin / (W / 941)); `layoutBox` is layout only,
- * never an exclusion zone. The two `…GlyphMaskMax` boxes are the Handoff's
- * nominal glyph extents (self-check), not a runtime gate.
+ * `groupTranslation` (V1.5): ONE vertical translation of the whole photo
+ * group of a state (every slot as one immutable group — never a slot alone),
+ * and the stage extended by exactly that amount. The 941 × 1672 background
+ * stays at the top, unstretched; the extension below it is the existing A13
+ * Light paper material only. `translateYSource` = the CSS value at 375 px ×
+ * 941 / 375 (formula `k * viewportWidth / 375` CSS = constant in source px).
  */
-export const A13_MOBILE_TITLE = {
-  layoutBox: { x: 160, y: 54, width: 621, height: 174 },
-  titleGlyphMaskMax: { x: 210, y: 68, width: 521, height: 58 },
-  subtitleGlyphMaskMax: { x: 250, y: 132, width: 441, height: 28 },
-  collisionMarginCssPx: 8,
-  fontSizeCss: { minPx: 30, vw: 8.1, maxPx: 35 },
-  subtitleSizeCss: { minPx: 14, vw: 3.85, maxPx: 16 },
-  lineHeight: 1.1,
-} as const satisfies Record<string, unknown>;
+export interface A13MobileGroupTranslation {
+  translateYCssAt375: number;
+  translateYSource: number;
+  stageHeightSource: number;
+  backgroundExtensionSource: number;
+}
+
+const G6_TRANSLATION: A13MobileGroupTranslation = { translateYCssAt375: 14, translateYSource: 35.131, stageHeightSource: 1707.131, backgroundExtensionSource: 35.131 };
+
+export const A13_MOBILE_GROUP_TRANSLATION: Record<A13MobileStateId, A13MobileGroupTranslation> = {
+  G2: { translateYCssAt375: 0, translateYSource: 0, stageHeightSource: 1672, backgroundExtensionSource: 0 },
+  G3: { translateYCssAt375: 18, translateYSource: 45.168, stageHeightSource: 1717.168, backgroundExtensionSource: 45.168 },
+  G4: { translateYCssAt375: 4, translateYSource: 10.037, stageHeightSource: 1682.037, backgroundExtensionSource: 10.037 },
+  G5: { translateYCssAt375: 34, translateYSource: 85.317, stageHeightSource: 1757.317, backgroundExtensionSource: 85.317 },
+  G6: G6_TRANSLATION,
+  G7PLUS: G6_TRANSLATION,
+};
+
+/** A value given by the contract at the three witness widths. */
+export type A13ByViewport = Readonly<Record<375 | 390 | 430, number>>;
 
 /**
- * Mobile paper tokens. The caption band is FIXED per viewport whether the
- * caption is absent, one line or two lines; shadows are visual only and
+ * Resolved value at a stage width: exact at 375, 390 and 430, linear
+ * between them (no internal breakpoint, no jump), clamped outside.
+ */
+export function resolveByViewport(t: A13ByViewport, stageWidth: number): number {
+  const w = Math.min(430, Math.max(375, stageWidth));
+  return w <= 390 ? t[375] + ((t[390] - t[375]) * (w - 375)) / 15 : t[390] + ((t[430] - t[390]) * (w - 390)) / 40;
+}
+
+/**
+ * Canonical title block (V1.5, CSS px after stage scaling): a centred stack
+ * from the stage top — separator, gap, title (one line), gap, subtitle, then
+ * at least 28 px before any paper. Collision authority: the centred
+ * PROTECTED BLOCK from y = 0 to `protectedBlockBottomCss`, which no outer
+ * paper may intersect after the group translation
+ * (`TITLE_BLOCK_COLLISION_UNRESOLVED`).
+ */
+export const A13_MOBILE_TITLE_BLOCK = {
+  topCss: 0,
+  separator: {
+    widthCss: { 375: 92, 390: 96, 430: 108 },
+    heightCss: { 375: 24, 390: 24, 430: 30 },
+    /** Horizontal parts, % of the separator width. */
+    partsPercent: { leftRule: 26, leftGap: 8, sprig: 32, rightGap: 8, rightRule: 26 },
+    ruleThicknessCss: 1,
+  },
+  separatorToTitleGapCss: { 375: 10, 390: 11, 430: 12 },
+  title: {
+    fontSizeCss: { 375: 20, 390: 20, 430: 21 },
+    lineHeight: 1.05,
+    maxLines: 1,
+    maxWidthCss: { 375: 270, 390: 285, 430: 300 },
+    letterSpacingEm: 0.06,
+    textTransform: "uppercase",
+  },
+  titleToSubtitleGapCss: { 375: 5, 390: 6, 430: 7 },
+  subtitle: { fontSizeCss: 13, lineHeightCss: 16, maxWidthCss: 285 },
+  subtitleToFirstPolaroidGapCssMin: 28,
+  protectedBlockBottomCss: { 375: 104, 390: 106, 430: 115.05 },
+  protectedBlockWidthCss: { 375: 285, 390: 285, 430: 300 },
+} as const;
+
+/**
+ * The separator's art, all existing shared HERITAGE Light material, drawn
+ * at runtime (never baked into the background): the leaf sprig is the
+ * shared leaf-sprig symbol (`title-sprig.png`, reused unchanged, drawn
+ * through its visible bounds — `viewBox` 70 15 132 60 of the 260 × 95
+ * file); the two rules take the ink of the shared Light rule
+ * (`separator-horizontal.png`, rgb(150 142 121)). The contract's colour
+ * token `A13.mobileLight.separator.sageBrown` has no value in the repo:
+ * this reading is reported to QG.
+ */
+export const A13_MOBILE_SEPARATOR_ART = {
+  sprigSrc: "/assets/ceremony/intemporel/runtime/light/title-sprig.png",
+  sprigFile: { width: 260, height: 95 },
+  sprigViewBox: { x: 70, y: 15, width: 132, height: 60 },
+  ruleColor: "rgb(150 142 121)",
+} as const;
+
+/**
+ * Mobile paper tokens (V1.5). The caption band is FIXED (42 CSS px) whether
+ * the caption is absent, one line or two lines; shadows are visual only and
  * excluded from every collision.
  */
 export const A13_MOBILE_PAPER = {
   sideBorderCss: { minPx: 6, vw: 1.8, maxPx: 8 },
   topBorderCss: { minPx: 6, vw: 1.8, maxPx: 8 },
-  captionBandCss: { minPx: 40, vw: 10.7, maxPx: 46 },
-} as const satisfies Record<string, A13CssClampToken>;
+  captionBandCss: 42,
+} as const;
 
+/**
+ * Captions (V1.5): La Belle Aurore 12 / 14.5 CSS px, natural case, ≤ 32
+ * characters, ≤ 2 lines, centred in the 42 px band with an 8 px horizontal
+ * inset, no auto-shrink, no third line. `captionSafeZone` = the real glyph
+ * union bounding box after the final wrapping, + 6 CSS px horizontally and
+ * + 4 CSS px vertically, transformed with the print: the ONLY inviolable
+ * part of the band (`CAPTION_SAFE_ZONE_UNRESOLVED`); no zone without a
+ * caption. A narrow print whose caption cannot fit two lines widens ONLY
+ * its bottom band, symmetrically, within the slot envelope.
+ */
 export const A13_MOBILE_CAPTION = {
   maxCharacters: 32,
   maxLines: 2,
-  fontSizeCss: { minPx: 14, vw: 3.85, maxPx: 16 },
-  lineHeight: 1.05,
+  fontSizeCss: 12,
+  lineHeightCss: 14.5,
+  horizontalInsetCss: 8,
+  usableBandHeightCss: 42,
+  safeZonePaddingCss: { x: 6, y: 4 },
   autoShrink: false,
-  partialOcclusionAllowed: true,
+  thirdLineAllowed: false,
 } as const;
 
-/** `geometry/g7plus.json` — the Signature 7+ CTA (runtime DOM button, i18n text). */
+/**
+ * `geometry/g7plus.json` (V1.5) — the Signature 7+ CTA, STAGE frame: the
+ * V1.4 box and safe box moved by the inherited G6 group translation
+ * (+35.131 source px). Runtime DOM button, i18n text.
+ */
 export const A13_MOBILE_CTA = {
-  box: { x: 247, y: 1553, width: 446, height: 77 },
-  safeBox: { x: 220, y: 1530, width: 500, height: 124 },
+  box: { x: 247, y: 1588.131, width: 446, height: 77 },
+  safeBox: { x: 220, y: 1565.131, width: 500, height: 124 },
   fontSizeCss: { minPx: 16, vw: 4.6, maxPx: 20 },
   minTargetCssPx: 44,
   zIndex: 950,
@@ -269,6 +363,8 @@ export const A13_MOBILE_STOPS = [
   "PAPER_OVERFLOW_EXCEEDED",
   "ITEM_INACCESSIBLE",
   "TITLE_GLYPH_COLLISION_UNRESOLVED",
+  "TITLE_BLOCK_COLLISION_UNRESOLVED",
+  "CAPTION_SAFE_ZONE_UNRESOLVED",
   "CTA_COLLISION_UNRESOLVED",
   "HORIZONTAL_OVERFLOW",
   "MASTER_HANDOFF_CONTRADICTION_STOP",

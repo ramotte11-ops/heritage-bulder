@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_MOBILE_CTA, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
+import { A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import { runMobileGallery, selectMobileGalleryState, type MobileGalleryRun } from "@/lib/memorial/gallery/gallery-mobile-runtime";
-import { measureMobileTitleGlyphMask, type MobileTitleGlyphMeasure } from "@/lib/memorial/gallery/mobile-title-glyph-mask";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GalleryScene";
 import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memorial/gallery/A13MobileGalleryScene";
 
 /**
- * A13 Gallery — MOBILE LIGHT section (Handoff V1.4), the Mobile counterpart
+ * A13 Gallery — MOBILE LIGHT section (Handoff V1.5), the Mobile counterpart
  * of `A13DesktopGallery`, on the same shared data and interactions:
  * family media → Mobile composition (`runMobileGallery`) → rendered scene.
  *
@@ -24,9 +23,10 @@ import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memor
  *   through `onActivateMemory`; the CTA exists for Signature 7+ only and
  *   calls `onSeeMore`. (The Viewer and the Album are not part of this
  *   Mobile Gallery mission.)
- * - The title glyph mask is measured from a hidden copy of the scene at the
- *   same width once the fonts are loaded; until then the scene's box is
- *   reserved (hidden, inert), so the section never shifts the page.
+ * - The composition needs the real caption metrics (V1.5 caption safe
+ *   zones, narrow bands): it is solved once La Belle Aurore is confirmed
+ *   loaded; until then the state's stage box is reserved (hidden, inert),
+ *   so the section never shifts the page.
  * - STOP policy (shared, dette D7): when the Mobile runtime cannot resolve
  *   a state, NO Gallery is rendered, the anomaly is logged once
  *   (`console.error`) and exposed (`data-gallery-outcome`, `onRun`);
@@ -41,18 +41,16 @@ export interface A13MobileGalleryProps {
   language: Language;
   onSeeMore: () => void;
   onActivateMemory?: (mediaIndex: number) => void;
-  /** QA: the run actually rendered, and the title measure it used. */
-  onRun?: (run: MobileGalleryRun<A13FamilyMedia>, title: MobileTitleGlyphMeasure) => void;
+  /** QA: the run actually rendered. */
+  onRun?: (run: MobileGalleryRun<A13FamilyMedia>) => void;
   /** QA overlay (pilot only). */
   qa?: boolean;
 }
 
 export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, onActivateMemory, onRun, qa = false }: A13MobileGalleryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const [width, setWidth] = useState<number | null>(null);
-  const [titleMeasure, setTitleMeasure] = useState<MobileTitleGlyphMeasure | null>(null);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -65,26 +63,14 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
 
   const active = width !== null && a13MobileProfileActive(width);
 
-  useEffect(() => {
-    if (!active || !font?.fontCheck || !titleRef.current) return;
-    let alive = true;
-    void measureMobileTitleGlyphMask(titleRef.current).then((t) => {
-      if (alive && t) setTitleMeasure(t);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [active, font, width, title, subtitle]);
-
-  const measure = titleMeasure && width !== null && Math.abs(titleMeasure.stageWidth - width) < 0.5 ? titleMeasure : null;
   const run = useMemo(
-    () => (active && font && measure ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, titleMask: measure.mask, stageWidth: measure.stageWidth }) : null),
-    [active, media, font, measure],
+    () => (active && width !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: width }) : null),
+    [active, width, media, font],
   );
 
   const logged = useRef<string | null>(null);
   useEffect(() => {
-    if (!run || !measure) return;
+    if (!run) return;
     if (run.outcome === "unresolved") {
       const key = `${run.stateId}|${run.mediaCount}|${run.stageWidth}|${run.anomaly?.code}|${run.anomaly?.detail}`;
       if (logged.current !== key) {
@@ -92,11 +78,11 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
         console.error("Gallery Mobile: composition unresolved (no Gallery rendered):", run.stateId, run.anomaly?.code, run.anomaly?.rule, run.anomaly?.detail);
       }
     } else logged.current = null;
-    onRun?.(run, measure);
-  }, [run, measure, onRun]);
+    onRun?.(run);
+  }, [run, onRun]);
 
   const qaLayer: A13MobileSceneQa | null =
-    qa && run?.outcome === "resolved" && measure
+    qa && run?.outcome === "resolved"
       ? {
           territories: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, rect: e.mobileSlot.centerTerritory })),
           witnesses: run.entries.map((e) => {
@@ -116,7 +102,8 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           }),
           centers: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, center: e.center, pivotCenter: e.pivotCenter })),
           hitSquares: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, side: e.hitTarget.side, center: e.hitTarget.center })),
-          maskRects: measure.mask.rows.flatMap((row, i) => row.map(([x0, x1]) => ({ x: x0, y: measure.mask.y0 + i, width: x1 - x0 + 1, height: 1 }))),
+          safeZones: run.entries.flatMap((e) => (e.safeZone ? [{ slotId: e.mobileSlot.slotId, polygon: e.safeZone }] : [])),
+          titleBlock: run.metrics.titleBlock,
           ctaSafeBox: run.hasCta ? A13_MOBILE_CTA.safeBox : null,
         }
       : null;
@@ -133,15 +120,9 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
       data-gallery-status={run?.status ?? "pending"}
     >
       <A13CaptionFontProbe />
-      {active ? (
-        // Title glyph-mask source: the same scene, empty, same width, hidden.
-        <div ref={titleRef} style={{ position: "absolute", left: 0, top: 0, width: "100%", visibility: "hidden", pointerEvents: "none" }} aria-hidden="true" inert>
-          <A13MobileGalleryScene stateId="title" title={title} subtitle={subtitle} entries={[]} />
-        </div>
-      ) : null}
-      {!run && state ? (
+      {!run && state && width !== null ? (
         <div style={{ visibility: "hidden" }} aria-hidden="true" inert data-testid="a13-mobile-gallery-pending">
-          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} />
+          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={width} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} />
         </div>
       ) : null}
       {run?.outcome === "resolved" && run.stateId ? (
@@ -149,6 +130,9 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           stateId={run.stateId}
           title={title}
           subtitle={subtitle}
+          stageWidth={run.stageWidth}
+          stageHeight={run.stageHeight}
+          translateY={run.translateY}
           entries={run.entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption }))}
           captionFontSizePx={run.metrics.captionFontPx}
           cta={run.hasCta ? { label: translate(language, "gallery.seeMoreMemories"), lang: language, onActivate: onSeeMore } : null}

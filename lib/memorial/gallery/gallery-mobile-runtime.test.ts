@@ -1,18 +1,20 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { A13_MOBILE_CANVAS, A13_MOBILE_CTA, A13_MOBILE_STATE_SLOTS, A13_MOBILE_TITLE, type A13MobileStateId } from "@/config/gallery-a13-mobile-manifest";
+import { A13_MOBILE_CANVAS, A13_MOBILE_CAPTION, A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, A13_MOBILE_STATE_SLOTS, A13_MOBILE_STOPS, type A13MobileStateId } from "@/config/gallery-a13-mobile-manifest";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
-import { convexIntersectionArea, type Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
-import { maskFromRects, polygonHitsMask } from "@/lib/memorial/gallery/title-glyph-mask";
-import { mobileMetrics, pivotCenter, runMobileGallery, selectMobileGalleryState, witnessMediaRatio } from "@/lib/memorial/gallery/gallery-mobile-runtime";
+import { convexIntersectionArea, slotRectToCanvas, type Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
+import { mobileMetrics, pivotCenter, runMobileGallery, selectMobileGalleryState, witnessMediaRatio, type MobileGalleryRun } from "@/lib/memorial/gallery/gallery-mobile-runtime";
 import { classifyMediaRatio } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
-import { A13_MOBILE_CAPTION_SETS, A13_MOBILE_RATIO_SETS, a13MobileFixture } from "@/lib/memorial/gallery/a13-mobile-pilot-fixtures";
+import { a13MobileFixture, type A13MobileCaptionSet, type A13MobileRatioSet } from "@/lib/memorial/gallery/a13-mobile-pilot-fixtures";
+import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 
 /**
- * A13 Mobile Light runtime — engine-level contract (Handoff V1.4). The
- * rendered pass (real fonts, real glyph masks, DOM reachability, 375 / 390
- * / 430 px) runs in the pilot `/pilot/a13-mobile-gallery` (`?matrice=1`).
+ * A13 Mobile Light runtime — engine-level contract (Handoff V1.5). The
+ * rendered pass (real La Belle Aurore metrics, rendered title block, DOM
+ * reachability, 375 / 390 / 430 px) runs in the pilot
+ * `/pilot/a13-mobile-gallery` (`?matrice=1`). Here the caption measurer is
+ * a fixed stand-in (11.5 px advance per character at 27 px).
  */
 
 const fake: CaptionMeasurer = {
@@ -20,14 +22,6 @@ const fake: CaptionMeasurer = {
   fontAscent: 22,
   fontDescent: 8,
 };
-
-/** The Handoff's nominal glyph boxes dilated by 8 CSS px — a stand-in for the rendered mask. */
-function nominalTitleMask(W: number) {
-  const m = mobileMetrics(W).titleMarginPx;
-  // Inclusive pixel rows/columns covering exactly the continuous box [x − m, x + w + m) (pixel p covers [p, p + 1)).
-  const r = (b: { x: number; y: number; width: number; height: number }) => ({ x0: Math.floor(b.x - m), y0: Math.floor(b.y - m), x1: Math.ceil(b.x + b.width + m) - 1, y1: Math.ceil(b.y + b.height + m) - 1 });
-  return maskFromRects([r(A13_MOBILE_TITLE.titleGlyphMaskMax), r(A13_MOBILE_TITLE.subtitleGlyphMaskMax)]);
-}
 
 const WIDTHS = [375, 390, 430];
 const STATES: [number, A13MobileStateId][] = [
@@ -38,44 +32,107 @@ const STATES: [number, A13MobileStateId][] = [
   [6, "G6"],
   [7, "G7PLUS"],
 ];
-const safe: Point[] = [
-  { x: A13_MOBILE_CTA.safeBox.x, y: A13_MOBILE_CTA.safeBox.y },
-  { x: A13_MOBILE_CTA.safeBox.x + A13_MOBILE_CTA.safeBox.width, y: A13_MOBILE_CTA.safeBox.y },
-  { x: A13_MOBILE_CTA.safeBox.x + A13_MOBILE_CTA.safeBox.width, y: A13_MOBILE_CTA.safeBox.y + A13_MOBILE_CTA.safeBox.height },
-  { x: A13_MOBILE_CTA.safeBox.x, y: A13_MOBILE_CTA.safeBox.y + A13_MOBILE_CTA.safeBox.height },
+const rect = (r: { x: number; y: number; width: number; height: number }): Point[] => [
+  { x: r.x, y: r.y },
+  { x: r.x + r.width, y: r.y },
+  { x: r.x + r.width, y: r.y + r.height },
+  { x: r.x, y: r.y + r.height },
 ];
+
+/** Every hard rule of a resolved run, re-checked independently of the solver. */
+function checkResolved(run: MobileGalleryRun<A13FamilyMedia>, tag: string) {
+  const T = A13_MOBILE_GROUP_TRANSLATION[run.stateId!].translateYSource;
+  expect([run.translateY, run.stageHeight], tag).toEqual([T, A13_MOBILE_GROUP_TRANSLATION[run.stateId!].stageHeightSource]);
+  const k = run.stageWidth / A13_MOBILE_CANVAS.width;
+  const m = run.metrics;
+  // Stage items in the GROUP frame (− T).
+  const title = rect({ ...m.titleBlock, y: m.titleBlock.y - T });
+  const cta = rect({ ...A13_MOBILE_CTA.safeBox, y: A13_MOBILE_CTA.safeBox.y - T });
+  expect(run.entries.map((e) => e.mediaIndex), tag).toEqual(run.entries.map((_, i) => i));
+  for (const e of run.entries) {
+    const id = `${tag} ${e.slot.slotId}`;
+    const t = e.mobileSlot.centerTerritory;
+    const a = e.mobileSlot.paperOverflowAllowance;
+    const xs = e.papers.flat().map((p) => p.x);
+    const ys = e.papers.flat().map((p) => p.y);
+    expect(e.center.x >= t.x - 1e-6 && e.center.x <= t.x + t.width + 1e-6 && e.center.y >= t.y - 1e-6 && e.center.y <= t.y + t.height + 1e-6, `${id} territory`).toBe(true);
+    expect(Math.min(...xs) >= -a.left - 1e-6 && Math.max(...xs) <= 941 + a.right + 1e-6 && Math.min(...ys) >= -T - a.top - 1e-6 && Math.max(...ys) <= 1672 + a.bottom + 1e-6, `${id} overflow`).toBe(true);
+    for (const p of e.papers) expect(convexIntersectionArea(p, title), `${id} title block`).toBeLessThanOrEqual(1e-6);
+    if (run.hasCta) for (const p of e.papers) expect(convexIntersectionArea(p, cta), `${id} CTA`).toBeLessThanOrEqual(1e-6);
+    expect(e.hitTarget.side * k, `${id} 44 px`).toBeGreaterThanOrEqual(44);
+    expect(e.layout.visibleFraction, id).toBe(1);
+    // Fixed 42 px band; widened only for a narrow print, symmetrically, within the envelope.
+    expect(e.layout.band.height, id).toBeCloseTo(42 / k, 9);
+    expect(e.layout.band.x + e.layout.band.width / 2, id).toBeCloseTo(e.layout.outer.width / 2, 9);
+    if (e.bandWidening) expect(e.layout.band.width, id).toBeLessThanOrEqual(e.bandWidening.envelope + 1e-6);
+    else expect(e.layout.band.width, id).toBeCloseTo(e.layout.outer.width, 9);
+    if (!e.caption) {
+      expect(e.safeZone, id).toBeNull();
+      continue;
+    }
+    expect(e.caption.lines.length, id).toBeLessThanOrEqual(A13_MOBILE_CAPTION.maxLines);
+    expect(e.caption.exceedsUsefulWidth, id).toBe(false);
+    expect(e.caption.status, id).toBe("placed");
+    // captionSafeZone = glyph box + 6 / 4 CSS px, transformed with the print; no paper above meets it.
+    const pb = e.caption.protectedBox;
+    expect(pb.width - e.caption.ink.width, id).toBeCloseTo(12 / k, 6);
+    expect(pb.height - e.caption.ink.height, id).toBeCloseTo(8 / k, 6);
+    const zone = slotRectToCanvas(e.slot, { x: e.layout.outer.x + pb.x, y: e.layout.outer.y + pb.y, width: pb.width, height: pb.height });
+    zone.forEach((p, i) => {
+      expect(p.x, id).toBeCloseTo(e.safeZone![i].x, 6);
+      expect(p.y, id).toBeCloseTo(e.safeZone![i].y, 6);
+    });
+    for (const q of run.entries) if (q.mobileSlot.paintOrder > e.mobileSlot.paintOrder) for (const p of q.papers) expect(convexIntersectionArea(zone, p), `${id} safe zone under ${q.slot.slotId}`).toBeLessThanOrEqual(1e-6);
+  }
+}
+
+/** STOPs of the 390 px engine matrix with the stand-in measurer (regression guard; the rendered matrix is the pilot's). */
+const STOPS_390: string[] = [
+  "G2:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
+  "G5:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:search-budget",
+  "G6:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
+  "G7PLUS:3x4:32:CAPTION_SAFE_ZONE_UNRESOLVED:lattice-exhausted",
+  "G7PLUS:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
+];
+
+function checkUnresolved(run: MobileGalleryRun<A13FamilyMedia>, tag: string) {
+  expect((A13_MOBILE_STOPS as readonly string[]).includes(run.status), `${tag} ${run.status}`).toBe(true);
+  expect([run.entries, run.hasCta], tag).toEqual([[], false]);
+  expect(run.anomaly?.basis, tag).toBeDefined();
+}
 
 describe("state selection (shared) and family order", () => {
   it("0–1 → absent; 2…6 → G2…G6 exact; ≥ 7 → Signature 7+", () => {
     expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 40].map(selectMobileGalleryState)).toEqual([null, null, "G2", "G3", "G4", "G5", "G6", "G7PLUS", "G7PLUS", "G7PLUS"]);
     for (const n of [0, 1]) {
-      const run = runMobileGallery({ media: a13MobileFixture(n, "mixte", "aucune"), captionOf: () => null, measurer: null, titleMask: nominalTitleMask(390), stageWidth: 390 });
+      const run = runMobileGallery({ media: a13MobileFixture(n, "mixte", "aucune"), captionOf: () => null, measurer: null, stageWidth: 390 });
       expect([run.outcome, run.status, run.entries.length, run.hasCta]).toEqual(["absent", "GALLERY_ABSENT", 0, false]);
     }
   });
 
   it("G6 exact has no CTA; 7+ shows media[0…5] in the same six slots, with the CTA", () => {
-    const six = a13MobileFixture(6, "mixte", "24");
-    const twelve = a13MobileFixture(12, "mixte", "24");
-    const g6 = runMobileGallery({ media: six, captionOf: (m) => m.caption, measurer: fake, titleMask: nominalTitleMask(390), stageWidth: 390 });
-    const g7 = runMobileGallery({ media: twelve, captionOf: (m) => m.caption, measurer: fake, titleMask: nominalTitleMask(390), stageWidth: 390 });
+    const six = a13MobileFixture(6, "mixte", "courte");
+    const twelve = a13MobileFixture(12, "mixte", "courte");
+    const g6 = runMobileGallery({ media: six, captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+    const g7 = runMobileGallery({ media: twelve, captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
     expect([g6.stateId, g6.status, g6.hasCta]).toEqual(["G6", "PASS", false]);
     expect([g7.stateId, g7.status, g7.hasCta]).toEqual(["G7PLUS", "PASS", true]);
     expect(g7.entries.map((e) => [e.slot.slotId, e.mediaIndex, e.media.mediaId])).toEqual(six.map((m, i) => [A13_MOBILE_STATE_SLOTS.G6[i].slotId, i, m.mediaId]));
-    // The CTA safe box is a constraint of 7+ only: the prints clear it.
-    for (const e of g7.entries) expect(convexIntersectionArea(e.outer, safe), e.slot.slotId).toBe(0);
+    checkResolved(g6, "G6");
+    checkResolved(g7, "7+");
   });
 });
 
-describe("the witness is reproduced exactly", () => {
-  it("with the witness media ratios every print is at scale 1, on its reference centre (375 / 390 / 430)", () => {
+describe("the witness is reproduced exactly (inside the V1.5 title block, translation and CTA)", () => {
+  it("with the witness media ratios and no caption every print is at scale 1, on its reference centre (375 / 390 / 430)", () => {
     const bounded = new Set<string>();
     for (const W of WIDTHS)
       for (const [n, st] of STATES) {
         const slots = A13_MOBILE_STATE_SLOTS[st];
         const media = Array.from({ length: n }, (_, i) => ({ width: witnessMediaRatio(slots[Math.min(i, 5)], mobileMetrics(W)) * 1000, height: 1000 }));
-        const run = runMobileGallery({ media, captionOf: () => null, measurer: null, titleMask: nominalTitleMask(W), stageWidth: W });
+        const run = runMobileGallery({ media, captionOf: () => null, measurer: null, stageWidth: W });
         expect(run.status, `${st}@${W}`).toBe("PASS");
+        expect(run.search.stage, `${st}@${W}`).toBe("fine");
         for (const e of run.entries) {
           const s = e.mobileSlot;
           expect(e.scale, e.slot.slotId).toBe(1);
@@ -90,10 +147,9 @@ describe("the witness is reproduced exactly", () => {
           } else bounded.add(s.slotId);
         }
       }
-    // With the Mobile paper tokens (fixed 2-line caption band), the photo window of
-    // these two witnesses is wider than the shared adaptive range (1.96 and 2.19 >
-    // 1.78): the shared ratio policy bounds the window and shows the photo in
-    // `contain` — same area, not the exact witness proportions (Desktop G4-D3 precedent).
+    // With the Mobile paper tokens (fixed caption band), the photo window of these
+    // two witnesses is wider than the shared adaptive range (> 1.78): the shared
+    // ratio policy bounds the window and shows the photo in `contain` — same area.
     expect([...bounded].sort()).toEqual(["G6-D3", "G6-D6"]);
   });
 
@@ -107,68 +163,95 @@ describe("the witness is reproduced exactly", () => {
     expect(after.x).toBeCloseTo(before.x, 9);
     expect(after.y).toBeCloseTo(before.y, 9);
   });
+
+  it("the protected title block is centred from y = 0, per viewport (285 / 285 / 300 × 104 / 106 / 115.05 CSS px)", () => {
+    for (const [W, w, h] of [
+      [375, 285, 104],
+      [390, 285, 106],
+      [430, 300, 115.05],
+    ]) {
+      const k = W / 941;
+      const b = mobileMetrics(W).titleBlock;
+      expect(b.x + b.width / 2).toBeCloseTo(470.5, 9);
+      expect([b.y, b.width * k, b.height * k].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, w, h]);
+    }
+  });
 });
 
-describe("QA matrix (engine level): ratios × captions × widths — hard rules re-checked", () => {
-  it("every G2…G6 case resolves; 7+ resolves except the documented all-9:16 CTA STOP", { timeout: 300000 }, () => {
+describe("QA matrix (engine level): ratios × captions — every hard rule re-checked", () => {
+  it("390 px: the natural mix with every caption kind, and uniform portrait sets with 32 characters", { timeout: 600000 }, () => {
     const stops: string[] = [];
-    for (const W of WIDTHS) {
-      const mask = nominalTitleMask(W);
-      const k = W / A13_MOBILE_CANVAS.width;
-      for (const [n] of STATES)
-        for (const ratios of A13_MOBILE_RATIO_SETS)
-          for (const captions of A13_MOBILE_CAPTION_SETS) {
-            if (captions !== "32" && ratios !== "mixte") continue;
-            const media = a13MobileFixture(n, ratios, captions);
-            const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: fake, titleMask: mask, stageWidth: W });
-            const tag = `${run.stateId}:${ratios}:${captions}@${W}`;
-            if (run.outcome !== "resolved") {
-              stops.push(`${run.stateId}:${ratios}:${run.status}`);
-              expect(run.entries, tag).toEqual([]);
-              expect(run.hasCta, tag).toBe(false);
-              continue;
-            }
-            expect(run.entries.map((e) => e.mediaIndex), tag).toEqual(run.entries.map((_, i) => i));
-            for (const e of run.entries) {
-              const t = e.mobileSlot.centerTerritory;
-              const a = e.mobileSlot.paperOverflowAllowance;
-              const xs = e.outer.map((p) => p.x);
-              const ys = e.outer.map((p) => p.y);
-              expect(e.center.x >= t.x - 1e-6 && e.center.x <= t.x + t.width + 1e-6 && e.center.y >= t.y - 1e-6 && e.center.y <= t.y + t.height + 1e-6, `${tag} ${e.slot.slotId} territory`).toBe(true);
-              expect(Math.min(...xs) >= -a.left - 1e-6 && Math.max(...xs) <= 941 + a.right + 1e-6 && Math.min(...ys) >= -a.top - 1e-6 && Math.max(...ys) <= 1672 + a.bottom + 1e-6, `${tag} ${e.slot.slotId} overflow`).toBe(true);
-              expect(polygonHitsMask(e.outer, mask), `${tag} ${e.slot.slotId} title`).toBe(false);
-              expect(e.hitTarget.side * k, `${tag} ${e.slot.slotId} 44 px`).toBeGreaterThanOrEqual(44);
-              expect(e.layout.visibleFraction, tag).toBe(1);
-              expect(e.layout.band.height).toBeCloseTo(mobileMetrics(W).paper.band, 9);
-              if (e.caption) expect(e.caption.lines.length, tag).toBeLessThanOrEqual(2);
-            }
-            if (run.hasCta) for (const e of run.entries) expect(convexIntersectionArea(e.outer, safe), tag).toBe(0);
-          }
-    }
-    // The only unresolved inputs: Signature 7+ with six 9:16 media — G6-D6 at its
-    // minimum scale cannot clear the CTA safe box from inside its territory.
-    expect([...new Set(stops)]).toEqual(["G7PLUS:9x16:CTA_COLLISION_UNRESOLVED"]);
-    expect(stops.length).toBe(WIDTHS.length);
+    const cases: [A13MobileRatioSet, A13MobileCaptionSet][] = [
+      ["mixte", "aucune"],
+      ["mixte", "courte"],
+      ["mixte", "32"],
+      ["mixte", "etroit-fr"],
+      ["3x4", "32"],
+      ["9x16", "32"],
+    ];
+    for (const [n] of STATES)
+      for (const [ratios, captions] of cases) {
+        const run = runMobileGallery({ media: a13MobileFixture(n, ratios, captions), captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+        const tag = `${run.stateId}:${ratios}:${captions}`;
+        if (run.outcome === "resolved") checkResolved(run, tag);
+        else {
+          checkUnresolved(run, tag);
+          stops.push(`${tag}:${run.status}:${run.anomaly?.basis}`);
+        }
+      }
+    expect(stops).toEqual(STOPS_390);
   });
 
-  it("the caption band is fixed: the geometry never changes with the caption", () => {
-    for (const W of WIDTHS)
+  it("375 and 430 px: the natural mix with 32-character captions", { timeout: 300000 }, () => {
+    for (const W of [375, 430])
       for (const [n] of STATES) {
-        const geo = (captions: "aucune" | "deux-lignes") =>
-          runMobileGallery({ media: a13MobileFixture(n, "mixte", captions), captionOf: (m) => m.caption, measurer: fake, titleMask: nominalTitleMask(W), stageWidth: W }).entries.map((e) => [e.slot, e.layout]);
-        expect(JSON.stringify(geo("deux-lignes")), `n${n}@${W}`).toBe(JSON.stringify(geo("aucune")));
+        const run = runMobileGallery({ media: a13MobileFixture(n, "mixte", "32"), captionOf: (m) => m.caption, measurer: fake, stageWidth: W });
+        const tag = `${run.stateId}@${W}`;
+        if (run.outcome === "resolved") checkResolved(run, tag);
+        else checkUnresolved(run, tag);
       }
   });
 });
 
-describe("STOP policy", () => {
-  it("a title glyph mask no print can clear → TITLE_GLYPH_COLLISION_UNRESOLVED, no entry", () => {
-    const run = runMobileGallery({ media: a13MobileFixture(4, "mixte", "aucune"), captionOf: () => null, measurer: null, titleMask: maskFromRects([{ x0: 0, y0: 0, x1: 940, y1: 460 }]), stageWidth: 390 });
-    expect([run.outcome, run.status, run.entries.length]).toEqual(["unresolved", "TITLE_GLYPH_COLLISION_UNRESOLVED", 0]);
+describe("captions (V1.5)", () => {
+  it("the band is 42 CSS px whether the caption is absent, one line or two lines; no caption → no safe zone", () => {
+    for (const captions of ["aucune", "courte", "32"] as const) {
+      const run = runMobileGallery({ media: a13MobileFixture(4, "mixte", captions), captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+      expect(run.status, captions).toBe("PASS");
+      for (const e of run.entries) {
+        expect(e.layout.band.height * (390 / 941)).toBeCloseTo(42, 9);
+        expect(e.safeZone === null, `${captions} ${e.slot.slotId}`).toBe(e.caption === null);
+      }
+    }
   });
 
+  it("a narrow print widens ONLY its band (photo window, scale and font unchanged) — never past its envelope", () => {
+    // Wide glyphs: the best two-line break no longer fits the useful width of a 9:16 print.
+    const wide: CaptionMeasurer = { ...fake, measure: (t) => ({ ...fake.measure(t), width: t.length * 15, actualBoundingBoxRight: t.length * 15 }) };
+    const run = runMobileGallery({ media: a13MobileFixture(4, "9x16", "32"), captionOf: (m) => m.caption, measurer: wide, stageWidth: 390 });
+    expect(run.status).toBe("PASS");
+    const widened = run.entries.filter((e) => e.bandWidening);
+    expect(widened.length).toBeGreaterThan(0);
+    for (const e of widened) {
+      const plain = runMobileGallery({ media: a13MobileFixture(4, "9x16", "aucune"), captionOf: () => null, measurer: null, stageWidth: 390 });
+      expect(e.layout.window.width / e.layout.window.height).toBeCloseTo(plain.entries[0].layout.window.width / plain.entries[0].layout.window.height, 9);
+      expect(e.layout.band.width).toBeGreaterThan(e.layout.outer.width);
+      expect(e.layout.band.width).toBeLessThanOrEqual(e.bandWidening!.envelope + 1e-6);
+      expect(run.signals.some((s) => s.startsWith(`${e.slot.slotId}: caption band widened`))).toBe(true);
+    }
+    checkResolved(run, "narrow");
+  });
+
+  it("a caption no band of its envelope can hold in two lines → CAPTION_SAFE_ZONE_UNRESOLVED (per print), no Gallery", () => {
+    const huge: CaptionMeasurer = { ...fake, measure: (t) => ({ ...fake.measure(t), width: t.length * 60, actualBoundingBoxRight: t.length * 60 }) };
+    const run = runMobileGallery({ media: a13MobileFixture(3, "mixte", "32"), captionOf: (m) => m.caption, measurer: huge, stageWidth: 390 });
+    expect([run.outcome, run.status, run.anomaly?.basis, run.entries.length, run.hasCta]).toEqual(["unresolved", "CAPTION_SAFE_ZONE_UNRESOLVED", "per-print", 0, false]);
+  });
+});
+
+describe("STOP policy", () => {
   it("7+ with six 9:16 media → CTA_COLLISION_UNRESOLVED (G6-D6), no Gallery and no CTA", () => {
-    const run = runMobileGallery({ media: a13MobileFixture(7, "9x16", "aucune"), captionOf: () => null, measurer: null, titleMask: nominalTitleMask(390), stageWidth: 390 });
+    const run = runMobileGallery({ media: a13MobileFixture(7, "9x16", "aucune"), captionOf: () => null, measurer: null, stageWidth: 390 });
     expect([run.stateId, run.outcome, run.status, run.entries.length, run.hasCta]).toEqual(["G7PLUS", "unresolved", "CTA_COLLISION_UNRESOLVED", 0, false]);
     expect(run.anomaly?.detail).toMatch(/^G6-D6:/);
   });
@@ -199,7 +282,7 @@ describe("architecture guards", () => {
 
   it("the Mobile runtime reuses the shared engine and reaches no component, Dark material, legacy builder or Desktop solver entry", () => {
     const g = graph("lib/memorial/gallery/gallery-mobile-runtime.ts");
-    for (const shared of ["lib/memorial/gallery/dynamic-polaroid-layout.ts", "lib/memorial/gallery/caption-layout.ts", "lib/memorial/gallery/title-glyph-mask.ts", "config/gallery-a13-multi-state-manifests.ts"]) expect(g).toContain(shared);
+    for (const shared of ["lib/memorial/gallery/dynamic-polaroid-layout.ts", "lib/memorial/gallery/caption-layout.ts", "lib/memorial/gallery/gallery-v2.ts", "config/gallery-a13-multi-state-manifests.ts"]) expect(g).toContain(shared);
     expect(g.filter((f) => f.startsWith("components/") || f.startsWith("app/") || /dark-material|theme-material|\/legacy\//.test(f))).toEqual([]);
     expect(readFileSync(path.join(ROOT, "lib/memorial/gallery/gallery-mobile-runtime.ts"), "utf8")).not.toMatch(/solveV2\(|buildG6FamilyState|runDesktopGallery/);
   });

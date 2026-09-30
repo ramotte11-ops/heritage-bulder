@@ -1,11 +1,13 @@
 /*
- * A13 Gallery — MOBILE LIGHT scene (Handoff V1.4).
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.5).
  *
- * `.stage` is the size container (full-bleed, 375–430 px); `.canvas` keeps
- * the 941 × 1672 frame and defines `--k`, one source pixel at the current
- * width, which the shared DynamicPolaroid reads: uniform scale, no reflow,
- * no internal breakpoint. Text sizes are the contract's CSS clamp tokens
- * (`vw` of the contract = `cqw` of the full-bleed stage), never raster-scaled.
+ * `.stage` is the size container (full-bleed, 375–430 px); `.canvas` is the
+ * 941-wide frame, `stageHeightSource` high (inline aspect ratio), and
+ * defines `--k`, one source pixel at the current width, which the shared
+ * DynamicPolaroid reads: uniform scale, no reflow, no internal breakpoint.
+ * Text sizes are CSS px from the contract (per viewport, set inline;
+ * `vw` of a clamp token = `cqw` of the full-bleed stage), never
+ * raster-scaled.
  */
 
 .stage {
@@ -19,7 +21,6 @@
   --k: calc(100cqw / 941);
   position: relative;
   width: 100%;
-  aspect-ratio: 941 / 1672;
   overflow: hidden;
   isolation: isolate;
 }
@@ -33,7 +34,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The one common background: width 100%, height auto, no crop. */
+/* The one common background: width 100%, height auto, no crop, no stretch (941 × 1672 at the top). */
 .background {
   position: absolute;
   left: 0;
@@ -46,18 +47,43 @@
 }
 
 /*
- * Runtime title — layout box [160, 54, 621 × 174] (layout only, never an
- * exclusion zone; the collision authority is the rendered glyph mask).
- * Shared A13 title tokens (EB Garamond small caps / italic, Desktop inks),
- * Mobile sizes. One line each, centred on the box centre. Inert for the
- * pointer: a print under the box stays reachable.
+ * Stage extension below the background (V1.5 `backgroundExtensionSource`):
+ * the shared A13 Light paper only — paper token #F4EBDF and the paper
+ * texture of `DynamicPolaroid` (same fixed-seed noise, same tile) — no
+ * decor, no repetition of the background.
+ */
+.extension {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background-color: #f4ebdf;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .26  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: calc(160 * var(--k)) calc(160 * var(--k));
+  pointer-events: none;
+}
+
+/* The ONE group container: the state's translation, applied once (inline). */
+.group {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/*
+ * Canonical title block (V1.5) — the header box IS the protected block
+ * (centred, from y = 0, width and height per viewport, set inline). A
+ * centred stack: separator, gap, title (one line), gap, subtitle; the
+ * breathing space below the subtitle is the rest of the box. Shared A13
+ * title tokens (EB Garamond / EB Garamond italic, Desktop inks). Inert for
+ * the pointer.
  */
 .titleBlock {
   position: absolute;
-  left: calc(160 * var(--k));
-  top: calc(54 * var(--k));
-  width: calc(621 * var(--k));
-  height: calc(174 * var(--k));
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -67,35 +93,38 @@
   pointer-events: none;
 }
 
-/* Line offsets measured on the rendered ink (EB Garamond, 375–430 px): the
- * title ink sits on its glyph box [210, 68, 521 × 58] (y 69 → 122) with no
- * offset; the subtitle ink is centred on its box [250, 132, 441 × 28]
- * (−15 source px). Widths are the runtime text's own (one line, centred). */
+.separator {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
 .title {
   margin: 0;
-  font-size: clamp(30px, 8.1cqw, 35px);
-  line-height: 1.1;
+  line-height: 1.05;
   font-weight: 400;
-  font-variant-caps: small-caps;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .subtitle {
-  margin: calc(-15 * var(--k)) 0 0;
-  font-size: clamp(14px, 3.85cqw, 16px);
-  line-height: 1.1;
+  margin: 0;
+  max-width: 285px;
+  font-size: 13px;
+  line-height: 16px;
   color: #5a4633;
   white-space: nowrap;
 }
 
 /*
  * Signature 7+ CTA — a real <button>, runtime i18n text, one line. Box =
- * contract [247, 1553, 446 × 77]; shared A13 CTA tokens (rule, radius, inks,
- * EB Garamond italic), Mobile size clamp(16px, 4.6vw, 20px). The drawn box
- * is the contract box; the touch target is extended to ≥ 44 CSS px high by
- * a transparent pseudo-element, centred, which stays inside the safe box
- * [220, 1530, 500 × 124]. Focus is an outline (never layout space).
+ * contract [247, 1588.131, 446 × 77] (stage frame, V1.5); shared A13 CTA
+ * tokens (rule, radius, inks, EB Garamond italic), Mobile size
+ * clamp(16px, 4.6vw, 20px). The drawn box is the contract box; the touch
+ * target is extended to ≥ 44 CSS px high by a transparent pseudo-element,
+ * centred, which stays inside the safe box [220, 1565.131, 500 × 124].
+ * Focus is an outline (never layout space).
  */
 .cta {
   position: absolute;
@@ -142,7 +171,7 @@
   white-space: nowrap;
 }
 
-/* QA overlay (pilot only): territories, witnesses, centres, glyph mask, targets. */
+/* QA overlay (pilot only): title block, territories, witnesses, centres, caption safe zones, targets. */
 .qaLayer {
   position: absolute;
   inset: 0;
@@ -176,8 +205,16 @@
   stroke-width: 2;
 }
 
-.qaMask {
-  fill: rgb(200 30 150 / 0.28);
+.qaBlock {
+  fill: rgb(200 30 150 / 0.16);
+  stroke: rgb(200 30 150);
+  stroke-width: 2;
+}
+
+.qaSafeZone {
+  fill: rgb(0 170 190 / 0.18);
+  stroke: rgb(0 140 160);
+  stroke-width: 1.5;
 }
 
 .qaHit {

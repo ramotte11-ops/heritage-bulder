@@ -4,11 +4,13 @@ import { A13_PILOT_MEDIA } from "@/lib/memorial/gallery/a13-pilot-fixtures";
 /**
  * A13 Mobile Light — PILOT / QA fixtures (never product data).
  *
- * The QA matrix of the Handoff V1.4 (`QA_MATRIX.md`): media ratios 3:4,
+ * The QA matrix of the Handoff V1.5 (`QA_MATRIX.md`): media ratios 3:4,
  * 4:3, 1:1, 9:16, 16:9, 2.39:1 and a natural mix; captions absent, short,
- * 24 and 32 characters, and two lines. The photographs are the existing
- * pilot files (`public/pilot/a13-dynamic-polaroid/`) at their REAL
- * intrinsic size — a ratio is never simulated by stretching a file.
+ * 24 and 32 characters, one line and two lines, with narrow FR/EN/ES
+ * cases — every caption in natural sentence case, ≤ 32 characters. The
+ * photographs are the existing pilot files (`public/pilot/a13-dynamic-polaroid/`)
+ * at their REAL intrinsic size — a ratio is never simulated by stretching
+ * a file.
  * The family order is the list order.
  */
 
@@ -29,18 +31,52 @@ export type A13MobileRatioSet = (typeof A13_MOBILE_RATIO_SETS)[number];
 /** Natural mix: portrait, landscape, square, narrow portrait, wide landscape, panorama — cycled. */
 const MIX: (keyof typeof PHOTOS)[] = ["3x4", "4x3", "1x1", "9x16", "16x9", "239"];
 
-export const A13_MOBILE_CAPTION_SETS = ["aucune", "courte", "24", "32", "deux-lignes"] as const;
+export const A13_MOBILE_CAPTION_SETS = ["aucune", "courte", "24", "32", "deux-lignes", "etroit-fr", "etroit-en", "etroit-es"] as const;
 export type A13MobileCaptionSet = (typeof A13_MOBILE_CAPTION_SETS)[number];
 
-/** Wide capitals (≤ 32 characters) that always break on two lines in a Mobile print. */
+/** Natural case, ≤ 32 characters, always two lines in a Mobile print. */
 const TWO_LINES = [
-  "MAMAN ET MAMIE, À MIMIZAN, 1966.",
-  "TOUS LES DEUX SUR LA COLLINE",
-  "SON CHAPEAU DE PAILLE, ÉTÉ 1982",
-  "SOUS L'ARCHE DE LA VIEILLE FERME",
-  "LE PONTON DU LAC, SOIR D'AOÛT 98",
-  "LE VILLAGE DEPUIS LE VIEUX MURET",
+  "Maman et Mamie, à Mimizan, 1966.",
+  "Tous les deux sur la colline, 71",
+  "Son chapeau de paille, été 1982",
+  "Sous l'arche de la vieille ferme",
+  "Le ponton du lac, soir d'août 98",
+  "Le village depuis le vieux muret",
 ];
+
+/**
+ * Narrow cases per language (natural case, ≤ 32 characters): long words,
+ * few break points — the lines a narrow print cannot hold without
+ * widening its bottom band.
+ */
+const NARROW: Record<"fr" | "en" | "es", readonly string[]> = {
+  fr: [
+    "Retrouvailles extraordinaires",
+    "Anniversaire de Joséphine, 1987",
+    "Mamie Marguerite à Pontarlier",
+    "Communion d'Anne-Charlotte",
+    "Réveillon chez Maximilien, 1978",
+    "Photographie impressionnante",
+  ],
+  en: [
+    "Grandmother's birthday, Brighton",
+    "Unforgettable Thanksgiving 1979",
+    "Christmas morning at Whitstable",
+    "Grandfather's woodworking shed",
+    "Extraordinary reunion, 1983",
+    "Congratulations, Bartholomew!",
+  ],
+  es: [
+    "Cumpleaños de la abuela Mercedes",
+    "Inolvidables vacaciones en 1985",
+    "Bautizo de Guadalupe, Albacete",
+    "Nochebuena en Villanueva, 1972",
+    "Reencuentro extraordinario",
+    "Felicitaciones, Maximiliano",
+  ],
+};
+
+export const A13_MOBILE_CAPTION_TEXTS = { twoLines: TWO_LINES, narrow: NARROW } as const;
 
 function captionFor(set: A13MobileCaptionSet, i: number): string | null {
   const c = A13_PILOT_MEDIA[i % A13_PILOT_MEDIA.length].captions;
@@ -55,6 +91,12 @@ function captionFor(set: A13MobileCaptionSet, i: number): string | null {
       return c["32"];
     case "deux-lignes":
       return TWO_LINES[i % TWO_LINES.length];
+    case "etroit-fr":
+      return NARROW.fr[i % NARROW.fr.length];
+    case "etroit-en":
+      return NARROW.en[i % NARROW.en.length];
+    case "etroit-es":
+      return NARROW.es[i % NARROW.es.length];
   }
 }
 

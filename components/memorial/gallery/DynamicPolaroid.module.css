@@ -65,6 +65,37 @@
   margin: 0;
 }
 
+/*
+ * A13 Mobile Light V1.5 — widened bottom band of a narrow print (never on
+ * Desktop): the T-shaped paper keeps the print's material. The wing takes
+ * the print's own paper and texture (tiles aligned inline); the shadows
+ * become drop shadows of the whole shape (same offsets, blurs and inks);
+ * the inner stroke follows the T outline (same width and ink).
+ */
+.printWidened {
+  box-shadow: none;
+  filter: drop-shadow(0 calc(3 * var(--k)) calc(5 * var(--k)) rgba(55, 39, 25, 0.2)) drop-shadow(0 calc(14 * var(--k)) calc(24 * var(--k)) rgba(55, 39, 25, 0.14));
+}
+
+.bandWing {
+  position: absolute;
+  background-color: inherit;
+  background-image: inherit;
+  background-size: inherit;
+}
+
+.strokeShape {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.strokeShape polygon {
+  fill: none;
+  stroke: rgba(116, 91, 67, 0.24);
+  stroke-width: 1.2;
+}
+
 /* Caption — contract V2.1: `--heritage-caption-hand` (La Belle Aurore),
  * 27 px source, 400, #5A4A3E. Positions are SVG user units = source px, so
  * the text scales with the print; no auto-shrink exists anywhere. */

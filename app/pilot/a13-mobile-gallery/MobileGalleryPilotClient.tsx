@@ -6,7 +6,7 @@ import { LANGUAGES, type Language } from "@/config/languages";
 import { A13_MOBILE_HANDOFF_ID } from "@/config/gallery-a13-mobile-manifest";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import type { MobileGalleryRun } from "@/lib/memorial/gallery/gallery-mobile-runtime";
-import type { MobileTitleGlyphMeasure } from "@/lib/memorial/gallery/mobile-title-glyph-mask";
+import { measureMobileTitleInk, type MobileTitleInkMeasure } from "@/lib/memorial/gallery/mobile-title-ink";
 import {
   A13_MOBILE_CAPTION_SETS,
   A13_MOBILE_PILOT_TITLE,
@@ -22,14 +22,14 @@ import styles from "./page.module.css";
 /**
  * A13 Mobile Light — Gallery pilot (PILOT ONLY, QA harness).
  *
- * `?n=0…40&ratios=mixte|3x4|4x3|1x1|9x16|16x9|239&captions=aucune|courte|24|32|deux-lignes&lang=fr|en|es&qa=1&planche=1`
+ * `?n=0…40&ratios=mixte|3x4|4x3|1x1|9x16|16x9|239&captions=aucune|courte|24|32|deux-lignes|etroit-fr|etroit-en|etroit-es&lang=fr|en|es&qa=1&planche=1`
  * — or `?matrice=1`: the whole QA matrix run in the browser (`MobileMatrixRunner`).
  *
  * Open at a 375–430 px viewport (the Mobile profile). `qa=1` draws the
- * centre territories, the witnesses, the chosen and pivot centres, the
- * 44 px targets, the title glyph mask and the CTA safe box; `planche=1`
- * shows the Gallery alone. QA: `window.__a13Mobile` (run, title measure,
- * activations).
+ * protected title block, the centre territories, the witnesses, the chosen
+ * and pivot centres, the caption safe zones, the 44 px targets and the CTA
+ * safe box; `planche=1` shows the Gallery alone. QA: `window.__a13Mobile`
+ * (run, rendered title-block measure, activations).
  */
 
 declare global {
@@ -42,7 +42,7 @@ declare global {
       lang: Language;
       viewportWidth: number;
       run: MobileGalleryRun<A13FamilyMedia> | null;
-      title: MobileTitleGlyphMeasure | null;
+      title: MobileTitleInkMeasure | null;
       activations: { kind: "memory" | "cta"; mediaIndex?: number }[];
     };
   }
@@ -77,10 +77,16 @@ function MobileGalleryPilot() {
   }, []);
 
   const onRun = useCallback(
-    (run: MobileGalleryRun<A13FamilyMedia>, title: MobileTitleGlyphMeasure) => {
-      window.__a13Mobile = { handoff: A13_MOBILE_HANDOFF_ID, n, ratios, captions, lang, viewportWidth: window.innerWidth, run, title, activations: [] };
+    (run: MobileGalleryRun<A13FamilyMedia>) => {
+      const qa: NonNullable<Window["__a13Mobile"]> = { handoff: A13_MOBILE_HANDOFF_ID, n, ratios, captions, lang, viewportWidth: window.innerWidth, run, title: null, activations: [] };
+      window.__a13Mobile = qa;
       setActivations([]);
       setStatus(`${run.stateId ?? "—"} · ${run.outcome} · ${run.status} · ${run.stageWidth.toFixed(0)} px`);
+      // The rendered title block (the scene is committed with this run).
+      const scene = document.querySelector<HTMLElement>("[data-testid=a13-mobile-gallery] [data-testid=a13-mobile-scene]:not([data-state=pending])");
+      if (scene) void measureMobileTitleInk(scene).then((t) => {
+        qa.title = t;
+      });
     },
     [n, ratios, captions, lang],
   );
