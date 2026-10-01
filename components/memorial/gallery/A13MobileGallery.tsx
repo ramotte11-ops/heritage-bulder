@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
+import { A13_MOBILE_GROUP_TRANSLATION, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
@@ -11,7 +11,7 @@ import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GallerySce
 import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memorial/gallery/A13MobileGalleryScene";
 
 /**
- * A13 Gallery — MOBILE LIGHT section (Handoff V1.6), the Mobile counterpart
+ * A13 Gallery — MOBILE LIGHT section (Handoff V1.7), the Mobile counterpart
  * of `A13DesktopGallery`, on the same shared data and interactions:
  * family media → Mobile composition (`runMobileGallery`) → rendered scene.
  *
@@ -65,7 +65,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
   const active = width !== null && a13MobileProfileActive(width);
 
   const run = useMemo(
-    () => (active && width !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: width }) : null),
+    () => (active && width !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: width, devicePixelRatio: window.devicePixelRatio || 1 }) : null),
     [active, width, media, font],
   );
 
@@ -105,7 +105,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           hitSquares: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, side: e.hitTarget.side, center: e.hitTarget.center })),
           safeZones: run.entries.flatMap((e) => (e.captionDiagnostic ? [{ slotId: e.mobileSlot.slotId, polygon: e.captionDiagnostic.safeZone }] : [])),
           titleBlock: run.metrics.titleBlock,
-          ctaSafeBox: run.hasCta ? A13_MOBILE_CTA.safeBox : null,
+          ctaSafeBox: run.cta?.safeBox ?? null,
         }
       : null;
 
@@ -136,7 +136,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           translateY={run.translateY}
           entries={run.entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption }))}
           captionFontSizePx={run.metrics.captionFontPx}
-          cta={run.hasCta ? { label: translate(language, "gallery.seeMoreMemories"), lang: language, onActivate: onSeeMore } : null}
+          cta={run.cta ? { label: translate(language, "gallery.seeMoreMemories"), lang: language, onActivate: onSeeMore, box: run.cta.box } : null}
           language={language}
           onActivate={(slotId) => {
             const e = run.entries.find((x) => x.slot.slotId === slotId);

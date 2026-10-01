@@ -23,11 +23,13 @@ import { A13MobileGalleryScene } from "@/components/memorial/gallery/A13MobileGa
 
 /**
  * QA matrix (PILOT ONLY): every state × media ratio set × caption set of
- * `QA_MATRIX.md` (V1.6), run by the Mobile runtime IN THE BROWSER at the
+ * `QA_MATRIX.md` (V1.7), run by the Mobile runtime IN THE BROWSER at the
  * current stage width with the real La Belle Aurore measurer — then every
  * hard rule re-checked independently of the solver (territory, stage
  * overflow, protected title block, CTA safe box, 44 px targets, stage
- * height and group translation), and the V1.6 caption doctrine: the same
+ * height and group translation; 7+: the CTA safe box exactly 24 CSS px
+ * below the lowest outer paper, re-measured here, and the stage 24 CSS px
+ * after it, rounded up to the device pixel), and the V1.6 caption doctrine: the same
  * media without captions gives the same outcome and the same composition
  * (a caption never moves a print nor stops the Gallery); each caption's
  * covered share is recorded as an observation. The rendered title block
@@ -53,6 +55,8 @@ export interface MatrixRow {
   translateY: number;
   stageHeight: number;
   checks: { territory: boolean; overflow: boolean; titleBlock: boolean; cta: boolean; hit: boolean; captions: boolean; stage: boolean; captionIndependent: boolean };
+  /** 7+ (V1.7): the resolved CTA, CSS px from the stage top — re-measured group bottom included. */
+  ctaLayout: { groupBottomCss: number; measuredGroupBottomCss: number; safeBoxTopCss: number; safeBoxBottomCss: number; boxTopCss: number; boxHeightCss: number; stageHeightCss: number; gapBeforeCss: number; gapAfterCss: number } | null;
   minHitCss: number | null;
   slots: {
     slotId: string;
@@ -160,10 +164,28 @@ export function MobileMatrixRunner() {
               if (!r || r.scale !== e.scale || Math.abs(r.center.x - e.center.x) > EPS || Math.abs(r.center.y - e.center.y) > EPS || r.slot.zIndex !== e.slot.zIndex) checks.captionIndependent = false;
             });
             const T = run.stateId ? A13_MOBILE_GROUP_TRANSLATION[run.stateId].translateYSource : 0;
-            if (run.stateId && (run.translateY !== T || run.stageHeight !== A13_MOBILE_GROUP_TRANSLATION[run.stateId].stageHeightSource)) checks.stage = false;
+            const baseStage = run.stateId ? A13_MOBILE_GROUP_TRANSLATION[run.stateId].stageHeightSource : 0;
+            // 7+: the CTA after the group, re-derived here from the resolved papers (V1.7).
+            let ctaLayout: MatrixRow["ctaLayout"] = null;
+            if (run.stateId && run.translateY !== T) checks.stage = false;
+            if (run.hasCta) {
+              const c = run.cta;
+              const v = A13_MOBILE_CTA.vertical;
+              if (!c) checks.cta = false;
+              else {
+                const measured = (Math.max(...run.entries.flatMap((e) => e.papers.flat().map((p) => p.y))) + T) * k;
+                const safeBottom = c.safeBoxTopCss + c.safeBoxHeightCss;
+                ctaLayout = { groupBottomCss: c.groupVisualBottomCss, measuredGroupBottomCss: measured, safeBoxTopCss: c.safeBoxTopCss, safeBoxBottomCss: safeBottom, boxTopCss: c.boxTopCss, boxHeightCss: c.boxHeightCss, stageHeightCss: c.stageHeightCss, gapBeforeCss: c.safeBoxTopCss - measured, gapAfterCss: c.stageHeightCss - safeBottom };
+                // Exactly 24 px after the group (up to the device-pixel ceil, < 1 px), 24 px of breathing after the safe box, never shorter than the base stage.
+                if (Math.abs(measured - c.groupVisualBottomCss) > 1e-6 || ctaLayout.gapBeforeCss < v.gapGroupToSafeBoxCss - 1e-6 || ctaLayout.gapBeforeCss >= v.gapGroupToSafeBoxCss + 1) checks.cta = false;
+                if (ctaLayout.gapAfterCss < v.bottomBreathingCss - 1e-6) checks.stage = false;
+                if (Math.abs(run.stageHeight * k - c.stageHeightCss) > 1e-6 || c.stageHeightCss < baseStage * k - 1e-6 || c.boxHeightCss < need - 1e-6) checks.stage = false;
+                if (c.box.x !== A13_MOBILE_CTA.horizontal.boxX || c.safeBox.x !== A13_MOBILE_CTA.horizontal.safeBoxX) checks.cta = false;
+              }
+            } else if (run.stateId && run.stageHeight !== baseStage) checks.stage = false;
             // Stage items in the group frame (−T).
             const title = poly({ ...block, y: block.y - T });
-            const safe = poly({ ...A13_MOBILE_CTA.safeBox, y: A13_MOBILE_CTA.safeBox.y - T });
+            const safe = run.cta ? poly({ ...run.cta.safeBox, y: run.cta.safeBox.y - T }) : null;
             for (const e of run.entries) {
               const t = e.mobileSlot.centerTerritory;
               if (e.center.x < t.x - EPS || e.center.x > t.x + t.width + EPS || e.center.y < t.y - EPS || e.center.y > t.y + t.height + EPS) checks.territory = false;
@@ -172,7 +194,7 @@ export function MobileMatrixRunner() {
               const ys = e.papers.flat().map((p) => p.y);
               if (Math.min(...xs) < -a.left - EPS || Math.max(...xs) > A13_MOBILE_CANVAS.width + a.right + EPS || Math.min(...ys) < -T - a.top - EPS || Math.max(...ys) > run.stageHeight - T + a.bottom + EPS) checks.overflow = false;
               if (e.papers.some((p) => convexIntersectionArea(p, title) > EPS)) checks.titleBlock = false;
-              if (run.hasCta && e.papers.some((p) => convexIntersectionArea(p, safe) > EPS)) checks.cta = false;
+              if (safe && e.papers.some((p) => convexIntersectionArea(p, safe) > EPS)) checks.cta = false;
               if (e.hitTarget.side * k < need - 1e-6) checks.hit = false;
               const text = e.media.caption;
               if (!!text !== !!e.caption || !!e.caption !== !!e.captionDiagnostic) checks.captions = false;
@@ -197,6 +219,7 @@ export function MobileMatrixRunner() {
               translateY: run.translateY,
               stageHeight: run.stageHeight,
               checks,
+              ctaLayout,
               minHitCss: run.entries.length ? Math.min(...run.entries.map((e) => e.hitTarget.side * k)) : null,
               slots: run.entries.map((e) => ({
                 slotId: e.mobileSlot.slotId,

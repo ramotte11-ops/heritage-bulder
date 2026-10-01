@@ -24,7 +24,7 @@ import { unionCoverArea } from "@/lib/memorial/gallery/manifest-calibration";
 import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
 
 /**
- * A13 Gallery — MOBILE LIGHT runtime (Handoff V1.6), 375–430 px.
+ * A13 Gallery — MOBILE LIGHT runtime (Handoff V1.7), 375–430 px.
  *
  * One entry point from a family media list to a Mobile composition, pure and
  * theme-free, on the SHARED engine:
@@ -41,8 +41,8 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  *
  * Mobile-only (this module): the 941-wide frame, the state's group
  * translation and stage height, `anchorPivot`, `centerTerritory`,
- * `paperOverflowAllowance`, the canonical title block and the Signature CTA
- * safe box.
+ * `paperOverflowAllowance`, the canonical title block and the Signature 7+
+ * CTA placement.
  *
  * ## Frames
  *
@@ -88,6 +88,18 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  * below it). Otherwise the band is not widened and the best two-line
  * caption is drawn as is. Never a feasibility condition.
  *
+ * ## Signature 7+ CTA (V1.7)
+ *
+ * The 7+ photo group is solved and finished exactly as G6 (same slots,
+ * same rules, same caption pass — the CTA constrains no print). Then:
+ * groupVisualBottomCss = the lowest point of the six final transformed
+ * papers (stage frame; a widened caption band is paper; shadows and focus
+ * rings excluded); CTA
+ * safe box top = ceilToDevicePixel(groupVisualBottomCss + 24); the control
+ * keeps the V1.6 inset (23 × W / 941) and is max(44, 77 × W / 941) high;
+ * the stage ends at ceilToDevicePixel(max(base stage, safe box bottom +
+ * 24)). The photo group never moves for the CTA.
+ *
  * ## Hard rules (reject a candidate) → STOP codes
  *
  * - `CENTER_OUTSIDE_TERRITORY`: never produced by construction (every
@@ -96,8 +108,9 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  *   more than its per-side allowance (canvasInset 0; shadows excluded);
  * - `TITLE_BLOCK_COLLISION_UNRESOLVED`: the outer paper meets the centred
  *   protected title block (width and bottom per viewport, from y = 0);
- * - `CTA_COLLISION_UNRESOLVED` (Signature 7+): the outer paper meets the
- *   CTA safe box;
+ * - `CTA_COLLISION_UNRESOLVED` (Signature 7+): a paper meets the resolved
+ *   CTA safe box — impossible by construction (24 CSS px below the group),
+ *   checked again on the answer;
  * - `ITEM_INACCESSIBLE`: no joint candidate keeps, for every print, an
  *   axis-aligned 44 × 44 CSS px square in its visible paper, the shared
  *   identifiability minima (visible photo ≥ min(0.35, witness), visible
@@ -338,7 +351,7 @@ interface Cand {
   id: number;
 }
 
-type AloneReject = "PAPER_OVERFLOW_EXCEEDED" | "TITLE_BLOCK_COLLISION_UNRESOLVED" | "CTA_COLLISION_UNRESOLVED";
+type AloneReject = "PAPER_OVERFLOW_EXCEEDED" | "TITLE_BLOCK_COLLISION_UNRESOLVED";
 
 /** Stage-frame items brought into the GROUP frame (y − T). */
 interface GroupFrame {
@@ -346,18 +359,16 @@ interface GroupFrame {
   top: number;
   bottom: number;
   title: Point[];
-  ctaSafe: Point[] | null;
 }
 
 const hits = (paper: Point[], zone: Point[]) => convexIntersectionArea(paper, zone) > EPS;
 
-/** A paper (print or widened band) against the stage rules of its slot: canvas allowance, title block, CTA. */
+/** A paper (print or widened band) against the stage rules of its slot: canvas allowance, title block (the 7+ CTA comes after the group). */
 function stageReject(m: A13MobileSlot, paper: Point[], frame: GroupFrame): AloneReject | null {
   const a = m.paperOverflowAllowance;
   const [x0, y0, x1, y1] = bboxOf(paper);
   if (x0 < -a.left - EPS || y0 < frame.top - a.top - EPS || x1 > A13_MOBILE_CANVAS.width + a.right + EPS || y1 > frame.bottom + a.bottom + EPS) return "PAPER_OVERFLOW_EXCEEDED";
   if (hits(paper, frame.title)) return "TITLE_BLOCK_COLLISION_UNRESOLVED";
-  if (frame.ctaSafe && hits(paper, frame.ctaSafe)) return "CTA_COLLISION_UNRESOLVED";
   return null;
 }
 
@@ -368,7 +379,7 @@ class SlotStream {
   private readonly order: Cand[] = [];
   private cursor = 0;
   readonly valid: Cand[] = [];
-  readonly rejected: Record<AloneReject, number> = { PAPER_OVERFLOW_EXCEEDED: 0, TITLE_BLOCK_COLLISION_UNRESOLVED: 0, CTA_COLLISION_UNRESOLVED: 0 };
+  readonly rejected: Record<AloneReject, number> = { PAPER_OVERFLOW_EXCEEDED: 0, TITLE_BLOCK_COLLISION_UNRESOLVED: 0 };
   /** Everything any candidate's paper can cover, group frame. */
   readonly region: Box;
 
@@ -582,6 +593,23 @@ export interface MobileGalleryAnomaly {
   basis?: "per-print" | "lattice-exhausted" | "search-budget";
 }
 
+/** The resolved Signature 7+ CTA (V1.7), STAGE frame. */
+export interface MobileCtaLayout {
+  /** Lowest point of the six resolved outer papers (CSS px from the stage top). */
+  groupVisualBottomCss: number;
+  safeBoxTopCss: number;
+  safeBoxHeightCss: number;
+  boxTopCss: number;
+  boxHeightCss: number;
+  stageHeightCss: number;
+  /** Safe box top − group bottom, and stage bottom − safe box bottom (CSS px, ≥ 24). */
+  gapBeforeCss: number;
+  gapAfterCss: number;
+  /** Source px, stage frame. */
+  safeBox: A13MobileRect;
+  box: A13MobileRect;
+}
+
 export interface MobileGalleryRun<M> {
   profile: "mobile";
   stageWidth: number;
@@ -594,9 +622,11 @@ export interface MobileGalleryRun<M> {
   mediaCount: number;
   entries: MobileGalleryEntry<M>[];
   hasCta: boolean;
+  /** The resolved 7+ CTA, or null. */
+  cta: MobileCtaLayout | null;
   /** The state's ONE group translation (source px, applied to the group container). */
   translateY: number;
-  /** Stage height (source px): 1672 + the state's extension. */
+  /** Stage height (source px): 1672 + the state's extension; 7+: resolved after the CTA. */
   stageHeight: number;
   /** QA observations (never a rejection): solver stage, caption shifts, covered captions, band widenings. */
   signals: string[];
@@ -610,13 +640,15 @@ export interface MobileRunInput<M extends PhotoSource> {
   measurer: CaptionMeasurer | null;
   /** Width of the Mobile stage in CSS px (375–430). */
   stageWidth: number;
+  /** Device pixel ratio for `ceilToDevicePixel` (default 1). */
+  devicePixelRatio?: number;
 }
 
 export function runMobileGallery<M extends PhotoSource>(input: MobileRunInput<M>): MobileGalleryRun<M> {
   const metrics = mobileMetrics(input.stageWidth);
   const stateId = selectMobileGalleryState(input.media.length);
   const head = { profile: "mobile" as const, stageWidth: input.stageWidth, metrics, mediaCount: input.media.length };
-  const empty = { entries: [], hasCta: false, signals: [], search: { expansions: 0, stage: "fine" as const, aloneRejected: {} } };
+  const empty = { entries: [], hasCta: false, cta: null, signals: [], search: { expansions: 0, stage: "fine" as const, aloneRejected: {} } };
   if (!stateId) return { ...head, ...empty, stateId: null, outcome: "absent", status: "GALLERY_ABSENT", anomaly: null, translateY: 0, stageHeight: 0 };
   const tr = A13_MOBILE_GROUP_TRANSLATION[stateId];
   const frame = { translateY: tr.translateYSource, stageHeight: tr.stageHeightSource };
@@ -676,15 +708,45 @@ class NodeHeap {
   }
 }
 
-/** Group-frame view of the stage items of a state (everything − T). */
-function groupFrame(state: A13MobileStateId, metrics: MobileMetrics, hasCta: boolean): GroupFrame {
+/** Group-frame view of the stage items of a state (everything − T); the 7+ CTA is placed after the group (`resolveMobileCta`). */
+function groupFrame(state: A13MobileStateId, metrics: MobileMetrics): GroupFrame {
   const T = A13_MOBILE_GROUP_TRANSLATION[state].translateYSource;
-  const up = (r: A13MobileRect) => rectPoly({ ...r, y: r.y - T });
   return {
     top: -T,
     bottom: A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource - T,
-    title: up(metrics.titleBlock),
-    ctaSafe: hasCta ? up(A13_MOBILE_CTA.safeBox) : null,
+    title: rectPoly({ ...metrics.titleBlock, y: metrics.titleBlock.y - T }),
+  };
+}
+
+/**
+ * The Signature 7+ CTA and stage height after the resolved photo group
+ * (`geometry/g7plus.json` `cta.verticalPlacementCss`): 24 CSS px below the
+ * lowest point of the final paper polygons (group frame — outer papers and
+ * any widened caption band, shadows excluded), the V1.6 inset and sizes,
+ * 24 CSS px of breathing after the safe box, rounded up to the device pixel.
+ */
+export function resolveMobileCta(papers: Point[][], T: number, metrics: MobileMetrics, dpr = 1): MobileCtaLayout {
+  const S = metrics.scale;
+  const v = A13_MOBILE_CTA.vertical;
+  const h = A13_MOBILE_CTA.horizontal;
+  const ceilDP = (x: number) => Math.ceil(x * dpr - 1e-6) / dpr;
+  const groupVisualBottomCss = (Math.max(...papers.flatMap((p) => p.map((q) => q.y))) + T) * S;
+  const safeBoxTopCss = ceilDP(groupVisualBottomCss + v.gapGroupToSafeBoxCss);
+  const safeBoxHeightCss = v.safeBoxHeightSource * S;
+  const boxTopCss = safeBoxTopCss + v.boxTopInsetSource * S;
+  const boxHeightCss = Math.max(v.boxMinHeightCss, v.boxHeightSource * S);
+  const stageHeightCss = ceilDP(Math.max(v.baseStageHeightSource * S, safeBoxTopCss + safeBoxHeightCss + v.bottomBreathingCss));
+  return {
+    groupVisualBottomCss,
+    safeBoxTopCss,
+    safeBoxHeightCss,
+    boxTopCss,
+    boxHeightCss,
+    stageHeightCss,
+    gapBeforeCss: safeBoxTopCss - groupVisualBottomCss,
+    gapAfterCss: stageHeightCss - (safeBoxTopCss + safeBoxHeightCss),
+    safeBox: { x: h.safeBoxX, y: safeBoxTopCss / S, width: h.safeBoxWidth, height: v.safeBoxHeightSource },
+    box: { x: h.boxX, y: boxTopCss / S, width: h.boxWidth, height: boxHeightCss / S },
   };
 }
 
@@ -814,7 +876,8 @@ function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: Che
 function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input: MobileRunInput<M>, metrics: MobileMetrics, head: RunHead): MobileGalleryRun<M> {
   const slots = A13_MOBILE_STATE_SLOTS[state];
   const hasCta = state === "G7PLUS";
-  const frame = groupFrame(state, metrics, hasCta);
+  // 7+ is solved exactly as G6: the CTA constrains no print (V1.7).
+  const frame = groupFrame(state, metrics);
   // Family order: media[i] → the slot whose mediaIndex is i (Signature shows 0…5).
   const streamsFor = (grid: Grid) => slots.map((m) => new SlotStream(m, input.media[m.mediaIndex], metrics, frame, grid));
   const fine = streamsFor("fine");
@@ -828,6 +891,7 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
     anomaly,
     entries: [],
     hasCta: false,
+    cta: null,
     signals: [],
     search: { expansions, stage, aloneRejected: aloneRejected() },
   });
@@ -874,9 +938,30 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
       if (c.x < tr.x - EPS || c.x > tr.x + tr.width + EPS || c.y < tr.y - EPS || c.y > tr.y + tr.height + EPS)
         return unresolved({ code: "CENTER_OUTSIDE_TERRITORY", rule: "territory", detail: `${q.m.slotId} at ${c.x},${c.y}` }, expansions, stage);
     }
+    const T = A13_MOBILE_GROUP_TRANSLATION[state].translateYSource;
+    // 7+ is finished exactly as G6, then its CTA is placed after the final papers.
     const { entries, signals } = finishEntries(res.placed, input, metrics, frame, ctx);
+    const cta = hasCta ? resolveMobileCta(entries.flatMap((e) => e.papers), T, metrics, input.devicePixelRatio ?? 1) : null;
+    if (cta) {
+      const safe = rectPoly({ ...cta.safeBox, y: cta.safeBox.y - T });
+      const hit = entries.find((e) => e.papers.some((p) => convexIntersectionArea(p, safe) > EPS));
+      if (hit) return unresolved({ code: "CTA_COLLISION_UNRESOLVED", rule: "cta", basis: "per-print", detail: `${hit.slot.slotId} meets the resolved CTA safe box` }, expansions, stage);
+      signals.push(`cta: group bottom ${cta.groupVisualBottomCss.toFixed(2)} px, safe box top ${cta.safeBoxTopCss.toFixed(2)} px, stage ${cta.stageHeightCss.toFixed(2)} px (gaps ${cta.gapBeforeCss.toFixed(2)} / ${cta.gapAfterCss.toFixed(2)})`);
+    }
     if (stage === "coarse") signals.unshift(`solver: coarse lattice stage (the fine stage found no composition within ${FINE_BUDGET} partial compositions)`);
-    return { ...head, stateId: state, outcome: "resolved", status: "PASS", anomaly: null, entries, hasCta, signals, search: { expansions, stage, aloneRejected: aloneRejected() } };
+    return {
+      ...head,
+      stageHeight: cta ? cta.stageHeightCss / metrics.scale : head.stageHeight,
+      stateId: state,
+      outcome: "resolved",
+      status: "PASS",
+      anomaly: null,
+      entries,
+      hasCta,
+      cta,
+      signals,
+      search: { expansions, stage, aloneRejected: aloneRejected() },
+    };
   }
   const failed: Record<string, number> = {};
   for (const r of stats) for (const [k, v] of Object.entries(r.failed)) failed[k] = (failed[k] ?? 0) + v;

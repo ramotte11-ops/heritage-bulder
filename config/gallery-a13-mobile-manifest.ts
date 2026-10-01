@@ -1,10 +1,11 @@
 /**
- * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.6).
+ * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.7).
  *
- * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6`
+ * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_7`
  * (`contract/mobile-gallery.json`, `contract/ANCHOR_AND_CANVAS_SEMANTICS.md`,
  * `contract/TITLE_CAPTION_TRANSLATION_V1_5.md`,
- * `contract/BACKGROUND_CAPTIONS_V1_6.md`, `geometry/g2…g6.json`,
+ * `contract/BACKGROUND_CAPTIONS_V1_6.md`,
+ * `contract/CTA_BOTTOM_CONTINUATION_V1_7.md`, `geometry/g2…g6.json`,
  * `geometry/g7plus.json`). V1.5 kept every slot of V1.4 (incl. the Studio's
  * G6-D5 arbitration) and added the canonical title block (runtime
  * separator, title, subtitle, protected block), one vertical translation
@@ -12,7 +13,10 @@
  * the 12 / 14.5 px captions and the translated 7+ CTA. V1.6 changes two
  * things only: the common background (Mobile Light V2) and the caption
  * doctrine — composition first: a caption never moves a print and never
- * stops the Gallery (`captionSafeZone` is a diagnostic only).
+ * stops the Gallery (`captionSafeZone` is a diagnostic only). V1.7 changes
+ * two things only: the 7+ CTA is placed after the resolved photo group
+ * (and the 7+ stage ends after it), and any stage extension below the
+ * raster is the neutral bottom continuation.
  *
  * Mobile ONLY: the stage, the state manifests and group translations, the
  * centre territories, the title block, the CTA box, the Mobile paper tokens
@@ -29,7 +33,7 @@
  * raster-scaled (contract `responsive`).
  */
 
-export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6" as const;
+export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_7" as const;
 
 export const A13_MOBILE_CANVAS = { width: 941, height: 1672 } as const;
 
@@ -228,9 +232,12 @@ export function resolveCssClamp(t: A13CssClampToken, stageWidth: number): number
  * `groupTranslation` (V1.5): ONE vertical translation of the whole photo
  * group of a state (every slot as one immutable group — never a slot alone),
  * and the stage extended by exactly that amount. The 941 × 1672 background
- * stays at the top, unstretched; the extension below it is the existing A13
- * Light paper material only. `translateYSource` = the CSS value at 375 px ×
- * 941 / 375 (formula `k * viewportWidth / 375` CSS = constant in source px).
+ * stays at the top, unstretched; the extension below it is the bottom
+ * continuation (`A13_MOBILE_BOTTOM_CONTINUATION`, V1.7). `translateYSource`
+ * = the CSS value at 375 px × 941 / 375 (formula `k * viewportWidth / 375`
+ * CSS = constant in source px). For G7PLUS, `stageHeightSource` is the BASE
+ * stage height (`baseStageHeightSource`): the resolved one follows the CTA
+ * rule (`A13_MOBILE_CTA.vertical`).
  */
 export interface A13MobileGroupTranslation {
   translateYCssAt375: number;
@@ -354,17 +361,56 @@ export const A13_MOBILE_CAPTION = {
 } as const;
 
 /**
- * `geometry/g7plus.json` (V1.5) — the Signature 7+ CTA, STAGE frame: the
- * V1.4 box and safe box moved by the inherited G6 group translation
- * (+35.131 source px). Runtime DOM button, i18n text.
+ * `geometry/g7plus.json` (V1.7) — the Signature 7+ CTA, STAGE frame,
+ * runtime DOM button, i18n text. The horizontal geometry and the sizes are
+ * V1.6's (`baseBox` / `baseSafeBox`, kept for reference); its VERTICAL
+ * placement is resolved after the photo group (`cta.verticalPlacementCss`):
+ *
+ * - groupVisualBottomCss = max y of the transformed outer-paper polygons
+ *   of the six resolved prints (a widened caption band is paper; shadows
+ *   and focus rings excluded);
+ * - safe box top = ceilToDevicePixel(groupVisualBottomCss + 24), height
+ *   124 × W / 941;
+ * - box top = safe box top + 23 × W / 941 (the V1.6 inset), height
+ *   max(44, 77 × W / 941);
+ * - stage height = ceilToDevicePixel(max(1707.131 × W / 941,
+ *   safe box bottom + 24)).
+ *
+ * The photo group is G6's, untouched: no print moves for the CTA.
  */
 export const A13_MOBILE_CTA = {
-  box: { x: 247, y: 1588.131, width: 446, height: 77 },
-  safeBox: { x: 220, y: 1565.131, width: 500, height: 124 },
+  baseBox: { x: 247, y: 1588.131, width: 446, height: 77 },
+  baseSafeBox: { x: 220, y: 1565.131, width: 500, height: 124 },
+  horizontal: { boxX: 247, boxWidth: 446, safeBoxX: 220, safeBoxWidth: 500 },
+  vertical: {
+    gapGroupToSafeBoxCss: 24,
+    safeBoxHeightSource: 124,
+    boxTopInsetSource: 23,
+    boxHeightSource: 77,
+    boxMinHeightCss: 44,
+    bottomBreathingCss: 24,
+    baseStageHeightSource: 1707.131,
+  },
   fontSizeCss: { minPx: 16, vw: 4.6, maxPx: 20 },
   minTargetCssPx: 44,
   zIndex: 950,
   measurementTolerance: { positionPx: 6, sizePx: 6 },
+} as const;
+
+/**
+ * `bottomMaterialContinuation` (V1.7) — whenever the resolved stage is
+ * taller than the 941 × 1672 raster: a neutral Light paper layer from the
+ * raster's bottom edge to the stage bottom (colour = the median of the
+ * neutral central bottom strip of background V2, the shared Light paper
+ * texture at 0.18), and over the raster's last 20 CSS px a linear fade
+ * from transparent to that colour. The PNG is never stretched or repeated;
+ * no botany, seal or foreground is added (`BOTTOM_MATERIAL_SEAM_VISIBLE`).
+ */
+export const A13_MOBILE_BOTTOM_CONTINUATION = {
+  baseColor: "#F4DFCB",
+  baseColorRgb: [244, 223, 203],
+  textureOpacity: 0.18,
+  seamBlendCss: 20,
 } as const;
 
 export const A13_MOBILE_INTERACTION = {
@@ -372,7 +418,11 @@ export const A13_MOBILE_INTERACTION = {
   keyboard: ["Enter", "Space"],
 } as const;
 
-/** Contract `stops` (V1.6: `CAPTION_SAFE_ZONE_UNRESOLVED` removed) — every code the Mobile runtime can return, never confused. */
+/**
+ * Contract `stops` (V1.6: `CAPTION_SAFE_ZONE_UNRESOLVED` removed; V1.7:
+ * `BOTTOM_MATERIAL_SEAM_VISIBLE` added — a visual QA stop, never returned
+ * by the runtime).
+ */
 export const A13_MOBILE_STOPS = [
   "CENTER_OUTSIDE_TERRITORY",
   "PAPER_OVERFLOW_EXCEEDED",
@@ -380,6 +430,7 @@ export const A13_MOBILE_STOPS = [
   "TITLE_GLYPH_COLLISION_UNRESOLVED",
   "TITLE_BLOCK_COLLISION_UNRESOLVED",
   "CTA_COLLISION_UNRESOLVED",
+  "BOTTOM_MATERIAL_SEAM_VISIBLE",
   "HORIZONTAL_OVERFLOW",
   "MASTER_HANDOFF_CONTRADICTION_STOP",
   "DESKTOP_REGRESSION",

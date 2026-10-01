@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   A13_MOBILE_BACKGROUND,
+  A13_MOBILE_BOTTOM_CONTINUATION,
   A13_MOBILE_CAPTION,
   A13_MOBILE_CTA,
   A13_MOBILE_GROUP_TRANSLATION,
@@ -23,9 +24,9 @@ import { A13_MOBILE_CAPTION_TEXTS, A13_MOBILE_PILOT_TITLE } from "@/lib/memorial
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
-describe("A13 Mobile Light — Handoff V1.6 authority", () => {
+describe("A13 Mobile Light — Handoff V1.7 authority", () => {
   it("the runtime background is the package's common asset V2, byte for byte (BACKGROUND_DIMENSION_OR_HASH_MISMATCH guard)", () => {
-    expect(A13_MOBILE_HANDOFF_ID).toBe("A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6");
+    expect(A13_MOBILE_HANDOFF_ID).toBe("A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_7");
     expect(A13_MOBILE_BACKGROUND.sha256).toBe("ee636a0a94c648c717d6729d10b4d79991420eae5212b7a47975267f38ee6bf8");
     const bytes = readFileSync(path.join(ROOT, "public", A13_MOBILE_BACKGROUND.src));
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(A13_MOBILE_BACKGROUND.sha256);
@@ -53,6 +54,7 @@ describe("A13 Mobile Light — Handoff V1.6 authority", () => {
       "TITLE_GLYPH_COLLISION_UNRESOLVED",
       "TITLE_BLOCK_COLLISION_UNRESOLVED",
       "CTA_COLLISION_UNRESOLVED",
+      "BOTTOM_MATERIAL_SEAM_VISIBLE",
       "HORIZONTAL_OVERFLOW",
       "MASTER_HANDOFF_CONTRADICTION_STOP",
       "DESKTOP_REGRESSION",
@@ -87,13 +89,42 @@ describe("A13 Mobile Light — Handoff V1.6 authority", () => {
     expect(A13_MOBILE_GROUP_TRANSLATION.G7PLUS).toEqual(A13_MOBILE_GROUP_TRANSLATION.G6);
   });
 
-  it("the 7+ CTA and its safe box are V1.4's moved by the G6 group translation (stage frame)", () => {
-    const T = A13_MOBILE_GROUP_TRANSLATION.G7PLUS.translateYSource;
-    expect(A13_MOBILE_CTA.box).toEqual({ x: 247, y: 1588.131, width: 446, height: 77 });
-    expect(A13_MOBILE_CTA.safeBox).toEqual({ x: 220, y: 1565.131, width: 500, height: 124 });
-    expect(A13_MOBILE_CTA.box.y - T).toBeCloseTo(1553, 9);
-    expect(A13_MOBILE_CTA.safeBox.y - T).toBeCloseTo(1530, 9);
-    expect(A13_MOBILE_CTA.safeBox.y + A13_MOBILE_CTA.safeBox.height).toBeLessThanOrEqual(A13_MOBILE_GROUP_TRANSLATION.G7PLUS.stageHeightSource);
+  it("V1.7 7+ CTA (g7plus.json cta): V1.6 horizontal geometry, inset and sizes kept; vertical placement after the group, 24 + 24 CSS px", () => {
+    const c = A13_MOBILE_CTA;
+    // The V1.6 boxes (stage frame) remain the base: x / widths and the inset and heights derive from them.
+    expect(c.baseBox).toEqual({ x: 247, y: 1588.131, width: 446, height: 77 });
+    expect(c.baseSafeBox).toEqual({ x: 220, y: 1565.131, width: 500, height: 124 });
+    expect(c.horizontal).toEqual({ boxX: c.baseBox.x, boxWidth: c.baseBox.width, safeBoxX: c.baseSafeBox.x, safeBoxWidth: c.baseSafeBox.width });
+    expect(c.vertical).toEqual({
+      gapGroupToSafeBoxCss: 24,
+      safeBoxHeightSource: c.baseSafeBox.height,
+      boxTopInsetSource: 23,
+      boxHeightSource: c.baseBox.height,
+      boxMinHeightCss: 44,
+      bottomBreathingCss: 24,
+      baseStageHeightSource: 1707.131,
+    });
+    expect(c.baseBox.y - c.baseSafeBox.y).toBeCloseTo(c.vertical.boxTopInsetSource, 9);
+    // The base stage is the G6 stage (1672 + the 7+ translation).
+    expect(c.vertical.baseStageHeightSource).toBeCloseTo(A13_MOBILE_GROUP_TRANSLATION.G7PLUS.stageHeightSource, 3);
+    expect([c.minTargetCssPx, c.zIndex]).toEqual([44, 950]);
+  });
+
+  it("V1.7 bottom continuation: neutral paper #F4DFCB, shared texture at 0.18, a 20 CSS px fade; the seam is a QA STOP", () => {
+    expect(A13_MOBILE_BOTTOM_CONTINUATION).toEqual({ baseColor: "#F4DFCB", baseColorRgb: [244, 223, 203], textureOpacity: 0.18, seamBlendCss: 20 });
+    const hex = A13_MOBILE_BOTTOM_CONTINUATION.baseColor.slice(1);
+    expect([0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16))).toEqual([...A13_MOBILE_BOTTOM_CONTINUATION.baseColorRgb]);
+    const css = readFileSync(path.join(ROOT, "components/memorial/gallery/A13MobileGalleryScene.module.css"), "utf8");
+    const rule = (sel: string) => css.match(new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".extension")).toMatch(/background-color:\s*#f4dfcb;/i);
+    expect(rule(".extension::before")).toMatch(/opacity:\s*0\.18;/);
+    expect(rule(".extension::before")).toContain("feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7'");
+    expect(rule(".extension::after")).toMatch(/top:\s*-20px;/);
+    expect(rule(".extension::after")).toMatch(/height:\s*20px;/);
+    expect(rule(".extension::after")).toMatch(/linear-gradient\(to bottom, rgb\(244 223 203 \/ 0\), #f4dfcb\)/);
+    // No stretch, no repetition of the raster, no decor in the continuation.
+    expect(css).not.toMatch(/background-repeat:\s*repeat-y/);
+    expect(rule(".extension") + rule(".extension::before") + rule(".extension::after")).not.toContain(".png");
   });
 
   it("the title block stack sums to its protected block at 375 / 390 / 430 (separator + gap + title line + gap + subtitle + 28 px)", () => {

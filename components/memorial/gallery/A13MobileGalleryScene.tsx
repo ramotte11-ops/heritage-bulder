@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import {
   A13_MOBILE_BACKGROUND,
+  A13_MOBILE_BOTTOM_CONTINUATION,
   A13_MOBILE_CANVAS,
   A13_MOBILE_CTA,
   A13_MOBILE_LAYER_Z,
@@ -19,16 +20,18 @@ import { DynamicPolaroid } from "./DynamicPolaroid";
 import styles from "./A13MobileGalleryScene.module.css";
 
 /**
- * A13 Gallery — MOBILE LIGHT scene (Handoff V1.6): the ONE common
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.7): the ONE common
  * photo-free Mobile background + the state's prints (the SHARED
  * `DynamicPolaroid`) + the runtime title block + the Signature 7+ CTA.
  * Nothing else: no foreground, no botanical layer, no baked text. The
  * decor never passes in front of a print (the background is layer 0).
  *
  * - Stage: 941 source px wide (`--k`), `stageHeight` high (the state's
- *   `stageHeightSource`). The background keeps its 941 × 1672 raster at
- *   the top, unstretched; the extension below it is the shared A13 Light
- *   paper (paper token + texture), no decor, no repetition.
+ *   `stageHeightSource`; 7+: resolved after its CTA). The background keeps
+ *   its 941 × 1672 raster at the top, unstretched, never repeated; any
+ *   height below it is the bottom continuation (V1.7: neutral paper
+ *   #F4DFCB, the shared Light paper texture at 0.18, and a 20 CSS px fade
+ *   from transparent to that colour over the raster's last 20 px).
  * - Prints: received already solved in the GROUP frame
  *   (`runMobileGallery`); ONE container translates the whole group by the
  *   state's `translateY` — no slot is ever moved on its own.
@@ -37,7 +40,8 @@ import styles from "./A13MobileGalleryScene.module.css";
  *   (runtime inline SVG: two short rules + the shared leaf sprig,
  *   `aria-hidden`), gap, title (one line), gap, subtitle; the header box
  *   IS the protected block. Inert for the pointer.
- * - CTA (7+): stage frame box, a real button.
+ * - CTA (7+): the box resolved after the photo group (`runMobileGallery`),
+ *   stage frame, a real button.
  */
 
 export interface A13MobileSceneEntry {
@@ -52,6 +56,8 @@ export interface A13MobileSceneCta {
   label: string;
   lang: Language;
   onActivate?: () => void;
+  /** Resolved box, STAGE frame, source px. */
+  box: A13MobileRect;
 }
 
 type Pts = { x: number; y: number }[];
@@ -150,7 +156,13 @@ export function A13MobileGalleryScene({
           height={A13_MOBILE_BACKGROUND.height}
         />
         {extension > 0 ? (
-          <div className={styles.extension} style={{ top: k(A13_MOBILE_BACKGROUND.height), height: k(extension), zIndex: A13_MOBILE_LAYER_Z.background }} aria-hidden="true" data-testid="stage-extension" />
+          <div
+            className={styles.extension}
+            style={{ top: k(A13_MOBILE_BACKGROUND.height), height: k(extension), zIndex: A13_MOBILE_LAYER_Z.background }}
+            aria-hidden="true"
+            data-testid="stage-extension"
+            data-continuation={A13_MOBILE_BOTTOM_CONTINUATION.baseColor}
+          />
         ) : null}
         <div className={styles.group} style={{ transform: `translateY(${k(translateY)})` }} data-testid="print-group" data-translate-y={translateY}>
           {entries.map(({ slot, layout, src, alt, caption }, i) => (
@@ -190,7 +202,7 @@ export function A13MobileGalleryScene({
             className={`${styles.cta} ${ebGaramondItalic.className}`}
             lang={cta.lang}
             data-testid="cta-7plus"
-            style={{ ...box(A13_MOBILE_CTA.box), zIndex: A13_MOBILE_CTA.zIndex }}
+            style={{ ...box(cta.box), zIndex: A13_MOBILE_CTA.zIndex }}
             onClick={cta.onActivate}
           >
             <span className={styles.ctaLabel} data-testid="cta-7plus-label">

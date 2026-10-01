@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { A13_MOBILE_BACKGROUND, A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, A13_MOBILE_SEPARATOR_ART, A13_MOBILE_STATE_SLOTS } from "@/config/gallery-a13-mobile-manifest";
+import { A13_MOBILE_BACKGROUND, A13_MOBILE_BOTTOM_CONTINUATION, A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, A13_MOBILE_SEPARATOR_ART, A13_MOBILE_STATE_SLOTS } from "@/config/gallery-a13-mobile-manifest";
 import { A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
@@ -10,8 +10,8 @@ import { runMobileGallery } from "@/lib/memorial/gallery/gallery-mobile-runtime"
 import { a13MobileFixture } from "@/lib/memorial/gallery/a13-mobile-pilot-fixtures";
 
 /**
- * A13 Mobile Light scene (V1.5) — render contracts only (layers, order,
- * stacking, title block, group translation, stage extension, CTA,
+ * A13 Mobile Light scene (V1.7) — render contracts only (layers, order,
+ * stacking, title block, group translation, bottom continuation, CTA,
  * interaction). Pixel layout and reachability are proven in the browser
  * pilot (`/pilot/a13-mobile-gallery`), not by jsdom.
  */
@@ -79,7 +79,7 @@ describe("A13MobileGalleryScene", () => {
     }
   });
 
-  it("the stage is 941 × stageHeightSource; the ONE group container carries the state translation; the extension below the background is paper only", () => {
+  it("the stage is 941 × stageHeightSource; the ONE group container carries the state translation; below the raster, the V1.7 bottom continuation only", () => {
     const { run, entries } = sceneFor(5, "aucune");
     const { container, getByTestId } = render(
       <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} />,
@@ -94,6 +94,8 @@ describe("A13MobileGalleryScene", () => {
     const ext = getByTestId("stage-extension");
     expect([ext.style.top, ext.style.height]).toEqual([`calc(${A13_MOBILE_BACKGROUND.height} * var(--k))`, `calc(${T.backgroundExtensionSource} * var(--k))`]);
     expect(ext.children).toHaveLength(0);
+    expect(ext.dataset.continuation).toBe(A13_MOBILE_BOTTOM_CONTINUATION.baseColor);
+    expect(ext.getAttribute("aria-hidden")).toBe("true");
     // G2: no translation, no extension.
     const g2 = sceneFor(2, "aucune");
     const second = render(<A13MobileGalleryScene entries={g2.entries} title="T" subtitle="S" stageWidth={390} stageHeight={g2.run.stageHeight} translateY={g2.run.translateY} />);
@@ -114,16 +116,22 @@ describe("A13MobileGalleryScene", () => {
     expect(z("G6-D5")).toBeGreaterThan(z("G6-D6"));
   });
 
-  it("the CTA exists only when passed (Signature 7+), as a real button with the i18n label and its action", () => {
-    const { entries } = sceneFor(7);
+  it("the CTA exists only when passed (Signature 7+), as a real button with the i18n label and its action, at the box resolved after the group", () => {
+    const { run, entries } = sceneFor(7);
     const onSee = vi.fn();
-    const { queryByTestId, rerender, getByTestId } = render(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} />);
+    const { queryByTestId, rerender, getByTestId, container } = render(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} />);
     expect(queryByTestId("cta-7plus")).toBeNull();
-    rerender(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} cta={{ label: "Voir plus de souvenirs", lang: "fr", onActivate: onSee }} />);
+    const box = run.cta!.box;
+    rerender(
+      <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} cta={{ label: "Voir plus de souvenirs", lang: "fr", onActivate: onSee, box }} />,
+    );
     const btn = getByTestId("cta-7plus");
     expect([btn.tagName, btn.getAttribute("type"), btn.getAttribute("lang"), btn.textContent]).toEqual(["BUTTON", "button", "fr", "Voir plus de souvenirs"]);
-    expect(btn.style.left).toBe(`calc(${A13_MOBILE_CTA.box.x} * var(--k))`);
-    expect(btn.style.top).toBe(`calc(${A13_MOBILE_CTA.box.y} * var(--k))`);
+    expect(box.x).toBe(A13_MOBILE_CTA.horizontal.boxX);
+    expect([btn.style.left, btn.style.top, btn.style.width, btn.style.height]).toEqual([`calc(${box.x} * var(--k))`, `calc(${box.y} * var(--k))`, `calc(${box.width} * var(--k))`, `calc(${box.height} * var(--k))`]);
+    // The stage ends at the resolved height; the continuation fills it below the raster.
+    expect(container.querySelector<HTMLElement>("[data-a13-mobile-canvas]")!.style.aspectRatio).toBe(`941 / ${run.stageHeight}`);
+    expect(getByTestId("stage-extension").style.height).toBe(`calc(${Math.round((run.stageHeight - A13_MOBILE_BACKGROUND.height) * 1e6) / 1e6} * var(--k))`);
     // Stage frame (not in the translated group).
     expect(btn.closest("[data-testid=print-group]")).toBeNull();
     fireEvent.click(btn);
