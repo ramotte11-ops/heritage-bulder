@@ -1,7 +1,7 @@
 /**
- * A13 — FULL ALBUM MOBILE LIGHT — runtime authority (Handoff V1.1).
+ * A13 — FULL ALBUM MOBILE LIGHT — runtime authority (Handoff V1.2).
  *
- * Transcribed from package `A13_FULL_ALBUM_MOBILE_LIGHT_FINAL_HANDOFF_V1_1`
+ * Transcribed from package `A13_FULL_ALBUM_MOBILE_LIGHT_FINAL_HANDOFF_V1_2`
  * (`contract/album-mobile-light.v1.json`, `geometry/mobile-grammars.v1.json`,
  * unchanged since V1, and the V1.1 minimums / caption bands). The Mobile
  * Album is a PROFILE of the shared Album engine (partition, local solver,
@@ -22,7 +22,8 @@
  *   geometry proportionally from the 375 profile"): the composition is
  *   solved ONCE in source px with the 375 values (dominant ≥ 96 CSS px,
  *   secondary ≥ 72 CSS px, 44 px target, 1936 px² visible area, thin band
- *   14 CSS px) and scaled by s.
+ *   14 CSS px) and scaled by s. V1.2 adds ONE targeted exception: P3 with
+ *   a 9:16 media, ≥ 69 CSS px (witness ≈ 69.3) — nowhere else.
  * - Captions (V1.1): 11 / 13 CSS px, ≤ 32 characters, ≤ 2 lines; the band
  *   grows DOWNWARD only (14 → 22 → 34 CSS px): the photo window and the
  *   group geometry never change; an occluded caption is a PASS.
@@ -32,7 +33,7 @@
  *   The Master is a QA authority only, never a runtime image.
  */
 
-export const A13_ALBUM_MOBILE_HANDOFF_ID = "A13_FULL_ALBUM_MOBILE_LIGHT_FINAL_HANDOFF_V1_1" as const;
+export const A13_ALBUM_MOBILE_HANDOFF_ID = "A13_FULL_ALBUM_MOBILE_LIGHT_FINAL_HANDOFF_V1_2" as const;
 
 export const A13_ALBUM_MOBILE_FRAME = { width: 1024, height: 1536 } as const;
 
@@ -105,6 +106,27 @@ export const A13_ALBUM_MOBILE_MINIMUMS = {
   scaleFloor: 0.92,
   globalUpscaleToReachDominantMinimum: false,
 } as const;
+
+/**
+ * V1.2 `minimums.targetedExceptions` — the ONLY exception: P3 with a 9:16
+ * media, 375 profile: paper short side ≥ 69 CSS px (witness ≈ 69.3 PASS,
+ * < 69 STOP). No geometry, territory or scale-ceiling change; never
+ * applied to another slot, ratio or viewport — at 390 / 430 the 375
+ * profile stays proportional (×W / 375).
+ */
+export const A13_ALBUM_MOBILE_MINIMUM_EXCEPTIONS = [
+  {
+    id: "P3_9_16_375",
+    slotId: "P3" as AlbumMobileSlotId,
+    mediaRatio: 9 / 16,
+    viewportCssPx: 375,
+    outerPaperShortSideMinimumCssPx: 69,
+    expectedWitnessCssPx: 69.3,
+    belowMinimumIsStop: true,
+  },
+] as const;
+/** Relative tolerance on the media ratio of an exception ("9:16" = 0.5625 ± 0.5 %). */
+export const A13_ALBUM_MOBILE_EXCEPTION_RATIO_TOLERANCE = 0.005;
 
 /** `safeHorizontalInsetRefPx`: every paper inside x ∈ [24, 1000]. */
 export const A13_ALBUM_MOBILE_SAFE_INSET = 24;

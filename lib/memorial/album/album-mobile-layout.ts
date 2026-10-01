@@ -3,6 +3,8 @@ import type { V2Anchor, V2Slot } from "@/config/gallery-a13-v2-manifests";
 import {
   A13_ALBUM_MOBILE_CAPTION as CAP,
   A13_ALBUM_MOBILE_DOMINANT_SLOT,
+  A13_ALBUM_MOBILE_EXCEPTION_RATIO_TOLERANCE,
+  A13_ALBUM_MOBILE_MINIMUM_EXCEPTIONS,
   A13_ALBUM_MOBILE_FRAME as FRAME,
   A13_ALBUM_MOBILE_GRAMMARS,
   A13_ALBUM_MOBILE_MATERIALS as MAT,
@@ -41,9 +43,9 @@ import { GroupSession, shapeAt, visibleFraction, type AlbumSolverProfile, type G
  *    reachable under the incoming group): nothing global, no random.
  * 3. Hard rules, 375 profile: visible photo ≥ 0.28, visible paper ≥ 1936
  *    CSS px², a 44 × 44 CSS px visible square, dominant (P1) short side
- *    ≥ 96 CSS px, secondary short side ≥ 72 CSS px. A secondary minimum
- *    that no scale of the territory can reach for its media (reported
- *    `minimumReached: false`) admits only the largest scale.
+ *    ≥ 96 CSS px, secondary short side ≥ 72 CSS px — V1.2: P3 with a 9:16
+ *    media ≥ 69 CSS px, the only exception. A minimum no scale of the
+ *    territory can reach is a STOP (ITEM_INACCESSIBLE): no fallback.
  * 4. The geometry is solved once in source px; a viewport only applies
  *    s = W / 1024 (proportional at 390 / 430). The media count never
  *    enters a scale.
@@ -126,19 +128,24 @@ export function albumMobileGroupSlots(spec: AlbumMobileGroupSpec): V2Slot[] {
 const shortSide = (sh: GroupShape) => Math.min(sh.layout.outer.width, sh.layout.outer.height);
 const slotOf = (v: V2Slot) => v.slotId.split("-").pop() as AlbumMobileSlotId;
 
+/**
+ * Paper short-side minimum of a print, CSS px of the 375 profile: dominant
+ * 96, secondary 72, and the V1.2 targeted exception (P3 + a 9:16 media:
+ * 69). Never generalised: any other slot or ratio keeps 72.
+ */
+export function albumMobileMinimumCss375(slot: AlbumMobileSlotId, role: "dominant" | "secondary", mediaRatio: number): number {
+  if (role === "dominant") return MIN.dominantOuterPaperShortSideCssPx;
+  const ex = A13_ALBUM_MOBILE_MINIMUM_EXCEPTIONS.find((e) => e.slotId === slot && Math.abs(mediaRatio / e.mediaRatio - 1) <= A13_ALBUM_MOBILE_EXCEPTION_RATIO_TOLERANCE);
+  return ex ? ex.outerPaperShortSideMinimumCssPx : MIN.secondaryOuterPaperShortSideCssPxAt375;
+}
+
 interface SizeRule {
+  /** Required short side, source px (375 profile). Out of reach → no candidate → STOP. */
   required: number;
-  /** Effective threshold (the largest reachable short side when the required one is out of reach). */
-  threshold: number;
-  reachable: boolean;
 }
 
 function sizeRules(slots: V2Slot[], sources: readonly PhotoSource[]): SizeRule[] {
-  return slots.map((v, i) => {
-    const required = v.role === "dominant" ? ALBUM_MOBILE_HARD.dominantShortSide : ALBUM_MOBILE_HARD.secondaryShortSide;
-    const best = shortSide(shapeAt(v, sources[i], v.scaleBounds.hard[1], ALBUM_MOBILE_PAPER));
-    return best >= required - 1e-9 ? { required, threshold: required, reachable: true } : { required, threshold: best - 1e-6, reachable: false };
-  });
+  return slots.map((v, i) => ({ required: profilePx(albumMobileMinimumCss375(slotOf(v), v.role as "dominant" | "secondary", sources[i].width / sources[i].height)) }));
 }
 
 function mobileProfile(rules: SizeRule[]): AlbumSolverProfile {
@@ -151,7 +158,7 @@ function mobileProfile(rules: SizeRule[]): AlbumSolverProfile {
     hitTargetPx: ALBUM_MOBILE_HARD.hitTarget,
     minVisibleOuterArea: ALBUM_MOBILE_HARD.visibleArea,
     minima: (slots) => slots.map(() => ({ photo: ALBUM_MOBILE_HARD.visiblePhoto, outer: 0 })),
-    shapeAllowed: (i, sh) => shortSide(sh) >= rules[i].threshold - 1e-9,
+    shapeAllowed: (i, sh) => shortSide(sh) >= rules[i].required - 1e-9,
   };
 }
 
@@ -454,6 +461,13 @@ export function verifyAlbumMobile({ media, layout, groupSizes, reference, theme 
   const xs = layout.prints.flatMap((p) => p.drawnOuter.map((q) => q.x));
   const allow = A13_ALBUM_MOBILE_SHADOW_OVERFLOW_CSS / layout.scale;
   if (xs.length && (Math.min(...xs) < -1e-6 || Math.max(...xs) > FRAME.width + 1e-6)) out.push({ stop: "HORIZONTAL_SCROLL", detail: `papier ${Math.min(...xs).toFixed(1)}…${Math.max(...xs).toFixed(1)} hors 0…1024 (ombre ≤ ${allow.toFixed(1)})` });
+  // SIZE: the paper short side at the 375 profile (caption-free) never below its minimum — 96 / 72, or 69 for P3 + 9:16 (V1.2).
+  for (const p of layout.prints) {
+    const m = media[p.mediaIndex];
+    const min = albumMobileMinimumCss375(p.witnessSlot, p.role, m.width / m.height);
+    const ss = Math.min(p.layout.outer.width, p.layout.outer.height) * S375;
+    if (ss < min - 1e-9) out.push({ stop: "ITEM_INACCESSIBLE", detail: `media ${p.mediaIndex + 1} (${p.witnessSlot}) : petit côté ${ss.toFixed(2)} px < minimum ${min} px (profil 375)` });
+  }
   // ACCESS: every memory identifiable and reachable (caption-free papers — a caption never stops).
   const acc = albumMobileAccess(layout.prints);
   for (const a of acc) {
