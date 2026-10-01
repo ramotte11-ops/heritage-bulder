@@ -56,3 +56,35 @@ export function partitionAlbum(count: number): AlbumGroupSpec[] {
     return spec;
   });
 }
+
+// ── Mobile Light profile (Handoff Album Mobile V1.1 `grouping`) ──────────
+
+export type AlbumMobileGroupGrammar = "TOP3" | "PAIR_A" | "PAIR_B" | "CLOSURE3";
+
+export interface AlbumMobileGroupSpec {
+  index: number;
+  start: number;
+  size: 2 | 3;
+  grammar: AlbumMobileGroupGrammar;
+  /** Rank among the body groups (pairs and closure), 0 = the first after TOP3. */
+  bodyIndex: number | null;
+}
+
+/**
+ * TOP3 always first; the remainder in pairs, PAIR_A / PAIR_B alternating;
+ * an odd remainder makes the LAST group a CLOSURE3 (never a singleton).
+ * Strict contiguous media order. No Album below 7 media.
+ */
+export function partitionAlbumMobile(count: number): AlbumMobileGroupSpec[] {
+  if (!Number.isInteger(count) || count < 7) return [];
+  const specs: AlbumMobileGroupSpec[] = [{ index: 0, start: 0, size: 3, grammar: "TOP3", bodyIndex: null }];
+  const rest = count - 3;
+  const pairs = rest % 2 === 0 ? rest / 2 : (rest - 3) / 2;
+  let start = 3;
+  for (let j = 0; j < pairs; j++) {
+    specs.push({ index: specs.length, start, size: 2, grammar: j % 2 === 0 ? "PAIR_A" : "PAIR_B", bodyIndex: j });
+    start += 2;
+  }
+  if (rest % 2 === 1) specs.push({ index: specs.length, start, size: 3, grammar: "CLOSURE3", bodyIndex: pairs });
+  return specs;
+}

@@ -1,0 +1,103 @@
+/*
+ * A13 Full Album MOBILE LIGHT — rendered table (Handoff V1.1).
+ *
+ * `.stage` is the size container (full width, 375–430 px); `.canvas`
+ * defines `--k`, one 1024-frame source px at the rendered width, and takes
+ * the Album's own height from the layout (inline). Nothing reflows: every
+ * box is `N * var(--k)`.
+ */
+
+.stage {
+  /* Caption hand — the Gallery token, one resource (La Belle Aurore). */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  container-type: inline-size;
+  width: 100%;
+}
+
+.canvas {
+  --k: calc(100cqw / 1024);
+  position: relative;
+  width: 100%;
+  /* No clipping of the prints and no group isolation; the Album root alone
+   * is a stacking context so its paint order stays its own. */
+  isolation: isolate;
+}
+
+/*
+ * Materials: the TOP once, then BODY tiles, each at its native 1024 × 1536
+ * ratio (width 100 %, height 1536 × --k: never stretched), faded in by an
+ * inline linear alpha mask. Only this layer is clipped, to the page height.
+ */
+.material {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: #f2e4cf;
+}
+
+.tile {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  display: block;
+  max-width: none;
+  user-select: none;
+}
+
+/* Technical group: no box, no stacking context, nothing visible. */
+.group {
+  display: contents;
+}
+
+/* ---------------------------------------------------------------------
+ * QA overlays (pilot only)
+ * ------------------------------------------------------------------- */
+
+.qaLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000000;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaFade {
+  fill: rgb(200 120 20 / 0.18);
+  stroke: rgb(200 120 20 / 0.8);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+.qaEnd {
+  stroke: rgb(200 30 30 / 0.85);
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+}
+
+.qaTop {
+  stroke: rgb(20 90 200 / 0.75);
+  stroke-width: 2;
+  stroke-dasharray: 10 6;
+}
+
+.qaLabel {
+  font: 600 22px ui-monospace, monospace;
+  fill: rgb(20 60 140);
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 5px;
+}
+
+.qaIndex {
+  font: 700 40px ui-monospace, monospace;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgb(40 30 20 / 0.85);
+  stroke-width: 6px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}

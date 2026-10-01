@@ -2,7 +2,7 @@ import type { A13Slot } from "@/config/gallery-a13-desktop-manifest";
 import type { V2Slot } from "@/config/gallery-a13-v2-manifests";
 import { A13_ALBUM_CANVAS, A13_ALBUM_HARD, A13_ALBUM_TOP_ZONE, type AlbumGrammar } from "@/config/album-a13-grammars";
 import { A13_ALBUM_MASTER_PRINTS } from "@/config/album-a13-master-measurements";
-import { layoutDynamicPolaroid, type PhotoSource, type PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import { layoutDynamicPolaroid, type PaperProfile, type PhotoSource, type PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { convexIntersectionArea, slotRectToCanvas, type Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { unionCoverArea } from "@/lib/memorial/gallery/manifest-calibration";
 import { largestVisibleSquare, v2SlotToA13 } from "@/lib/memorial/gallery/gallery-v2";
@@ -33,6 +33,15 @@ import { largestVisibleSquare, v2SlotToA13 } from "@/lib/memorial/gallery/galler
  * step 2 px, scale step 0.005), candidates yielded in rank order, bounded
  * by `MAX_JOINT` joint evaluations per group. V1.1 scale 0.995 … 1.000:
  * the Master position first, then local translations, then scale.
+ *
+ * PROFILES (shared engine, one solver): the frame-dependent values — paper
+ * tokens, canvas safe X, first-group top rules, hit target, minima and an
+ * optional per-slot size rule — come from an `AlbumSolverProfile`. The
+ * default is the Desktop Light profile, value for value the constants
+ * used before profiles existed (Desktop geometry unchanged). A session may
+ * also receive a CONTEXT: the already placed prints of the preceding group
+ * (Mobile "local to the current group plus the preceding seam"), which
+ * must stay identifiable and reachable under the incoming group.
  */
 
 export const ALBUM_TRANSLATION_STEP = 2;
@@ -73,12 +82,32 @@ export interface GroupCandidate {
 
 export interface GroupFailure {
   slotId: string;
-  rule: "visible-photo" | "visible-outer" | "hit-target";
+  rule: "visible-photo" | "visible-outer" | "visible-area" | "hit-target";
   value: number;
   minimum: number;
 }
 
 export const add = (p: Point[], d: Point) => p.map((q) => ({ x: q.x + d.x, y: q.y + d.y }));
+
+/** Frame-dependent values of the shared local solver. */
+export interface AlbumSolverProfile {
+  id: string;
+  /** DynamicPolaroid paper (frame px); undefined = the Desktop V2.1 paper. */
+  paper?: PaperProfile;
+  /** Every outer paper stays inside x ∈ [safeX[0], safeX[1]] (frame px). */
+  safeX: readonly [number, number];
+  /** First group only: lowest allowed paper y, and a protected zone (or null). */
+  firstGroupMinY: number;
+  firstGroupZone: Point[] | null;
+  /** Side of the connected visible square required in every print (frame px). */
+  hitTargetPx: number;
+  /** Optional: minimum visible paper AREA of every covered print (frame px²). */
+  minVisibleOuterArea?: number;
+  /** Per-slot minima (visible photo / visible paper fraction). */
+  minima(slots: readonly V2Slot[]): { photo: number; outer: number }[];
+  /** Optional per-slot shape rule for a candidate alone (true = allowed). */
+  shapeAllowed?: (slotIndex: number, shape: GroupShape) => boolean;
+}
 
 function polyArea(p: Point[]) {
   let s = 0;
@@ -98,9 +127,9 @@ export function visibleFraction(target: Point[], covers: Point[][]) {
   return Math.max(0, 1 - unionCoverArea(target, rel) / a);
 }
 
-export function shapeAt(v: V2Slot, source: PhotoSource, s: number): GroupShape {
+export function shapeAt(v: V2Slot, source: PhotoSource, s: number, paper?: PaperProfile): GroupShape {
   const slot = v2SlotToA13(v);
-  const layout = layoutDynamicPolaroid(slot, source, s * s);
+  const layout = paper ? layoutDynamicPolaroid(slot, source, s * s, paper) : layoutDynamicPolaroid(slot, source, s * s);
   const outer0 = slotRectToCanvas(slot, layout.outer);
   const photo0 = slotRectToCanvas(slot, {
     x: layout.outer.x + layout.window.x + layout.photo.x,
@@ -121,7 +150,7 @@ export function witnessMediaRatio(v: V2Slot) {
 }
 
 /** Witness minima per slot: min(cap, witness visible fraction) in-group. */
-export function groupMinima(g: AlbumGrammar) {
+export function groupMinima(g: Pick<AlbumGrammar, "slots">) {
   const shapes = g.slots.map((v) => shapeAt(v, { width: witnessMediaRatio(v) * 1000, height: 1000 }, 1));
   const coversOf = (i: number) => g.slots.map((v, j) => (v.zIndex > g.slots[i].zIndex ? shapes[j].outer0 : null)).filter((p): p is Point[] => !!p);
   return shapes.map((sh, i) => ({
@@ -201,6 +230,16 @@ const TOP_ZONE: Point[] = [
   { x: A13_ALBUM_TOP_ZONE.x0, y: A13_ALBUM_TOP_ZONE.y1 },
 ];
 
+/** Desktop Light: the constants of the solver before profiles (unchanged). */
+export const DESKTOP_ALBUM_SOLVER_PROFILE: AlbumSolverProfile = {
+  id: "desktop-light",
+  safeX: A13_ALBUM_CANVAS.safeX,
+  firstGroupMinY: 0,
+  firstGroupZone: TOP_ZONE,
+  hitTargetPx: A13_ALBUM_HARD.minimumConnectedHitTargetCssPx,
+  minima: (slots) => groupMinima({ slots }),
+};
+
 class SlotStream {
   readonly scales: number[];
   private readonly shapes = new Map<number, GroupShape>();
@@ -210,12 +249,14 @@ class SlotStream {
   private readonly seen = new Set<number>();
   readonly valid: Cand[] = [];
   exhausted = false;
-  rejected = { canvas: 0, topZone: 0 };
+  rejected = { canvas: 0, topZone: 0, size: 0 };
 
   constructor(
     readonly v: V2Slot,
     readonly source: PhotoSource,
     readonly first: boolean,
+    readonly profile: AlbumSolverProfile = DESKTOP_ALBUM_SOLVER_PROFILE,
+    readonly index = 0,
   ) {
     const [h0, h1] = v.scaleBounds.hard;
     const [p0, p1] = v.scaleBounds.preferred;
@@ -247,7 +288,7 @@ class SlotStream {
   shape(si: number) {
     let sh = this.shapes.get(si);
     if (!sh) {
-      sh = shapeAt(this.v, this.source, this.scales[si]);
+      sh = shapeAt(this.v, this.source, this.scales[si], this.profile.paper);
       this.shapes.set(si, sh);
     }
     return sh;
@@ -266,13 +307,18 @@ class SlotStream {
   private aloneOk(c: Cand) {
     const sh = this.shape(c.si);
     const [x0, y0, x1] = sh.bbox;
-    const [sx0, sx1] = A13_ALBUM_CANVAS.safeX;
-    if (x0 + c.d.x < sx0 - 1e-9 || x1 + c.d.x > sx1 + 1e-9 || (this.first && y0 + c.d.y < -1e-9)) {
+    const pr = this.profile;
+    const [sx0, sx1] = pr.safeX;
+    if (x0 + c.d.x < sx0 - 1e-9 || x1 + c.d.x > sx1 + 1e-9 || (this.first && y0 + c.d.y < pr.firstGroupMinY - 1e-9)) {
       this.rejected.canvas++;
       return false;
     }
-    if (this.first && convexIntersectionArea(add(sh.outer0, c.d), TOP_ZONE) > EPS) {
+    if (this.first && pr.firstGroupZone && convexIntersectionArea(add(sh.outer0, c.d), pr.firstGroupZone) > EPS) {
       this.rejected.topZone++;
+      return false;
+    }
+    if (pr.shapeAllowed && !pr.shapeAllowed(this.index, sh)) {
+      this.rejected.size++;
       return false;
     }
     return true;
@@ -307,9 +353,9 @@ export interface HardPrint {
  * Hard failures of `targets` under every higher print of `all` (targets ⊆
  * all). `stopAtFirst`: stop at the first failure (search).
  */
-export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst: boolean): GroupFailure[] {
+export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst: boolean, profile: AlbumSolverProfile = DESKTOP_ALBUM_SOLVER_PROFILE): GroupFailure[] {
   const out: GroupFailure[] = [];
-  const need = A13_ALBUM_HARD.minimumConnectedHitTargetCssPx;
+  const need = profile.hitTargetPx;
   for (const t of targets) {
     const covers = all.filter((o) => o.z > t.z && convexIntersectionArea(t.outer, o.outer) > EPS).map((o) => o.outer);
     if (!covers.length) continue;
@@ -317,6 +363,10 @@ export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst
     if (vp < t.minima.photo - EPS) out.push({ slotId: t.id, rule: "visible-photo", value: vp, minimum: t.minima.photo });
     const vo = visibleFraction(t.outer, covers);
     if (vo < t.minima.outer - EPS) out.push({ slotId: t.id, rule: "visible-outer", value: vo, minimum: t.minima.outer });
+    if (profile.minVisibleOuterArea !== undefined) {
+      const va = vo * polyArea(t.outer);
+      if (va < profile.minVisibleOuterArea - EPS) out.push({ slotId: t.id, rule: "visible-area", value: va, minimum: profile.minVisibleOuterArea });
+    }
     if (!out.length || !stopAtFirst) {
       const h = largestVisibleSquare(t.outer, covers, need);
       if (h.side < need) out.push({ slotId: t.id, rule: "hit-target", value: h.side, minimum: need });
@@ -328,8 +378,16 @@ export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst
 
 // ── Group session: valid joint candidates in rank order ─────────────────
 
-export class GroupSession {
+export interface GroupSessionOptions {
+  profile?: AlbumSolverProfile;
+  /** Already placed prints of the preceding group (below the incoming one). */
+  context?: HardPrint[];
+}
+
+export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> {
   private readonly streams: SlotStream[];
+  readonly profile: AlbumSolverProfile;
+  readonly context: HardPrint[];
   readonly minima: { photo: number; outer: number }[];
   private readonly heap: MinHeap<{ ix: number[]; key: number; tie: number; id: string }>;
   private readonly seen = new Set<string>();
@@ -345,17 +403,20 @@ export class GroupSession {
   structuralCanvas = false;
 
   constructor(
-    readonly grammar: AlbumGrammar,
+    readonly grammar: G,
     readonly sources: readonly PhotoSource[],
     readonly first: boolean,
+    options: GroupSessionOptions = {},
   ) {
-    this.minima = groupMinima(grammar);
-    this.streams = grammar.slots.map((v, i) => new SlotStream(v, sources[i], first));
+    this.profile = options.profile ?? DESKTOP_ALBUM_SOLVER_PROFILE;
+    this.context = options.context ?? [];
+    this.minima = this.profile.minima(grammar.slots);
+    this.streams = grammar.slots.map((v, i) => new SlotStream(v, sources[i], first, this.profile, i));
     this.heap = new MinHeap((a, b) => (a.key !== b.key ? a.key < b.key : a.tie !== b.tie ? a.tie < b.tie : a.id < b.id));
     for (let i = 0; i < this.streams.length; i++) {
       if (!this.streams[i].at(0)) {
         const r = this.streams[i].rejected;
-        this.structuralStop = `${grammar.slots[i].slotId} : aucune position valide seule (canvas ${r.canvas}, zone haute ${r.topZone})`;
+        this.structuralStop = `${grammar.slots[i].slotId} : aucune position valide seule (canvas ${r.canvas}, zone haute ${r.topZone}${r.size ? `, taille ${r.size}` : ""})`;
         this.structuralCanvas = r.canvas > 0 && r.topZone === 0;
         this.exhausted = true;
         return;
@@ -389,6 +450,11 @@ export class GroupSession {
     return pl.map((p, i) => ({ id: this.grammar.slots[i].slotId, z: this.grammar.slots[i].zIndex, outer: p.outer, photo: p.photo, minima: this.minima[i] }));
   }
 
+  /** The preceding group's prints first (targets too), then the group's. */
+  private withContext(hp: HardPrint[]) {
+    return this.context.length ? [...this.context, ...hp] : hp;
+  }
+
   private accept(pl: GroupPlacement[]) {
     const ys = pl.flatMap((p) => p.outer.map((q) => q.y));
     this.found.push({ rank: this.found.length, placements: pl, cost: pl.reduce((s, p) => s + p.cost, 0), visualTop: Math.min(...ys), visualBottom: Math.max(...ys) });
@@ -406,6 +472,8 @@ export class GroupSession {
     const slots = this.grammar.slots;
     const failing = [...new Set(this.bestFailure.map((f) => slots.findIndex((s) => s.slotId === f.slotId)))].filter((i) => i >= 0);
     const movers = new Set<number>();
+    // A context print (preceding group) failing: any incoming print may be the cover.
+    if (this.bestFailure.some((f) => !slots.some((s) => s.slotId === f.slotId))) slots.forEach((_, j) => movers.add(j));
     for (const i of failing) {
       movers.add(i);
       slots.forEach((s, j) => {
@@ -417,8 +485,8 @@ export class GroupSession {
     const costOf = (ix: number[]) => ix.reduce((s, k, i) => s + this.streams[i].at(k)!.tier * TIER + this.streams[i].at(k)!.cost, 0);
     const valid = (ix: number[]) => {
       this.repairEvaluated++;
-      const hp = this.hardPrints(this.placements(ix));
-      return hardFailures(hp, hp, true).length === 0;
+      const hp = this.withContext(this.hardPrints(this.placements(ix)));
+      return hardFailures(hp, hp, true, this.profile).length === 0;
     };
     // The V2 repair, verbatim: first valid per mover (cheapest), pruned by
     // the best cost found so far; the single cheapest composition wins.
@@ -488,8 +556,8 @@ export class GroupSession {
         this.push(nx);
       }
       const pl = this.placements(top.ix);
-      const hp = this.hardPrints(pl);
-      const f = hardFailures(hp, hp, true);
+      const hp = this.withContext(this.hardPrints(pl));
+      const f = hardFailures(hp, hp, true, this.profile);
       if (f.length) {
         const def = f.reduce((a, x) => a + Math.max(0, (x.minimum - x.value) / (x.minimum || 1)), 0);
         if (!this.bestFailure || def < this.bestDeficit) {
@@ -506,7 +574,7 @@ export class GroupSession {
   /** Witness-order fallback for QA rendering of a STOP (never a solution). */
   fallback(): GroupCandidate {
     const pl = this.grammar.slots.map((v, i): GroupPlacement => {
-      const shape = shapeAt(v, this.sources[i], 1);
+      const shape = shapeAt(v, this.sources[i], 1, this.profile.paper);
       return { slotIndex: i, shape, d: { x: 0, y: 0 }, outer: shape.outer0, photo: shape.photo0, tier: 0, cost: 0 };
     });
     const ys = pl.flatMap((p) => p.outer.map((q) => q.y));
