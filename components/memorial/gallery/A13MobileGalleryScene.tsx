@@ -19,7 +19,7 @@ import { DynamicPolaroid } from "./DynamicPolaroid";
 import styles from "./A13MobileGalleryScene.module.css";
 
 /**
- * A13 Gallery — MOBILE LIGHT scene (Handoff V1.5): the ONE common
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.6): the ONE common
  * photo-free Mobile background + the state's prints (the SHARED
  * `DynamicPolaroid`) + the runtime title block + the Signature 7+ CTA.
  * Nothing else: no foreground, no botanical layer, no baked text. The

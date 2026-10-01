@@ -23,11 +23,14 @@ import { A13MobileGalleryScene } from "@/components/memorial/gallery/A13MobileGa
 
 /**
  * QA matrix (PILOT ONLY): every state × media ratio set × caption set of
- * `QA_MATRIX.md` (V1.5), run by the Mobile runtime IN THE BROWSER at the
+ * `QA_MATRIX.md` (V1.6), run by the Mobile runtime IN THE BROWSER at the
  * current stage width with the real La Belle Aurore measurer — then every
  * hard rule re-checked independently of the solver (territory, stage
- * overflow, protected title block, caption safe zones, CTA safe box, 44 px
- * targets, stage height and group translation). The rendered title block
+ * overflow, protected title block, CTA safe box, 44 px targets, stage
+ * height and group translation), and the V1.6 caption doctrine: the same
+ * media without captions gives the same outcome and the same composition
+ * (a caption never moves a print nor stops the Gallery); each caption's
+ * covered share is recorded as an observation. The rendered title block
  * (FR / EN / ES) is measured once per width. Result:
  * `window.__a13MobileMatrix`.
  */
@@ -49,7 +52,7 @@ export interface MatrixRow {
   familyOrder: boolean;
   translateY: number;
   stageHeight: number;
-  checks: { territory: boolean; overflow: boolean; titleBlock: boolean; safeZone: boolean; cta: boolean; hit: boolean; captions: boolean; stage: boolean };
+  checks: { territory: boolean; overflow: boolean; titleBlock: boolean; cta: boolean; hit: boolean; captions: boolean; stage: boolean; captionIndependent: boolean };
   minHitCss: number | null;
   slots: {
     slotId: string;
@@ -66,8 +69,13 @@ export interface MatrixRow {
     widening: { from: number; to: number; envelope: number } | null;
     /** How far the caption ink runs past the band's side edges (CSS px; 0 = inside the band). */
     inkOutsideBandCss: number;
-    /** Safe zone height vs the 42 px band (CSS px). */
-    safeZoneHeightCss: number | null;
+    /** How far the caption ink runs past the paper's side edges (CSS px; 0 = on the paper). */
+    inkOutsidePaperCss: number;
+    /** Caption shift along the band (CSS px). */
+    shiftCss: number;
+    /** Covered share of the caption safe zone (diagnostic), and by which prints. */
+    occluded: number | null;
+    coveredBy: string[];
   }[];
   signals: string[];
 }
@@ -132,6 +140,7 @@ export function MobileMatrixRunner() {
           },
         });
       }
+      const bare: Record<string, ReturnType<typeof runMobileGallery>> = {};
       for (const n of [0, 1, 2, 3, 4, 5, 6, 7, 12])
         for (const ratios of A13_MOBILE_RATIO_SETS)
           for (const captions of A13_MOBILE_CAPTION_SETS) {
@@ -140,8 +149,16 @@ export function MobileMatrixRunner() {
             const t0 = performance.now();
             const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: width });
             const ms = performance.now() - t0;
+            // The same media without captions: same outcome, same composition.
+            const refKey = `${n}|${ratios}`;
+            const ref = (bare[refKey] ??= runMobileGallery({ media, captionOf: () => null, measurer: font.measurer, stageWidth: width }));
             const need = A13_MOBILE_INTERACTION.minTargetCssPx;
-            const checks = { territory: true, overflow: true, titleBlock: true, safeZone: true, cta: true, hit: true, captions: true, stage: true };
+            const checks = { territory: true, overflow: true, titleBlock: true, cta: true, hit: true, captions: true, stage: true, captionIndependent: true };
+            if (ref.status !== run.status || ref.entries.length !== run.entries.length) checks.captionIndependent = false;
+            run.entries.forEach((e, i) => {
+              const r = ref.entries[i];
+              if (!r || r.scale !== e.scale || Math.abs(r.center.x - e.center.x) > EPS || Math.abs(r.center.y - e.center.y) > EPS || r.slot.zIndex !== e.slot.zIndex) checks.captionIndependent = false;
+            });
             const T = run.stateId ? A13_MOBILE_GROUP_TRANSLATION[run.stateId].translateYSource : 0;
             if (run.stateId && (run.translateY !== T || run.stageHeight !== A13_MOBILE_GROUP_TRANSLATION[run.stateId].stageHeightSource)) checks.stage = false;
             // Stage items in the group frame (−T).
@@ -157,12 +174,9 @@ export function MobileMatrixRunner() {
               if (e.papers.some((p) => convexIntersectionArea(p, title) > EPS)) checks.titleBlock = false;
               if (run.hasCta && e.papers.some((p) => convexIntersectionArea(p, safe) > EPS)) checks.cta = false;
               if (e.hitTarget.side * k < need - 1e-6) checks.hit = false;
-              if (e.safeZone)
-                for (const q of run.entries)
-                  if (q.mobileSlot.paintOrder > e.mobileSlot.paintOrder && q.papers.some((p) => convexIntersectionArea(p, e.safeZone!) > EPS)) checks.safeZone = false;
               const text = e.media.caption;
-              if (!!text !== !!e.caption || !!e.caption !== !!e.safeZone) checks.captions = false;
-              if (e.caption && (e.caption.lines.length > A13_MOBILE_CAPTION.maxLines || e.caption.exceedsUsefulWidth || e.caption.status !== "placed")) checks.captions = false;
+              if (!!text !== !!e.caption || !!e.caption !== !!e.captionDiagnostic) checks.captions = false;
+              if (e.caption && e.caption.lines.length > A13_MOBILE_CAPTION.maxLines) checks.captions = false;
             }
             const shown = run.entries.map((e) => e.mediaIndex);
             rows.push({
@@ -197,7 +211,10 @@ export function MobileMatrixRunner() {
                 exceeds: e.caption?.exceedsUsefulWidth ?? false,
                 widening: e.bandWidening,
                 inkOutsideBandCss: e.caption ? Math.max(0, e.layout.band.x - e.caption.ink.x, e.caption.ink.x + e.caption.ink.width - (e.layout.band.x + e.layout.band.width)) * k : 0,
-                safeZoneHeightCss: e.caption ? e.caption.protectedBox.height * k : null,
+                inkOutsidePaperCss: e.caption ? Math.max(0, Math.min(0, e.layout.band.x) - e.caption.ink.x, e.caption.ink.x + e.caption.ink.width - Math.max(e.layout.outer.width, e.layout.band.x + e.layout.band.width)) * k : 0,
+                shiftCss: (e.caption?.shiftX ?? 0) * k,
+                occluded: e.captionDiagnostic?.occludedFraction ?? null,
+                coveredBy: e.captionDiagnostic?.coveredBy ?? [],
               })),
               signals: run.signals,
             });

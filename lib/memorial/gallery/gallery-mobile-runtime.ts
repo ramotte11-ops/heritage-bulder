@@ -24,7 +24,7 @@ import { unionCoverArea } from "@/lib/memorial/gallery/manifest-calibration";
 import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
 
 /**
- * A13 Gallery — MOBILE LIGHT runtime (Handoff V1.5), 375–430 px.
+ * A13 Gallery — MOBILE LIGHT runtime (Handoff V1.6), 375–430 px.
  *
  * One entry point from a family media list to a Mobile composition, pure and
  * theme-free, on the SHARED engine:
@@ -35,14 +35,14 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  *   ratio, natural window inside 0.67–1.78, bounded `contain` outside, no
  *   crop, no distortion) with the Mobile paper tokens;
  * - captions = the shared `breakCaption` / `layoutCaption` (centred, and
- *   shifted along the band only to keep their glyphs free) at the Mobile
- *   caption size;
+ *   shifted along the band when that frees their glyphs) at the Mobile
+ *   caption size, laid out AFTER the composition;
  * - visibility and reachability tests = the shared V2 primitives.
  *
  * Mobile-only (this module): the 941-wide frame, the state's group
  * translation and stage height, `anchorPivot`, `centerTerritory`,
- * `paperOverflowAllowance`, the canonical title block, the caption safe
- * zones and the Signature CTA safe box.
+ * `paperOverflowAllowance`, the canonical title block and the Signature CTA
+ * safe box.
  *
  * ## Frames
  *
@@ -64,22 +64,29 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  * `C1` included). Rotation, paint order, family order and slot are closed.
  * The paper rotates about its own centre (engine anchor `center`).
  *
- * ## Captions (V1.5)
+ * ## Captions (V1.6 — composition first)
  *
- * 12 / 14.5 CSS px, centred in the fixed 42 px band with an 8 px inset,
- * never shrunk, never more than two lines (the shared break). When the
- * best two-line break still has a line wider than the useful width (a
- * narrow print), ONLY the bottom band widens, symmetrically, to that line
- * + the two insets — the photo window, the scale and the font are
- * unchanged — within the slot envelope, read as the witness paper width at
- * the same scale (`outerReference.width × s`); beyond it the scale is
- * rejected (`CAPTION_SAFE_ZONE_UNRESOLVED`). The widened band is paper: it
- * counts in every paper test (canvas, title, CTA, covering). The
- * `captionSafeZone` is the union of the laid-out glyph boxes + 6 / 4 CSS
- * px, transformed with the print; no caption → no zone. Where a print
- * painted above meets the centred zone, the shared caption logic moves
- * ONLY the text along the band (2 CSS px steps, ≤ 18 % of the band width,
- * ink kept on the band — V2.1 §2); the zone is where the text ends up.
+ * The composition is solved WITHOUT the captions: a caption never moves,
+ * scales or re-orders a print, never changes an overlap, never hides the
+ * Gallery and never returns a STOP. Each caption is then laid out on the
+ * solved composition: 12 / 14.5 CSS px, centred in the fixed 42 px band
+ * with an 8 px inset, never shrunk, never more than two lines (the shared
+ * break), moved along its band by the shared caption logic when that frees
+ * its glyphs from the prints above (2 CSS px steps, ≤ 18 % of the band
+ * width, ink kept on the band). When nothing frees them, the caption stays
+ * centred and is partly or strongly covered — an allowed visual state; the
+ * Viewer is the full reading authority. Its `captionSafeZone` (glyph box +
+ * 6 / 4 CSS px, transformed with the print) is a diagnostic: the run
+ * reports how much of it is covered.
+ *
+ * Narrow print: when the best two-line break still has a line wider than
+ * the useful width, ONLY the bottom band may widen, symmetrically, to that
+ * line + the two insets, within the slot envelope (the witness paper width
+ * at the same scale, `outerReference.width × s`) — and only when the
+ * widened band keeps every hard rule of the solved composition (stage,
+ * title block, CTA, and the visibility and 44 px target of every print
+ * below it). Otherwise the band is not widened and the best two-line
+ * caption is drawn as is. Never a feasibility condition.
  *
  * ## Hard rules (reject a candidate) → STOP codes
  *
@@ -91,10 +98,6 @@ import { largestVisibleSquare } from "@/lib/memorial/gallery/gallery-v2";
  *   protected title block (width and bottom per viewport, from y = 0);
  * - `CTA_COLLISION_UNRESOLVED` (Signature 7+): the outer paper meets the
  *   CTA safe box;
- * - `CAPTION_SAFE_ZONE_UNRESOLVED`: a caption cannot fit two lines within
- *   the envelope, or no joint candidate lets the shared caption logic place
- *   every caption with its safe zone free of the paper of every print
- *   painted above it;
  * - `ITEM_INACCESSIBLE`: no joint candidate keeps, for every print, an
  *   axis-aligned 44 × 44 CSS px square in its visible paper, the shared
  *   identifiability minima (visible photo ≥ min(0.35, witness), visible
@@ -115,7 +118,6 @@ export type MobileRunStop =
   | "PAPER_OVERFLOW_EXCEEDED"
   | "ITEM_INACCESSIBLE"
   | "TITLE_BLOCK_COLLISION_UNRESOLVED"
-  | "CAPTION_SAFE_ZONE_UNRESOLVED"
   | "CTA_COLLISION_UNRESOLVED";
 
 /** Font size the shared caption measurer measures at (`createCaptionMeasurer`, Desktop 27 px). */
@@ -162,7 +164,7 @@ export function mobileMetrics(stageWidth: number): MobileMetrics {
     captionFontCssPx,
     captionFontPx,
     captionInsetPx,
-    // The shared caption logic: V1.5 size / leading / inset / safe-zone padding; the shared 2 px step and ±18 % band shift.
+    // The shared caption logic: Mobile size / leading / inset / diagnostic safe-zone padding; the shared 2 px step and ±18 % band shift.
     captionProfile: {
       fontSizePx: captionFontPx,
       lineHeight: A13_MOBILE_CAPTION.lineHeightCss / A13_MOBILE_CAPTION.fontSizeCss,
@@ -219,6 +221,22 @@ const rot = (deg: number, v: Point): Point => {
 };
 const shift = (p: Point[], c: Point) => p.map((q) => ({ x: q.x + c.x, y: q.y + c.y }));
 
+type Box = [number, number, number, number];
+const bboxOf = (p: Point[]): Box => {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const q of p) {
+    if (q.x < x0) x0 = q.x;
+    if (q.y < y0) y0 = q.y;
+    if (q.x > x1) x1 = q.x;
+    if (q.y > y1) y1 = q.y;
+  }
+  return [x0, y0, x1, y1];
+};
+const overlap = (a: readonly number[], b: readonly number[]) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+
 /** The shared engine's slot for a Mobile slot whose paper is centred on `center`. */
 export function mobileEngineSlot(m: A13MobileSlot, center: Point = m.referenceCenter): A13Slot {
   const [lo, hi] = m.scaleRange;
@@ -258,59 +276,22 @@ export function pivotCenter(m: A13MobileSlot, width: number, height: number): Po
   return { x: p.x - d.x, y: p.y - d.y };
 }
 
-/** The caption of one print at one scale, centred in its band (shift 0). */
-interface ShapeCaption {
-  text: string;
-  layout: CaptionLayout;
-  /** Safe zone polygon relative to the paper centre (protected box, rotated). */
-  safe0: Point[];
-}
-
+/** One print at one scale — caption-free (captions never shape the composition). */
 interface Shape {
   s: number;
-  /** The print; its `band` is the widened band when a narrow print needed it. */
   layout: PolaroidLayout;
   /** Paper centre keeping the pivot (before territory translation). */
   c1: Point;
   /** Polygons relative to the paper centre. */
   outer0: Point[];
   photo0: Point[];
-  /** Every paper part: the print, plus the widened band when there is one. */
-  papers0: Point[][];
-  /** Bounds of every paper part. */
-  bbox0: [number, number, number, number];
+  bbox0: Box;
   area: number;
-  caption: ShapeCaption | null;
-  /** Widened band width and the envelope it had to fit (source px), or null. */
-  widening: { from: number; to: number; envelope: number } | null;
-  /** A caption that cannot fit two lines within the envelope at this scale. */
-  captionUnresolved: boolean;
 }
 
-function shapeFor(m: A13MobileSlot, source: PhotoSource, s: number, metrics: MobileMetrics, text: string | null, measurer: CaptionMeasurer | null): Shape {
+function shapeFor(m: A13MobileSlot, source: PhotoSource, s: number, metrics: MobileMetrics): Shape {
   const origin = mobileEngineSlot(m, { x: 0, y: 0 });
-  const base = layoutDynamicPolaroid(origin, source, s * s, metrics.paperProfile);
-  let layout = base;
-  let widening: Shape["widening"] = null;
-  let captionUnresolved = false;
-  let caption: ShapeCaption | null = null;
-  if (text && measurer) {
-    // Narrow print: the shared best break at the band's useful width; a line
-    // still wider widens ONLY the band, symmetrically, to that line + insets.
-    const inset = metrics.captionInsetPx;
-    const useful = base.band.width - 2 * inset;
-    const needed = Math.max(...breakCaption(text, useful, (t) => measurer.measure(t)).map((l) => measurer.measure(l).width));
-    if (needed > useful + 1e-9) {
-      const to = needed + 2 * inset;
-      const envelope = m.outerReference.width * s;
-      widening = { from: base.band.width, to, envelope };
-      if (to > envelope + EPS) captionUnresolved = true;
-      layout = { ...base, band: { ...base.band, x: (base.outer.width - to) / 2, width: to } };
-    }
-    const cap = layoutCaption(origin, layout, text, measurer, [], metrics.captionProfile);
-    const pb = cap.protectedBox;
-    caption = { text, layout: cap, safe0: slotRectToCanvas(origin, { x: layout.outer.x + pb.x, y: layout.outer.y + pb.y, width: pb.width, height: pb.height }) };
-  }
+  const layout = layoutDynamicPolaroid(origin, source, s * s, metrics.paperProfile);
   const outer0 = slotRectToCanvas(origin, layout.outer);
   const photo0 = slotRectToCanvas(origin, {
     x: layout.outer.x + layout.window.x + layout.photo.x,
@@ -318,23 +299,14 @@ function shapeFor(m: A13MobileSlot, source: PhotoSource, s: number, metrics: Mob
     width: layout.photo.width,
     height: layout.photo.height,
   });
-  const papers0 = widening
-    ? [outer0, slotRectToCanvas(origin, { x: layout.outer.x + layout.band.x, y: layout.outer.y + layout.band.y, width: layout.band.width, height: layout.band.height })]
-    : [outer0];
-  const xs = papers0.flat().map((p) => p.x);
-  const ys = papers0.flat().map((p) => p.y);
   return {
     s,
     layout,
     c1: pivotCenter(m, layout.outer.width, layout.outer.height),
     outer0,
     photo0,
-    papers0,
-    bbox0: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+    bbox0: bboxOf(outer0),
     area: layout.outer.width * layout.outer.height,
-    caption,
-    widening,
-    captionUnresolved,
   };
 }
 
@@ -344,11 +316,16 @@ function polyArea(p: Point[]) {
   return Math.abs(a) / 2;
 }
 
-function visibleFraction(target: Point[], covers: Point[][]) {
+function coveredFraction(target: Point[], covers: Point[][]) {
   const a = polyArea(target);
   if (a <= EPS) return 0;
-  const rel = covers.filter((c) => convexIntersectionArea(target, c) > EPS);
-  return Math.max(0, 1 - unionCoverArea(target, rel) / a);
+  const tb = bboxOf(target);
+  const rel = covers.filter((c) => overlap(bboxOf(c), tb) && convexIntersectionArea(target, c) > EPS);
+  return Math.min(1, unionCoverArea(target, rel) / a);
+}
+
+function visibleFraction(target: Point[], covers: Point[][]) {
+  return polyArea(target) <= EPS ? 0 : Math.max(0, 1 - coveredFraction(target, covers));
 }
 
 // ── Candidates ─────────────────────────────────────────────────────────
@@ -361,7 +338,7 @@ interface Cand {
   id: number;
 }
 
-type AloneReject = "PAPER_OVERFLOW_EXCEEDED" | "TITLE_BLOCK_COLLISION_UNRESOLVED" | "CTA_COLLISION_UNRESOLVED" | "CAPTION_SAFE_ZONE_UNRESOLVED";
+type AloneReject = "PAPER_OVERFLOW_EXCEEDED" | "TITLE_BLOCK_COLLISION_UNRESOLVED" | "CTA_COLLISION_UNRESOLVED";
 
 /** Stage-frame items brought into the GROUP frame (y − T). */
 interface GroupFrame {
@@ -372,49 +349,16 @@ interface GroupFrame {
   ctaSafe: Point[] | null;
 }
 
-const hits = (papers: Point[][], zone: Point[]) => papers.some((p) => convexIntersectionArea(p, zone) > EPS);
+const hits = (paper: Point[], zone: Point[]) => convexIntersectionArea(paper, zone) > EPS;
 
-/**
- * Separating-axis test: do two convex polygons overlap by more than `tol`
- * along every edge normal? (`tol` = 1e-3 px: an overlap it reports is a
- * collision for the area rule too.)
- */
-function convexOverlap(a: Point[], b: Point[], tol = 1e-3): boolean {
-  for (const poly of [a, b])
-    for (let i = 0; i < poly.length; i++) {
-      const p = poly[i];
-      const q = poly[(i + 1) % poly.length];
-      const len = Math.hypot(q.x - p.x, q.y - p.y);
-      if (len < EPS) continue;
-      const nx = (q.y - p.y) / len;
-      const ny = (p.x - q.x) / len;
-      let a0 = Infinity;
-      let a1 = -Infinity;
-      let b0 = Infinity;
-      let b1 = -Infinity;
-      for (const r of a) {
-        const d = r.x * nx + r.y * ny;
-        a0 = Math.min(a0, d);
-        a1 = Math.max(a1, d);
-      }
-      for (const r of b) {
-        const d = r.x * nx + r.y * ny;
-        b0 = Math.min(b0, d);
-        b1 = Math.max(b1, d);
-      }
-      if (a1 - b0 <= tol || b1 - a0 <= tol) return false;
-    }
-  return true;
-}
-
-const overlap = (a: readonly number[], b: readonly number[]) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
-
-/** A print painted above, as seen by the caption filter of a print below it. */
-interface UpperReach {
-  slotId: string;
-  /** Its outer paper at its smallest scale, centred on each corner of its territory. */
-  corners: Point[][];
-  region: [number, number, number, number];
+/** A paper (print or widened band) against the stage rules of its slot: canvas allowance, title block, CTA. */
+function stageReject(m: A13MobileSlot, paper: Point[], frame: GroupFrame): AloneReject | null {
+  const a = m.paperOverflowAllowance;
+  const [x0, y0, x1, y1] = bboxOf(paper);
+  if (x0 < -a.left - EPS || y0 < frame.top - a.top - EPS || x1 > A13_MOBILE_CANVAS.width + a.right + EPS || y1 > frame.bottom + a.bottom + EPS) return "PAPER_OVERFLOW_EXCEEDED";
+  if (hits(paper, frame.title)) return "TITLE_BLOCK_COLLISION_UNRESOLVED";
+  if (frame.ctaSafe && hits(paper, frame.ctaSafe)) return "CTA_COLLISION_UNRESOLVED";
+  return null;
 }
 
 type Grid = "fine" | "coarse";
@@ -424,16 +368,14 @@ class SlotStream {
   private readonly order: Cand[] = [];
   private cursor = 0;
   readonly valid: Cand[] = [];
-  readonly rejected: Record<AloneReject, number> = { PAPER_OVERFLOW_EXCEEDED: 0, TITLE_BLOCK_COLLISION_UNRESOLVED: 0, CTA_COLLISION_UNRESOLVED: 0, CAPTION_SAFE_ZONE_UNRESOLVED: 0 };
-  /** Everything any candidate can cover (papers and caption safe zone), group frame. */
-  readonly region: [number, number, number, number];
+  readonly rejected: Record<AloneReject, number> = { PAPER_OVERFLOW_EXCEEDED: 0, TITLE_BLOCK_COLLISION_UNRESOLVED: 0, CTA_COLLISION_UNRESOLVED: 0 };
+  /** Everything any candidate's paper can cover, group frame. */
+  readonly region: Box;
 
   constructor(
     readonly m: A13MobileSlot,
     source: PhotoSource,
     metrics: MobileMetrics,
-    text: string | null,
-    measurer: CaptionMeasurer | null,
     private readonly frame: GroupFrame,
     grid: Grid,
   ) {
@@ -443,16 +385,16 @@ class SlotStream {
       grid === "fine"
         ? Array.from({ length: Math.round(hi / SCALE_STEP) - Math.round(lo / SCALE_STEP) + 1 }, (_, i) => Math.round((Math.round(lo / SCALE_STEP) + i) * SCALE_STEP * 1000) / 1000)
         : [...new Set([lo, (lo + 1) / 2, 1, (1 + hi) / 2, hi].map((v) => Math.round(v * 1000) / 1000))].sort((a, b) => a - b);
-    let region: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+    let region: Box = [Infinity, Infinity, -Infinity, -Infinity];
     for (const s of scales) {
-      const sh = shapeFor(m, source, s, metrics, text, measurer);
+      const sh = shapeFor(m, source, s, metrics);
       const si = this.shapes.push(sh) - 1;
       const sc = s >= 1 ? (hi > 1 ? (s - 1) / (hi - 1) : 0) : lo < 1 ? (1 - s) / (1 - lo) : 0;
       // Territory projection of the pivot centre, then the grid through it (fine) or the territory lattice (coarse).
       const start = { x: Math.min(t.x + t.width, Math.max(t.x, sh.c1.x)), y: Math.min(t.y + t.height, Math.max(t.y, sh.c1.y)) };
       const centers: Point[] = [];
       if (grid === "fine") {
-        // The 2 px lines through the projection, plus the territory's own edges.
+        // The 4 px lines through the projection, plus the territory's own edges.
         const line = (s0: number, lo0: number, len: number) => {
           const v: number[] = [];
           for (let i = Math.ceil((lo0 - s0) / POSITION_STEP - EPS); i <= Math.floor((lo0 + len - s0) / POSITION_STEP + EPS); i++) v.push(s0 + i * POSITION_STEP);
@@ -473,17 +415,8 @@ class SlotStream {
         const dy = (center.y - sh.c1.y) / (t.height / 2);
         this.order.push({ si, center, cost: dx * dx + dy * dy + sc * sc, id: -1 });
       }
-      const safe = sh.caption?.safe0 ?? [];
-      const xs = [...sh.papers0.flat(), ...safe].map((q) => q.x);
-      const ys = [...sh.papers0.flat(), ...safe].map((q) => q.y);
-      // A shifted caption stays on its band: widen the safe zone's reach by the band's shift range.
-      const reach = sh.caption ? sh.caption.layout.maxShift : 0;
-      region = [
-        Math.min(region[0], t.x + Math.min(...xs) - reach),
-        Math.min(region[1], t.y + Math.min(...ys) - reach),
-        Math.max(region[2], t.x + t.width + Math.max(...xs) + reach),
-        Math.max(region[3], t.y + t.height + Math.max(...ys) + reach),
-      ];
+      const [x0, y0, x1, y1] = sh.bbox0;
+      region = [Math.min(region[0], t.x + x0), Math.min(region[1], t.y + y0), Math.max(region[2], t.x + t.width + x1), Math.max(region[3], t.y + t.height + y1)];
     }
     this.region = region;
     const shapes = this.shapes;
@@ -498,96 +431,8 @@ class SlotStream {
     this.order.forEach((c, i) => (c.id = i));
   }
 
-  papers(c: Cand) {
-    return this.shapes[c.si].papers0.map((p) => shift(p, c.center));
-  }
-
-  /**
-   * The paper this print covers WHEREVER it is: the intersection of its
-   * outer paper over its whole territory at its smallest scale (the
-   * rotation is fixed, so it is the rotated rectangle whose edge offsets
-   * are the extreme ones over the territory corners), or null.
-   */
-  core(): Point[] | null {
-    const t = this.m.centerTerritory;
-    const { width: w, height: h } = this.shapes[0].layout.outer;
-    const a = (this.m.rotationDeg * Math.PI) / 180;
-    const u = { x: Math.cos(a), y: Math.sin(a) };
-    const v = { x: -Math.sin(a), y: Math.cos(a) };
-    const corners = rectPoly(t);
-    const pu = corners.map((c) => u.x * c.x + u.y * c.y);
-    const pv = corners.map((c) => v.x * c.x + v.y * c.y);
-    const [a0, a1] = [Math.max(...pu) - w / 2, Math.min(...pu) + w / 2];
-    const [b0, b1] = [Math.max(...pv) - h / 2, Math.min(...pv) + h / 2];
-    if (a1 - a0 <= EPS || b1 - b0 <= EPS) return null;
-    return [
-      [a0, b0],
-      [a1, b0],
-      [a1, b1],
-      [a0, b1],
-    ].map(([A, B]) => ({ x: A * u.x + B * v.x, y: A * u.y + B * v.y }));
-  }
-
-  /** The corner papers of `this` at its smallest scale (for the filter of the prints below). */
-  cornerPapers(): Point[][] {
-    return rectPoly(this.m.centerTerritory).map((c) => shift(this.shapes[0].outer0, c));
-  }
-
-  private uppers: UpperReach[] = [];
-  private shift: { stepPx: number; factor: number } = { stepPx: 1, factor: 0 };
-
-  /**
-   * Caption filter (sound, exact per pair). The rotation of a print is
-   * fixed and its paper grows with its scale around its centre, so a print
-   * above can keep clear of a convex zone K somewhere in its territory iff
-   * it does so at its smallest scale on one of the territory's corners
-   * (the centres whose paper meets K form the convex set K ⊕ −paper). A
-   * candidate for which NO position of the text on its band (the shared
-   * caption shifts) lets EVERY print above keep clear of its safe zone can
-   * never be completed — it is rejected alone (`CAPTION_SAFE_ZONE_UNRESOLVED`).
-   * It never removes a candidate a complete composition could use.
-   */
-  setUpperReach(uppers: UpperReach[], profile: CaptionProfile) {
-    this.uppers = uppers;
-    this.shift = { stepPx: profile.shiftStepPx, factor: profile.maxShiftFactorOfBandWidth };
-  }
-
-  private captionFree(sh: Shape, c: Cand): boolean {
-    const cap = sh.caption!.layout;
-    const band = sh.layout.band;
-    const k0 = shift(sh.caption!.safe0, c.center);
-    const maxShift = this.shift.factor * band.width;
-    const xs = k0.map((q) => q.x);
-    const ys = k0.map((q) => q.y);
-    const reach: [number, number, number, number] = [Math.min(...xs) - maxShift, Math.min(...ys) - maxShift, Math.max(...xs) + maxShift, Math.max(...ys) + maxShift];
-    const rel = this.uppers.filter((u) => overlap(u.region, reach));
-    if (!rel.length) return true;
-    const a = (this.m.rotationDeg * Math.PI) / 180;
-    const ux = Math.cos(a);
-    const uy = Math.sin(a);
-    const dxs = [0];
-    for (let d = this.shift.stepPx; d <= maxShift + 1e-9; d += this.shift.stepPx) dxs.push(d, -d);
-    for (const dx of dxs) {
-      if (dx !== 0 && (cap.ink.x + dx < band.x - 1e-9 || cap.ink.x + cap.ink.width + dx > band.x + band.width + 1e-9)) continue;
-      const k = k0.map((q) => ({ x: q.x + dx * ux, y: q.y + dx * uy }));
-      if (rel.every((u) => u.corners.some((p) => !convexOverlap(p, k)))) return true;
-    }
-    return false;
-  }
-
   private aloneReject(c: Cand): AloneReject | null {
-    const sh = this.shapes[c.si];
-    if (sh.captionUnresolved) return "CAPTION_SAFE_ZONE_UNRESOLVED";
-    const a = this.m.paperOverflowAllowance;
-    const [x0, y0, x1, y1] = sh.bbox0;
-    const { top, bottom } = this.frame;
-    if (x0 + c.center.x < -a.left - EPS || y0 + c.center.y < top - a.top - EPS || x1 + c.center.x > A13_MOBILE_CANVAS.width + a.right + EPS || y1 + c.center.y > bottom + a.bottom + EPS)
-      return "PAPER_OVERFLOW_EXCEEDED";
-    const papers = this.papers(c);
-    if (hits(papers, this.frame.title)) return "TITLE_BLOCK_COLLISION_UNRESOLVED";
-    if (this.frame.ctaSafe && hits(papers, this.frame.ctaSafe)) return "CTA_COLLISION_UNRESOLVED";
-    if (sh.caption && this.uppers.length && !this.captionFree(sh, c)) return "CAPTION_SAFE_ZONE_UNRESOLVED";
-    return null;
+    return stageReject(this.m, shift(this.shapes[c.si].outer0, c.center), this.frame);
   }
 
   /** Valid-alone candidate #k (extends lazily), or null. */
@@ -600,17 +445,13 @@ class SlotStream {
     }
     return this.valid[k] ?? null;
   }
-
-  get exhausted() {
-    return this.cursor >= this.order.length;
-  }
 }
 
 // ── Joint evaluation ───────────────────────────────────────────────────
 
 export interface MobileJointFailure {
   slotId: string;
-  rule: "caption-safe-zone" | "dominance" | "visible-photo" | "visible-outer" | "hit-target";
+  rule: "dominance" | "visible-photo" | "visible-outer" | "hit-target";
   value: number;
   minimum: number;
 }
@@ -621,167 +462,65 @@ interface Placed {
   cand: Cand;
   outer: Point[];
   photo: Point[];
-  papers: Point[][];
-  /** Caption as placed against the prints above (set by `checkSlot`) and its safe zone. */
-  caption: CaptionLayout | null;
-  safe: Point[] | null;
-  /** Visibility under the prints above (set by `checkSlot`). */
-  visiblePhoto: number;
-  visibleOuter: number;
 }
 
 function place(m: A13MobileSlot, shape: Shape, cand: Cand): Placed {
-  const c = cand.center;
-  return {
-    m,
-    shape,
-    cand,
-    outer: shift(shape.outer0, c),
-    photo: shift(shape.photo0, c),
-    papers: shape.papers0.map((p) => shift(p, c)),
-    caption: shape.caption?.layout ?? null,
-    safe: shape.caption ? shift(shape.caption.safe0, c) : null,
-    visiblePhoto: NaN,
-    visibleOuter: NaN,
-  };
-}
-
-/** Paper polygons of every print painted above print i. */
-function coversOf(placed: Placed[], i: number) {
-  return placed.filter((p) => p.m.paintOrder > placed[i].m.paintOrder).flatMap((p) => p.papers);
+  return { m, shape, cand, outer: shift(shape.outer0, cand.center), photo: shift(shape.photo0, cand.center) };
 }
 
 interface CheckContext {
   hitPx: number;
-  measurer: CaptionMeasurer | null;
-  captionProfile: CaptionProfile;
   /** Slot id of the manifest's dominant slot (G2, G3), or null. */
   dominant: string | null;
   minima: Record<string, { photo: number; outer: number }>;
 }
 
-/**
- * Every hard rule of ONE print `p` against the prints painted above it
- * (`upper`) — which is all a print's rules depend on — plus the pairwise
- * dominance test against the prints already placed (`others`). Sets the
- * print's caption placement, safe zone and visibility.
- */
-function checkSlot(p: Placed, upper: Placed[], others: Placed[], ctx: CheckContext): MobileJointFailure[] {
+/** Visibility and 44 px reachability of one print under the papers above it. */
+function reachRules(m: A13MobileSlot, outer: Point[], photo: Point[], covers: Point[][], ctx: CheckContext): MobileJointFailure[] {
   const failures: MobileJointFailure[] = [];
-  const id = p.m.slotId;
-  // Dominance (G2, G3): the dominant slot keeps the largest outer area.
-  for (const o of others) {
-    const [dom, other] = id === ctx.dominant ? [p, o] : o.m.slotId === ctx.dominant ? [o, p] : [null, null];
-    if (dom && other && dom.shape.area < other.shape.area - EPS) failures.push({ slotId: dom.m.slotId, rule: "dominance", value: dom.shape.area, minimum: other.shape.area });
-  }
-  if (failures.length) return failures;
-  const obstacles: Obstacle[] = upper.flatMap((q) => q.papers.map((polygon) => ({ slotId: q.m.slotId, polygon, box: bboxOf(polygon) })));
-  const covers = obstacles.map((o) => o.polygon);
-  // captionSafeZone: no paper painted above may meet it (the rest of the band may be covered).
-  // Centred first; otherwise the shared caption logic moves the text along the band.
-  const sc = p.shape.caption;
-  const dx = sc && ctx.measurer ? captionShift(p.m, p.shape, p.cand.center, obstacles, ctx.captionProfile) : 0;
-  if (dx === null) return [{ slotId: id, rule: "caption-safe-zone", value: 1, minimum: 0 }];
-  if (sc && ctx.measurer && dx !== 0) {
-    const slot = mobileEngineSlot(p.m, p.cand.center);
-    const cap = layoutCaption(slot, p.shape.layout, sc.text, ctx.measurer, obstacles, ctx.captionProfile);
-    if (cap.status !== "placed" || Math.abs(cap.shiftX - dx) > 1e-9) throw new Error(`caption decision mismatch on ${id}: shared ${cap.status} ${cap.shiftX}, runtime ${dx}`);
-    const pb = cap.protectedBox;
-    p.caption = cap;
-    p.safe = slotRectToCanvas(slot, { x: p.shape.layout.outer.x + pb.x, y: p.shape.layout.outer.y + pb.y, width: pb.width, height: pb.height });
-  }
+  const id = m.slotId;
   const min = ctx.minima[id];
-  p.visiblePhoto = visibleFraction(p.photo, covers);
-  p.visibleOuter = visibleFraction(p.outer, covers);
-  if (p.visiblePhoto < min.photo - EPS) failures.push({ slotId: id, rule: "visible-photo", value: p.visiblePhoto, minimum: min.photo });
-  if (p.visibleOuter < min.outer - EPS) failures.push({ slotId: id, rule: "visible-outer", value: p.visibleOuter, minimum: min.outer });
+  const vp = visibleFraction(photo, covers);
+  const vo = visibleFraction(outer, covers);
+  if (vp < min.photo - EPS) failures.push({ slotId: id, rule: "visible-photo", value: vp, minimum: min.photo });
+  if (vo < min.outer - EPS) failures.push({ slotId: id, rule: "visible-outer", value: vo, minimum: min.outer });
   if (failures.length) return failures;
   const need = Math.ceil(ctx.hitPx - EPS);
-  const h = largestVisibleSquare(p.outer, covers, need);
+  const h = largestVisibleSquare(outer, covers, need);
   if (h.side < need) failures.push({ slotId: id, rule: "hit-target", value: h.side, minimum: need });
   return failures;
 }
 
-const bboxOf = (p: Point[]): [number, number, number, number] => {
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (const q of p) {
-    if (q.x < x0) x0 = q.x;
-    if (q.y < y0) y0 = q.y;
-    if (q.x > x1) x1 = q.x;
-    if (q.y > y1) y1 = q.y;
+/** Pairwise dominance (G2, G3): the dominant slot keeps the largest outer area. */
+function dominanceRule(p: { m: A13MobileSlot; area: number }, others: Placed[], ctx: CheckContext): MobileJointFailure[] {
+  if (!ctx.dominant) return [];
+  for (const o of others) {
+    const [domId, domArea, otherArea] = p.m.slotId === ctx.dominant ? [p.m.slotId, p.area, o.shape.area] : o.m.slotId === ctx.dominant ? [o.m.slotId, o.shape.area, p.area] : [null, 0, 0];
+    if (domId && domArea < otherArea - EPS) return [{ slotId: domId, rule: "dominance", value: domArea, minimum: otherArea }];
   }
-  return [x0, y0, x1, y1];
-};
-
-type Obstacle = { slotId: string; polygon: Point[]; box: [number, number, number, number] };
-
-/**
- * The shared caption logic's decision (`layoutCaption`, V2.1 §2) for the
- * centred caption of `sh` with its paper centred on `center`: the local X
- * shift it would choose (0 = centred), or null when no position keeps the
- * safe zone free. Same shift order (0, then 2 px steps alternating, toward
- * the canvas centre first, ≤ the band's maximum shift), same ink-on-band
- * rule, same area test — without re-breaking or re-measuring the text, and
- * skipping obstacles whose bounds cannot meet the zone.
- */
-function captionShift(m: A13MobileSlot, sh: Shape, center: Point, obstacles: Obstacle[], profile: CaptionProfile): number | null {
-  const cap = sh.caption!.layout;
-  const { band, outer } = sh.layout;
-  const slot = mobileEngineSlot(m, center);
-  const a = (m.rotationDeg * Math.PI) / 180;
-  const [c] = slotRectToCanvas(slot, { x: outer.x + cap.ink.x + cap.ink.width / 2, y: outer.y + cap.ink.y + cap.ink.height / 2, width: 0, height: 0 });
-  const toward = Math.cos(a) * (profile.canvas.width / 2 - c.x) + Math.sin(a) * (profile.canvas.height / 2 - c.y) >= 0 ? 1 : -1;
-  const maxShift = profile.maxShiftFactorOfBandWidth * band.width;
-  const pb = cap.protectedBox;
-  const tryAt = (dx: number) => {
-    if (dx !== 0 && (cap.ink.x + dx < band.x - 1e-9 || cap.ink.x + cap.ink.width + dx > band.x + band.width + 1e-9)) return false;
-    const zone = slotRectToCanvas(slot, { x: outer.x + pb.x + dx, y: outer.y + pb.y, width: pb.width, height: pb.height });
-    const zb = bboxOf(zone);
-    let area = 0;
-    for (const o of obstacles) if (overlap(o.box, zb)) area += convexIntersectionArea(zone, o.polygon);
-    return area <= 1e-6;
-  };
-  if (tryAt(0)) return 0;
-  for (let d = profile.shiftStepPx; d <= maxShift + 1e-9; d += profile.shiftStepPx) {
-    if (tryAt(toward * d)) return toward * d;
-    if (tryAt(-toward * d)) return -toward * d;
-  }
-  return null;
+  return [];
 }
 
 /**
- * Forward check of one candidate (a weaker test than `checkSlot`, never a
- * wrong rejection): dominance against the placed prints, and the caption
- * against the paper known to be above it (`obstacles`: placed prints +
- * cores of the others). Allocation-light: it runs on many candidates.
+ * Every hard rule of ONE print `p` against the prints painted above it
+ * (`upper`) — which is all a print's rules depend on — plus the pairwise
+ * dominance test against the prints already placed (`others`).
  */
-function compatibleLight(m: A13MobileSlot, sh: Shape, c: Cand, prefix: Placed[], obstacles: Obstacle[], ctx: CheckContext): boolean {
-  if (ctx.dominant)
-    for (const o of prefix) {
-      if (m.slotId === ctx.dominant && sh.area < o.shape.area - EPS) return false;
-      if (o.m.slotId === ctx.dominant && o.shape.area < sh.area - EPS) return false;
-    }
-  const cap = sh.caption;
-  if (!cap || !ctx.measurer || !obstacles.length) return true;
-  const safe = shift(cap.safe0, c.center);
-  const sb = bboxOf(safe);
-  const near = obstacles.filter((o) => overlap(o.box, sb));
-  if (!near.length || !near.some((o) => convexIntersectionArea(safe, o.polygon) > EPS)) return true;
-  return captionShift(m, sh, c.center, obstacles, ctx.captionProfile) !== null;
+function checkSlot(p: Placed, upper: Placed[], others: Placed[], ctx: CheckContext): MobileJointFailure[] {
+  const dom = dominanceRule({ m: p.m, area: p.shape.area }, others, ctx);
+  if (dom.length) return dom;
+  return reachRules(p.m, p.outer, p.photo, upper.map((q) => q.outer), ctx);
 }
 
 /** Witness minima (shared V2 caps): visible photo ≥ min(0.35, witness), paper ≥ min(0.30, witness). */
 export function mobileWitnessBaseline(state: A13MobileStateId, metrics: MobileMetrics) {
   const slots = A13_MOBILE_STATE_SLOTS[state];
-  const placed: Placed[] = slots.map((m) => place(m, shapeFor(m, { width: witnessMediaRatio(m, metrics) * 1000, height: 1000 }, 1, metrics, null, null), { si: 0, center: m.referenceCenter, cost: 0, id: 0 }));
+  const placed: Placed[] = slots.map((m) => place(m, shapeFor(m, { width: witnessMediaRatio(m, metrics) * 1000, height: 1000 }, 1, metrics), { si: 0, center: m.referenceCenter, cost: 0, id: 0 }));
   const o = A13_V2_CONTRACT.occlusion;
-  return placed.map((_, i) => {
-    const covers = coversOf(placed, i);
-    const vp = visibleFraction(placed[i].photo, covers);
-    const vo = visibleFraction(placed[i].outer, covers);
+  return placed.map((p) => {
+    const covers = placed.filter((q) => q.m.paintOrder > p.m.paintOrder).map((q) => q.outer);
+    const vp = visibleFraction(p.photo, covers);
+    const vo = visibleFraction(p.outer, covers);
     return { visiblePhoto: vp, visibleOuter: vo, photo: Math.min(o.hardMinimumVisiblePhotoFractionCap, vp), outer: Math.min(o.hardMinimumVisibleOuterFractionCap, vo) };
   });
 }
@@ -795,6 +534,16 @@ export function selectMobileGalleryState(mediaCount: number): A13MobileStateId |
   return s === "G6_SIGNATURE_7PLUS" ? "G7PLUS" : s;
 }
 
+/** Caption readability diagnostic (V1.6: never a rule). */
+export interface MobileCaptionDiagnostic {
+  /** captionSafeZone (glyph box + 6 / 4 CSS px, transformed with the print), GROUP frame. */
+  safeZone: Point[];
+  /** Share of the safe zone under the paper of prints painted above (0 = free). */
+  occludedFraction: number;
+  /** Prints painted above meeting the safe zone. */
+  coveredBy: string[];
+}
+
 export interface MobileGalleryEntry<M> {
   /** Shared engine slot, GROUP frame: `center` = paper centre, `zIndex` = paint order, anchor `center`. */
   slot: A13Slot;
@@ -802,6 +551,8 @@ export interface MobileGalleryEntry<M> {
   /** The print; `band` is wider than `outer` only for a widened narrow print. */
   layout: PolaroidLayout;
   caption: CaptionLayout | null;
+  /** Caption readability diagnostic, or null (no caption). */
+  captionDiagnostic: MobileCaptionDiagnostic | null;
   media: M;
   mediaIndex: number;
   scale: number;
@@ -811,8 +562,6 @@ export interface MobileGalleryEntry<M> {
   outer: Point[];
   /** Every paper part (the print, + the widened band), GROUP frame. */
   papers: Point[][];
-  /** captionSafeZone, GROUP frame, or null (no caption). */
-  safeZone: Point[] | null;
   bandWidening: { from: number; to: number; envelope: number } | null;
   visiblePhoto: number;
   visibleOuter: number;
@@ -826,10 +575,9 @@ export interface MobileGalleryAnomaly {
   detail: string;
   /**
    * What the STOP rests on: `per-print` — one print has no candidate at all
-   * (its own rules, or a sound relaxation of its caption against the prints
-   * above: proven on the solver's candidates); `lattice-exhausted` — the
-   * coarse search examined every composition of its lattice; `search-budget`
-   * — the search stopped at its budget (not a proof).
+   * (its own stage rules: canvas, title block, CTA); `lattice-exhausted` —
+   * the coarse search examined every composition of its lattice;
+   * `search-budget` — the search stopped at its budget (not a proof).
    */
   basis?: "per-print" | "lattice-exhausted" | "search-budget";
 }
@@ -850,7 +598,7 @@ export interface MobileGalleryRun<M> {
   translateY: number;
   /** Stage height (source px): 1672 + the state's extension. */
   stageHeight: number;
-  /** Metric signals for QA (never a rejection): band widenings. */
+  /** QA observations (never a rejection): solver stage, caption shifts, covered captions, band widenings. */
   signals: string[];
   search: { expansions: number; stage: "fine" | "coarse"; aloneRejected: Record<string, Record<AloneReject, number>> };
 }
@@ -882,11 +630,12 @@ export function runMobileGallery<M extends PhotoSource>(input: MobileRunInput<M>
 
 type RunHead = Pick<MobileGalleryRun<unknown>, "profile" | "stageWidth" | "metrics" | "mediaCount" | "translateY" | "stageHeight">;
 
-/** Search node: the prints placed so far (top of the stack first) and the candidate index tried for the next one. */
+/** Search node: the prints placed so far (top of the stack first), the candidate index tried for the next one, the admissible cost of the prints after it. */
 interface SearchNode {
   prefix: Placed[];
   g: number;
   next: number;
+  restH: number;
   f: number;
 }
 
@@ -944,17 +693,7 @@ interface SearchResult {
   placed: Placed[] | null;
   expansions: number;
   exhausted: boolean;
-  safeZoneOnly: number;
   failed: Record<string, number>;
-}
-
-/** Search node: the prints placed so far (top of the stack first), the candidate index tried for the next one, the admissible cost of the prints after it. */
-interface SearchNode {
-  prefix: Placed[];
-  g: number;
-  next: number;
-  restH: number;
-  f: number;
 }
 
 /**
@@ -965,20 +704,19 @@ interface SearchNode {
  * one is pruned with all its completions. Successors are generated lazily
  * in cost order (the next print's first candidate, and the next candidate
  * of the last print). Heuristic: for every print still to place, the cost
- * of its cheapest candidate — with `forward`, its cheapest candidate still
- * compatible with the prints already placed and the cores of the others
- * (forward check: a print left without one prunes the partial composition
- * at once). Both never overestimate, so the first complete composition
- * popped has the least total distance. `dedupe`: two partial compositions
- * that the remaining prints cannot tell apart (same placed prints
- * overlapping them, same dominance data) are one; the costlier is dropped.
+ * of its cheapest valid-alone candidate — with `forward`, its cheapest
+ * candidate still meeting the dominance rule against the prints placed (a
+ * print left without one prunes the partial composition at once). Both
+ * never overestimate, so the first complete composition popped has the
+ * least total distance. `dedupe`: two partial compositions that the
+ * remaining prints cannot tell apart (same placed prints overlapping them,
+ * same dominance data) are one; the costlier is dropped.
  */
 function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: CheckContext, budget: number, opts: { dedupe: boolean; forward: boolean }): SearchResult {
   const n = slots.length;
   const order = slots.map((_, i) => i).sort((a, b) => slots[b].paintOrder - slots[a].paintOrder);
   const indexOf = new Map(slots.map((m, i) => [m, i]));
   const uppersOf = slots.map((m, i) => slots.map((_, j) => j).filter((j) => slots[j].paintOrder > m.paintOrder && overlap(streams[i].region, streams[j].region)));
-  const cores = streams.map((st) => st.core());
   const domKey = (prefix: Placed[], remaining: A13MobileSlot[]) => {
     if (!ctx.dominant) return "";
     const dom = prefix.find((q) => q.m.slotId === ctx.dominant);
@@ -986,37 +724,21 @@ function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: Che
     return remaining.some((j) => j.slotId === ctx.dominant) ? `max:${Math.max(0, ...prefix.map((q) => q.shape.area))}` : "";
   };
   const memo = new Map<string, { cost: number; idx: number } | null>();
-  let safeZoneOnly = 0;
-  let forwardRejected = 0;
-  const failed: Record<string, number> = {};
-  const tally = (failures: MobileJointFailure[]) => {
-    for (const f of failures) failed[`${f.slotId}:${f.rule}`] = (failed[`${f.slotId}:${f.rule}`] ?? 0) + 1;
-    if (failures.every((f) => f.rule === "caption-safe-zone")) safeZoneOnly++;
-  };
-  /** Cheapest candidate of the print at `level` compatible with `prefix` (+ the cores of its unplaced uppers). */
+  /** Cheapest candidate of the print at `level` meeting the dominance rule against `prefix`. */
   const cheapest = (prefix: Placed[], level: number): { cost: number; idx: number } | null => {
-    const i = order[level];
-    const st = streams[i];
-    if (!opts.forward) return { cost: st.at(0)!.cost, idx: 0 };
-    const placedUppers = prefix.filter((q) => uppersOf[i].includes(indexOf.get(q.m)!));
-    const dk = domKey(prefix, [slots[i]]);
-    if (!placedUppers.length && !dk) return { cost: st.at(0)!.cost, idx: 0 };
-    const key = `${i}|${placedUppers.map((q) => `${indexOf.get(q.m)}:${q.cand.id}`).join(",")}|${dk}`;
+    const st = streams[order[level]];
+    const dk = opts.forward ? domKey(prefix, [slots[order[level]]]) : "";
+    if (!dk) return { cost: st.at(0)!.cost, idx: 0 };
+    const key = `${order[level]}|${dk}`;
     if (memo.has(key)) return memo.get(key)!;
-    const placedIdx = new Set(placedUppers.map((q) => indexOf.get(q.m)!));
-    const obstacles = [
-      ...placedUppers.flatMap((q) => q.papers.map((polygon) => ({ slotId: q.m.slotId, polygon, box: bboxOf(polygon) }))),
-      ...uppersOf[i].filter((j) => !placedIdx.has(j) && cores[j]).map((j) => ({ slotId: slots[j].slotId, polygon: cores[j]!, box: bboxOf(cores[j]!) })),
-    ];
     let found: { cost: number; idx: number } | null = null;
     for (let k = 0; ; k++) {
       const c = st.at(k);
       if (!c) break;
-      if (compatibleLight(st.m, st.shapes[c.si], c, prefix, obstacles, ctx)) {
+      if (!dominanceRule({ m: st.m, area: st.shapes[c.si].area }, prefix, ctx).length) {
         found = { cost: c.cost, idx: k };
         break;
       }
-      forwardRejected++;
     }
     memo.set(key, found);
     return found;
@@ -1041,6 +763,7 @@ function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: Che
     const parts = prefix.filter((q) => remaining.some((j) => uppersOf[indexOf.get(j)!].includes(indexOf.get(q.m)!))).map((q) => `${q.m.slotId}:${q.cand.id}`);
     return `${prefix.length}|${parts.join(";")}|${domKey(prefix, remaining)}`;
   };
+  const failed: Record<string, number> = {};
   const heap = new NodeHeap();
   const pushAt = (prefix: Placed[], g: number, next: number, restH: number) => {
     const c = streamOf(prefix.length).at(next);
@@ -1060,12 +783,12 @@ function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: Che
     const p = place(st.m, st.shapes[cand.si], cand);
     const failures = checkSlot(p, node.prefix, node.prefix, ctx);
     if (failures.length) {
-      tally(failures);
+      for (const f of failures) failed[`${f.slotId}:${f.rule}`] = (failed[`${f.slotId}:${f.rule}`] ?? 0) + 1;
       continue;
     }
     const prefix = [...node.prefix, p];
     const g = node.g + cand.cost;
-    if (prefix.length === n) return { placed: slots.map((m) => prefix.find((q) => q.m === m)!), expansions, exhausted: false, safeZoneOnly, failed };
+    if (prefix.length === n) return { placed: slots.map((m) => prefix.find((q) => q.m === m)!), expansions, exhausted: false, failed };
     if (opts.dedupe) {
       const key = keyOf(prefix);
       if (seen.has(key)) continue;
@@ -1075,44 +798,29 @@ function search(slots: readonly A13MobileSlot[], streams: SlotStream[], ctx: Che
     if (!la) continue;
     pushAt(prefix, g, la.first.idx, la.restH);
   }
-  if (forwardRejected) failed["forward-check (caption or dominance)"] = forwardRejected;
-  return { placed: null, expansions, exhausted: heap.size === 0, safeZoneOnly: safeZoneOnly + forwardRejected, failed };
+  return { placed: null, expansions, exhausted: heap.size === 0, failed };
 }
 
 /**
  * Solver: (1) the exact search on the fine grid (4 px, scale 0.02) within
  * a small budget — the common case, the least Master distance; (2) when it
- * finds nothing (caption safe zones can require a print to reach the far
- * side of its territory or scale range), the exact search on the coarse
- * lattice (territory quarters + the pivot projection, five scales from the
- * range) with duplicate partial compositions dropped — the least distance
- * on that lattice. Every rule is identical in both stages; only the
- * candidate set differs. Nothing found → STOP.
+ * finds nothing, the exact search on the coarse lattice (territory quarters
+ * + the pivot projection, five scales from the range) with duplicate
+ * partial compositions dropped — the least distance on that lattice. Every
+ * rule is identical in both stages; only the candidate set differs.
+ * Nothing found → STOP. Captions play no part (V1.6): they are laid out
+ * afterwards (`finishEntries`).
  */
 function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input: MobileRunInput<M>, metrics: MobileMetrics, head: RunHead): MobileGalleryRun<M> {
   const slots = A13_MOBILE_STATE_SLOTS[state];
   const hasCta = state === "G7PLUS";
   const frame = groupFrame(state, metrics, hasCta);
-  const measurer = input.measurer ? scaleMeasurer(input.measurer, metrics.captionFontPx / SHARED_MEASURER_FONT_PX) : null;
   // Family order: media[i] → the slot whose mediaIndex is i (Signature shows 0…5).
-  const streamsFor = (grid: Grid) => {
-    const st = slots.map((m) => {
-      const media = input.media[m.mediaIndex];
-      return new SlotStream(m, media, metrics, input.captionOf(media, m.mediaIndex), measurer, frame, grid);
-    });
-    const reach = st.map((y) => ({ slotId: y.m.slotId, corners: y.cornerPapers(), region: y.region }));
-    st.forEach((x) =>
-      x.setUpperReach(
-        st.flatMap((y, j) => (y.m.paintOrder > x.m.paintOrder && overlap(x.region, y.region) ? [reach[j]] : [])),
-        metrics.captionProfile,
-      ),
-    );
-    return st;
-  };
+  const streamsFor = (grid: Grid) => slots.map((m) => new SlotStream(m, input.media[m.mediaIndex], metrics, frame, grid));
   const fine = streamsFor("fine");
   let streams = fine;
   const aloneRejected = () => Object.fromEntries(streams.map((s) => [s.m.slotId, { ...s.rejected }]));
-  const unresolved = (anomaly: MobileGalleryAnomaly, expansions: number): MobileGalleryRun<M> => ({
+  const unresolved = (anomaly: MobileGalleryAnomaly, expansions: number, stage: "fine" | "coarse"): MobileGalleryRun<M> => ({
     ...head,
     stateId: state,
     outcome: "unresolved",
@@ -1121,36 +829,24 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
     entries: [],
     hasCta: false,
     signals: [],
-    search: { expansions, stage: "fine", aloneRejected: aloneRejected() },
+    search: { expansions, stage, aloneRejected: aloneRejected() },
   });
 
   // A print with no candidate at all: on the fine grid, then on the coarse lattice (which holds other points).
   let coarse: SlotStream[] | null = null;
-  for (const [i, st0] of fine.entries()) {
-    if (st0.at(0)) continue;
+  for (const [i, st] of fine.entries()) {
+    if (st.at(0)) continue;
     coarse ??= streamsFor("coarse");
     if (coarse[i].at(0)) continue;
-    const st = st0;
-    const r = { ...st0.rejected };
+    const r = { ...st.rejected };
     for (const [k, v] of Object.entries(coarse[i].rejected)) r[k as AloneReject] += v;
-    // Checks run in order (canvas, title, CTA, caption): candidates reaching the caption test passed the others.
-    const code = r.CAPTION_SAFE_ZONE_UNRESOLVED ? "CAPTION_SAFE_ZONE_UNRESOLVED" : (Object.keys(r) as AloneReject[]).reduce((a, k) => (r[k] > r[a] ? k : a));
-    return unresolved(
-      {
-        code,
-        rule: "alone",
-        basis: "per-print",
-        detail: `${st.m.slotId}: no scale/centre in its territory passes (${JSON.stringify(r)})${r.CAPTION_SAFE_ZONE_UNRESOLVED ? " — caption: for every candidate, no position of the prints above leaves its safe zone free (proven)" : ""}`,
-      },
-      0,
-    );
+    const code = (Object.keys(r) as AloneReject[]).reduce((a, k) => (r[k] > r[a] ? k : a));
+    return unresolved({ code, rule: "alone", basis: "per-print", detail: `${st.m.slotId}: no scale/centre in its territory passes (${JSON.stringify(r)})` }, 0, "fine");
   }
 
   const witness = mobileWitnessBaseline(state, metrics);
   const ctx: CheckContext = {
     hitPx: metrics.hitTargetPx,
-    measurer,
-    captionProfile: metrics.captionProfile,
     dominant: A13_MOBILE_RELATIONS[state].find((r) => r.dominant)?.dominant ?? null,
     minima: Object.fromEntries(slots.map((m, i) => [m.slotId, { photo: witness[i].photo, outer: witness[i].outer }])),
   };
@@ -1158,7 +854,7 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
   let stage: "fine" | "coarse" = "fine";
   // The fine stage needs a candidate for every print.
   const fineReady = fine.every((st) => st.at(0));
-  let res: SearchResult = fineReady ? search(slots, fine, ctx, FINE_BUDGET, { dedupe: false, forward: false }) : { placed: null, expansions: 0, exhausted: false, safeZoneOnly: 0, failed: {} };
+  let res: SearchResult = fineReady ? search(slots, fine, ctx, FINE_BUDGET, { dedupe: false, forward: false }) : { placed: null, expansions: 0, exhausted: false, failed: {} };
   let expansions = res.expansions;
   const stats = fineReady ? [res] : [];
   if (!res.placed && !(fineReady && res.exhausted)) {
@@ -1176,9 +872,9 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
       const tr = q.m.centerTerritory;
       const c = q.cand.center;
       if (c.x < tr.x - EPS || c.x > tr.x + tr.width + EPS || c.y < tr.y - EPS || c.y > tr.y + tr.height + EPS)
-        return unresolved({ code: "CENTER_OUTSIDE_TERRITORY", rule: "territory", detail: `${q.m.slotId} at ${c.x},${c.y}` }, expansions);
+        return unresolved({ code: "CENTER_OUTSIDE_TERRITORY", rule: "territory", detail: `${q.m.slotId} at ${c.x},${c.y}` }, expansions, stage);
     }
-    const { entries, signals } = finishEntries(res.placed, input);
+    const { entries, signals } = finishEntries(res.placed, input, metrics, frame, ctx);
     if (stage === "coarse") signals.unshift(`solver: coarse lattice stage (the fine stage found no composition within ${FINE_BUDGET} partial compositions)`);
     return { ...head, stateId: state, outcome: "resolved", status: "PASS", anomaly: null, entries, hasCta, signals, search: { expansions, stage, aloneRejected: aloneRejected() } };
   }
@@ -1187,47 +883,111 @@ function solveMobileState<M extends PhotoSource>(state: A13MobileStateId, input:
   const worst = Object.entries(failed)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4);
-  const safeZoneOnly = stats.reduce((a, r) => a + r.safeZoneOnly, 0);
-  return {
-    ...unresolved(
-      {
-        code: safeZoneOnly > 0 ? "CAPTION_SAFE_ZONE_UNRESOLVED" : "ITEM_INACCESSIBLE",
-        rule: worst.map(([k]) => k).join(",") || "exhausted",
-        basis: res.exhausted ? "lattice-exhausted" : "search-budget",
-        detail: `no composition (${stats.map((r, i) => `${i || !fineReady ? "coarse" : "fine"}: ${r.expansions} partial compositions, ${r.exhausted ? "space exhausted" : "budget reached"}`).join("; ")}); ${safeZoneOnly} failed only on a caption safe zone; most frequent failures ${JSON.stringify(Object.fromEntries(worst))}`,
-      },
-      expansions,
-    ),
-    search: { expansions, stage, aloneRejected: aloneRejected() },
-  };
+  return unresolved(
+    {
+      code: "ITEM_INACCESSIBLE",
+      rule: worst.map(([k]) => k).join(",") || "exhausted",
+      basis: res.exhausted ? "lattice-exhausted" : "search-budget",
+      detail: `no composition (${stats.map((r, i) => `${i || !fineReady ? "coarse" : "fine"}: ${r.expansions} partial compositions, ${r.exhausted ? "space exhausted" : "budget reached"}`).join("; ")}); most frequent failures ${JSON.stringify(Object.fromEntries(worst))}`,
+    },
+    expansions,
+    stage,
+  );
 }
 
-/** Entries of the resolved prints (their captions as placed against the prints above). */
-function finishEntries<M extends PhotoSource>(placed: Placed[], input: MobileRunInput<M>) {
+// ── Captions on the solved composition (V1.6) ──────────────────────────
+
+/**
+ * The solved composition, unchanged, then its captions:
+ *
+ * 1. narrow prints, from the top of the stack down: when the best two-line
+ *    break still overflows the useful width, the bottom band widens (only
+ *    the band, symmetrically, within the envelope) IF the widened band
+ *    keeps the stage rules of its slot (canvas, title block, CTA) and every
+ *    print below it keeps its visibility minima and 44 px target —
+ *    otherwise the band stays as is;
+ * 2. each caption laid out by the shared logic against the paper of the
+ *    prints above it (centred, moved along the band when that frees its
+ *    glyphs); a caption still covered is an allowed state, reported with
+ *    the covered share of its safe zone.
+ */
+function finishEntries<M extends PhotoSource>(placed: Placed[], input: MobileRunInput<M>, metrics: MobileMetrics, frame: GroupFrame, ctx: CheckContext) {
   const signals: string[] = [];
-  const entries = placed.map((p): MobileGalleryEntry<M> => {
+  const measurer = input.measurer ? scaleMeasurer(input.measurer, metrics.captionFontPx / SHARED_MEASURER_FONT_PX) : null;
+  const texts = placed.map((p) => input.captionOf(input.media[p.m.mediaIndex], p.m.mediaIndex));
+  const layouts = placed.map((p) => p.shape.layout);
+  const papers = placed.map((p) => [p.outer]);
+  const widenings: MobileGalleryEntry<M>["bandWidening"][] = placed.map(() => null);
+  const below = (i: number) => placed.map((_, j) => j).filter((j) => placed[j].m.paintOrder < placed[i].m.paintOrder);
+  const coversOf = (j: number) => placed.flatMap((q, k) => (q.m.paintOrder > placed[j].m.paintOrder ? papers[k] : []));
+  const topFirst = placed.map((_, i) => i).sort((a, b) => placed[b].m.paintOrder - placed[a].m.paintOrder);
+
+  if (measurer)
+    for (const i of topFirst) {
+      const p = placed[i];
+      const text = texts[i];
+      if (!text) continue;
+      const base = p.shape.layout;
+      const inset = metrics.captionInsetPx;
+      const useful = base.band.width - 2 * inset;
+      const needed = Math.max(...breakCaption(text, useful, (t) => measurer.measure(t)).map((l) => measurer.measure(l).width));
+      if (needed <= useful + 1e-9) continue;
+      const to = needed + 2 * inset;
+      const envelope = p.m.outerReference.width * p.shape.s;
+      const id = p.m.slotId;
+      if (to > envelope + EPS) {
+        signals.push(`${id}: caption band not widened (${to.toFixed(1)} px needed > envelope ${envelope.toFixed(1)}) — best two-line caption drawn`);
+        continue;
+      }
+      const layout = { ...base, band: { ...base.band, x: (base.outer.width - to) / 2, width: to } };
+      const wing = slotRectToCanvas(mobileEngineSlot(p.m, p.cand.center), { x: layout.outer.x + layout.band.x, y: layout.outer.y + layout.band.y, width: layout.band.width, height: layout.band.height });
+      const stageRule = stageReject(p.m, wing, frame);
+      const prev = papers[i];
+      papers[i] = [p.outer, wing];
+      const broken = stageRule ? [] : below(i).flatMap((j) => reachRules(placed[j].m, placed[j].outer, placed[j].photo, coversOf(j), ctx));
+      if (stageRule || broken.length) {
+        papers[i] = prev;
+        signals.push(`${id}: caption band not widened (${stageRule ?? broken.map((f) => `${f.slotId}:${f.rule}`).join(",")}) — best two-line caption drawn`);
+        continue;
+      }
+      layouts[i] = layout;
+      widenings[i] = { from: base.band.width, to, envelope };
+      signals.push(`${id}: caption band widened ${base.band.width.toFixed(1)} → ${to.toFixed(1)} px (envelope ${envelope.toFixed(1)})`);
+    }
+
+  const entries = placed.map((p, i): MobileGalleryEntry<M> => {
     const slot = mobileEngineSlot(p.m, p.cand.center);
     const media = input.media[p.m.mediaIndex];
-    const covers = coversOf(placed, placed.indexOf(p));
-    const w = p.shape.widening;
-    if (w) signals.push(`${p.m.slotId}: caption band widened ${w.from.toFixed(1)} → ${w.to.toFixed(1)} px (envelope ${w.envelope.toFixed(1)})`);
-    if (p.caption && p.caption.shiftX !== 0) signals.push(`${p.m.slotId}: caption moved ${p.caption.shiftX.toFixed(1)} px along its band to keep its glyphs free`);
+    const covers = coversOf(i);
+    const obstacles = placed.flatMap((q, k) => (q.m.paintOrder > p.m.paintOrder ? papers[k].map((polygon) => ({ slotId: q.m.slotId, polygon })) : []));
+    const text = texts[i];
+    const caption = measurer && text ? layoutCaption(slot, layouts[i], text, measurer, obstacles, metrics.captionProfile) : null;
+    let captionDiagnostic: MobileCaptionDiagnostic | null = null;
+    if (caption) {
+      const pb = caption.protectedBox;
+      const safeZone = slotRectToCanvas(slot, { x: layouts[i].outer.x + pb.x, y: layouts[i].outer.y + pb.y, width: pb.width, height: pb.height });
+      const occludedFraction = coveredFraction(safeZone, covers);
+      const coveredBy = [...new Set(obstacles.filter((o) => convexIntersectionArea(safeZone, o.polygon) > EPS).map((o) => o.slotId))];
+      captionDiagnostic = { safeZone, occludedFraction, coveredBy };
+      if (caption.shiftX !== 0) signals.push(`${p.m.slotId}: caption moved ${caption.shiftX.toFixed(1)} px along its band to keep its glyphs free`);
+      if (occludedFraction > 0) signals.push(`${p.m.slotId}: caption ${Math.round(occludedFraction * 100)} % covered by ${coveredBy.join("+")} (allowed; the Viewer reads it)`);
+    }
     return {
       slot,
       mobileSlot: p.m,
-      layout: p.shape.layout,
-      caption: p.caption,
+      layout: layouts[i],
+      caption,
+      captionDiagnostic,
       media,
       mediaIndex: p.m.mediaIndex,
       scale: p.shape.s,
       center: p.cand.center,
       pivotCenter: p.shape.c1,
       outer: p.outer,
-      papers: p.papers,
-      safeZone: p.safe,
-      bandWidening: w,
-      visiblePhoto: p.visiblePhoto,
-      visibleOuter: p.visibleOuter,
+      papers: papers[i],
+      bandWidening: widenings[i],
+      visiblePhoto: visibleFraction(p.photo, covers),
+      visibleOuter: visibleFraction(p.outer, covers),
       hitTarget: largestVisibleSquare(p.outer, covers, 0),
     };
   });

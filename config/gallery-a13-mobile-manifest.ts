@@ -1,14 +1,18 @@
 /**
- * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.5).
+ * A13 — Gallery — MOBILE LIGHT — runtime authority (Handoff V1.6).
  *
- * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_5`
+ * Transcribed verbatim from package `A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6`
  * (`contract/mobile-gallery.json`, `contract/ANCHOR_AND_CANVAS_SEMANTICS.md`,
- * `contract/TITLE_CAPTION_TRANSLATION_V1_5.md`, `geometry/g2…g6.json`,
- * `geometry/g7plus.json`). V1.5 keeps every slot of V1.4 (incl. the Studio's
- * G6-D5 arbitration) and adds: the canonical title block (runtime separator,
- * title, subtitle, protected block), one vertical translation per state for
- * the whole photo group with the matching stage extension, the 12 / 14.5 px
- * captions with their `captionSafeZone`, and the translated 7+ CTA.
+ * `contract/TITLE_CAPTION_TRANSLATION_V1_5.md`,
+ * `contract/BACKGROUND_CAPTIONS_V1_6.md`, `geometry/g2…g6.json`,
+ * `geometry/g7plus.json`). V1.5 kept every slot of V1.4 (incl. the Studio's
+ * G6-D5 arbitration) and added the canonical title block (runtime
+ * separator, title, subtitle, protected block), one vertical translation
+ * per state for the whole photo group with the matching stage extension,
+ * the 12 / 14.5 px captions and the translated 7+ CTA. V1.6 changes two
+ * things only: the common background (Mobile Light V2) and the caption
+ * doctrine — composition first: a caption never moves a print and never
+ * stops the Gallery (`captionSafeZone` is a diagnostic only).
  *
  * Mobile ONLY: the stage, the state manifests and group translations, the
  * centre territories, the title block, the CTA box, the Mobile paper tokens
@@ -25,7 +29,7 @@
  * raster-scaled (contract `responsive`).
  */
 
-export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_5" as const;
+export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6" as const;
 
 export const A13_MOBILE_CANVAS = { width: 941, height: 1672 } as const;
 
@@ -37,16 +41,19 @@ export function a13MobileProfileActive(viewportWidth: number): boolean {
 }
 
 /**
- * The ONE runtime artistic asset: the common photo-free background, the same
- * for the six states, byte-identical to the package's
- * `assets/A13_MOBILE_LIGHT_GALLERY_BACKGROUND_COMMON.png`
- * (`AUTHORITIES.json`). `width:100%; height:auto; no crop`.
+ * The ONE runtime artistic asset: the common photo-free background — Mobile
+ * Light V2 (GREEN QG, V1.6: upper botany moved to the corners, title
+ * corridor free) — the same for the six states, byte-identical to the
+ * package's `assets/A13_MOBILE_LIGHT_GALLERY_BACKGROUND_COMMON.png`
+ * (`AUTHORITIES.json`, PNG RGBA, fully opaque). Shipped under a new
+ * versioned name (`…-v2.png`): the V1 file is left untouched and no URL
+ * serves two different images. `width:100%; height:auto; no crop`.
  */
 export const A13_MOBILE_BACKGROUND = {
-  src: "/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common.png",
+  src: "/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common-v2.png",
   width: 941,
   height: 1672,
-  sha256: "825439dd5bb6793caf6dbe3cc37a8221a72d43ece32364476fa0dc705fa83b2d",
+  sha256: "ee636a0a94c648c717d6729d10b4d79991420eae5212b7a47975267f38ee6bf8",
 } as const;
 
 /** Contract `layers`: background 0, prints = their paint order, title block (title + separator) 900, CTA 950. */
@@ -317,14 +324,19 @@ export const A13_MOBILE_PAPER = {
 } as const;
 
 /**
- * Captions (V1.5): La Belle Aurore 12 / 14.5 CSS px, natural case, ≤ 32
+ * Captions: La Belle Aurore 12 / 14.5 CSS px, natural case, ≤ 32
  * characters, ≤ 2 lines, centred in the 42 px band with an 8 px horizontal
- * inset, no auto-shrink, no third line. `captionSafeZone` = the real glyph
- * union bounding box after the final wrapping, + 6 CSS px horizontally and
- * + 4 CSS px vertically, transformed with the print: the ONLY inviolable
- * part of the band (`CAPTION_SAFE_ZONE_UNRESOLVED`); no zone without a
- * caption. A narrow print whose caption cannot fit two lines widens ONLY
- * its bottom band, symmetrically, within the slot envelope.
+ * inset, no auto-shrink, no third line (V1.5, unchanged).
+ *
+ * V1.6 — composition first (`caption.occlusionPriority`): a caption is laid
+ * out normally in its band (shared wrapping and shift) and MAY be partly or
+ * strongly covered by a print above. It never moves, scales or re-orders a
+ * print, never hides the Gallery and never returns a STOP. Its
+ * `captionSafeZone` (glyph box + 6 / 4 CSS px) is a readability DIAGNOSTIC
+ * only. A narrow print may widen ONLY its bottom band, symmetrically,
+ * within the slot envelope, when that improves the wrapping — an
+ * opportunistic improvement, never a feasibility condition. The Viewer is
+ * the full reading authority.
  */
 export const A13_MOBILE_CAPTION = {
   maxCharacters: 32,
@@ -336,6 +348,9 @@ export const A13_MOBILE_CAPTION = {
   safeZonePaddingCss: { x: 6, y: 4 },
   autoShrink: false,
   thirdLineAllowed: false,
+  /** V1.6: the safe zone is a diagnostic; its occlusion is an allowed visual state. */
+  safeZoneRole: "diagnostic",
+  occlusionAllowed: true,
 } as const;
 
 /**
@@ -357,14 +372,13 @@ export const A13_MOBILE_INTERACTION = {
   keyboard: ["Enter", "Space"],
 } as const;
 
-/** Contract `stops` — every code the Mobile runtime can return, never confused. */
+/** Contract `stops` (V1.6: `CAPTION_SAFE_ZONE_UNRESOLVED` removed) — every code the Mobile runtime can return, never confused. */
 export const A13_MOBILE_STOPS = [
   "CENTER_OUTSIDE_TERRITORY",
   "PAPER_OVERFLOW_EXCEEDED",
   "ITEM_INACCESSIBLE",
   "TITLE_GLYPH_COLLISION_UNRESOLVED",
   "TITLE_BLOCK_COLLISION_UNRESOLVED",
-  "CAPTION_SAFE_ZONE_UNRESOLVED",
   "CTA_COLLISION_UNRESOLVED",
   "HORIZONTAL_OVERFLOW",
   "MASTER_HANDOFF_CONTRADICTION_STOP",

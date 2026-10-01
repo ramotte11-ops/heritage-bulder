@@ -12,6 +12,7 @@ import {
   A13_MOBILE_RELATIONS,
   A13_MOBILE_STATE_SLOTS,
   A13_MOBILE_STATES,
+  A13_MOBILE_STOPS,
   A13_MOBILE_TITLE_BLOCK,
   a13MobileProfileActive,
   resolveByViewport,
@@ -22,15 +23,41 @@ import { A13_MOBILE_CAPTION_TEXTS, A13_MOBILE_PILOT_TITLE } from "@/lib/memorial
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
-describe("A13 Mobile Light — Handoff V1.5 authority", () => {
-  it("the runtime background is the package's common asset, byte for byte (BACKGROUND_DIMENSION_OR_HASH_MISMATCH guard)", () => {
-    expect(A13_MOBILE_HANDOFF_ID).toBe("A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_5");
+describe("A13 Mobile Light — Handoff V1.6 authority", () => {
+  it("the runtime background is the package's common asset V2, byte for byte (BACKGROUND_DIMENSION_OR_HASH_MISMATCH guard)", () => {
+    expect(A13_MOBILE_HANDOFF_ID).toBe("A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_6");
+    expect(A13_MOBILE_BACKGROUND.sha256).toBe("ee636a0a94c648c717d6729d10b4d79991420eae5212b7a47975267f38ee6bf8");
     const bytes = readFileSync(path.join(ROOT, "public", A13_MOBILE_BACKGROUND.src));
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(A13_MOBILE_BACKGROUND.sha256);
     // PNG IHDR: width and height, big-endian, at bytes 16–23.
     expect(bytes.subarray(1, 4).toString("ascii")).toBe("PNG");
     expect([bytes.readUInt32BE(16), bytes.readUInt32BE(20)]).toEqual([A13_MOBILE_BACKGROUND.width, A13_MOBILE_BACKGROUND.height]);
     expect([A13_MOBILE_BACKGROUND.width, A13_MOBILE_BACKGROUND.height]).toEqual([941, 1672]);
+    // PNG colour type 6 = RGBA (byte 25), as declared by the package.
+    expect(bytes[25]).toBe(6);
+  });
+
+  it("the V1 background file stays in the repository, untouched (assets are never deleted or rewritten)", () => {
+    const v1 = readFileSync(path.join(ROOT, "public/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common.png"));
+    expect(createHash("sha256").update(v1).digest("hex")).toBe("825439dd5bb6793caf6dbe3cc37a8221a72d43ece32364476fa0dc705fa83b2d");
+    expect(A13_MOBILE_BACKGROUND.src).not.toBe("/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common.png");
+  });
+
+  it("V1.6 captions: occlusion allowed, the safe zone a diagnostic, no caption STOP", () => {
+    expect(A13_MOBILE_CAPTION).toMatchObject({ safeZoneRole: "diagnostic", occlusionAllowed: true });
+    expect(A13_MOBILE_STOPS as readonly string[]).not.toContain("CAPTION_SAFE_ZONE_UNRESOLVED");
+    expect([...A13_MOBILE_STOPS]).toEqual([
+      "CENTER_OUTSIDE_TERRITORY",
+      "PAPER_OVERFLOW_EXCEEDED",
+      "ITEM_INACCESSIBLE",
+      "TITLE_GLYPH_COLLISION_UNRESOLVED",
+      "TITLE_BLOCK_COLLISION_UNRESOLVED",
+      "CTA_COLLISION_UNRESOLVED",
+      "HORIZONTAL_OVERFLOW",
+      "MASTER_HANDOFF_CONTRADICTION_STOP",
+      "DESKTOP_REGRESSION",
+      "BACKGROUND_DIMENSION_OR_HASH_MISMATCH",
+    ]);
   });
 
   it("the internal geometry of every slot is V1.4's, unchanged (digest of the slot data, computed on b1e00a1)", () => {

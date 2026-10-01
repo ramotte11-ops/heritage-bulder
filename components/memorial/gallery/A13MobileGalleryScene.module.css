@@ -1,5 +1,5 @@
 /*
- * A13 Gallery — MOBILE LIGHT scene (Handoff V1.5).
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.6).
  *
  * `.stage` is the size container (full-bleed, 375–430 px); `.canvas` is the
  * 941-wide frame, `stageHeightSource` high (inline aspect ratio), and
@@ -171,7 +171,7 @@
   white-space: nowrap;
 }
 
-/* QA overlay (pilot only): title block, territories, witnesses, centres, caption safe zones, targets. */
+/* QA overlay (pilot only): title block, territories, witnesses, centres, caption safe zones (diagnostic), targets. */
 .qaLayer {
   position: absolute;
   inset: 0;

@@ -10,7 +10,7 @@ import { a13MobileFixture, type A13MobileCaptionSet, type A13MobileRatioSet } fr
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 
 /**
- * A13 Mobile Light runtime — engine-level contract (Handoff V1.5). The
+ * A13 Mobile Light runtime — engine-level contract (Handoff V1.6). The
  * rendered pass (real La Belle Aurore metrics, rendered title block, DOM
  * reachability, 375 / 390 / 430 px) runs in the pilot
  * `/pilot/a13-mobile-gallery` (`?matrice=1`). Here the caption measurer is
@@ -67,33 +67,37 @@ function checkResolved(run: MobileGalleryRun<A13FamilyMedia>, tag: string) {
     if (e.bandWidening) expect(e.layout.band.width, id).toBeLessThanOrEqual(e.bandWidening.envelope + 1e-6);
     else expect(e.layout.band.width, id).toBeCloseTo(e.layout.outer.width, 9);
     if (!e.caption) {
-      expect(e.safeZone, id).toBeNull();
+      expect(e.captionDiagnostic, id).toBeNull();
       continue;
     }
+    // Never a third line, never shrunk (the size is the profile's).
     expect(e.caption.lines.length, id).toBeLessThanOrEqual(A13_MOBILE_CAPTION.maxLines);
-    expect(e.caption.exceedsUsefulWidth, id).toBe(false);
-    expect(e.caption.status, id).toBe("placed");
-    // captionSafeZone = glyph box + 6 / 4 CSS px, transformed with the print; no paper above meets it.
+    // captionSafeZone (diagnostic) = glyph box + 6 / 4 CSS px, transformed with the print; its covered share is reported.
     const pb = e.caption.protectedBox;
     expect(pb.width - e.caption.ink.width, id).toBeCloseTo(12 / k, 6);
     expect(pb.height - e.caption.ink.height, id).toBeCloseTo(8 / k, 6);
     const zone = slotRectToCanvas(e.slot, { x: e.layout.outer.x + pb.x, y: e.layout.outer.y + pb.y, width: pb.width, height: pb.height });
     zone.forEach((p, i) => {
-      expect(p.x, id).toBeCloseTo(e.safeZone![i].x, 6);
-      expect(p.y, id).toBeCloseTo(e.safeZone![i].y, 6);
+      expect(p.x, id).toBeCloseTo(e.captionDiagnostic!.safeZone[i].x, 6);
+      expect(p.y, id).toBeCloseTo(e.captionDiagnostic!.safeZone[i].y, 6);
     });
-    for (const q of run.entries) if (q.mobileSlot.paintOrder > e.mobileSlot.paintOrder) for (const p of q.papers) expect(convexIntersectionArea(zone, p), `${id} safe zone under ${q.slot.slotId}`).toBeLessThanOrEqual(1e-6);
+    const covered = run.entries.some((q) => q.mobileSlot.paintOrder > e.mobileSlot.paintOrder && q.papers.some((p) => convexIntersectionArea(zone, p) > 1e-6));
+    expect(e.captionDiagnostic!.occludedFraction > 0, id).toBe(covered);
   }
 }
 
+/** The run of the same media without captions: same outcome, same composition (V1.6). */
+function expectCaptionIndependent(run: MobileGalleryRun<A13FamilyMedia>, media: readonly A13FamilyMedia[], tag: string) {
+  const bare = runMobileGallery({ media, captionOf: () => null, measurer: null, stageWidth: run.stageWidth });
+  expect([run.outcome, run.status], tag).toEqual([bare.outcome, bare.status]);
+  expect(
+    run.entries.map((e) => [e.slot.slotId, e.scale, e.center, e.slot.zIndex, e.slot.rotationDeg, e.layout.outer, e.layout.window]),
+    tag,
+  ).toEqual(bare.entries.map((e) => [e.slot.slotId, e.scale, e.center, e.slot.zIndex, e.slot.rotationDeg, e.layout.outer, e.layout.window]));
+}
+
 /** STOPs of the 390 px engine matrix with the stand-in measurer (regression guard; the rendered matrix is the pilot's). */
-const STOPS_390: string[] = [
-  "G2:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
-  "G5:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:search-budget",
-  "G6:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
-  "G7PLUS:3x4:32:CAPTION_SAFE_ZONE_UNRESOLVED:lattice-exhausted",
-  "G7PLUS:9x16:32:CAPTION_SAFE_ZONE_UNRESOLVED:per-print",
-];
+const STOPS_390: string[] = ["G7PLUS:9x16:32:CTA_COLLISION_UNRESOLVED:per-print"];
 
 function checkUnresolved(run: MobileGalleryRun<A13FamilyMedia>, tag: string) {
   expect((A13_MOBILE_STOPS as readonly string[]).includes(run.status), `${tag} ${run.status}`).toBe(true);
@@ -191,8 +195,10 @@ describe("QA matrix (engine level): ratios × captions — every hard rule re-ch
     ];
     for (const [n] of STATES)
       for (const [ratios, captions] of cases) {
-        const run = runMobileGallery({ media: a13MobileFixture(n, ratios, captions), captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+        const media = a13MobileFixture(n, ratios, captions);
+        const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
         const tag = `${run.stateId}:${ratios}:${captions}`;
+        expectCaptionIndependent(run, media, tag);
         if (run.outcome === "resolved") checkResolved(run, tag);
         else {
           checkUnresolved(run, tag);
@@ -213,14 +219,14 @@ describe("QA matrix (engine level): ratios × captions — every hard rule re-ch
   });
 });
 
-describe("captions (V1.5)", () => {
-  it("the band is 42 CSS px whether the caption is absent, one line or two lines; no caption → no safe zone", () => {
+describe("captions (V1.6 — composition first)", () => {
+  it("the band is 42 CSS px whether the caption is absent, one line or two lines; no caption → no diagnostic", () => {
     for (const captions of ["aucune", "courte", "32"] as const) {
       const run = runMobileGallery({ media: a13MobileFixture(4, "mixte", captions), captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
       expect(run.status, captions).toBe("PASS");
       for (const e of run.entries) {
         expect(e.layout.band.height * (390 / 941)).toBeCloseTo(42, 9);
-        expect(e.safeZone === null, `${captions} ${e.slot.slotId}`).toBe(e.caption === null);
+        expect(e.captionDiagnostic === null, `${captions} ${e.slot.slotId}`).toBe(e.caption === null);
       }
     }
   });
@@ -242,10 +248,41 @@ describe("captions (V1.5)", () => {
     checkResolved(run, "narrow");
   });
 
-  it("a caption no band of its envelope can hold in two lines → CAPTION_SAFE_ZONE_UNRESOLVED (per print), no Gallery", () => {
+  it("a caption no band of its envelope can hold: the Gallery stays, same composition, best two-line caption, no widening", () => {
     const huge: CaptionMeasurer = { ...fake, measure: (t) => ({ ...fake.measure(t), width: t.length * 60, actualBoundingBoxRight: t.length * 60 }) };
-    const run = runMobileGallery({ media: a13MobileFixture(3, "mixte", "32"), captionOf: (m) => m.caption, measurer: huge, stageWidth: 390 });
-    expect([run.outcome, run.status, run.anomaly?.basis, run.entries.length, run.hasCta]).toEqual(["unresolved", "CAPTION_SAFE_ZONE_UNRESOLVED", "per-print", 0, false]);
+    const media = a13MobileFixture(3, "mixte", "32");
+    const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: huge, stageWidth: 390 });
+    expect([run.outcome, run.status, run.entries.length]).toEqual(["resolved", "PASS", 3]);
+    expectCaptionIndependent(run, media, "huge");
+    for (const e of run.entries) {
+      expect(e.caption!.lines.length).toBe(2);
+      expect(e.caption!.exceedsUsefulWidth).toBe(true);
+      expect(e.bandWidening).toBeNull();
+      expect(run.signals.some((s) => s.startsWith(`${e.slot.slotId}: caption band not widened`))).toBe(true);
+    }
+    checkResolved(run, "huge");
+  });
+
+  it("a caption under a print above is an allowed state: reported, never a STOP, never a move", () => {
+    let seen = 0;
+    for (const [n, ratios] of [
+      [7, "3x4"],
+      [2, "9x16"],
+      [6, "9x16"],
+      [3, "mixte"],
+    ] as const) {
+      const media = a13MobileFixture(n, ratios, "32");
+      const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+      expectCaptionIndependent(run, media, `${n}:${ratios}`);
+      if (run.outcome !== "resolved") continue;
+      for (const e of run.entries)
+        if (e.captionDiagnostic && e.captionDiagnostic.occludedFraction > 0) {
+          seen++;
+          expect(e.caption!.status).toBe("CAPTION_COLLISION_UNRESOLVED");
+          expect(run.signals.some((s) => s.startsWith(`${e.slot.slotId}: caption`) && s.includes("covered"))).toBe(true);
+        }
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

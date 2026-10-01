@@ -11,7 +11,7 @@ import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GallerySce
 import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memorial/gallery/A13MobileGalleryScene";
 
 /**
- * A13 Gallery — MOBILE LIGHT section (Handoff V1.5), the Mobile counterpart
+ * A13 Gallery — MOBILE LIGHT section (Handoff V1.6), the Mobile counterpart
  * of `A13DesktopGallery`, on the same shared data and interactions:
  * family media → Mobile composition (`runMobileGallery`) → rendered scene.
  *
@@ -23,10 +23,11 @@ import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memor
  *   through `onActivateMemory`; the CTA exists for Signature 7+ only and
  *   calls `onSeeMore`. (The Viewer and the Album are not part of this
  *   Mobile Gallery mission.)
- * - The composition needs the real caption metrics (V1.5 caption safe
- *   zones, narrow bands): it is solved once La Belle Aurore is confirmed
- *   loaded; until then the state's stage box is reserved (hidden, inert),
- *   so the section never shifts the page.
+ * - Captions are laid out with the real La Belle Aurore metrics (wrapping,
+ *   shift, narrow bands): the run waits until the font is confirmed loaded;
+ *   until then the state's stage box is reserved (hidden, inert), so the
+ *   section never shifts the page. (The composition itself never depends
+ *   on the captions — V1.6.)
  * - STOP policy (shared, dette D7): when the Mobile runtime cannot resolve
  *   a state, NO Gallery is rendered, the anomaly is logged once
  *   (`console.error`) and exposed (`data-gallery-outcome`, `onRun`);
@@ -102,7 +103,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           }),
           centers: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, center: e.center, pivotCenter: e.pivotCenter })),
           hitSquares: run.entries.map((e) => ({ slotId: e.mobileSlot.slotId, side: e.hitTarget.side, center: e.hitTarget.center })),
-          safeZones: run.entries.flatMap((e) => (e.safeZone ? [{ slotId: e.mobileSlot.slotId, polygon: e.safeZone }] : [])),
+          safeZones: run.entries.flatMap((e) => (e.captionDiagnostic ? [{ slotId: e.mobileSlot.slotId, polygon: e.captionDiagnostic.safeZone }] : [])),
           titleBlock: run.metrics.titleBlock,
           ctaSafeBox: run.hasCta ? A13_MOBILE_CTA.safeBox : null,
         }
