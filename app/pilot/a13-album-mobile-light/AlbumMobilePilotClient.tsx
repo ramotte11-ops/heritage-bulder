@@ -30,6 +30,7 @@ import {
 import { ALBUM_TEST_PHOTOS } from "@/lib/memorial/album/album-pilot-fixtures";
 import type { ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
 import { A13MobileFullAlbum } from "@/components/memorial/album/A13MobileFullAlbum";
+import type { AlbumTheme } from "@/config/album-a13-dark-material";
 import { AlbumMobileTable } from "@/components/memorial/album/AlbumMobileTable";
 import { AlbumMobileMatrixRunner } from "./AlbumMobileMatrixRunner";
 import styles from "./page.module.css";
@@ -37,7 +38,7 @@ import styles from "./page.module.css";
 /**
  * A13 Full Album Mobile Light — pilot (PILOT ONLY, QA harness).
  *
- * `?n=7…200&ratios=witness|3x4|4x3|1x1|9x16|16x9|natural-mix&captions=aucune|12|24|32|une-ligne|deux-lignes&lang=fr|en|es&qa=1&planche=1`
+ * `?n=7…200&ratios=witness|3x4|4x3|1x1|9x16|16x9|natural-mix&captions=aucune|12|24|32|une-ligne|deux-lignes&lang=fr|en|es&theme=light|dark&qa=1&planche=1`
  * — or `?matrice=1`: the whole QA matrix run in the browser
  * (`AlbumMobileMatrixRunner`). Open at a 375–430 px viewport.
  * `qa=1` draws the groups, the crossfade bands and the paper end;
@@ -117,6 +118,7 @@ function AlbumMobilePilot() {
   const qa = q.get("qa") === "1";
   const board = q.get("planche") === "1";
   const hardSeam = q.get("negatif") === "couture";
+  const theme: AlbumTheme = q.get("theme") === "dark" ? "dark" : "light";
   const fixture = useMemo(() => albumMobileFixture(n, ratios, captions), [n, ratios, captions]);
   const cropped = useCroppedSources(fixture);
   const ready = fixture.every((m) => !m.cropToRatio || cropped[`${m.photo}@${m.cropToRatio}`]);
@@ -167,6 +169,7 @@ function AlbumMobilePilot() {
           media={media}
           language={lang}
           qa={qa}
+          theme={theme}
           onLayout={onLayout}
           onActivateMemory={(mediaId, mediaIndex) => qaRef.current?.activations.push({ mediaId, mediaIndex })}
           onViewerReport={(r) => qaRef.current?.viewer.push(r)}
@@ -175,9 +178,9 @@ function AlbumMobilePilot() {
     </div>
   );
 
-  if (board) return <main className={`${styles.page} ${styles.board}`}>{page}</main>;
+  if (board) return <main className={`${styles.page} ${styles.board}${theme === "dark" ? ` ${styles.boardDark}` : ""}`}>{page}</main>;
   const link = (patch: Record<string, string>) => {
-    const p = new URLSearchParams({ n: String(n), ratios, captions, lang, ...(qa ? { qa: "1" } : {}), ...patch });
+    const p = new URLSearchParams({ n: String(n), ratios, captions, lang, ...(qa ? { qa: "1" } : {}), ...(theme === "dark" ? { theme } : {}), ...patch });
     return `?${p.toString()}`;
   };
   return (
@@ -204,6 +207,7 @@ function AlbumMobilePilot() {
               {c}
             </a>
           ))}
+          <a href={link({ theme: theme === "dark" ? "light" : "dark" })}>{theme === "dark" ? "Light" : "Dark"}</a>
         </div>
         <span className={styles.log} data-testid="album-mobile-status">
           {status}

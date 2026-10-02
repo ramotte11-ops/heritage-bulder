@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { a13AlbumMobileActive } from "@/config/album-a13-mobile-light";
 import type { Language } from "@/config/languages";
+import type { AlbumTheme } from "@/config/album-a13-dark-material";
 import { layoutAlbumMobile, solveAlbumMobileGeometry, type AlbumMobileLayout } from "@/lib/memorial/album/album-mobile-layout";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -23,6 +24,8 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
  *   caption-free page is drawn — the geometry never depends on them.
  * - STOP policy: an unresolved composition renders no Album; the anomaly is
  *   exposed (`data-album-status`, `onLayout`) and logged once.
+ * - Theme (Full Album Mobile Dark): material only — the same layout, the
+ *   Dark table, and the shared Viewer opened in the Album's theme.
  */
 
 export interface A13MobileFullAlbumProps {
@@ -34,9 +37,11 @@ export interface A13MobileFullAlbumProps {
   /** QA: the layout actually rendered. */
   onLayout?: (layout: AlbumMobileLayout) => void;
   qa?: boolean;
+  /** Material theme (default Light): the same layout, Dark materials only; the Viewer opens in it. */
+  theme?: AlbumTheme;
 }
 
-export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false }: A13MobileFullAlbumProps) {
+export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light" }: A13MobileFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -78,10 +83,11 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
           media={media.map(({ mediaId, src, alt }) => ({ mediaId, src, alt }))}
           language={language}
           qa={qa}
+          theme={theme}
           onActivate={(mediaId, mediaIndex) => {
             onActivateMemory?.(mediaId, mediaIndex);
             const m = media[mediaIndex];
-            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, "light", "album", language);
+            viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album", language);
           }}
         />
       ) : null}

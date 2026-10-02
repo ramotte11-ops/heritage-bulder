@@ -11,6 +11,11 @@
   background: #f2e4cf;
 }
 
+/* Board mode, Dark theme: the page around the Album in the Dark BODY mean. */
+.boardDark {
+  background: #452816;
+}
+
 .panel {
   padding: 10px 12px 14px;
   font-size: 0.74rem;

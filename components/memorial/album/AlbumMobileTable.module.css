@@ -101,3 +101,15 @@
   text-anchor: middle;
   dominant-baseline: middle;
 }
+
+/*
+ * A13 Full Album MOBILE DARK — MATERIAL ONLY (keyed on the root
+ * `data-a13-theme="dark"`). The Studio Dark TOP / BODY take the Light
+ * tiles' place in the same layers (src swapped by the component: same
+ * boxes, same crossfade masks); the underlay, seen only before a tile is
+ * decoded, is the Dark BODY mean (`A13_ALBUM_MOBILE_DARK_MATERIALS`). The
+ * prints' Dark material lives in `DynamicPolaroid.module.css` (same key).
+ */
+.stage[data-a13-theme="dark"] .material {
+  background-color: #452816;
+}

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { A13_ALBUM_DARK_BACKGROUNDS, A13_ALBUM_DARK_MATERIAL } from "@/config/album-a13-dark-material";
+import { A13_ALBUM_MOBILE_DARK_MATERIALS } from "@/config/album-a13-mobile-dark-material";
 import { A13_DARK_MATERIAL } from "@/config/gallery-a13-dark-material";
 import { darkBackgroundRepeat, darkRuleLeaks, darkRules } from "@/lib/memorial/album/album-dark-guard";
 import { firstDifference } from "@/lib/memorial/gallery/theme-parity";
@@ -23,7 +24,7 @@ describe("A13 Album Dark V1 — material only", () => {
   });
 
   it("the Album and DynamicPolaroid Dark rules set no geometric and no photo-processing property", () => {
-    for (const f of ["components/memorial/album/AlbumMemoryTable.module.css", "components/memorial/gallery/DynamicPolaroid.module.css"]) {
+    for (const f of ["components/memorial/album/AlbumMemoryTable.module.css", "components/memorial/album/AlbumMobileTable.module.css", "components/memorial/gallery/DynamicPolaroid.module.css"]) {
       expect(darkRules(read(f)).length).toBeGreaterThan(0);
       expect(darkRuleLeaks(read(f))).toEqual([]);
     }
@@ -53,8 +54,19 @@ describe("A13 Album Dark V1 — material only", () => {
     }
   });
 
+  it("Full Album Mobile Dark: the Studio TOP / BODY byte for byte (1024 × 1536 RGB PNG, the Light tile size)", () => {
+    for (const a of [A13_ALBUM_MOBILE_DARK_MATERIALS.top, A13_ALBUM_MOBILE_DARK_MATERIALS.body]) {
+      const buf = readFileSync(path.join(ROOT, "public", a.src));
+      expect(createHash("sha256").update(buf).digest("hex")).toBe(a.sha256);
+      expect(buf.subarray(1, 4).toString("ascii")).toBe("PNG");
+      expect([buf.readUInt32BE(16), buf.readUInt32BE(20)]).toEqual([1024, 1536]);
+      expect(buf[25]).toBe(2); // colour type 2 = RGB
+    }
+    expect(A13_ALBUM_MOBILE_DARK_MATERIALS.top.src).not.toBe(A13_ALBUM_MOBILE_DARK_MATERIALS.body.src);
+  });
+
   it("no Album geometry module reads a theme or a Dark token (DARK_SOLVER_FORK_STOP)", () => {
-    for (const f of ["lib/memorial/album/album-layout.ts", "lib/memorial/album/album-group-solver.ts", "lib/memorial/album/album-partition.ts", "config/album-a13-grammars.ts", "config/album-a13-runtime-calibration-v1-1.ts", "config/album-a13-long-sequence-v1-2.ts", "config/album-a13-master-measurements.ts"]) {
+    for (const f of ["lib/memorial/album/album-layout.ts", "lib/memorial/album/album-group-solver.ts", "lib/memorial/album/album-partition.ts", "config/album-a13-grammars.ts", "config/album-a13-runtime-calibration-v1-1.ts", "config/album-a13-long-sequence-v1-2.ts", "config/album-a13-master-measurements.ts", "lib/memorial/album/album-mobile-layout.ts", "config/album-a13-mobile-light.ts"]) {
       expect(read(f)).not.toMatch(/dark-material|theme-material|AlbumTheme|A13Theme|data-a13-theme|--a13-dark-/);
     }
   });

@@ -5,6 +5,7 @@ import { A13_ALBUM_MOBILE_MATERIALS as MAT } from "@/config/album-a13-mobile-lig
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { layoutAlbumMobile } from "@/lib/memorial/album/album-mobile-layout";
 import { albumMobileFixture } from "@/lib/memorial/album/album-mobile-pilot-fixtures";
+import { A13_ALBUM_MOBILE_DARK_MATERIALS as DARK } from "@/config/album-a13-mobile-dark-material";
 
 /**
  * A13 Full Album Mobile Light — render contracts only (materials, family
@@ -91,3 +92,54 @@ describe("AlbumMobileTable", () => {
     expect(a.container.querySelectorAll("[data-testid^=caption-]").length).toBe(7);
   });
 });
+
+/** Geometry-only serialisation: every attribute and inline style minus the material (theme marker, tile sources, Dark per-print properties). */
+function geometryDom(root: HTMLElement) {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("data-a13-theme");
+  clone.querySelectorAll("*").forEach((el) => {
+    if (el.hasAttribute("data-material")) el.removeAttribute("src");
+    const st = (el as HTMLElement).style;
+    if (st) for (const name of [...st].filter((n) => n.startsWith("--a13-dark-"))) st.removeProperty(name);
+  });
+  return clone.outerHTML;
+}
+
+describe("Full Album Mobile Dark — the same table, Dark materials only", () => {
+  it("Dark renders the Light geometry DOM byte for byte for short and long Albums (material only differs)", () => {
+    for (const n of [7, 11, 40]) {
+      const { layout, media } = tableFor(n);
+      const light = render(<AlbumMobileTable layout={layout} media={media} language="fr" />);
+      const lightRoot = light.getByTestId("album-memory-table");
+      const lightDom = geometryDom(lightRoot);
+      const lightHtml = lightRoot.outerHTML;
+      light.unmount();
+      const explicit = render(<AlbumMobileTable layout={layout} media={media} language="fr" theme="light" />);
+      expect(explicit.getByTestId("album-memory-table").outerHTML, `n=${n}`).toBe(lightHtml);
+      expect(lightHtml).not.toContain("data-a13-theme");
+      explicit.unmount();
+      const dark = render(<AlbumMobileTable layout={layout} media={media} language="fr" theme="dark" />);
+      const root = dark.getByTestId("album-memory-table");
+      expect(geometryDom(root), `n=${n}`).toBe(lightDom);
+      expect(root.dataset.a13Theme).toBe("dark");
+      dark.unmount();
+    }
+  });
+
+  it("the Studio Dark TOP once, the Dark BODY stacked below with the Light crossfades; every print carries the Dark material", () => {
+    const { layout, media } = tableFor(40);
+    const { container } = render(<AlbumMobileTable layout={layout} media={media} language="fr" theme="dark" />);
+    const tiles = [...container.querySelectorAll<HTMLImageElement>("[data-material]")];
+    expect(tiles.map((t) => t.dataset.material)).toEqual(["top", ...Array(tiles.length - 1).fill("body")]);
+    expect(tiles[0].getAttribute("src")).toBe(DARK.top.src);
+    expect(tiles.slice(1).every((t) => t.getAttribute("src") === DARK.body.src)).toBe(true);
+    expect(tiles.map((t) => Number(t.dataset.materialFade))).toEqual([0, 112, ...Array(tiles.length - 2).fill(64)]);
+    expect([DARK.top.width, DARK.top.height, DARK.body.width, DARK.body.height]).toEqual([MAT.top.width, MAT.top.height, MAT.body.width, MAT.body.height]);
+    expect(container.innerHTML).not.toContain(MAT.top.src);
+    expect(container.innerHTML).not.toContain(MAT.body.src);
+    const prints = [...container.querySelectorAll<HTMLElement>("figure[data-print]")];
+    expect(prints).toHaveLength(40);
+    for (const el of prints) expect(el.style.getPropertyValue("--a13-dark-paper")).toMatch(/^#[0-9A-F]{6}$/);
+  });
+});
+

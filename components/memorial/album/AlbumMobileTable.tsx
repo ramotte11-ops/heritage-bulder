@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 import { A13_ALBUM_MOBILE_FRAME, A13_ALBUM_MOBILE_MATERIALS } from "@/config/album-a13-mobile-light";
+import type { AlbumTheme } from "@/config/album-a13-dark-material";
+import { A13_ALBUM_MOBILE_DARK_MATERIALS } from "@/config/album-a13-mobile-dark-material";
 import type { Language } from "@/config/languages";
 import type { AlbumMobileLayout } from "@/lib/memorial/album/album-mobile-layout";
 import { translate, translateWith } from "@/lib/i18n/translate";
@@ -29,6 +31,12 @@ import styles from "./AlbumMobileTable.module.css";
  *   metadata, so nothing moves when an image decodes.
  * - Every print is a real control (role button, Enter / Space, tap) that
  *   opens the shared Viewer (callback).
+ * - Theme (Full Album Mobile Dark): MATERIAL ONLY, applied after the
+ *   layout. Dark marks the root `data-a13-theme="dark"` (the key of the
+ *   Dark rules of this sheet and of `DynamicPolaroid`), takes the Studio
+ *   Dark TOP / BODY in the same material layers (same boxes, same
+ *   crossfades) and gives every print the shared Dark material. Light
+ *   (default) renders exactly as before.
  */
 
 export interface AlbumMobileTableMedia {
@@ -44,11 +52,15 @@ export interface AlbumMobileTableProps {
   onActivate?: (mediaId: string, mediaIndex: number) => void;
   eagerGroups?: number;
   qa?: boolean;
+  /** Material theme (default Light). Never an input of the layout. */
+  theme?: AlbumTheme;
 }
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 
-export function AlbumMobileTable({ layout, media, language, onActivate, eagerGroups = 1, qa = false }: AlbumMobileTableProps) {
+export function AlbumMobileTable({ layout, media, language, onActivate, eagerGroups = 1, qa = false, theme = "light" }: AlbumMobileTableProps) {
+  const dark = theme === "dark";
+  const materials = dark ? A13_ALBUM_MOBILE_DARK_MATERIALS : A13_ALBUM_MOBILE_MATERIALS;
   const n = layout.prints.length;
   const g = layout.geometry;
   return (
@@ -60,11 +72,12 @@ export function AlbumMobileTable({ layout, media, language, onActivate, eagerGro
       data-album-count={g.count}
       data-album-groups={g.groups.length}
       data-album-status={layout.status}
+      {...(dark ? { "data-a13-theme": "dark" } : {})}
     >
       <div className={styles.canvas} style={{ height: k(layout.height) } as CSSProperties} data-album-height={layout.height.toFixed(3)} data-album-mobile-canvas="">
         <div className={styles.material} aria-hidden="true" data-testid="album-material">
           {layout.materials.map((m, i) => {
-            const asset = A13_ALBUM_MOBILE_MATERIALS[m.asset];
+            const asset = materials[m.asset];
             const mask = m.fadeIn > 0 ? `linear-gradient(to bottom, transparent 0, #000 ${k(m.fadeIn)})` : undefined;
             return (
               // eslint-disable-next-line @next/next/no-img-element
@@ -104,6 +117,7 @@ export function AlbumMobileTable({ layout, media, language, onActivate, eagerGro
                     captionFontSizePx={layout.captionFontPx}
                     qa={qa}
                     imageLoading={grp.index < eagerGroups ? "eager" : "lazy"}
+                    {...(dark ? { theme: "dark" as const } : {})}
                     {...(onActivate ? { onActivate: () => onActivate(p.mediaId, p.mediaIndex), activateLabel: name } : {})}
                   />
                 );
