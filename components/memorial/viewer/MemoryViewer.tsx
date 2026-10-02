@@ -6,7 +6,7 @@ import { laBelleAurore } from "@/components/builder/fonts";
 import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
-import { createCaptionMeasurer, type MeasurerReady } from "@/lib/memorial/gallery/caption-measurer";
+import { awaitViewerCaptionFont, createViewerCaptionMeasure, viewerCaptionFontStatus, type ViewerCaptionFontGate, type ViewerCaptionMeasure } from "@/lib/memorial/viewer/viewer-caption-measure";
 import { layoutViewer, normalizeViewerCaption, viewerGeometrySnapshot, type ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
 import { viewerDomSnapshot, viewerDomStops, type MotionRecord, type ViewerStopFinding } from "@/lib/memorial/viewer/viewer-dom-qa";
 import styles from "./MemoryViewer.module.css";
@@ -39,6 +39,14 @@ import styles from "./MemoryViewer.module.css";
  * `filter: none`, `opacity: 1`, `mix-blend-mode: normal` — never cropped,
  * never processed. Before the first frame the intrinsic size is decoded
  * and the caption font confirmed, so the reserved box never shifts.
+ *
+ * Caption (`A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`): the browser breaks
+ * it. The shared primitive wraps it offscreen at the displayed size, with
+ * the computed styles of the visible caption (style source: a hidden
+ * element of the same class) in the paper's usable width; the visible
+ * caption is the same single text node, same class, same size and width,
+ * so the browser lays out the same lines. Measured again when fonts finish
+ * loading and on resize.
  */
 
 export type ViewerOrigin = "gallery" | "album";
@@ -99,7 +107,6 @@ export interface MemoryViewerProps {
 
 const C = A13_VIEWER_CONTRACT;
 const SLICE_OVERLAP = 0.75;
-let measurerPromise: Promise<MeasurerReady> | null = null;
 
 function parseShadow(s: string) {
   const m = /^(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/.exec(s.trim())!;
@@ -177,18 +184,28 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
   const printRef = useRef<HTMLElement>(null);
   const envRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const probeRef = useRef<HTMLSpanElement>(null);
+  const styleSourceRef = useRef<HTMLSpanElement>(null);
+  const measureHostRef = useRef<HTMLDivElement>(null);
   const saved = useRef({ x: 0, y: 0, overflow: "", paddingRight: "", inerted: [] as Element[], restored: false, t0: 0 });
   const natural = useRef({ w: media.naturalWidth, h: media.naturalHeight });
   const closing = useRef(false);
   const motion = useRef<MotionRecord>({ open: null, reduced: false });
-  const measurer = useRef<MeasurerReady | null>(null);
+  const captionMeasure = useRef<ViewerCaptionMeasure | null>(null);
+  const captionFont = useRef<ViewerCaptionFontGate | null>(null);
   const [geometry, setGeometry] = useState<ViewerGeometry | null>(null);
   const caption = normalizeViewerCaption(media.caption);
 
   const compute = useCallback(() => {
     const el = document.documentElement;
-    return layoutViewer({ viewportW: el.clientWidth, viewportH: el.clientHeight, naturalW: natural.current.w, naturalH: natural.current.h, caption, measurer: measurer.current?.measurer ?? null });
+    return layoutViewer({
+      viewportW: el.clientWidth,
+      viewportH: el.clientHeight,
+      naturalW: natural.current.w,
+      naturalH: natural.current.h,
+      caption,
+      wrap: captionMeasure.current?.wrap ?? null,
+      captionFontReady: captionFont.current?.ready ?? null,
+    });
   }, [caption]);
 
   const restoreDocument = useCallback(() => {
@@ -219,7 +236,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
     return () => restoreDocument();
   }, [restoreDocument]);
 
-  // Intrinsic size + caption font + material tiles before the first frame.
+  // Intrinsic size + caption font gate + material tiles before the first frame.
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -229,9 +246,15 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
         }),
         ...[A13_VIEWER_ASSETS.environment[theme].src, A13_VIEWER_ASSETS.paper[theme].src, A13_VIEWER_ASSETS.edgeMask.src].map((src) => decodeImage(src, 2500)),
       ];
-      if (caption && probeRef.current) {
-        measurerPromise ??= createCaptionMeasurer(probeRef.current);
-        tasks.push(measurerPromise.then((m) => (measurer.current = m)));
+      const source = styleSourceRef.current;
+      const host = measureHostRef.current;
+      if (caption && source && host) {
+        tasks.push(
+          awaitViewerCaptionFont(source, caption).then((gate) => {
+            captionFont.current = gate;
+            captionMeasure.current ??= createViewerCaptionMeasure(source, host);
+          }),
+        );
       }
       await Promise.all(tasks);
       if (alive) setGeometry(compute());
@@ -282,6 +305,20 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       }),
     );
   }, [geometry, onReport, origin, theme, media.mediaId]);
+
+  // Fonts finished loading after the gate: confirm the face again and re-measure.
+  const prepared = geometry !== null;
+  useEffect(() => {
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    if (!prepared || !caption || !fonts) return;
+    const onFonts = () => {
+      if (closing.current || !styleSourceRef.current || !captionMeasure.current) return;
+      captionFont.current = viewerCaptionFontStatus(styleSourceRef.current, caption);
+      setGeometry(compute());
+    };
+    fonts.addEventListener("loadingdone", onFonts);
+    return () => fonts.removeEventListener("loadingdone", onFonts);
+  }, [prepared, caption, compute]);
 
   // Resize: the same continuous formula, recomputed (no animation).
   useEffect(() => {
@@ -385,10 +422,11 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       data-viewer-state={g ? "open" : "preparing"}
     >
       <span className={styles.probe} aria-hidden="true">
-        <span ref={probeRef} className={styles.probeText} data-caption-probe="">
+        <span ref={styleSourceRef} className={styles.caption} data-caption-probe="" data-caption-style-source="">
           Aa
         </span>
       </span>
+      <div ref={measureHostRef} className={styles.measureHost} aria-hidden="true" data-viewer-caption-measure-host="" />
       <div ref={envRef} className={styles.environment} aria-hidden="true" data-viewer-environment="" />
       <div role="dialog" aria-modal="true" aria-label={label} className={styles.dialog}>
         {g ? (
@@ -407,17 +445,14 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
               decoding="sync"
             />
             {g.caption ? (
-              <figcaption className={styles.caption} data-viewer-caption="" style={{ left: g.caption.box.x, top: g.caption.box.y, width: g.caption.box.w, height: g.caption.box.h }}>
-                {g.caption.lines.map((l, i) => (
-                  <span
-                    key={i}
-                    className={styles.line}
-                    data-viewer-caption-line=""
-                    style={{ top: i * g.caption!.lineHeight, height: g.caption!.lineHeight, fontSize: g.caption!.fontSize, lineHeight: `${g.caption!.lineHeight}px` }}
-                  >
-                    {l.text}
-                  </span>
-                ))}
+              // Same text node, class, size and width as the measured clone: the browser lays out the measured lines.
+              <figcaption
+                className={styles.caption}
+                data-viewer-caption=""
+                data-viewer-caption-lines={g.caption.lines.length}
+                style={{ left: g.caption.box.x, top: g.caption.box.y, width: g.caption.box.w, height: g.caption.box.h, fontSize: g.caption.fontSize, lineHeight: `${g.caption.lineHeight}px` }}
+              >
+                {g.caption.text}
               </figcaption>
             ) : null}
           </figure>

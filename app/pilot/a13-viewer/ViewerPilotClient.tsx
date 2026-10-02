@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ViewerTheme } from "@/config/viewer-a13-desktop-v2";
-import { useMemoryViewer, type MemoryViewerMedia, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
-import { validateViewerCaption } from "@/lib/memorial/viewer/viewer-layout";
+import { useMemoryViewer, type MemoryViewerMedia, type ViewerOrigin, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
+import { validateViewerCaption, type ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
+import { viewerCaptionStops } from "@/lib/memorial/viewer/viewer-dom-qa";
+import { createViewerCaptionMeasure, readViewerCaptionLines, viewerCaptionDivergence } from "@/lib/memorial/viewer/viewer-caption-measure";
 import styles from "../a13-album-light/page.module.css";
 
 /**
@@ -22,13 +24,53 @@ import styles from "../a13-album-light/page.module.css";
  * `negatif=` injects a deliberate defect the rendered checks must catch
  * (QA only): cover, distorsion, dark-geometrie, filtre, ellipsis, cible,
  * scroll, focus, mouvement, viewport.
+ *
+ * Caption measurement QA (`A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`):
+ * `window.__viewerQa.openWith({ ratio, caption, origin })` opens the shared
+ * Viewer on a generated image of that exact ratio with any caption (corpus
+ * replay through the real pipeline); `captionStops()` re-runs the rendered
+ * caption checks on the open Viewer (after a QA DOM injection);
+ * `scaled2027()` re-measures the open caption the FORBIDDEN way (27 px then
+ * × fontSize/27) and returns the divergence against the rendered lines —
+ * the negative control of the divergence check.
  */
 
 declare global {
   interface Window {
-    __viewerQa?: { reports: ViewerReport[]; validation: unknown; media: MemoryViewerMedia | null };
+    __viewerQa?: {
+      reports: ViewerReport[];
+      validation: unknown;
+      media: MemoryViewerMedia | null;
+      openWith?: (o: { ratio: number; caption: string | null; origin?: ViewerOrigin }) => void;
+      captionStops?: () => ReturnType<typeof viewerCaptionStops>;
+      scaled2027?: () => ReturnType<typeof viewerCaptionDivergence>;
+    };
   }
 }
+
+/** A generated image of an exact ratio (QA fixture, never an asset). */
+const ratioImages = new Map<number, string>();
+function ratioImage(r: number) {
+  if (!ratioImages.has(r)) {
+    const c = document.createElement("canvas");
+    c.width = Math.round(r >= 1 ? 2400 : 2400 * r);
+    c.height = Math.round(r >= 1 ? 2400 / r : 2400);
+    const ctx = c.getContext("2d")!;
+    const grad = ctx.createLinearGradient(0, 0, c.width, c.height);
+    grad.addColorStop(0, "#c89b5e");
+    grad.addColorStop(1, "#6b4426");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, c.width, c.height);
+    ratioImages.set(r, c.toDataURL("image/jpeg", 0.8));
+  }
+  return ratioImages.get(r)!;
+}
+
+/** The open Viewer's geometry, from its last open report. */
+const lastGeometry = (reports: ViewerReport[]) => {
+  const r = [...reports].reverse().find((x) => x.kind === "open");
+  return r && r.kind === "open" ? (JSON.parse(r.engine) as ViewerGeometry) : null;
+};
 
 const BASE = "/pilot/a13-dynamic-polaroid";
 interface Case {
@@ -55,6 +97,8 @@ const CAPTIONS: Record<string, string | null> = {
   master: "Été 2010 · Cabourg",
   "32": "MAMAN ET MAMIE, À MIMIZAN, 1966.",
   "33": "MAMAN ET MAMIE, À MIMIZAN, 1966.!",
+  "24": "Maman, un soir à Gordes.",
+  naturelle: "Maman et mamie, à Mimizan, 1966.",
 };
 
 const NEGATIVES: Record<string, string> = {
@@ -62,7 +106,7 @@ const NEGATIVES: Record<string, string> = {
   distorsion: `[data-viewer-photo]{object-fit:fill!important;height:70%!important}`,
   "dark-geometrie": `[data-a13-viewer-theme="dark"] [data-viewer-print]{width:1000px!important;height:700px!important}`,
   filtre: `[data-a13-viewer-theme="dark"] [data-viewer-photo]{filter:brightness(.85) saturate(.8)!important}`,
-  ellipsis: `[data-viewer-caption-line]{overflow:hidden!important;text-overflow:ellipsis!important;width:40%!important}`,
+  ellipsis: `[data-viewer-caption]{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;width:40%!important}`,
   cible: `[data-viewer-close]{width:26px!important;height:26px!important}`,
   mouvement: `[data-viewer-print]{transform:translateY(12px)!important}`,
   viewport: `[data-viewer-print]{margin-left:1200px!important}`,
@@ -112,9 +156,43 @@ export function ViewerPilotClient() {
     setReports((x) => [...x, r]);
   });
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const openViewer = viewer.open;
   useEffect(() => {
-    window.__viewerQa = { reports: window.__viewerQa?.reports ?? [], validation, media };
-  }, [validation, media]);
+    const reportsList = window.__viewerQa?.reports ?? [];
+    window.__viewerQa = {
+      reports: reportsList,
+      validation,
+      media,
+      openWith: ({ ratio: r, caption: c, origin = "gallery" }) => {
+        const img = ratioImage(r);
+        const w = Math.round(r >= 1 ? 2400 : 2400 * r);
+        const h = Math.round(r >= 1 ? 2400 / r : 2400);
+        openViewer({ mediaId: `qa-${r}`, src: img, alt: "Image de test", naturalWidth: w, naturalHeight: h, caption: c }, theme, origin, "fr", triggerRef.current);
+      },
+      captionStops: () => {
+        const root = document.querySelector<HTMLElement>("[data-a13-viewer]");
+        const g = lastGeometry(reportsList);
+        return root && g ? viewerCaptionStops(root, g) : [];
+      },
+      scaled2027: () => {
+        const root = document.querySelector<HTMLElement>("[data-a13-viewer]");
+        const g = lastGeometry(reportsList);
+        const visible = root?.querySelector<HTMLElement>("[data-viewer-caption]");
+        const source = root?.querySelector<HTMLElement>("[data-caption-style-source]");
+        if (!root || !g?.caption || !visible || !source) return [];
+        const host = document.createElement("div");
+        host.style.cssText = "position:absolute;left:-100000px;top:0;visibility:hidden";
+        root.appendChild(host);
+        const k = g.caption.fontSize / 27;
+        // FORBIDDEN on purpose: measured at 27 px in the scaled-up width, then × fontSize/27.
+        const at27 = createViewerCaptionMeasure(source, host).wrap(g.caption.text, 27, g.caption.lineHeight / k, g.caption.usableWidth / k);
+        host.remove();
+        const measured = (at27?.lines ?? []).map((l) => ({ text: l.text, x: l.x * k, y: l.y * k, width: l.width * k }));
+        return viewerCaptionDivergence(measured, readViewerCaptionLines(visible) ?? []);
+      },
+    };
+  }, [validation, media, openViewer, theme]);
 
   // Host-side negatives: a scroll jump / a lost focus right after the Viewer gives focus back.
   useEffect(() => {
@@ -168,6 +246,7 @@ export function ViewerPilotClient() {
       <div className={styles.panel}>
         {media ? (
           <button
+            ref={triggerRef}
             type="button"
             data-viewer-trigger=""
             aria-label={`Ouvrir le souvenir — ${caption ?? media.alt}`}

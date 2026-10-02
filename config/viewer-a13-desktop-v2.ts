@@ -53,12 +53,73 @@ export const A13_VIEWER_CONTRACT = {
   },
 } as const;
 
+/**
+ * A13 — VIEWER CAPTION MEASUREMENT — `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`
+ * (SHA-256 be50f401…5383, GREEN QG). Replaces ONLY how the caption is
+ * measured: the browser is the line-breaking authority. One shared primitive
+ * (`viewer-caption-measure.ts`) wraps the caption in an offscreen DOM clone
+ * at the DISPLAYED size, with the loaded face, the computed styles of the
+ * visible caption and the paper's real usable width, then reads every line
+ * with `Range.getClientRects()`. No "measure at 27 px then × fontSize/27",
+ * no canvas approximation, no Mobile fork, no autoshrink, no truncation.
+ */
+export const A13_VIEWER_CAPTION_MEASUREMENT = {
+  handoffId: "A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1",
+  handoffSha256: "be50f4012d3c616b3e9009d19d0ebfe8b872855adbc623971905cb084b1a5383",
+  /** `canonicalMeasurement.propertiesCopied` of the contract, verbatim. */
+  contractProperties: [
+    "font-family",
+    "font-style",
+    "font-weight",
+    "font-size",
+    "line-height",
+    "letter-spacing",
+    "font-kerning",
+    "font-feature-settings",
+    "font-variation-settings",
+    "text-transform",
+    "white-space",
+    "word-break",
+    "overflow-wrap",
+    "text-align",
+  ],
+  /** The other computed properties that change line widths or breaks — copied too ("mêmes computed styles"). */
+  additionalProperties: [
+    "text-wrap-mode",
+    "text-wrap-style",
+    "word-spacing",
+    "text-indent",
+    "font-stretch",
+    "font-size-adjust",
+    "font-optical-sizing",
+    "font-synthesis-weight",
+    "font-synthesis-style",
+    "font-variant-ligatures",
+    "font-variant-caps",
+    "font-variant-numeric",
+    "font-variant-east-asian",
+    "font-variant-position",
+    "text-rendering",
+    "hyphens",
+    "line-break",
+    "direction",
+    "unicode-bidi",
+    "tab-size",
+  ],
+  limits: { maxLines: 2, subpixelToleranceCssPx: 0.5, measurementRenderDeltaMaxCssPx: 0.5 },
+  /** Font gate: wait for the face (and `document.fonts.ready`) at most this long before confirming it. */
+  fontGateTimeoutMs: 2500,
+} as const;
+
 /** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */
 export const A13_VIEWER_STOPS = [
   "VIEWER_CROP_STOP",
   "VIEWER_DISTORTION_STOP",
   "VIEWER_VIEWPORT_FIT_STOP",
   "VIEWER_CAPTION_OVERFLOW_STOP",
+  "VIEWER_CAPTION_LINE_COUNT_STOP",
+  "VIEWER_CAPTION_MEASUREMENT_DIVERGENCE_STOP",
+  "VIEWER_CAPTION_FONT_NOT_READY_STOP",
   "VIEWER_CLOSE_INACCESSIBLE_STOP",
   "VIEWER_SCROLL_RESTORE_STOP",
   "VIEWER_FOCUS_RESTORE_STOP",

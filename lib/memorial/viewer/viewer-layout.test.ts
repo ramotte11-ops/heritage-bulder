@@ -1,14 +1,30 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
-import { breakViewerCaption, layoutViewer, normalizeViewerCaption, validateViewerCaption, viewerGeometrySnapshot, viewerScale } from "@/lib/memorial/viewer/viewer-layout";
+import { describe, expect, it, vi } from "vitest";
+import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
+import { layoutViewer, normalizeViewerCaption, validateViewerCaption, viewerFontSize, viewerGeometrySnapshot, viewerScale } from "@/lib/memorial/viewer/viewer-layout";
 
-/** Deterministic stand-in: 11.5 px per character at 27 px (La Belle Aurore ≈ this average). */
-const measurer: CaptionMeasurer = {
-  measure: (t: string) => ({ width: [...t].length * 11.5, actualBoundingBoxLeft: 0, actualBoundingBoxRight: [...t].length * 11.5, actualBoundingBoxAscent: 20, actualBoundingBoxDescent: 8 }),
-  fontAscent: 30,
-  fontDescent: 12,
+/**
+ * Deterministic stand-in for the shared browser primitive: 11.5 px per
+ * character at 27 px, linear in the requested size; one line if it fits,
+ * else the balanced break (what `text-wrap: balance` does). The real
+ * primitive is proven in the browser pilot.
+ */
+const perChar = (fs: number) => (11.5 * fs) / 27;
+const wrap: ViewerCaptionWrapFn = (text, fs, lh, width) => {
+  const w = (t: string) => [...t].length * perChar(fs);
+  const line = (t: string, start: number, i: number) => ({ text: t, start, end: start + t.length, x: (width - w(t)) / 2, y: i * lh, width: w(t), height: lh });
+  if (w(text) <= width) return { lines: [line(text, 0, 0)] };
+  const words = text.split(" ");
+  let best: [string, string] | null = null;
+  let key = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ");
+    const b = words.slice(i).join(" ");
+    const k = Math.max(w(a), w(b)) + Math.abs(w(a) - w(b)) * 1e-6;
+    if (k < key) [key, best] = [k, [a, b]];
+  }
+  return best ? { lines: [line(best[0], 0, 0), line(best[1], best[0].length + 1, 1)] } : { lines: [line(text, 0, 0)] };
 };
 
 const RATIOS: Record<string, [number, number]> = { "3:2": [1800, 1200], "2:3": [1200, 1800], "1:1": [1400, 1400], "2.39:1": [2390, 1000], "9:16": [1080, 1920], "4:3": [1600, 1200] };
@@ -25,7 +41,7 @@ const VIEWPORTS: [number, number][] = [
 
 describe("A13 Viewer Desktop V2 — continuous geometry", () => {
   it("reproduces the GREEN Master (1670×941, 1112×622 photo, one caption line) within the Handoff tolerances", () => {
-    const g = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 2224, naturalH: 1244, caption: "Été 2010 · Cabourg", measurer });
+    const g = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 2224, naturalH: 1244, caption: "Été 2010 · Cabourg", wrap });
     expect(g.s).toBe(1);
     expect(g.bandKind).toBe("oneLine");
     // Master: paper x≈240 y≈99 w≈1195 h≈741 (±4); photo x≈281 y≈130 w≈1112 h≈622 (±2).
@@ -47,7 +63,7 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
     for (const [vw, vh] of VIEWPORTS)
       for (const [id, [w, h]] of Object.entries(RATIOS))
         for (const [cid, caption] of Object.entries(CAPTIONS)) {
-          const g = layoutViewer({ viewportW: vw, viewportH: vh, naturalW: w, naturalH: h, caption, measurer });
+          const g = layoutViewer({ viewportW: vw, viewportH: vh, naturalW: w, naturalH: h, caption, wrap });
           const tag = `${vw}×${vh} ${id} ${cid}`;
           expect(g.photo.w / g.photo.h, tag).toBeCloseTo(w / h, 9);
           expect(g.codes, tag).toEqual([]);
@@ -64,7 +80,7 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
   });
 
   it("builds the band from the caption: none < one line < two lines, never two empty lines", () => {
-    const base = { viewportW: 1670, viewportH: 941, naturalW: 1080, naturalH: 1920, measurer };
+    const base = { viewportW: 1670, viewportH: 941, naturalW: 1080, naturalH: 1920, wrap };
     const none = layoutViewer({ ...base, caption: null });
     const one = layoutViewer({ ...base, caption: "Le village" });
     const two = layoutViewer({ ...base, caption: CAPTIONS.c32 });
@@ -81,22 +97,22 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
   });
 
   it("caps the print at its 1670 geometry on 1920 (the outer space grows, not the print)", () => {
-    const a = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 1800, naturalH: 1200, caption: null, measurer });
-    const b = layoutViewer({ viewportW: 1920, viewportH: 1080, naturalW: 1800, naturalH: 1200, caption: null, measurer });
+    const a = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 1800, naturalH: 1200, caption: null, wrap });
+    const b = layoutViewer({ viewportW: 1920, viewportH: 1080, naturalW: 1800, naturalH: 1200, caption: null, wrap });
     expect(viewerScale(1920, 1080)).toBe(1);
     expect(b.paper.w).toBeCloseTo(a.paper.w, 9);
     expect(b.paper.h).toBeCloseTo(a.paper.h, 9);
   });
 
   it("never upscales past the source and flags extreme ratios (review, no crop)", () => {
-    const small = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 600, naturalH: 400, caption: null, measurer });
+    const small = layoutViewer({ viewportW: 1670, viewportH: 941, naturalW: 600, naturalH: 400, caption: null, wrap });
     expect(small.photo.w).toBe(600);
     expect(small.flags.upscaleCapped).toBe(true);
     for (const [w, h] of [
       [2700, 540],
       [768, 1920],
     ]) {
-      const g = layoutViewer({ viewportW: 1440, viewportH: 900, naturalW: w, naturalH: h, caption: CAPTIONS.short, measurer });
+      const g = layoutViewer({ viewportW: 1440, viewportH: 900, naturalW: w, naturalH: h, caption: CAPTIONS.short, wrap });
       expect(g.codes).toContain("VIEWER_EXTREME_RATIO_REVIEW");
       expect(g.photo.w / g.photo.h).toBeCloseTo(w / h, 9);
       expect(g.paper.x + g.paper.w).toBeLessThanOrEqual(1440 - g.safeX + 1e-6);
@@ -104,7 +120,7 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
   });
 
   it("lays the 9-slice mask with fixed corners and round bands that tile the mask box exactly", () => {
-    const g = layoutViewer({ viewportW: 1440, viewportH: 900, naturalW: 2390, naturalH: 1000, caption: CAPTIONS.c32, measurer });
+    const g = layoutViewer({ viewportW: 1440, viewportH: 900, naturalW: 2390, naturalH: 1000, caption: CAPTIONS.c32, wrap });
     const { box, slices } = g.mask;
     const area = slices.reduce((a, q) => a + q.dw * q.dh, 0);
     expect(area).toBeCloseTo(box.w * box.h, 3);
@@ -122,16 +138,59 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
     expect(validateViewerCaption("MAMAN ET MAMIE, À MIMIZAN, 1966.").ok).toBe(true);
     const r = validateViewerCaption("MAMAN ET MAMIE, À MIMIZAN, 1966.!");
     expect(r).toEqual({ ok: false, reason: "VIEWER_CAPTION_TOO_LONG", length: 33 });
-    const lines = breakViewerCaption("Un dimanche de printemps dont nous parlons", measurer, 20, 250);
-    expect(lines).toHaveLength(2);
-    expect(lines.map((l) => l.text).join(" ")).toBe("Un dimanche de printemps dont nous parlons");
+  });
+
+  it("Caption Measurement V1: the shared primitive is called at the DISPLAYED size in the usable width — Mobile 20 px, Desktop 27 px, never 27 then ×20/27", () => {
+    for (const [vw, vh] of [
+      [375, 812],
+      [390, 844],
+      [430, 932],
+      [1024, 768],
+      [1440, 900],
+      [1670, 941],
+    ] as const) {
+      const spy = vi.fn(wrap);
+      const g = layoutViewer({ viewportW: vw, viewportH: vh, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, wrap: spy });
+      expect(spy).toHaveBeenCalled();
+      for (const [, fs, lh] of spy.mock.calls) {
+        expect(fs).toBe(viewerFontSize(g.s));
+        expect(lh).toBeCloseTo(1.05 * fs, 9);
+      }
+      const last = spy.mock.calls.at(-1)!;
+      expect(last[3]).toBeCloseTo(g.caption!.usableWidth, 9);
+      expect(g.caption!.fontSize).toBe(last[1]);
+      if (vw <= 430) expect(g.caption!.fontSize).toBe(20);
+      if (vw >= 1670) expect(g.caption!.fontSize).toBe(27);
+      expect(g.caption!.text).toBe(CAPTIONS.c32);
+      expect(g.caption!.lines.map((l) => l.text).join(" ")).toBe(CAPTIONS.c32);
+    }
+    // The engine source no longer scales a 27 px measure.
+    const src = readFileSync(path.resolve(__dirname, "viewer-layout.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(src).not.toMatch(/fontSize\s*\/\s*27|\/\s*27\b|measurer/);
+  });
+
+  it("Caption Measurement V1: codes — overflow > 0.5 px, more than two lines, font not ready; 0.5 px is still PASS", () => {
+    const base = { viewportW: 375, viewportH: 812, naturalW: 1080, naturalH: 1920, caption: "Notre belle famille" };
+    const at = (dx: number): ViewerCaptionWrapFn => (text, fs, lh, width) => ({ lines: [{ text, start: 0, end: text.length, x: 0, y: 0, width: width + dx, height: lh }] });
+    expect(layoutViewer({ ...base, wrap: at(0.5) }).codes).not.toContain("VIEWER_CAPTION_OVERFLOW_STOP");
+    expect(layoutViewer({ ...base, wrap: at(0.51) }).codes).toContain("VIEWER_CAPTION_OVERFLOW_STOP");
+    const three: ViewerCaptionWrapFn = (text, fs, lh, width) => ({ lines: [0, 1, 2].map((i) => ({ text: `l${i}`, start: i, end: i + 1, x: 0, y: i * lh, width: width / 2, height: lh })) });
+    const g3 = layoutViewer({ ...base, wrap: three });
+    expect(g3.codes).toContain("VIEWER_CAPTION_LINE_COUNT_STOP");
+    expect(g3.bandKind).toBe("twoLines");
+    expect(layoutViewer({ ...base, wrap, captionFontReady: false }).codes).toContain("VIEWER_CAPTION_FONT_NOT_READY_STOP");
+    expect(layoutViewer({ ...base, wrap, captionFontReady: true }).codes).toEqual([]);
+    // No measurement possible (no layout): the band is reserved, no lines, no false STOP.
+    const none = layoutViewer({ ...base, wrap: null, captionFontReady: false });
+    expect(none.caption).toBeNull();
+    expect(none.codes).toEqual([]);
   });
 
   it("is theme-free: the geometry module reads no theme, no material and no asset colour", () => {
     const src = readFileSync(path.resolve(__dirname, "viewer-layout.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(src).not.toMatch(/A13_VIEWER_MATERIAL|ViewerTheme|theme|dark|light/i);
-    const a = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, measurer });
-    const b = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, measurer });
+    const a = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, wrap });
+    const b = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, wrap });
     expect(viewerGeometrySnapshot(a)).toBe(viewerGeometrySnapshot(b));
   });
 });

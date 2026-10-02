@@ -1,5 +1,5 @@
-import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
-import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
+import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
 /**
  * A13 Viewer Desktop V2 — ONE continuous geometry (pure, theme-free).
@@ -22,7 +22,10 @@ import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
  *   n lines `edge + n·lineHeight + 20s` (never two empty lines reserved);
  * - caption: La Belle Aurore clamp(20, 27s, 27) px, line-height 1.05,
  *   centred on `photoW − 2·max(12, 16s)`, at most two lines, never shrunk,
- *   clipped or ellipsised.
+ *   clipped or ellipsised. Its lines are those the BROWSER breaks at that
+ *   displayed size in that usable width (`ViewerInput.wrap`, the shared
+ *   primitive of `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`): no measure
+ *   at 27 px scaled down, the same call for every profile.
  */
 
 const C = A13_VIEWER_CONTRACT;
@@ -34,10 +37,17 @@ export interface Rect {
   h: number;
 }
 
+/** One caption line as the browser broke it (measured offscreen, displayed size). */
 export interface ViewerCaptionLine {
   text: string;
-  /** Advance width at the rendered font size (measured). */
+  /** UTF-16 range in the caption. */
+  start: number;
+  end: number;
+  /** Measured text rect, relative to the caption box (CSS px, unrounded). */
+  x: number;
+  y: number;
   width: number;
+  height: number;
 }
 
 export interface NineSlice {
@@ -71,11 +81,14 @@ export interface ViewerGeometry {
   /** Paper-local: photo, caption box and line boxes. */
   photoLocal: Rect;
   caption: {
+    /** The normalised caption, as rendered (one text node). */
+    text: string;
     fontSize: number;
     lineHeight: number;
     usableWidth: number;
     box: Rect;
-    lines: { text: string; width: number; box: Rect }[];
+    /** Measured lines (offscreen clone) and their line slots. */
+    lines: (ViewerCaptionLine & { box: Rect })[];
   } | null;
   close: { target: Rect; zone: Rect; clearance: Rect; offset: number };
   mask: { box: Rect; slices: NineSlice[]; px: number };
@@ -89,6 +102,9 @@ export interface ViewerGeometry {
     upscaleCapped: boolean;
     fitReduced: boolean;
     captionOverflow: boolean;
+    captionLineCount: boolean;
+    /** Caption font gate (`null`: no caption or no measurement). */
+    captionFontReady: boolean | null;
     viewportFitStop: boolean;
   };
   codes: string[];
@@ -100,8 +116,10 @@ export interface ViewerInput {
   naturalW: number;
   naturalH: number;
   caption: string | null;
-  /** Caption measurer at 27 px (Gallery V2.1 measurer, font confirmed). */
-  measurer: CaptionMeasurer | null;
+  /** The shared caption measurement (`createViewerCaptionMeasure(…).wrap`); `null` → no caption lines. */
+  wrap: ViewerCaptionWrapFn | null;
+  /** Font gate result (`awaitViewerCaptionFont`): `false` → VIEWER_CAPTION_FONT_NOT_READY_STOP. */
+  captionFontReady?: boolean | null;
 }
 
 /** Renderer normalisation: whitespace runs → one space, trimmed; empty → null. */
@@ -122,36 +140,6 @@ export const viewerScale = (vw: number, vh: number) =>
   Math.min(C.scale.max, Math.max(C.scale.min, Math.min(vw / C.referenceCanvas.width, vh / C.referenceCanvas.height)));
 
 export const viewerFontSize = (s: number) => Math.min(C.caption.fontSizeMax, Math.max(C.caption.fontSizeMin, C.caption.fontSizePerS * s));
-
-/**
- * Line breaking (the Gallery V2.1 rule, contract §4): one centred line if
- * it fits the usable width; otherwise the break at a space giving the
- * smallest maximum line width, then the smallest difference. No shrink.
- */
-export function breakViewerCaption(text: string, measurer: CaptionMeasurer, fontSize: number, usableWidth: number): ViewerCaptionLine[] {
-  const k = fontSize / 27;
-  const w = (t: string) => measurer.measure(t).width * k;
-  const one = w(text);
-  if (one <= usableWidth) return [{ text, width: one }];
-  const words = text.split(" ");
-  let best: ViewerCaptionLine[] | null = null;
-  let bestKey: [number, number] | null = null;
-  for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).join(" ");
-    const b = words.slice(i).join(" ");
-    const wa = w(a);
-    const wb = w(b);
-    const key: [number, number] = [Math.max(wa, wb), Math.abs(wa - wb)];
-    if (!bestKey || key[0] < bestKey[0] - 1e-9 || (Math.abs(key[0] - bestKey[0]) <= 1e-9 && key[1] < bestKey[1])) {
-      bestKey = key;
-      best = [
-        { text: a, width: wa },
-        { text: b, width: wb },
-      ];
-    }
-  }
-  return best ?? [{ text, width: one }];
-}
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -241,18 +229,17 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   const extremeRatio = r < rMin || r > rMax;
   if (extremeRatio) codes.push(VIEWER_EXTREME_RATIO_REVIEW);
 
-  // Caption line count: the smallest n whose photo width holds the text
-  // in n lines (monotone: more lines → taller band → narrower photo).
+  // Caption line count: one line if the browser keeps the caption on one
+  // line in the one-line geometry's usable width; otherwise the two-line
+  // geometry (taller band → never a wider photo) and the browser's lines
+  // there. Each measure runs at that geometry's displayed size.
   const solve = (s: number) => {
-    if (!text || !inp.measurer) {
-      const g = atScale(inp, s, sNominal, text, text ? 1 : 0);
-      return { g, lines: [] as ViewerCaptionLine[] };
-    }
+    if (!text || !inp.wrap) return { g: atScale(inp, s, sNominal, text, text ? 1 : 0), lines: [] as ViewerCaptionLine[] };
     const g1 = atScale(inp, s, sNominal, text, 1);
-    const l1 = breakViewerCaption(text, inp.measurer, g1.fontSize, g1.usableWidth);
-    if (l1.length === 1) return { g: g1, lines: l1 };
+    const m1 = inp.wrap(text, g1.fontSize, g1.lineHeight, g1.usableWidth);
+    if (!m1 || m1.lines.length <= 1) return { g: g1, lines: m1?.lines ?? [] };
     const g2 = atScale(inp, s, sNominal, text, 2);
-    return { g: g2, lines: breakViewerCaption(text, inp.measurer, g2.fontSize, g2.usableWidth) };
+    return { g: g2, lines: inp.wrap(text, g2.fontSize, g2.lineHeight, g2.usableWidth)?.lines ?? [] };
   };
 
   let s = sNominal;
@@ -268,8 +255,13 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   }
   if (viewportFitStop) codes.push("VIEWER_VIEWPORT_FIT_STOP");
 
-  const captionOverflow = lines.some((l) => l.width > g.usableWidth + 0.5) || lines.length > C.caption.maxLines;
+  const tol = A13_VIEWER_CAPTION_MEASUREMENT.limits.subpixelToleranceCssPx + 1e-6;
+  const captionOverflow = lines.some((l) => l.x < -tol || l.x + l.width > g.usableWidth + tol);
   if (captionOverflow) codes.push("VIEWER_CAPTION_OVERFLOW_STOP");
+  const captionLineCount = lines.length > C.caption.maxLines;
+  if (captionLineCount) codes.push("VIEWER_CAPTION_LINE_COUNT_STOP");
+  const captionFontReady = text && inp.wrap ? (inp.captionFontReady ?? null) : null;
+  if (captionFontReady === false) codes.push("VIEWER_CAPTION_FONT_NOT_READY_STOP");
 
   const photoLocal = { x: g.edge, y: g.topEdge, w: g.photoW, h: g.photoH };
   const blockTop = g.topEdge + g.photoH + C.paper.bandTextExtraPerS * g.s;
@@ -294,11 +286,12 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
     caption:
       text && lines.length
         ? {
+            text,
             fontSize: g.fontSize,
             lineHeight: g.lineHeight,
             usableWidth: g.usableWidth,
             box: capBox,
-            lines: lines.map((l, i) => ({ text: l.text, width: l.width, box: { x: capBox.x, y: blockTop + i * g.lineHeight, w: capBox.w, h: g.lineHeight } })),
+            lines: lines.map((l, i) => ({ ...l, box: { x: capBox.x, y: blockTop + i * g.lineHeight, w: capBox.w, h: g.lineHeight } })),
           }
         : null,
     close: { target: g.target, zone: g.zone, clearance: g.clearance, offset: g.offset },
@@ -308,7 +301,7 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
       open: { durationMs: C.motion.open.durationMs, easing: C.motion.open.easing, fromTranslateY: C.motion.open.from.translateYPerS * g.s, fromScale: C.motion.open.from.scale, fromOpacity: C.motion.open.from.opacity },
       close: { durationMs: C.motion.close.durationMs, easing: C.motion.close.easing, toTranslateY: C.motion.close.to.translateYPerS * g.s, toScale: C.motion.close.to.scale, toOpacity: C.motion.close.to.opacity },
     },
-    flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < sNominal, captionOverflow, viewportFitStop },
+    flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < sNominal, captionOverflow, captionLineCount, captionFontReady, viewportFitStop },
     codes,
   };
 }

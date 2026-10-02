@@ -1,4 +1,7 @@
 import type { ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
+import { readViewerCaptionLines, viewerCaptionFindings, type ViewerStopFinding } from "@/lib/memorial/viewer/viewer-caption-measure";
+
+export type { ViewerStopFinding };
 
 /**
  * A13 Viewer Desktop V2 — RENDERED checks and geometry snapshot (browser).
@@ -12,8 +15,10 @@ import type { ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
  * byte-identical (THEME_GEOMETRY_PARITY_STOP otherwise).
  *
  * `viewerDomStops` turns the Handoff stop conditions into rendered checks:
- * crop, distortion, viewport fit, caption overflow, close accessibility,
- * photo processing, reduced motion.
+ * crop, distortion, viewport fit, caption (`viewerCaptionStops`: overflow,
+ * line count, measurement divergence, font gate —
+ * `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`), close accessibility, photo
+ * processing, reduced motion.
  */
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -38,7 +43,6 @@ export interface ViewerParts {
   paper: SVGSVGElement;
   photo: HTMLImageElement;
   caption: HTMLElement | null;
-  lines: HTMLElement[];
   close: HTMLButtonElement;
 }
 
@@ -51,7 +55,6 @@ export function viewerParts(root: HTMLElement): ViewerParts {
     paper: q<SVGSVGElement>("[data-viewer-paper]")!,
     photo: q<HTMLImageElement>("[data-viewer-photo]")!,
     caption: q<HTMLElement>("[data-viewer-caption]"),
-    lines: [...root.querySelectorAll<HTMLElement>("[data-viewer-caption-line]")],
     close: q<HTMLButtonElement>("[data-viewer-close]")!,
   };
 }
@@ -79,7 +82,9 @@ export function viewerDomSnapshot(root: HTMLElement, motion: MotionRecord) {
     caption: p.caption
       ? {
           box: box(p.caption.getBoundingClientRect()),
-          lines: p.lines.map((l) => ({ text: l.textContent, box: box(l.getBoundingClientRect()), ink: textBox(l), font: pick(l, FONT_PROPS) })),
+          ink: textBox(p.caption),
+          font: pick(p.caption, FONT_PROPS),
+          lines: (readViewerCaptionLines(p.caption) ?? []).map((l) => ({ text: l.text, box: [l.x, l.y, l.width, l.height].map(r3) })),
         }
       : null,
     close: {
@@ -93,11 +98,6 @@ export function viewerDomSnapshot(root: HTMLElement, motion: MotionRecord) {
     },
     motion,
   };
-}
-
-export interface ViewerStopFinding {
-  stop: string;
-  detail: string;
 }
 
 /** Rendered stop checks of an open, settled Viewer. */
@@ -148,29 +148,8 @@ export function viewerDomStops(root: HTMLElement, g: ViewerGeometry, reduced: bo
   if (!inside(pr, 0, 0, vw, vh)) out.push({ stop: "VIEWER_VIEWPORT_FIT_STOP", detail: "photo outside viewport" });
   if (document.documentElement.scrollWidth > vw + 1) out.push({ stop: "VIEWER_VIEWPORT_FIT_STOP", detail: "horizontal scroll" });
 
-  // Caption: complete, no clip, no ellipsis, no shrink, ≤ 2 lines, in the band.
-  if (g.caption) {
-    const exp = g.caption;
-    if (p.lines.length !== exp.lines.length || p.lines.length > 2) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `${p.lines.length} lines` });
-    for (const el of [p.caption, ...p.lines].filter(Boolean) as HTMLElement[]) {
-      const cs = getComputedStyle(el);
-      if (cs.overflow !== "visible" || cs.textOverflow === "ellipsis" || cs.clipPath !== "none") out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `overflow ${cs.overflow} / text-overflow ${cs.textOverflow} / clip ${cs.clipPath}` });
-    }
-    const band = { top: paper.top + (g.topEdge + g.photo.h) * (paper.height / g.paper.h), bottom: paper.bottom };
-    p.lines.forEach((el, i) => {
-      const cs = getComputedStyle(el);
-      if (Math.abs(parseFloat(cs.fontSize) - exp.fontSize) > 0.01) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `line ${i} font ${cs.fontSize} ≠ ${exp.fontSize}px` });
-      const ink = (() => {
-        const r = document.createRange();
-        r.selectNodeContents(el);
-        return r.getBoundingClientRect();
-      })();
-      if (ink.width > exp.usableWidth + 1) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `line ${i} ${ink.width.toFixed(1)} > usable ${exp.usableWidth.toFixed(1)}` });
-      if (el.scrollWidth > el.clientWidth + 1) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `line ${i} scrollWidth ${el.scrollWidth} > ${el.clientWidth}` });
-      if (ink.left < paper.left - tol || ink.right > paper.right + tol || ink.top < band.top - tol || ink.bottom > band.bottom + tol) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `line ${i} outside the band` });
-      if (el.textContent !== exp.lines[i]?.text) out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `line ${i} text "${el.textContent}"` });
-    });
-  }
+  // Caption: A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1 rendered checks.
+  out.push(...viewerCaptionStops(root, g));
 
   // Close: native button, named, ≥ 48×48, in the viewport, hit-testable.
   const cr = p.close.getBoundingClientRect();
@@ -187,5 +166,41 @@ export function viewerDomStops(root: HTMLElement, g: ViewerGeometry, reduced: bo
       out.push({ stop: "VIEWER_REDUCED_MOTION_STOP", detail: `transform ${tf}, ${anims.length} animation(s)` });
   } else if (tf !== "none" && tf !== "matrix(1, 0, 0, 1, 0, 0)") out.push({ stop: "VIEWER_VIEWPORT_FIT_STOP", detail: `settled transform ${tf}` });
 
+  return out;
+}
+
+/**
+ * The caption's rendered checks (`A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`):
+ * the visible lines (`Range.getClientRects()`) against the paper's caption
+ * safe rect — the photo column minus the caption inset, from the photo's
+ * bottom to the paper's bottom, read from the photo and the print, never
+ * from the caption itself — and against the offscreen measurement carried
+ * by the geometry; plus the font gate and visible truncation styles.
+ */
+export function viewerCaptionStops(root: HTMLElement, g: ViewerGeometry): ViewerStopFinding[] {
+  const out: ViewerStopFinding[] = [];
+  const p = viewerParts(root);
+  if (g.flags.captionFontReady === false) out.push({ stop: "VIEWER_CAPTION_FONT_NOT_READY_STOP", detail: "caption face not confirmed loaded before measurement" });
+  if (!g.caption || !p.caption) return out;
+  const cs = getComputedStyle(p.caption);
+  if (cs.overflow !== "visible" || cs.textOverflow === "ellipsis" || cs.clipPath !== "none")
+    out.push({ stop: "VIEWER_CAPTION_OVERFLOW_STOP", detail: `overflow ${cs.overflow} / text-overflow ${cs.textOverflow} / clip ${cs.clipPath}` });
+  const rendered = readViewerCaptionLines(p.caption) ?? [];
+  const cap = p.caption.getBoundingClientRect();
+  const photo = p.photo.getBoundingClientRect();
+  const print = p.print.getBoundingClientRect();
+  const inset = (g.photoLocal.w - g.caption.usableWidth) / 2;
+  const safe = { left: photo.left + inset, right: photo.right - inset, top: photo.bottom, bottom: print.bottom };
+  const findings = viewerCaptionFindings({
+    caption: g.caption.text,
+    text: p.caption.textContent ?? "",
+    rendered,
+    measured: g.caption.lines,
+    box: { left: cap.left, top: cap.top },
+    safe,
+    font: { measured: g.caption.fontSize, rendered: parseFloat(cs.fontSize) },
+    fontReady: null,
+  });
+  out.push(...findings);
   return out;
 }

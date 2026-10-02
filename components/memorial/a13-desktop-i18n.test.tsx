@@ -35,6 +35,19 @@ const MASK = maskFromRects([
 const FONT = { measurer: fake, fontFamily: "La Belle Aurore", fontCheck: true, faces: [] };
 vi.mock("@/lib/memorial/gallery/use-caption-measurer", () => ({ useCaptionMeasurer: () => FONT }));
 vi.mock("@/lib/memorial/gallery/caption-measurer", () => ({ createCaptionMeasurer: async () => FONT }));
+// The Viewer's shared caption primitive needs layout (jsdom has none): one line per caption, 11.5 px per character at 27 px.
+vi.mock("@/lib/memorial/viewer/viewer-caption-measure", async (orig) => {
+  const gate = { ready: true, family: "La Belle Aurore", style: "normal", weight: "400", spec: "", faces: [] };
+  return {
+    ...(await orig<typeof import("@/lib/memorial/viewer/viewer-caption-measure")>()),
+    awaitViewerCaptionFont: async () => gate,
+    viewerCaptionFontStatus: () => gate,
+    createViewerCaptionMeasure: () => ({
+      element: document.createElement("div"),
+      wrap: (text: string, fs: number, lh: number, width: number) => ({ lines: [{ text, start: 0, end: text.length, x: 0, y: 0, width: Math.min(width, ([...text].length * 11.5 * fs) / 27), height: lh }] }),
+    }),
+  };
+});
 vi.mock("@/lib/memorial/gallery/title-glyph-mask", async (orig) => ({
   ...(await orig<typeof import("@/lib/memorial/gallery/title-glyph-mask")>()),
   measureTitleGlyphMask: async () => ({ mask: MASK, heading: R.headingInkReference, microcopy: R.microcopyInkReference, fontsChecked: true, deviationPx: { heading: 0, microcopy: 0 } }),
@@ -172,7 +185,7 @@ describe("D5 — Viewer speaks the active language", () => {
       const { dialog, close, v } = await openViewer(prints[4]);
       expect(dialog.getAttribute("aria-label")).toBe(EXPECTED[l].dialog(media[4].caption!));
       expect(close.getAttribute("aria-label")).toBe(EXPECTED[l].close);
-      expect([...v.querySelectorAll("[data-viewer-caption-line]")].map((x) => x.textContent).join(" ")).toBe(media[4].caption);
+      expect(v.querySelector("[data-viewer-caption]")!.textContent).toBe(media[4].caption);
       expect(v.querySelector("[data-viewer-photo]")!.getAttribute("alt")).toBe(media[4].alt);
     });
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
+import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
 vi.mock("next/font/google", () => ({
   Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
@@ -11,13 +11,26 @@ vi.mock("next/font/google", () => ({
   EB_Garamond: () => ({ variable: "v-eb", className: "" }),
 }));
 
-const fake: CaptionMeasurer = {
-  measure: (t) => ({ width: [...t].length * 11.5, actualBoundingBoxLeft: 0, actualBoundingBoxRight: [...t].length * 11.5, actualBoundingBoxAscent: 20, actualBoundingBoxDescent: 8 }),
-  fontAscent: 30,
-  fontDescent: 12,
+/** jsdom has no layout: the shared primitive is stood in for (11.5 px per character at 27 px, balanced break). */
+const wrapCalls: [string, number, number, number][] = [];
+const fakeWrap: ViewerCaptionWrapFn = (text, fs, lh, width) => {
+  wrapCalls.push([text, fs, lh, width]);
+  const w = (t: string) => ([...t].length * 11.5 * fs) / 27;
+  const mk = (t: string, start: number, i: number) => ({ text: t, start, end: start + t.length, x: (width - w(t)) / 2, y: i * lh, width: w(t), height: lh });
+  if (w(text) <= width) return { lines: [mk(text, 0, 0)] };
+  const words = text.split(" ");
+  const longest = (i: number) => Math.max(w(words.slice(0, i).join(" ")), w(words.slice(i).join(" ")));
+  let best = 1;
+  for (let i = 2; i < words.length; i++) if (longest(i) < longest(best)) best = i;
+  const a = words.slice(0, best).join(" ");
+  return { lines: [mk(a, 0, 0), mk(words.slice(best).join(" "), a.length + 1, 1)] };
 };
-vi.mock("@/lib/memorial/gallery/caption-measurer", () => ({
-  createCaptionMeasurer: async () => ({ measurer: fake, fontFamily: "La Belle Aurore", fontCheck: true, faces: [] }),
+const gate = { ready: true, family: "La Belle Aurore", style: "normal", weight: "400", spec: "", faces: [] };
+vi.mock("@/lib/memorial/viewer/viewer-caption-measure", async (orig) => ({
+  ...(await orig<typeof import("@/lib/memorial/viewer/viewer-caption-measure")>()),
+  awaitViewerCaptionFont: async () => gate,
+  viewerCaptionFontStatus: () => gate,
+  createViewerCaptionMeasure: () => ({ wrap: fakeWrap, element: document.createElement("div") }),
 }));
 
 const { MemoryViewer } = await import("./MemoryViewer");
@@ -84,8 +97,29 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     expect(parseFloat(photo.style.width) / parseFloat(photo.style.height)).toBeCloseTo(1080 / 1920, 6);
     expect(photo.alt).toBe("Photo de test 1");
     expect(photo.style.filter).toBe("");
-    expect(root.querySelectorAll("[data-viewer-caption-line]")).toHaveLength(2);
-    expect([...root.querySelectorAll("[data-viewer-caption-line]")].map((l) => l.textContent).join(" ")).toBe(media.caption);
+    // one caption text node, the browser's two lines, at the measured (displayed) size and width
+    const cap = root.querySelector<HTMLElement>("[data-viewer-caption]")!;
+    expect(cap.childNodes).toHaveLength(1);
+    expect(cap.textContent).toBe(media.caption);
+    expect(cap.dataset.viewerCaptionLines).toBe("2");
+    const [, fs, lh, width] = wrapCalls.at(-1)!;
+    expect(cap.style.fontSize).toBe(`${fs}px`);
+    expect(cap.style.lineHeight).toBe(`${lh}px`);
+    expect(parseFloat(cap.style.width)).toBeCloseTo(width, 6);
+  });
+
+  it("Caption Measurement V1: the same primitive measures at the displayed size — 27 px at 1670, 20 px on a 375 phone", async () => {
+    wrapCalls.length = 0;
+    await open("light");
+    expect(new Set(wrapCalls.map((c) => c[1]))).toEqual(new Set([27]));
+    cleanup();
+    document.body.innerHTML = "";
+    Object.defineProperty(document.documentElement, "clientWidth", { value: 375, configurable: true });
+    Object.defineProperty(document.documentElement, "clientHeight", { value: 812, configurable: true });
+    wrapCalls.length = 0;
+    const { root } = await open("light");
+    expect(new Set(wrapCalls.map((c) => c[1]))).toEqual(new Set([20]));
+    expect(root.querySelector<HTMLElement>("[data-viewer-caption]")!.style.fontSize).toBe("20px");
   });
 
   it("Tab stays on the close button; Escape closes, restores scroll, background and the trigger focus", async () => {
