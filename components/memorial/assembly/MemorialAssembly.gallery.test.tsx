@@ -53,6 +53,15 @@ const { FIXTURE_READ_URL, fullAnnouncement, recordingResolver } = await import("
 
 const id = (n: number) => `${String(n).padStart(8, "0")}-0000-4000-8000-00000000000${n % 10}`;
 
+// jsdom has no layout: the Gallery section measures its own width (A13 Responsive Bridge V1) — a Desktop Preview here.
+const nativeRect = HTMLElement.prototype.getBoundingClientRect;
+HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+  const r = nativeRect.call(this);
+  if (!this.matches("[data-memorial-gallery]")) return r;
+  const box = { x: r.x, y: r.y, left: r.left, top: r.top, width: 1670, height: r.height, right: r.left + 1670, bottom: r.bottom };
+  return { ...box, toJSON: () => box } as DOMRect;
+};
+
 beforeEach(() => {
   Object.defineProperty(document.documentElement, "clientWidth", { value: 1670, configurable: true });
   Object.defineProperty(document.documentElement, "clientHeight", { value: 941, configurable: true });

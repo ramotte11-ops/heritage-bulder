@@ -53,6 +53,14 @@ import styles from "./A13MobileGalleryScene.module.css";
  *   `DynamicPolaroid` Dark material. Every geometry style is computed by
  *   the same code for both themes; Light (default) renders exactly as
  *   before.
+ * - Responsive Bridge V1 (Tablet vertical, 431–1023): the runtime is
+ *   resolved at its 430 frame (`stageWidth` 430) and this stage is the
+ *   real container width W. Source-px lengths already follow W (`--k`);
+ *   the lengths attached in CSS px — title block, separator, title and
+ *   subtitle type, CTA type, the continuation seam — are the 430 values
+ *   × `remap` (W / 430: inline here; in the sheet, the Tablet rules keyed
+ *   on `data-a13-remap`). `remap` 1 (default, Mobile CLOSED) renders
+ *   exactly as before.
  */
 
 export interface A13MobileSceneEntry {
@@ -105,6 +113,11 @@ export type A13MobileGallerySceneProps = {
   qa?: A13MobileSceneQa | null;
   /** Material theme (default Light). Never an input of the geometry. */
   theme?: A13Theme;
+  /**
+   * Responsive Bridge V1: CSS px of this stage per CSS px of the `stageWidth`
+   * frame (Tablet: W / 430). Default 1 — Mobile CLOSED, unchanged.
+   */
+  remap?: number;
 } & Activation;
 
 const k = (v: number) => `calc(${v} * var(--k))`;
@@ -113,14 +126,14 @@ const pts = (p: Pts) => p.map((q) => `${q.x},${q.y}`).join(" ");
 
 type SeparatorArt = typeof A13_MOBILE_SEPARATOR_ART | typeof A13_MOBILE_DARK_SEPARATOR_ART;
 
-/** Runtime separator: two short rules + the shared leaf sprig (contract parts, CSS px). */
-function Separator({ width, height, art }: { width: number; height: number; art: SeparatorArt }) {
+/** Runtime separator: two short rules + the shared leaf sprig (contract parts, CSS px of the `stageWidth` frame, drawn × `remap`). */
+function Separator({ width, height, art, remap }: { width: number; height: number; art: SeparatorArt; remap: number }) {
   const p = A13_MOBILE_TITLE_BLOCK.separator.partsPercent;
   const t = A13_MOBILE_TITLE_BLOCK.separator.ruleThicknessCss;
   const rule = Math.round((height - t) / 2);
   const x = (pc: number) => (pc * width) / 100;
   return (
-    <svg className={styles.separator} width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" data-a13-separator="" focusable="false">
+    <svg className={styles.separator} width={width * remap} height={height * remap} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" data-a13-separator="" focusable="false">
       <rect x={0} y={rule} width={x(p.leftRule)} height={t} fill={art.ruleColor} />
       <svg
         x={x(p.leftRule + p.leftGap)}
@@ -149,16 +162,19 @@ export function A13MobileGalleryScene({
   captionFontSizePx,
   qa = null,
   theme = "light",
+  remap = 1,
   onActivate,
   language,
 }: A13MobileGallerySceneProps) {
   const dark = theme === "dark";
   const tb = A13_MOBILE_TITLE_BLOCK;
-  const v = (t: Parameters<typeof resolveByViewport>[0]) => resolveByViewport(t, stageWidth);
+  /** A per-viewport CSS-px token of the `stageWidth` frame, on this stage. */
+  const v = (t: Parameters<typeof resolveByViewport>[0]) => resolveByViewport(t, stageWidth) * remap;
   const extension = Math.round((stageHeight - A13_MOBILE_BACKGROUND.height) * 1e6) / 1e6;
-  const titleBlock: CSSProperties = { top: `${tb.topCss}px`, width: `${v(tb.protectedBlockWidthCss)}px`, height: `${v(tb.protectedBlockBottomCss)}px`, zIndex: A13_MOBILE_LAYER_Z.runtimeTitle };
+  const titleBlock: CSSProperties = { top: `${tb.topCss * remap}px`, width: `${v(tb.protectedBlockWidthCss)}px`, height: `${v(tb.protectedBlockBottomCss)}px`, zIndex: A13_MOBILE_LAYER_Z.runtimeTitle };
+  const bridged = remap !== 1 ? { style: { "--a13-remap": remap } as CSSProperties, "data-a13-remap": remap } : {};
   return (
-    <div className={`${styles.stage} ${laBelleAurore.variable}`} data-testid="a13-mobile-scene" data-state={stateId} data-profile="mobile" {...(dark ? { "data-a13-theme": "dark" } : {})}>
+    <div className={`${styles.stage} ${laBelleAurore.variable}`} data-testid="a13-mobile-scene" data-state={stateId} data-profile="mobile" {...(dark ? { "data-a13-theme": "dark" } : {})} {...bridged}>
       <div className={styles.canvas} style={{ aspectRatio: `${A13_MOBILE_CANVAS.width} / ${stageHeight}` }} data-a13-mobile-canvas="" data-stage-height={stageHeight}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -202,7 +218,7 @@ export function A13MobileGalleryScene({
           ))}
         </div>
         <header className={styles.titleBlock} style={titleBlock} data-testid="title-block">
-          <Separator width={v(tb.separator.widthCss)} height={v(tb.separator.heightCss)} art={dark ? A13_MOBILE_DARK_SEPARATOR_ART : A13_MOBILE_SEPARATOR_ART} />
+          <Separator width={resolveByViewport(tb.separator.widthCss, stageWidth)} height={resolveByViewport(tb.separator.heightCss, stageWidth)} remap={remap} art={dark ? A13_MOBILE_DARK_SEPARATOR_ART : A13_MOBILE_SEPARATOR_ART} />
           <h2
             className={`${styles.title} ${ebGaramond.className}`}
             style={{ marginTop: `${v(tb.separatorToTitleGapCss)}px`, fontSize: `${v(tb.title.fontSizeCss)}px`, maxWidth: `${v(tb.title.maxWidthCss)}px` }}

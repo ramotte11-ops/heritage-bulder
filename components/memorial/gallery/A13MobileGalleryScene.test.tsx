@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { A13_MOBILE_BACKGROUND, A13_MOBILE_BOTTOM_CONTINUATION, A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, A13_MOBILE_SEPARATOR_ART, A13_MOBILE_STATE_SLOTS } from "@/config/gallery-a13-mobile-manifest";
@@ -272,3 +274,75 @@ describe("A13 Mobile Gallery Dark — the same scene, Dark materials only", () =
   });
 });
 
+
+describe("A13 Responsive Bridge V1 — Tablet remap of the Mobile scene", () => {
+  const css = readFileSync(resolve(process.cwd(), "components/memorial/gallery/A13MobileGalleryScene.module.css"), "utf8");
+  const propsFor = (n: number) => {
+    const { run, entries } = sceneFor(n);
+    return {
+      entries,
+      title: "Souvenirs de famille",
+      subtitle: "Les instants partagés",
+      stageWidth: 390,
+      stageHeight: run.stageHeight,
+      translateY: run.translateY,
+      captionFontSizePx: run.metrics.captionFontPx,
+      stateId: run.stateId!,
+      cta: run.cta ? { label: "Voir plus de souvenirs", lang: "fr" as const, box: run.cta.box } : null,
+    };
+  };
+
+  it("remap 1 (default, Mobile CLOSED) renders byte for byte as before: no --a13-remap, no data-a13-remap", () => {
+    for (const n of [2, 4, 6, 7]) {
+      const props = propsFor(n);
+      const a = render(<A13MobileGalleryScene {...props} />);
+      const html = a.getByTestId("a13-mobile-scene").outerHTML;
+      a.unmount();
+      const b = render(<A13MobileGalleryScene {...props} remap={1} />);
+      expect(b.getByTestId("a13-mobile-scene").outerHTML).toBe(html);
+      expect(html).not.toContain("a13-remap");
+      b.unmount();
+    }
+  });
+
+  it("Tablet: every source-px box is unchanged (it follows the W stage through --k); the CSS-px lengths are × remap; Light and Dark share it", () => {
+    const props = propsFor(7);
+    const r = 768 / 430;
+    const m = render(<A13MobileGalleryScene {...props} />);
+    const mStage = m.getByTestId("a13-mobile-scene");
+    const mPrints = mStage.querySelector("[data-testid=print-group]")!.outerHTML;
+    const mCta = mStage.querySelector<HTMLElement>("[data-testid=cta-7plus]")!.getAttribute("style");
+    const mTitle = mStage.querySelector<HTMLElement>("[data-testid=title-block]")!;
+    const mt = [mTitle.style.top, mTitle.style.width, mTitle.style.height].map(parseFloat);
+    m.unmount();
+    for (const theme of ["light", "dark"] as const) {
+      const t = render(<A13MobileGalleryScene {...props} remap={r} theme={theme} />);
+      const stage = t.getByTestId("a13-mobile-scene");
+      expect(stage.style.getPropertyValue("--a13-remap")).toBe(String(r));
+      if (theme === "light") expect(stage.querySelector("[data-testid=print-group]")!.outerHTML).toBe(mPrints);
+      expect(stage.querySelector<HTMLElement>("[data-testid=cta-7plus]")!.getAttribute("style")).toBe(mCta);
+      const title = stage.querySelector<HTMLElement>("[data-testid=title-block]")!;
+      [title.style.top, title.style.width, title.style.height].map(parseFloat).forEach((v, i) => expect(v).toBeCloseTo(mt[i] * r, 9));
+      t.unmount();
+    }
+    const light = render(<A13MobileGalleryScene {...props} remap={r} />);
+    const lightDom = geometryDom(light.getByTestId("a13-mobile-scene"));
+    light.unmount();
+    const dark = render(<A13MobileGalleryScene {...props} remap={r} theme="dark" />);
+    expect(geometryDom(dark.getByTestId("a13-mobile-scene"))).toBe(lightDom);
+    dark.unmount();
+  });
+
+  it("the sheet: Mobile CLOSED rules untouched; Tablet rules keyed on data-a13-remap remap every CSS-px length of the scene, except the 44 px floor and the focus ring", () => {
+    const [closed, bridge] = css.split("A13 Responsive Bridge V1");
+    expect(closed).not.toContain("a13-remap");
+    const rule = (sel: string) => bridge.match(new RegExp(`${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1].trim().split(/;\s*/).filter(Boolean) ?? [];
+    expect(rule(".stage[data-a13-remap] .subtitle")).toEqual(["max-width: calc(285px * var(--a13-remap))", "font-size: calc(13px * var(--a13-remap))", "line-height: calc(16px * var(--a13-remap))"]);
+    expect(rule(".stage[data-a13-remap] .cta")).toEqual(["font-size: clamp(calc(16px * var(--a13-remap)), 4.6cqw, calc(20px * var(--a13-remap)))"]);
+    expect(rule(".stage[data-a13-remap] .extension::after")).toEqual(["top: calc(-20px * var(--a13-remap))", "height: calc(20px * var(--a13-remap))"]);
+    // Every CSS-px length of the CLOSED scene rules (comments, QA overlay and Dark aside) is remapped above, or is the floor / the focus ring.
+    const rules = closed.split("/* QA overlay")[0].replace(/\/\*[\s\S]*?\*\//g, "");
+    const declarations = rules.split(/[;{}]/).filter((d) => /\dpx/.test(d)).map((d) => d.trim());
+    expect(declarations).toEqual(["top: -20px", "height: 20px", "max-width: 285px", "font-size: 13px", "line-height: 16px", "font-size: clamp(16px, 4.6cqw, 20px)", "height: max(100%, 44px)", "outline: 2px solid currentColor", "outline-offset: 4px"]);
+  });
+});

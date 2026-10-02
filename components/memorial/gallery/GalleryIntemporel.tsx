@@ -1,37 +1,64 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
+import { selectA13ResponsiveFamily, type A13ResponsiveSelection } from "@/config/a13-responsive-bridge";
 import { translate } from "@/lib/i18n/translate";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import { A13DesktopGallery } from "@/components/memorial/gallery/A13DesktopGallery";
+import { A13MobileGallery } from "@/components/memorial/gallery/A13MobileGallery";
 import { A13DesktopFullAlbum } from "@/components/memorial/album/A13DesktopFullAlbum";
+import { A13MobileFullAlbum } from "@/components/memorial/album/A13MobileFullAlbum";
+import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
 import styles from "./GalleryIntemporel.module.css";
 
 /**
  * Dettes D2–D4 — the Memorial's Gallery section (renderer key
- * `GalleryIntemporel`): the product host of the VALIDATED A13 Desktop
- * runtime, mounted by `MemorialAssembly` like every other section.
+ * `GalleryIntemporel`): the product host of the VALIDATED A13 runtimes
+ * (Desktop, Mobile, and the Responsive Bridge V1 families), mounted by
+ * `MemorialAssembly` like every other section.
  *
  * It composes the existing A13 components and adds only what a product
- * host must own — nothing of the engine, the geometry, the materials or
+ * host must own — nothing of the engines, the geometry, the materials or
  * the Viewer is touched:
  *
- *  - Gallery: `A13DesktopGallery` (0–1 → no Gallery, 2…5 → G2…G5, 6 → G6
- *    exact, 7+ → Signature + CTA — the runtime's own rules; every print
- *    opens the shared Viewer);
- *  - Full Album (7+ only, through the CTA): `A13DesktopFullAlbum`, every
- *    usable photograph in the family's order, each opening the Viewer;
+ *  - Gallery (0–1 → no Gallery, 2…5 → G2…G5, 6 → G6 exact, 7+ → Signature
+ *    + CTA — each runtime's own rules; every print opens the shared
+ *    Viewer, in the memorial's theme);
+ *  - Full Album (7+ only, through the CTA): every usable photograph in the
+ *    family's order, each opening the Viewer;
  *  - the Gallery ↔ Album switch, as LOCAL STATE (QG D3): the Builder
  *    Preview has no URL of its own, so no route, no `router.push`, no
  *    history entry. The CTA is therefore the scene's existing `<button>`.
  *
+ * ## Responsive family (A13 Responsive Bridge V1)
+ *
+ * The section's own width W (the A13 container, measured before paint and
+ * on every resize) selects ONE family (`selectA13ResponsiveFamily`):
+ *  - 375–430 Mobile CLOSED and 431–1023 Tablet vertical →
+ *    `A13MobileGallery` / `A13MobileFullAlbum` (`responsive`: the Tablet
+ *    is the 430 authority remapped to W); the Mobile Gallery reports its
+ *    activations, so this host opens the Viewer for it, exactly as the
+ *    Desktop Gallery does for itself;
+ *  - 1024–1199 Horizontal intermediate and ≥ 1200 Desktop CLOSED →
+ *    `A13DesktopGallery` / `A13DesktopFullAlbum` (their uniform 1670
+ *    canvas IS the 1200 authority × W / 1200 in 1024–1199);
+ *  - below 375: out of the V1 contract — `STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE`
+ *    is exposed (`data-a13-responsive-stop`) and logged once, and NO
+ *    Gallery is rendered (the D7 fail-closed policy; no A13 behaviour is
+ *    invented there).
+ * Crossing 1023 / 1024 swaps the family atomically (never an
+ * interpolation); the view (Gallery or Album) and the theme are kept.
+ *
  * ## Focus and scroll (QG D3) — the Preview host's own convention
  *
- * The Gallery is HIDDEN, never unmounted, while the Album is open (the
- * way `BuilderPreviewHost` keeps the Builder mounted): its composition,
- * its measured fonts and its CTA are exactly as they were on return.
+ * The Gallery is PARKED, never unmounted, while the Album is open (the
+ * way `BuilderPreviewHost` keeps the Builder mounted): no height,
+ * invisible — so out of the focus order and the accessibility tree — but
+ * still laid out at the section's width, so its composition, its measured
+ * fonts and its CTA are exactly as they were on return (a Mobile-derived
+ * Gallery measures its own width; `hidden` would collapse it to 0).
  *  - opening: the window scroll position is kept, the Album is brought to
  *    the top of the viewport — below any sticky host chrome, such as the
  *    Preview's own bar — and focus moves to its "Retour" control
@@ -57,6 +84,9 @@ export interface GalleryIntemporelProps {
 
 type View = "gallery" | "album";
 
+/** Families painted by the Desktop sections (Desktop CLOSED and the 1200-derived Horizontal). */
+const desktopDerived = (s: A13ResponsiveSelection | null) => s?.family === "desktop" || s?.family === "horizontal";
+
 /**
  * The host page may keep chrome pinned over the top of the viewport (the
  * Builder Preview's sticky "Revenir à la création" bar). If such a sticky
@@ -80,10 +110,38 @@ function uncoverFromStickyChrome(target: HTMLElement): void {
 
 export function GalleryIntemporel({ media, theme, title, subtitle, language }: GalleryIntemporelProps) {
   const [view, setView] = useState<View>("gallery");
+  const [width, setWidth] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
   const galleryScrollY = useRef(0);
   const previousView = useRef<View>("gallery");
+  // The Viewer of the Mobile-derived Gallery (the Desktop Gallery and both Albums own theirs).
+  const viewer = useMemoryViewer();
+
+  // The A13 container's width, before the first paint and on every resize.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const read = () => setWidth(el.getBoundingClientRect().width);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const selection = width === null ? null : selectA13ResponsiveFamily(width);
+  const stop = selection?.family === null ? selection.stop : null;
+
+  // Below 375 px: the contract's own STOP, exposed and logged once per entry — never silent, never a substitute.
+  const stopLogged = useRef(false);
+  useEffect(() => {
+    if (!stop) {
+      stopLogged.current = false;
+      return;
+    }
+    if (stopLogged.current) return;
+    stopLogged.current = true;
+    console.error("Gallery: width outside the A13 responsive contract (no Gallery rendered):", stop, width);
+  }, [stop, width]);
 
   const openAlbum = useCallback(() => {
     galleryScrollY.current = window.scrollY;
@@ -98,33 +156,78 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
     const root = rootRef.current;
     if (!root || previous === view) return;
     if (view === "album") {
-      window.scrollTo({ left: 0, top: root.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+      const top = root.getBoundingClientRect().top + window.scrollY;
       const back = backRef.current;
-      if (back) {
-        uncoverFromStickyChrome(back);
-        back.focus({ preventScroll: true });
-      }
+      const reveal = () => {
+        window.scrollTo({ left: 0, top, behavior: "instant" });
+        if (back) uncoverFromStickyChrome(back);
+      };
+      reveal();
+      back?.focus({ preventScroll: true });
+      // A Mobile-derived Album lays itself out once it has measured its own width: until then the page
+      // can end right below "Retour" and the browser clamps the scroll. Bring the Album up again as it
+      // grows — unless the visitor has scrolled in the meantime.
+      const album = root.querySelector<HTMLElement>("[data-memorial-gallery-album]");
+      const clamped = () => window.scrollY >= document.documentElement.scrollHeight - window.innerHeight - 1;
+      if (!album || !clamped()) return;
+      let landed = window.scrollY;
+      const ro = new ResizeObserver(() => {
+        if (Math.abs(window.scrollY - landed) > 1) return ro.disconnect();
+        reveal();
+        landed = window.scrollY;
+        if (!clamped()) ro.disconnect();
+      });
+      ro.observe(album);
+      return () => ro.disconnect();
     } else {
       window.scrollTo({ left: 0, top: galleryScrollY.current, behavior: "instant" });
       root.querySelector<HTMLElement>("[data-testid=cta-7plus]")?.focus({ preventScroll: true });
     }
   }, [view]);
 
+  // Same request as the Desktop Gallery's own: the media, its natural size and caption, the memorial's theme, origin Gallery.
+  const openViewer = viewer.open;
+  const openMemory = useCallback(
+    (mediaIndex: number) => {
+      const m = media[mediaIndex];
+      if (m) openViewer({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "gallery", language);
+    },
+    [media, openViewer, theme, language],
+  );
+
+  const family = selection?.family ?? null;
+  const desktop = desktopDerived(selection);
   return (
-    <div ref={rootRef} data-memorial-gallery="" data-gallery-view={view}>
-      <div hidden={view === "album"}>
-        <A13DesktopGallery media={media} theme={theme} title={title} subtitle={subtitle} language={language} onSeeMore={openAlbum} />
-      </div>
-      {view === "album" ? (
-        <div data-memorial-gallery-album="">
-          <div className={styles.albumBar}>
-            <button ref={backRef} type="button" className={styles.back} onClick={closeAlbum}>
-              {translate(language, "common.back")}
-            </button>
+    <div
+      ref={rootRef}
+      data-memorial-gallery=""
+      data-gallery-view={view}
+      data-a13-family={width === null ? "pending" : (family ?? "none")}
+      {...(selection && selection.family !== null ? { "data-a13-source-width": selection.sourceWidth, "data-a13-scale": selection.scale } : {})}
+      {...(stop ? { "data-a13-responsive-stop": stop } : {})}
+    >
+      {family !== null ? (
+        <>
+          <div className={view === "album" ? styles.parked : undefined} data-memorial-gallery-scene={view === "album" ? "parked" : "shown"}>
+            {desktop ? (
+              <A13DesktopGallery key="desktop" media={media} theme={theme} title={title} subtitle={subtitle} language={language} onSeeMore={openAlbum} />
+            ) : (
+              <A13MobileGallery key="mobile" responsive media={media} theme={theme} title={title} subtitle={subtitle} language={language} onSeeMore={openAlbum} onActivateMemory={openMemory} />
+            )}
           </div>
-          <A13DesktopFullAlbum media={media} theme={theme} language={language} />
-        </div>
+          {view === "album" ? (
+            <div data-memorial-gallery-album="">
+              <div className={styles.albumBar}>
+                <button ref={backRef} type="button" className={styles.back} onClick={closeAlbum}>
+                  {translate(language, "common.back")}
+                </button>
+              </div>
+              {desktop ? <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} /> : <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} />}
+            </div>
+          ) : null}
+        </>
       ) : null}
+      {viewer.node}
     </div>
   );
 }

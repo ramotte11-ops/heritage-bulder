@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A13_MOBILE_GROUP_TRANSLATION, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
+import { A13_MOBILE_GROUP_TRANSLATION } from "@/config/gallery-a13-mobile-manifest";
+import { a13MobileAuthorityFrame } from "@/config/a13-responsive-bridge";
 import type { Language } from "@/config/languages";
 import type { A13Theme } from "@/config/gallery-a13-dark-material";
 import { translate } from "@/lib/i18n/translate";
@@ -33,6 +34,12 @@ import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memor
  *   a state, NO Gallery is rendered, the anomaly is logged once
  *   (`console.error`) and exposed (`data-gallery-outcome`, `onRun`);
  *   nothing technical reaches the visitor.
+ * - Responsive Bridge V1 (`responsive`, the product host only): 431–1023 px
+ *   is the Tablet vertical family — the run is the 430 one
+ *   (`runMobileGallery` at stage width 430: same state, slots, solver
+ *   decisions, captions, CTA) painted on the real W-wide stage with
+ *   `remap` W / 430 (`config/a13-responsive-bridge.ts`). Without it, only
+ *   375–430 renders, exactly as before.
  */
 
 export interface A13MobileGalleryProps {
@@ -49,9 +56,11 @@ export interface A13MobileGalleryProps {
   qa?: boolean;
   /** Material theme (default Light): the same run, Dark materials only. */
   theme?: A13Theme;
+  /** Responsive Bridge V1: also render 431–1023 px as the Tablet family (the 430 run, remapped). Default false: 375–430 only. */
+  responsive?: boolean;
 }
 
-export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, onActivateMemory, onRun, qa = false, theme = "light" }: A13MobileGalleryProps) {
+export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, onActivateMemory, onRun, qa = false, theme = "light", responsive = false }: A13MobileGalleryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const [width, setWidth] = useState<number | null>(null);
@@ -65,11 +74,15 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
     return () => ro.disconnect();
   }, []);
 
-  const active = width !== null && a13MobileProfileActive(width);
+  // The Mobile authority's frame: W itself (375–430), or 430 remapped to W (Tablet, bridged hosts only).
+  const frame = width === null ? null : a13MobileAuthorityFrame(width, responsive);
+  const active = frame !== null;
+  const sourceWidth = frame?.sourceWidth ?? null;
+  const remap = frame?.remap ?? 1;
 
   const run = useMemo(
-    () => (active && width !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: width, devicePixelRatio: window.devicePixelRatio || 1 }) : null),
-    [active, width, media, font],
+    () => (sourceWidth !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: sourceWidth, devicePixelRatio: window.devicePixelRatio || 1 }) : null),
+    [sourceWidth, media, font],
   );
 
   const logged = useRef<string | null>(null);
@@ -118,15 +131,16 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
       ref={rootRef}
       style={{ position: "relative", width: "100%" }}
       data-testid="a13-mobile-gallery"
-      data-gallery-profile={width === null ? "pending" : active ? "mobile" : "inactive"}
+      data-gallery-profile={width === null ? "pending" : (frame?.family ?? "inactive")}
+      {...(frame?.family === "tablet" ? { "data-a13-source-width": frame.sourceWidth, "data-a13-remap": frame.remap } : {})}
       data-gallery-state={run?.stateId ?? (run ? "absent" : "pending")}
       data-gallery-outcome={run?.outcome ?? "pending"}
       data-gallery-status={run?.status ?? "pending"}
     >
       <A13CaptionFontProbe />
-      {!run && state && width !== null ? (
+      {!run && state && sourceWidth !== null ? (
         <div style={{ visibility: "hidden" }} aria-hidden="true" inert data-testid="a13-mobile-gallery-pending">
-          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={width} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} theme={theme} />
+          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={sourceWidth} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} theme={theme} remap={remap} />
         </div>
       ) : null}
       {run?.outcome === "resolved" && run.stateId ? (
@@ -147,6 +161,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           }}
           qa={qaLayer}
           theme={theme}
+          remap={remap}
         />
       ) : null}
     </div>

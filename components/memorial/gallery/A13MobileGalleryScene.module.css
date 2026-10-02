@@ -319,3 +319,27 @@
 .stage[data-a13-theme="dark"] .extension::after {
   background: linear-gradient(to bottom, rgb(39 22 10 / 0), #27160a);
 }
+
+/*
+ * A13 Responsive Bridge V1 — Tablet vertical (431–1023 px). The stage is
+ * the real W-wide container and the run is the 430 one: the CSS-px lengths
+ * of the rules above are the 430 values × W / 430 (`--a13-remap`, set
+ * inline with `data-a13-remap` by the scene, only when bridged). Mobile
+ * CLOSED never carries the attribute — the rules above are untouched for
+ * it. The 44 px floor of the CTA and the focus outline are a minimum and an
+ * indicator: never remapped.
+ */
+.stage[data-a13-remap] .subtitle {
+  max-width: calc(285px * var(--a13-remap));
+  font-size: calc(13px * var(--a13-remap));
+  line-height: calc(16px * var(--a13-remap));
+}
+
+.stage[data-a13-remap] .cta {
+  font-size: clamp(calc(16px * var(--a13-remap)), 4.6cqw, calc(20px * var(--a13-remap)));
+}
+
+.stage[data-a13-remap] .extension::after {
+  top: calc(-20px * var(--a13-remap));
+  height: calc(20px * var(--a13-remap));
+}

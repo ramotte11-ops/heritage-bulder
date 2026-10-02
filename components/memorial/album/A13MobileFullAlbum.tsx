@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { a13AlbumMobileActive } from "@/config/album-a13-mobile-light";
+import { a13MobileAuthorityFrame, type A13MobileAuthorityFrame } from "@/config/a13-responsive-bridge";
 import type { Language } from "@/config/languages";
 import type { AlbumTheme } from "@/config/album-a13-dark-material";
 import { layoutAlbumMobile, solveAlbumMobileGeometry, type AlbumMobileLayout } from "@/lib/memorial/album/album-mobile-layout";
@@ -26,6 +27,12 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
  *   exposed (`data-album-status`, `onLayout`) and logged once.
  * - Theme (Full Album Mobile Dark): material only — the same layout, the
  *   Dark table, and the shared Viewer opened in the Album's theme.
+ * - Responsive Bridge V1 (`responsive`, the product host only): 431–1023 px
+ *   is the Tablet vertical family — the Mobile partition, grammars, solved
+ *   groups and captions laid out at the 430 frame (`layoutAlbumMobile` at
+ *   430), painted on the real W-wide table (`--k = W / 1024`), i.e. × W /
+ *   430. The media count never enters the factor. Without it, only 375–430
+ *   renders, exactly as before.
  */
 
 export interface A13MobileFullAlbumProps {
@@ -39,9 +46,11 @@ export interface A13MobileFullAlbumProps {
   qa?: boolean;
   /** Material theme (default Light): the same layout, Dark materials only; the Viewer opens in it. */
   theme?: AlbumTheme;
+  /** Responsive Bridge V1: also render 431–1023 px as the Tablet family (the 430 layout, remapped). Default false: 375–430 only. */
+  responsive?: boolean;
 }
 
-export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light" }: A13MobileFullAlbumProps) {
+export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false }: A13MobileFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -58,8 +67,11 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
 
   const albumMedia = useMemo(() => media.map(({ mediaId, width: w, height: h, caption }) => ({ mediaId, width: w, height: h, caption })), [media]);
   const geometry = useMemo(() => solveAlbumMobileGeometry(albumMedia), [albumMedia]);
-  const active = width !== null && a13AlbumMobileActive(width);
-  const layout = useMemo(() => (active && width !== null ? layoutAlbumMobile(albumMedia, font?.fontCheck ? font.measurer : null, width, geometry) : null), [active, width, albumMedia, font, geometry]);
+  // The Mobile authority's frame: W itself (375–430), or 430 remapped to W (Tablet, bridged hosts only).
+  const frame: A13MobileAuthorityFrame | null = width === null ? null : responsive ? a13MobileAuthorityFrame(width, true) : a13AlbumMobileActive(width) ? { family: "mobile", sourceWidth: width, remap: 1 } : null;
+  const active = frame !== null;
+  const sourceWidth = frame?.sourceWidth ?? null;
+  const layout = useMemo(() => (sourceWidth !== null ? layoutAlbumMobile(albumMedia, font?.fontCheck ? font.measurer : null, sourceWidth, geometry) : null), [sourceWidth, albumMedia, font, geometry]);
 
   const logged = useRef<string | null>(null);
   useEffect(() => {
@@ -75,7 +87,14 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
   }, [layout, onLayout]);
 
   return (
-    <div ref={rootRef} data-testid="a13-mobile-full-album" data-album-count={media.length} data-album-status={layout?.status ?? (active ? "pending" : "inactive")} data-album-captions={font?.fontCheck ? "measured" : "pending"}>
+    <div
+      ref={rootRef}
+      data-testid="a13-mobile-full-album"
+      data-album-count={media.length}
+      data-album-status={layout?.status ?? (active ? "pending" : "inactive")}
+      data-album-captions={font?.fontCheck ? "measured" : "pending"}
+      {...(frame?.family === "tablet" ? { "data-album-family": "tablet", "data-a13-source-width": frame.sourceWidth, "data-a13-remap": frame.remap } : {})}
+    >
       <A13CaptionFontProbe />
       {layout && layout.status === "PASS" ? (
         <AlbumMobileTable
