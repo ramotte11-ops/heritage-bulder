@@ -259,6 +259,46 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     expect(light).toContain("data-viewer-slice");
   });
 
+  it("Mobile Dark: portrait and landscape (widened paper) render the SAME geometry DOM as Light — material only differs", async () => {
+    const inner = { w: window.innerWidth, h: window.innerHeight, matchMedia: window.matchMedia };
+    let landscape = false;
+    window.matchMedia = ((q: string) => ({ matches: q === "(orientation: landscape)" && landscape, media: q })) as unknown as typeof window.matchMedia;
+    const at = (w: number, h: number) => {
+      Object.defineProperty(document.documentElement, "clientWidth", { value: w, configurable: true });
+      Object.defineProperty(document.documentElement, "clientHeight", { value: h, configurable: true });
+      Object.defineProperty(window, "innerWidth", { value: w, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: h, configurable: true });
+      landscape = w > h;
+    };
+    try {
+      for (const [w, h] of [
+        [375, 812],
+        [812, 375],
+      ]) {
+        at(w, h);
+        const light = (await open("light")).root;
+        const lightDom = geometryDom(light);
+        const widened = light.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption ?? null;
+        expect(light.dataset.a13ViewerTheme).toBe("light");
+        cleanup();
+        document.body.innerHTML = "";
+        const dark = (await open("dark")).root;
+        expect(dark.dataset.a13ViewerTheme).toBe("dark");
+        expect(geometryDom(dark), `${w}×${h}`).toBe(lightDom);
+        expect(dark.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption ?? null).toBe(widened);
+        // Landscape: the 9:16 + 32-character caption takes the widened paper in both themes.
+        expect(widened).toBe(w > h ? "widened" : null);
+        cleanup();
+        document.body.innerHTML = "";
+      }
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: inner.w, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: inner.h, configurable: true });
+      if (inner.matchMedia) window.matchMedia = inner.matchMedia;
+      else delete (window as { matchMedia?: unknown }).matchMedia;
+    }
+  });
+
   it("Landscape caption: a phone in landscape widens the paper around the photo, which keeps its viewport position", async () => {
     Object.defineProperty(document.documentElement, "clientWidth", { value: 812, configurable: true });
     Object.defineProperty(document.documentElement, "clientHeight", { value: 375, configurable: true });
