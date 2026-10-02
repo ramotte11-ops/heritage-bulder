@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { laBelleAurore } from "@/components/builder/fonts";
-import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_LANDSCAPE_CAPTION, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { awaitViewerCaptionFont, createViewerCaptionMeasure, viewerCaptionFontStatus, type ViewerCaptionFontGate, type ViewerCaptionMeasure } from "@/lib/memorial/viewer/viewer-caption-measure";
@@ -227,6 +227,25 @@ async function decodeImage(src: string, timeoutMs: number) {
   return img;
 }
 
+/**
+ * The print's rendered left, and the photo's left inside it. A widened
+ * landscape paper (`g.landscapeCaption`) grows by half its widening on each
+ * side of the canonical paper's rendered position, laid on the 1/64 px
+ * layout grid, so that the photo keeps exactly its canonical pixels.
+ */
+const LAYOUT_UNITS_PER_PX = 64;
+function printPlacement(g: ViewerGeometry) {
+  if (!g.landscapeCaption) return { left: Math.round(g.paper.x), photoLeft: g.photoLocal.x };
+  const half = Math.round((g.landscapeCaption.widening / 2) * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
+  return { left: Math.round(g.landscapeCaption.naturalPaper.x) - half, photoLeft: g.edge + half };
+}
+
+/** A phone held in landscape (`A13_VIEWER_LANDSCAPE_CAPTION`): read on every layout, never stored. */
+const viewerLandscapePhone = () =>
+  window.innerWidth > window.innerHeight &&
+  window.matchMedia?.("(orientation: landscape)").matches === true &&
+  window.innerHeight <= A13_VIEWER_LANDSCAPE_CAPTION.phoneShortSideMaxCssPx;
+
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 const canAnimate = (el: Element | null): el is HTMLElement => !!el && typeof (el as HTMLElement).animate === "function";
 
@@ -312,6 +331,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       caption,
       wrap: captionMeasure.current?.wrap ?? null,
       captionFontReady: captionFont.current?.ready ?? null,
+      landscapePhone: viewerLandscapePhone(),
     });
   }, [caption]);
 
@@ -542,6 +562,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
     "--viewer-close-ink": mat.closeInk,
   } as CSSProperties;
   const g = geometry;
+  const placed = g ? printPlacement(g) : null;
   // Product prefix in the active language + the family caption / alt text, untranslated.
   const label = translateWith(language, C.accessibility.dialogLabelKey, { subject: caption ?? media.alt });
 
@@ -564,7 +585,13 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       <div ref={envRef} className={styles.environment} aria-hidden="true" data-viewer-environment="" />
       <div role="dialog" aria-modal="true" aria-label={label} className={styles.dialog}>
         {g ? (
-          <figure ref={printRef} className={styles.print} data-viewer-print="" style={{ left: Math.round(g.paper.x), top: Math.round(g.paper.y), width: g.paper.w, height: g.paper.h }}>
+          <figure
+            ref={printRef}
+            className={styles.print}
+            data-viewer-print=""
+            data-viewer-landscape-caption={g.landscapeCaption ? (g.landscapeCaption.fitStop ? "stop" : "widened") : undefined}
+            style={{ left: placed!.left, top: Math.round(g.paper.y), width: g.paper.w, height: g.paper.h }}
+          >
             <Paper g={g} theme={theme} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -574,7 +601,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
               alt={media.alt}
               width={Math.round(g.photoLocal.w)}
               height={Math.round(g.photoLocal.h)}
-              style={{ left: g.photoLocal.x, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
+              style={{ left: placed!.photoLeft, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
               draggable={false}
               decoding="sync"
             />

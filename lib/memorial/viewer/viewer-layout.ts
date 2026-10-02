@@ -1,4 +1,4 @@
-import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CONTRACT, A13_VIEWER_LANDSCAPE_CAPTION, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
 import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
 /**
@@ -25,7 +25,10 @@ import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-m
  *   clipped or ellipsised. Its lines are those the BROWSER breaks at that
  *   displayed size in that usable width (`ViewerInput.wrap`, the shared
  *   primitive of `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`): no measure
- *   at 27 px scaled down, the same call for every profile.
+ *   at 27 px scaled down, the same call for every profile;
+ * - a phone held in landscape (`ViewerInput.landscapePhone`) widens the
+ *   paper of a portrait or square photo whose caption does not fit it
+ *   (`A13_VIEWER_LANDSCAPE_CAPTION`): symmetric, minimal, photo untouched.
  */
 
 const C = A13_VIEWER_CONTRACT;
@@ -108,6 +111,19 @@ export interface ViewerGeometry {
     viewportFitStop: boolean;
   };
   codes: string[];
+  /**
+   * Landscape caption widening — present only when it applied
+   * (`A13_VIEWER_LANDSCAPE_CAPTION`); absent, the geometry is the canonical one.
+   */
+  landscapeCaption?: {
+    /** The canonical paper (`W0`), before widening. */
+    naturalPaper: Rect;
+    widthMax: number;
+    /** `paper.w − W0`, half on each side. */
+    widening: number;
+    /** No width up to `widthMax` keeps the caption within two lines (kept at `widthMax`). */
+    fitStop: boolean;
+  };
 }
 
 export interface ViewerInput {
@@ -120,6 +136,8 @@ export interface ViewerInput {
   wrap: ViewerCaptionWrapFn | null;
   /** Font gate result (`awaitViewerCaptionFont`): `false` → VIEWER_CAPTION_FONT_NOT_READY_STOP. */
   captionFontReady?: boolean | null;
+  /** A phone held in landscape (`A13_VIEWER_LANDSCAPE_CAPTION.phoneShortSideMaxCssPx`). */
+  landscapePhone?: boolean;
 }
 
 /** Renderer normalisation: whitespace runs → one space, trimmed; empty → null. */
@@ -256,17 +274,68 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   if (viewportFitStop) codes.push("VIEWER_VIEWPORT_FIT_STOP");
 
   const tol = A13_VIEWER_CAPTION_MEASUREMENT.limits.subpixelToleranceCssPx + 1e-6;
-  const captionOverflow = lines.some((l) => l.x < -tol || l.x + l.width > g.usableWidth + tol);
+  const overflows = (ls: ViewerCaptionLine[], width: number) => ls.some((l) => l.x < -tol || l.x + l.width > width + tol);
+  const fitsColumn = (ls: ViewerCaptionLine[], width: number) => ls.length <= C.caption.maxLines && !overflows(ls, width);
+
+  // Landscape caption: the paper widens, symmetrically and minimally, until
+  // the browser keeps the caption within two lines at its canonical inset
+  // from the photo. Recomputed from the canonical paper `W0` every time.
+  let paper = g.paper;
+  let usableWidth = g.usableWidth;
+  let landscapeCaption: ViewerGeometry["landscapeCaption"];
+  const L = A13_VIEWER_LANDSCAPE_CAPTION;
+  if (inp.landscapePhone && r <= L.mediaRatioMax && text && inp.wrap && !fitsColumn(lines, g.usableWidth)) {
+    const wrap = inp.wrap;
+    const W0 = g.paper.w;
+    let widthMax = Math.max(W0, Math.min(W0 + L.widenMaxCssPx, inp.viewportW - 2 * g.safeX - 2 * L.safeBreathingCssPx));
+    // The close clearance zone never meets the paper.
+    if (g.clearance.y < g.paper.y + g.paper.h && g.paper.y < g.clearance.y + g.clearance.h) widthMax = Math.max(W0, Math.min(widthMax, 2 * (g.clearance.x - (g.paper.x + W0 / 2))));
+    const column = (w: number) => w - 2 * g.edge - 2 * g.inset;
+    const measure = (w: number) => wrap(text, g.fontSize, g.lineHeight, column(w))?.lines ?? null;
+    const fitsAt = (w: number, ls: ViewerCaptionLine[] | null): ls is ViewerCaptionLine[] => ls !== null && fitsColumn(ls, column(w));
+    let width = widthMax;
+    let widthLines = measure(widthMax);
+    const fitStop = !fitsAt(widthMax, widthLines);
+    if (!fitStop) {
+      // Smallest half-pixel step that fits: `lo·q ≤ W0` fails, `hi·q` fits (monotone).
+      const q = L.widthQuantumCssPx;
+      let lo = Math.floor(W0 / q);
+      let hi = Math.floor(widthMax / q);
+      const top = hi > lo ? measure(hi * q) : null;
+      if (fitsAt(hi * q, top) && hi > lo) {
+        width = hi * q;
+        widthLines = top;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          const m = measure(mid * q);
+          if (fitsAt(mid * q, m)) {
+            hi = mid;
+            width = mid * q;
+            widthLines = m;
+          } else lo = mid;
+        }
+      }
+    }
+    const widening = width - W0;
+    paper = { x: g.paper.x - widening / 2, y: g.paper.y, w: width, h: g.paper.h };
+    usableWidth = column(width);
+    lines = widthLines ?? [];
+    landscapeCaption = { naturalPaper: g.paper, widthMax, widening, fitStop };
+  }
+
+  const captionOverflow = overflows(lines, usableWidth);
   if (captionOverflow) codes.push("VIEWER_CAPTION_OVERFLOW_STOP");
   const captionLineCount = lines.length > C.caption.maxLines;
   if (captionLineCount) codes.push("VIEWER_CAPTION_LINE_COUNT_STOP");
   const captionFontReady = text && inp.wrap ? (inp.captionFontReady ?? null) : null;
   if (captionFontReady === false) codes.push("VIEWER_CAPTION_FONT_NOT_READY_STOP");
+  if (landscapeCaption?.fitStop) codes.push("VIEWER_LANDSCAPE_CAPTION_FIT_STOP");
 
-  const photoLocal = { x: g.edge, y: g.topEdge, w: g.photoW, h: g.photoH };
+  // Widened paper: the photo keeps its viewport rect (the paper grew around it).
+  const photoLocal = { x: landscapeCaption ? g.edge + landscapeCaption.widening / 2 : g.edge, y: g.topEdge, w: g.photoW, h: g.photoH };
   const blockTop = g.topEdge + g.photoH + C.paper.bandTextExtraPerS * g.s;
-  const capBox = { x: g.edge + g.inset, y: blockTop, w: g.usableWidth, h: lines.length * g.lineHeight };
-  const mask = nineSlice(g.paper.w, g.paper.h, g.s);
+  const capBox = { x: g.edge + g.inset, y: blockTop, w: usableWidth, h: lines.length * g.lineHeight };
+  const mask = nineSlice(paper.w, paper.h, g.s);
   const bandKind = g.lines === 0 ? "none" : g.lines === 1 ? "oneLine" : "twoLines";
 
   return {
@@ -280,8 +349,8 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
     topEdge: g.topEdge,
     band: g.band,
     bandKind,
-    paper: g.paper,
-    photo: { x: g.paper.x + photoLocal.x, y: g.paper.y + photoLocal.y, w: g.photoW, h: g.photoH },
+    paper,
+    photo: { x: g.paper.x + g.edge, y: g.paper.y + g.topEdge, w: g.photoW, h: g.photoH },
     photoLocal,
     caption:
       text && lines.length
@@ -289,7 +358,7 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
             text,
             fontSize: g.fontSize,
             lineHeight: g.lineHeight,
-            usableWidth: g.usableWidth,
+            usableWidth,
             box: capBox,
             lines: lines.map((l, i) => ({ ...l, box: { x: capBox.x, y: blockTop + i * g.lineHeight, w: capBox.w, h: g.lineHeight } })),
           }
@@ -303,6 +372,7 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
     },
     flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < sNominal, captionOverflow, captionLineCount, captionFontReady, viewportFitStop },
     codes,
+    ...(landscapeCaption ? { landscapeCaption } : {}),
   };
 }
 

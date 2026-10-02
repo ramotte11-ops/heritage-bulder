@@ -181,6 +181,7 @@ export function viewerCaptionStops(root: HTMLElement, g: ViewerGeometry): Viewer
   const out: ViewerStopFinding[] = [];
   const p = viewerParts(root);
   if (g.flags.captionFontReady === false) out.push({ stop: "VIEWER_CAPTION_FONT_NOT_READY_STOP", detail: "caption face not confirmed loaded before measurement" });
+  if (g.landscapeCaption?.fitStop) out.push({ stop: "VIEWER_LANDSCAPE_CAPTION_FIT_STOP", detail: `caption over two lines at the widened paper ${g.landscapeCaption.widthMax.toFixed(2)} px` });
   if (!g.caption || !p.caption) return out;
   const cs = getComputedStyle(p.caption);
   if (cs.overflow !== "visible" || cs.textOverflow === "ellipsis" || cs.clipPath !== "none")

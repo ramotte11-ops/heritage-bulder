@@ -258,4 +258,52 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     expect(dark).toBe(light);
     expect(light).toContain("data-viewer-slice");
   });
+
+  it("Landscape caption: a phone in landscape widens the paper around the photo, which keeps its viewport position", async () => {
+    Object.defineProperty(document.documentElement, "clientWidth", { value: 812, configurable: true });
+    Object.defineProperty(document.documentElement, "clientHeight", { value: 375, configurable: true });
+    const inner = { w: window.innerWidth, h: window.innerHeight, matchMedia: window.matchMedia };
+    let landscape = false;
+    window.matchMedia = ((q: string) => ({ matches: q === "(orientation: landscape)" && landscape, media: q })) as unknown as typeof window.matchMedia;
+    const photoAt = (root: HTMLElement) => {
+      const print = root.querySelector<HTMLElement>("[data-viewer-print]")!;
+      const photo = root.querySelector<HTMLElement>("[data-viewer-photo]")!;
+      return { print, x: parseFloat(print.style.left) + parseFloat(photo.style.left), y: parseFloat(print.style.top) + parseFloat(photo.style.top), w: photo.style.width, h: photo.style.height };
+    };
+    try {
+      Object.defineProperty(window, "innerWidth", { value: 812, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: 375, configurable: true });
+      const natural = photoAt((await open("light")).root);
+      expect(natural.print.dataset.viewerLandscapeCaption).toBeUndefined();
+      cleanup();
+      document.body.innerHTML = "";
+      landscape = true;
+      const { root } = await open("light");
+      const widened = photoAt(root);
+      expect(widened.print.dataset.viewerLandscapeCaption).toBe("widened");
+      expect(parseFloat(widened.print.style.width)).toBeGreaterThan(parseFloat(natural.print.style.width));
+      expect(widened.x).toBeCloseTo(natural.x, 9);
+      expect([widened.y, widened.w, widened.h]).toEqual([natural.y, natural.w, natural.h]);
+      // centre and symmetry, from the rendered boxes: half the widening on each side, on the 1/64 px layout grid
+      const nl = parseFloat(natural.print.style.left);
+      const wl = parseFloat(widened.print.style.left);
+      const dw = parseFloat(widened.print.style.width) - parseFloat(natural.print.style.width);
+      expect(Math.abs(nl - wl - dw / 2)).toBeLessThanOrEqual(1 / 128);
+      expect((nl - wl) * 64).toBe(Math.round((nl - wl) * 64));
+      expect(root.querySelector<HTMLElement>("[data-viewer-caption]")!.dataset.viewerCaptionLines).toBe("2");
+      // back to portrait: the canonical geometry, recomputed
+      Object.defineProperty(document.documentElement, "clientWidth", { value: 375, configurable: true });
+      Object.defineProperty(document.documentElement, "clientHeight", { value: 812, configurable: true });
+      Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: 812, configurable: true });
+      landscape = false;
+      fireEvent(window, new Event("resize"));
+      await waitFor(() => expect(root.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption).toBeUndefined());
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: inner.w, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: inner.h, configurable: true });
+      if (inner.matchMedia) window.matchMedia = inner.matchMedia;
+      else delete (window as { matchMedia?: unknown }).matchMedia;
+    }
+  });
 });

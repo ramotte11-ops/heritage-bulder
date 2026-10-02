@@ -111,6 +111,39 @@ export const A13_VIEWER_CAPTION_MEASUREMENT = {
   fontGateTimeoutMs: 2500,
 } as const;
 
+/**
+ * A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1 (SHA-256 5f89ae82…afe9),
+ * with the QG arbitration of its 150 px cap: on a phone held in landscape,
+ * a portrait or square photo whose caption does not fit the natural paper
+ * (more than two lines, or a line over its column by more than 0.5 px)
+ * widens the paper symmetrically — the photo, its centre, the scale, the
+ * typography and the paper height never move. The caption keeps its
+ * canonical inset from the photo (column = paper − 2·edge − 2·inset). The
+ * width is the smallest 0.5 px step in `[W0, Wmax]` that the shared DOM
+ * measurement (`A13_VIEWER_CAPTION_MEASUREMENT`) keeps within two lines,
+ * `Wmax = max(W0, min(W0 + 150, V − 2·24))` with `V` the safe-area width:
+ * 150 px caps the WIDENING, not the final paper width (QG). Derived on every
+ * layout from the canonical `W0`, never persisted.
+ */
+export const A13_VIEWER_LANDSCAPE_CAPTION = {
+  handoffId: "A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1",
+  handoffSha256: "5f89ae823e6f96878dcaa26502d6149e9f6d2584754f980105e48e0b415aafe9",
+  /** Paper widening cap, relative to the natural width `W0` (QG arbitration). */
+  widenMaxCssPx: 150,
+  /** Breathing between the widened paper and each side of the safe area. */
+  safeBreathingCssPx: 24,
+  /** Result quantum, rounded up. */
+  widthQuantumCssPx: 0.5,
+  /** Portrait or square media only (`naturalWidth / naturalHeight ≤ 1`). */
+  mediaRatioMax: 1,
+  /**
+   * A phone held in landscape: `innerWidth > innerHeight`, `(orientation:
+   * landscape)`, and the short side within the Mobile territory (375–430 in
+   * portrait) — a Desktop window is never adapted.
+   */
+  phoneShortSideMaxCssPx: 430,
+} as const;
+
 /** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */
 export const A13_VIEWER_STOPS = [
   "VIEWER_CROP_STOP",
@@ -120,6 +153,7 @@ export const A13_VIEWER_STOPS = [
   "VIEWER_CAPTION_LINE_COUNT_STOP",
   "VIEWER_CAPTION_MEASUREMENT_DIVERGENCE_STOP",
   "VIEWER_CAPTION_FONT_NOT_READY_STOP",
+  "VIEWER_LANDSCAPE_CAPTION_FIT_STOP",
   "VIEWER_CLOSE_INACCESSIBLE_STOP",
   "VIEWER_SCROLL_RESTORE_STOP",
   "VIEWER_FOCUS_RESTORE_STOP",

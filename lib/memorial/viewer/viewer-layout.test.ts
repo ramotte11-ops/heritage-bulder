@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { A13_VIEWER_LANDSCAPE_CAPTION, A13_VIEWER_STOPS } from "@/config/viewer-a13-desktop-v2";
 import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 import { layoutViewer, normalizeViewerCaption, validateViewerCaption, viewerFontSize, viewerGeometrySnapshot, viewerScale } from "@/lib/memorial/viewer/viewer-layout";
 
@@ -192,5 +193,158 @@ describe("A13 Viewer Desktop V2 — continuous geometry", () => {
     const a = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, wrap });
     const b = layoutViewer({ viewportW: 1200, viewportH: 800, naturalW: 1080, naturalH: 1920, caption: CAPTIONS.c32, wrap });
     expect(viewerGeometrySnapshot(a)).toBe(viewerGeometrySnapshot(b));
+  });
+});
+
+/**
+ * Greedy stand-in (what the browser does without `balance`): as many lines
+ * as the column needs, a word wider than the column overflows its line.
+ */
+const greedy: ViewerCaptionWrapFn = (text, fs, lh, width) => {
+  const w = (t: string) => [...t].length * perChar(fs);
+  const rows: string[] = [];
+  for (const word of text.split(" ")) {
+    const last = rows.at(-1);
+    if (last !== undefined && w(`${last} ${word}`) <= width) rows[rows.length - 1] = `${last} ${word}`;
+    else rows.push(word);
+  }
+  let start = 0;
+  return {
+    lines: rows.map((t, i) => {
+      const l = { text: t, start, end: start + t.length, x: (width - w(t)) / 2, y: i * lh, width: w(t), height: lh };
+      start += t.length + 1;
+      return l;
+    }),
+  };
+};
+const fitsGreedy = (text: string, fs: number, width: number) => {
+  const ls = greedy(text, fs, 1.05 * fs, width)!.lines;
+  return ls.length <= 2 && ls.every((l) => l.x >= -0.5 && l.x + l.width <= width + 0.5);
+};
+
+describe("A13 Viewer Mobile — landscape caption (A13_VIEWER_LANDSCAPE_CAPTION, QG: 150 px caps the widening)", () => {
+  const LANDSCAPE: [number, number][] = [
+    [812, 375],
+    [844, 390],
+    [932, 430],
+  ];
+  const PORTRAITISH: Record<string, [number, number]> = { "9:16": [1080, 1920], "2:3": [1200, 1800], "3:4": [1200, 1600], "1:1": [1400, 1400] };
+  const c32 = "Maman et mamie, à Mimizan, 1966.";
+
+  it("widens the paper minimally and symmetrically around an untouched photo; typography, height and band unchanged", () => {
+    let widened = 0;
+    for (const [vw, vh] of LANDSCAPE)
+      for (const [id, [w, h]] of Object.entries(PORTRAITISH))
+        for (const caption of [c32, CAPTIONS.c32]) {
+          const base = { viewportW: vw, viewportH: vh, naturalW: w, naturalH: h, caption, wrap: greedy };
+          const n = layoutViewer(base);
+          const g = layoutViewer({ ...base, landscapePhone: true });
+          const tag = `${vw}×${vh} ${id} ${caption}`;
+          expect(g.photo, tag).toEqual(n.photo);
+          expect([g.s, g.edge, g.band, g.bandKind, g.caption!.fontSize, g.caption!.lineHeight], tag).toEqual([n.s, n.edge, n.band, n.bandKind, n.caption!.fontSize, n.caption!.lineHeight]);
+          expect([g.paper.y, g.paper.h], tag).toEqual([n.paper.y, n.paper.h]);
+          if (!g.landscapeCaption) {
+            // fits naturally: byte-identical geometry
+            expect(viewerGeometrySnapshot(g), tag).toBe(viewerGeometrySnapshot(n));
+            expect(fitsGreedy(caption, n.caption!.fontSize, n.caption!.usableWidth), tag).toBe(true);
+            continue;
+          }
+          widened++;
+          const L = g.landscapeCaption;
+          const W0 = n.paper.w;
+          expect(L.naturalPaper, tag).toEqual(n.paper);
+          expect(L.fitStop, tag).toBe(false);
+          expect(g.codes, tag).toEqual([]);
+          expect(fitsGreedy(caption, n.caption!.fontSize, n.caption!.usableWidth), tag).toBe(false);
+          // centre invariant, symmetric, capped, half-pixel quantum
+          expect(g.paper.x + g.paper.w / 2, tag).toBeCloseTo(n.paper.x + W0 / 2, 9);
+          expect(L.widening, tag).toBeCloseTo(g.paper.w - W0, 9);
+          expect(L.widening, tag).toBeGreaterThan(0);
+          expect(L.widening, tag).toBeLessThanOrEqual(150);
+          expect(g.paper.w * 2, tag).toBe(Math.round(g.paper.w * 2));
+          expect(g.paper.w, tag).toBeLessThanOrEqual(vw - 2 * g.safeX - 48 + 1e-9);
+          // photo centred on the widened paper; caption column keeps its inset from the photo
+          expect(g.photoLocal.x, tag).toBeCloseTo(n.edge + L.widening / 2, 9);
+          expect(g.photoLocal.x + g.photoLocal.w / 2, tag).toBeCloseTo(g.paper.w / 2, 9);
+          const inset = (n.photoLocal.w - n.caption!.usableWidth) / 2;
+          expect(g.caption!.usableWidth, tag).toBeCloseTo(g.paper.w - 2 * g.edge - 2 * inset, 9);
+          expect(g.caption!.box.x + g.caption!.box.w / 2, tag).toBeCloseTo(g.paper.w / 2, 9);
+          // ≤ 2 lines in the column; minimal: half a pixel less does not fit
+          expect(g.caption!.lines.length, tag).toBeLessThanOrEqual(2);
+          expect(fitsGreedy(caption, g.caption!.fontSize, g.caption!.usableWidth), tag).toBe(true);
+          if (g.paper.w - 0.5 > W0) expect(fitsGreedy(caption, g.caption!.fontSize, g.caption!.usableWidth - 0.5), tag).toBe(false);
+          expect(g.mask.box.w, tag).toBeCloseTo(g.paper.w + 28 * g.s, 9);
+        }
+    expect(widened).toBeGreaterThan(0);
+  });
+
+  it("the canonical 9:16 + 32-character caption widens at 812, 844 and 932 and stays within two lines", () => {
+    for (const [vw, vh] of LANDSCAPE) {
+      const g = layoutViewer({ viewportW: vw, viewportH: vh, naturalW: 1080, naturalH: 1920, caption: c32, wrap: greedy, landscapePhone: true });
+      expect(g.landscapeCaption?.widening).toBeGreaterThan(0);
+      expect(g.caption!.lines).toHaveLength(2);
+      expect(g.bandKind).toBe("twoLines");
+    }
+  });
+
+  it("strictly unchanged: no caption, a caption that fits, horizontal media, no landscape phone", () => {
+    const cases: [number, number, number, number, string | null, boolean][] = [];
+    for (const [vw, vh] of LANDSCAPE) {
+      cases.push([vw, vh, 1080, 1920, null, true], [vw, vh, 1080, 1920, "Été", true], [vw, vh, 1080, 1920, c32, false]);
+      for (const [w, h] of [
+        [1600, 1200],
+        [1920, 1080],
+      ])
+        cases.push([vw, vh, w, h, c32, true], [vw, vh, w, h, CAPTIONS.c32, true]);
+    }
+    for (const [vw, vh, w, h, caption, landscapePhone] of cases) {
+      const base = { viewportW: vw, viewportH: vh, naturalW: w, naturalH: h, caption, wrap: greedy };
+      const g = layoutViewer({ ...base, landscapePhone });
+      expect("landscapeCaption" in g, `${vw} ${w}:${h} ${caption}`).toBe(false);
+      expect(viewerGeometrySnapshot(g)).toBe(viewerGeometrySnapshot(layoutViewer(base)));
+    }
+  });
+
+  it("derived, never persisted: portrait → landscape → portrait → landscape gives the canonical portrait and the same width", () => {
+    for (const [vw, vh] of LANDSCAPE) {
+      const at = (W: number, H: number, landscapePhone: boolean) => layoutViewer({ viewportW: W, viewportH: H, naturalW: 1080, naturalH: 1920, caption: c32, wrap: greedy, landscapePhone });
+      const p0 = viewerGeometrySnapshot(at(vh, vw, false));
+      const l1 = viewerGeometrySnapshot(at(vw, vh, true));
+      expect(viewerGeometrySnapshot(at(vh, vw, false))).toBe(p0);
+      expect(viewerGeometrySnapshot(at(vw, vh, true))).toBe(l1);
+      expect(viewerGeometrySnapshot(at(vh, vw, false))).toBe(p0);
+    }
+  });
+
+  it("VIEWER_LANDSCAPE_CAPTION_FIT_STOP only when nothing up to Wmax = max(W0, min(W0 + 150, V − 48)) fits; kept at Wmax, photo unchanged", () => {
+    expect(A13_VIEWER_STOPS).toContain("VIEWER_LANDSCAPE_CAPTION_FIT_STOP");
+    expect(A13_VIEWER_LANDSCAPE_CAPTION).toMatchObject({ widenMaxCssPx: 150, safeBreathingCssPx: 24, widthQuantumCssPx: 0.5, mediaRatioMax: 1 });
+    const three: ViewerCaptionWrapFn = (text, fs, lh, width) => ({ lines: [0, 1, 2].map((i) => ({ text: `l${i}`, start: i, end: i + 1, x: 0, y: i * lh, width: width / 2, height: lh })) });
+    // fits only from a given column width (monotone)
+    const from = (min: number): ViewerCaptionWrapFn => (text, fs, lh, width) => (width + 1e-9 >= min ? { lines: three(text, fs, lh, width)!.lines.slice(0, 2) } : three(text, fs, lh, width));
+    for (const [vw, vh] of LANDSCAPE) {
+      const base = { viewportW: vw, viewportH: vh, naturalW: 1080, naturalH: 1920, caption: c32, landscapePhone: true };
+      const n = layoutViewer({ ...base, wrap: three, landscapePhone: false });
+      const W0 = n.paper.w;
+      const Wmax = Math.max(W0, Math.min(W0 + 150, vw - 2 * n.safeX - 48));
+      const stop = layoutViewer({ ...base, wrap: three });
+      expect(stop.codes).toContain("VIEWER_LANDSCAPE_CAPTION_FIT_STOP");
+      expect(stop.landscapeCaption).toMatchObject({ fitStop: true, widthMax: Wmax });
+      expect(stop.paper.w).toBeCloseTo(Wmax, 9);
+      expect(stop.photo).toEqual(n.photo);
+      expect(stop.caption!.fontSize).toBe(n.caption!.fontSize);
+      // the widening is capped at +150 px (W0 < V − 48 − 150 here)
+      expect(Wmax).toBeCloseTo(W0 + 150, 9);
+      // exactly at the cap: fits, no STOP; just past it: STOP
+      const col = (W: number) => W - 2 * n.edge - (n.photoLocal.w - n.caption!.usableWidth);
+      const edge = layoutViewer({ ...base, wrap: from(col(Wmax)) });
+      expect(edge.codes).toEqual([]);
+      expect(edge.paper.w).toBeCloseTo(Wmax, 9);
+      expect(layoutViewer({ ...base, wrap: from(col(Wmax) + 0.01) }).codes).toContain("VIEWER_LANDSCAPE_CAPTION_FIT_STOP");
+      // the search lands on the first conforming half pixel
+      const need = W0 + 37.3;
+      const mid = layoutViewer({ ...base, wrap: from(col(need)) });
+      expect(mid.paper.w).toBe(Math.ceil(need * 2) / 2);
+    }
   });
 });
