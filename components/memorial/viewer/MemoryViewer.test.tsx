@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
@@ -33,7 +34,8 @@ vi.mock("@/lib/memorial/viewer/viewer-caption-measure", async (orig) => ({
   createViewerCaptionMeasure: () => ({ wrap: fakeWrap, element: document.createElement("div") }),
 }));
 
-const { MemoryViewer } = await import("./MemoryViewer");
+const { MemoryViewer, viewerOriginIdentity } = await import("./MemoryViewer");
+type Report = import("./MemoryViewer").ViewerReport;
 
 const media = { mediaId: "m1", src: "/p.jpg", alt: "Photo de test 1", naturalWidth: 1080, naturalHeight: 1920, caption: "MAMAN ET MAMIE, À MIMIZAN, 1966." };
 
@@ -59,9 +61,12 @@ function host() {
   return { app, trigger, container: app.querySelector<HTMLElement>("section")! };
 }
 
-async function open(theme: "light" | "dark", h = host()) {
+async function open(theme: "light" | "dark", h = host(), opts: { identity?: boolean; onReport?: (r: Report) => void } = {}) {
   const onClosed = vi.fn();
-  render(<MemoryViewer media={media} theme={theme} origin="album" language="fr" trigger={h.trigger} container={h.container} onClosed={onClosed} />, { container: document.createElement("div") });
+  const originIdentity = opts.identity ? viewerOriginIdentity(h.trigger, "album") : null;
+  render(<MemoryViewer media={media} theme={theme} origin="album" language="fr" trigger={h.trigger} container={h.container} originIdentity={originIdentity} onClosed={onClosed} onReport={opts.onReport} />, {
+    container: document.createElement("div"),
+  });
   const root = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
   await waitFor(() => expect(root.dataset.viewerState).toBe("open"));
   return { root, onClosed, ...h };
@@ -145,6 +150,104 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     await waitFor(() => expect(onClosed).toHaveBeenCalled());
     expect(container.getAttribute("tabindex")).toBe("-1");
     expect(document.activeElement).toBe(container);
+  });
+
+  describe("origin after a rotation (the Mobile host remounts or unmounts its prints)", () => {
+    const ALBUM = `<section data-testid="album-memory-table"><div data-slot-id="g1-P2" data-media-index="4"><figure role="button" tabindex="0" data-print="g1-P2">tirage</figure></div></section>`;
+    function albumHost() {
+      const app = document.createElement("div");
+      app.innerHTML = ALBUM;
+      document.body.appendChild(app);
+      const trigger = app.querySelector<HTMLElement>("[data-print]")!;
+      trigger.focus();
+      return { app, trigger, container: app.querySelector<HTMLElement>("section")! };
+    }
+    const reports: Report[] = [];
+    // The open report reads layout (Range rects, hit-testing, animations): jsdom has none, stand in with empty values.
+    const stubs: [object, string][] = [
+      [Range.prototype, "getBoundingClientRect"],
+      [Range.prototype, "getClientRects"],
+      [Element.prototype, "getAnimations"],
+      [document, "elementFromPoint"],
+    ];
+    beforeEach(() => {
+      reports.length = 0;
+      Object.assign(Range.prototype, { getBoundingClientRect: () => new DOMRect(), getClientRects: () => [] });
+      Object.assign(Element.prototype, { getAnimations: () => [] });
+      Object.assign(document, { elementFromPoint: () => null });
+    });
+    afterEach(() => {
+      for (const [o, k] of stubs) delete (o as Record<string, unknown>)[k];
+    });
+    /** As `useMemoryViewer` does: the Viewer unmounts once closed. */
+    function Hosted({ h, onReport }: { h: ReturnType<typeof albumHost>; onReport?: (r: Report) => void }) {
+      const [on, setOn] = useState(true);
+      return on ? (
+        <MemoryViewer media={media} theme="light" origin="album" language="fr" trigger={h.trigger} container={h.container} originIdentity={viewerOriginIdentity(h.trigger, "album")} onClosed={() => setOn(false)} onReport={onReport} />
+      ) : null;
+    }
+    async function openHosted(h: ReturnType<typeof albumHost>, onReport?: (r: Report) => void) {
+      render(<Hosted h={h} onReport={onReport} />, { container: document.createElement("div") });
+      const root = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
+      await waitFor(() => expect(root.dataset.viewerState).toBe("open"));
+      const close = async () => {
+        fireEvent.click(root.querySelector("[data-viewer-close]")!);
+        await waitFor(() => expect(document.querySelector("[data-a13-viewer]")).toBeNull());
+      };
+      return { root, close };
+    }
+
+    it("finds the same print again when the host remounted it while the Viewer was open", async () => {
+      const h = albumHost();
+      const v = await openHosted(h, (r) => reports.push(r));
+      h.app.innerHTML = ALBUM; // the host left and came back: new nodes, same identity
+      const fresh = h.app.querySelector<HTMLElement>("[data-print]")!;
+      expect(fresh).not.toBe(h.trigger);
+      await v.close();
+      expect(document.activeElement).toBe(fresh);
+      await waitFor(() => expect(reports.find((r) => r.kind === "close")).toMatchObject({ focusTarget: "trigger", focusRestored: true, stops: [] }));
+    });
+
+    it("origin unmounted at close: no focus on a destroyed node, then focus and scroll come back with the print", async () => {
+      const h = albumHost();
+      const v = await openHosted(h, (r) => reports.push(r));
+      h.app.innerHTML = ""; // landscape: the Mobile section renders nothing
+      await v.close();
+      expect(document.activeElement).toBe(document.body);
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(h.app.hasAttribute("inert")).toBe(false);
+      await waitFor(() => expect(reports.find((r) => r.kind === "close")).toMatchObject({ focusTarget: "deferred", stops: [] }));
+      scrollTo.mockClear();
+      h.app.innerHTML = ALBUM; // back to portrait: the print is mounted again
+      const back = h.app.querySelector<HTMLElement>("[data-print]")!;
+      await waitFor(() => expect(document.activeElement).toBe(back));
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 2400, behavior: "instant" });
+      await waitFor(() => expect(reports.find((r) => r.kind === "restore")).toMatchObject({ via: "deferred", focusTarget: "trigger", focusRestored: true }));
+    });
+
+    it("a deferred restoration never steals focus from what the visitor focused meanwhile", async () => {
+      const h = albumHost();
+      const v = await openHosted(h);
+      h.app.innerHTML = "";
+      await v.close();
+      const other = document.createElement("button");
+      document.body.appendChild(other);
+      other.focus();
+      h.app.innerHTML = ALBUM;
+      await new Promise((r) => setTimeout(r, 30));
+      expect(document.activeElement).toBe(other);
+    });
+
+    it("opening another memory cancels a pending restoration", async () => {
+      const h = albumHost();
+      const v = await openHosted(h);
+      h.app.innerHTML = "";
+      await v.close();
+      const second = await open("light", host());
+      h.app.innerHTML = ALBUM;
+      await new Promise((r) => setTimeout(r, 30));
+      expect(document.activeElement).toBe(second.root.querySelector("[data-viewer-close]"));
+    });
   });
 
   it("Light and Dark render the SAME geometry DOM (material only differs)", async () => {

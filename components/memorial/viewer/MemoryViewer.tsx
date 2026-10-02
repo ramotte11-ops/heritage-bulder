@@ -29,7 +29,15 @@ import styles from "./MemoryViewer.module.css";
  *   button (48 × 48 target, discreet `×`) closes;
  * - closing unmounts the Viewer, restores the exact scroll, gives focus
  *   back to the trigger (or to the nearest Gallery/Album container when
- *   the trigger no longer exists), and never recomputes the composition;
+ *   the trigger no longer exists), and never recomputes the composition.
+ *   The trigger is remembered by a stable identity too (its `data-print`
+ *   slot and `data-media-index`, under its origin's container): when its
+ *   host remounted it — a Mobile section leaves its 375–430 territory on a
+ *   rotation to landscape and comes back — the live print is found again;
+ *   when the host is not mounted at all at close, nothing destroyed is
+ *   focused and the focus and scroll restoration waits until the print is
+ *   back (cancelled as soon as the visitor focuses something else or opens
+ *   another memory);
  * - motion: 240 ms cubic-bezier(.22,1,.36,1) from opacity 0,
  *   translateY(12s), scale .985; closing 160 ms cubic-bezier(.4,0,1,1) to
  *   opacity 0, translateY(6s), scale .99; `prefers-reduced-motion: reduce`
@@ -83,12 +91,27 @@ export interface ViewerCloseReport {
   via: "button" | "escape";
   scrollSaved: { x: number; y: number };
   scrollAfter: { x: number; y: number };
-  focusTarget: "trigger" | "container" | "none";
+  /** `deferred`: the origin is not mounted at close; see the `restore` report. */
+  focusTarget: "trigger" | "container" | "none" | "deferred";
   focusRestored: boolean;
   stops: ViewerStopFinding[];
 }
 
-export type ViewerReport = ViewerOpenReport | ViewerCloseReport;
+/** A deferred origin restoration completed (the host mounted the print again). */
+export interface ViewerRestoreReport {
+  kind: "restore";
+  origin: ViewerOrigin;
+  theme: ViewerTheme;
+  mediaId: string;
+  via: "deferred";
+  scrollSaved: { x: number; y: number };
+  scrollAfter: { x: number; y: number };
+  focusTarget: "trigger" | "container";
+  focusRestored: boolean;
+  stops: ViewerStopFinding[];
+}
+
+export type ViewerReport = ViewerOpenReport | ViewerCloseReport | ViewerRestoreReport;
 
 export interface MemoryViewerProps {
   media: MemoryViewerMedia;
@@ -100,6 +123,8 @@ export interface MemoryViewerProps {
   trigger: HTMLElement | null;
   /** Nearest Gallery/Album container — focus fallback. */
   container: HTMLElement | null;
+  /** Stable identity of the trigger (`viewerOriginIdentity`), to find it again after its host remounted. */
+  originIdentity?: ViewerOriginIdentity | null;
   /** Called once the Viewer has closed (scroll and focus restored): unmount it. */
   onClosed: () => void;
   onReport?: (report: ViewerReport) => void;
@@ -107,6 +132,88 @@ export interface MemoryViewerProps {
 
 const C = A13_VIEWER_CONTRACT;
 const SLICE_OVERLAP = 0.75;
+
+/** Gallery / Album containers of each origin (Desktop and Mobile scenes). */
+const ORIGIN_CONTAINERS: Record<ViewerOrigin, string> = {
+  album: "[data-testid=album-memory-table]",
+  gallery: "[data-testid=a13-pilot-scene], [data-testid=a13-mobile-scene]",
+};
+/** A deferred restoration gives up after this long (the visitor never came back to the origin's territory). */
+const DEFERRED_RESTORE_MAX_MS = 10 * 60 * 1000;
+
+/** Stable address of the print that opened the Viewer (survives a remount of its host). */
+export interface ViewerOriginIdentity {
+  origin: ViewerOrigin;
+  print: string;
+  mediaIndex: string | null;
+}
+
+export function viewerOriginIdentity(trigger: HTMLElement | null, origin: ViewerOrigin): ViewerOriginIdentity | null {
+  const print = trigger?.getAttribute("data-print");
+  if (!trigger || !print) return null;
+  return { origin, print, mediaIndex: trigger.closest("[data-media-index]")?.getAttribute("data-media-index") ?? null };
+}
+
+/** Connected and not inert: the only nodes the Viewer ever gives focus to. */
+const focusable = (el: Element | null | undefined): el is HTMLElement => el instanceof HTMLElement && el.isConnected && !el.closest("[inert]");
+
+/** The live print of an identity (or its live container), never a destroyed or inert node. */
+export function resolveViewerOrigin(id: ViewerOriginIdentity): { target: HTMLElement; kind: "trigger" | "container" } | null {
+  const containers = [...document.querySelectorAll<HTMLElement>(ORIGIN_CONTAINERS[id.origin])].filter(focusable);
+  for (const c of containers) {
+    const print = [...c.querySelectorAll<HTMLElement>("[data-print]")].find(
+      (el) => el.getAttribute("data-print") === id.print && (id.mediaIndex === null || el.closest("[data-media-index]")?.getAttribute("data-media-index") === id.mediaIndex) && focusable(el),
+    );
+    if (print) return { target: print, kind: "trigger" };
+  }
+  return containers[0] ? { target: containers[0], kind: "container" } : null;
+}
+
+let cancelPendingRestore: (() => void) | null = null;
+
+/** Cancels a deferred origin restoration (a new memory is opened). */
+export function cancelViewerOriginRestore() {
+  cancelPendingRestore?.();
+}
+
+/**
+ * Waits for the origin to be mounted again (DOM mutations, resizes), then
+ * restores the opening scroll and gives focus to the print — only if no
+ * Viewer is open and nothing else holds focus. Stops as soon as the
+ * visitor focuses anything, a new memory opens, or after
+ * `DEFERRED_RESTORE_MAX_MS`.
+ */
+function deferViewerOriginRestore(id: ViewerOriginIdentity, scroll: { x: number; y: number }, done: (r: { target: HTMLElement; kind: "trigger" | "container" }) => void) {
+  cancelViewerOriginRestore();
+  const observer = new MutationObserver(attempt);
+  const timer = window.setTimeout(stop, DEFERRED_RESTORE_MAX_MS);
+  function onFocusIn(e: FocusEvent) {
+    if (e.target instanceof HTMLElement && e.target !== document.body) stop();
+  }
+  function stop() {
+    observer.disconnect();
+    window.clearTimeout(timer);
+    window.removeEventListener("resize", attempt);
+    document.removeEventListener("focusin", onFocusIn, true);
+    if (cancelPendingRestore === stop) cancelPendingRestore = null;
+  }
+  function attempt() {
+    if (document.querySelector("[data-a13-viewer]")) return;
+    const r = resolveViewerOrigin(id);
+    if (!r) return;
+    stop();
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    window.scrollTo({ left: scroll.x, top: scroll.y, behavior: "instant" });
+    if (r.kind === "container" && !r.target.hasAttribute("tabindex")) r.target.setAttribute("tabindex", "-1");
+    r.target.focus({ preventScroll: true });
+    done(r);
+  }
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["inert"] });
+  window.addEventListener("resize", attempt);
+  document.addEventListener("focusin", onFocusIn, true);
+  cancelPendingRestore = stop;
+}
 
 function parseShadow(s: string) {
   const m = /^(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/.exec(s.trim())!;
@@ -179,7 +286,7 @@ function Paper({ g, theme }: { g: ViewerGeometry; theme: ViewerTheme }) {
   );
 }
 
-export function MemoryViewer({ media, theme, origin, language, trigger, container, onClosed, onReport }: MemoryViewerProps) {
+export function MemoryViewer({ media, theme, origin, language, trigger, container, originIdentity = null, onClosed, onReport }: MemoryViewerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLElement>(null);
   const envRef = useRef<HTMLDivElement>(null);
@@ -221,6 +328,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
 
   // Opening: memorise scroll, lock the document (same available width), inert background.
   useLayoutEffect(() => {
+    cancelViewerOriginRestore();
     const s = saved.current;
     s.t0 = performance.now();
     s.x = window.scrollX;
@@ -353,28 +461,54 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       const s = saved.current;
       let target: HTMLElement | null = null;
       let focusTarget: ViewerCloseReport["focusTarget"] = "none";
-      if (trigger?.isConnected) {
+      // The trigger itself; else the same print remounted by its host; else the container; else wait for the origin.
+      const again = !focusable(trigger) && originIdentity ? resolveViewerOrigin(originIdentity) : null;
+      if (focusable(trigger)) {
         target = trigger;
         focusTarget = "trigger";
-      } else if (container?.isConnected) {
-        if (!container.hasAttribute("tabindex")) container.setAttribute("tabindex", "-1");
+      } else if (again) {
+        target = again.target;
+        focusTarget = again.kind;
+      } else if (focusable(container)) {
         target = container;
         focusTarget = "container";
-      }
+      } else if (originIdentity) focusTarget = "deferred";
+      if (focusTarget === "container" && target && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
       target?.focus({ preventScroll: true });
       onClosed();
+      const report = (kind: "close" | "restore", after: { x: number; y: number }, stops: ViewerStopFinding[], restored: boolean, to: ViewerCloseReport["focusTarget"]) =>
+        kind === "close"
+          ? onReport?.({ kind, origin, theme, mediaId: media.mediaId, via, scrollSaved: { x: s.x, y: s.y }, scrollAfter: after, focusTarget: to, focusRestored: restored, stops })
+          : onReport?.({ kind, origin, theme, mediaId: media.mediaId, via: "deferred", scrollSaved: { x: s.x, y: s.y }, scrollAfter: after, focusTarget: to as "trigger" | "container", focusRestored: restored, stops });
+      const check = (to: HTMLElement | null, label: ViewerCloseReport["focusTarget"]) => {
+        const after = { x: window.scrollX, y: window.scrollY };
+        const stops: ViewerStopFinding[] = [];
+        if (Math.abs(after.x - s.x) > 0.5 || Math.abs(after.y - s.y) > 0.5) stops.push({ stop: "VIEWER_SCROLL_RESTORE_STOP", detail: `saved ${s.x},${s.y} → ${after.x},${after.y}` });
+        const restored = !!to && document.activeElement === to;
+        if (!restored) stops.push({ stop: "VIEWER_FOCUS_RESTORE_STOP", detail: `focus on ${document.activeElement?.tagName ?? "null"} (${label})` });
+        return { after, stops, restored };
+      };
+      if (focusTarget === "deferred" && originIdentity) {
+        // The origin is not mounted (e.g. a Mobile section out of its territory): nothing to focus now.
+        deferViewerOriginRestore(originIdentity, { x: s.x, y: s.y }, (r) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const c = check(r.target, r.kind);
+              report("restore", c.after, c.stops, c.restored, r.kind);
+            }),
+          ),
+        );
+        requestAnimationFrame(() => requestAnimationFrame(() => report("close", { x: window.scrollX, y: window.scrollY }, [], false, "deferred")));
+        return;
+      }
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
-          const after = { x: window.scrollX, y: window.scrollY };
-          const stops: ViewerStopFinding[] = [];
-          if (Math.abs(after.x - s.x) > 0.5 || Math.abs(after.y - s.y) > 0.5) stops.push({ stop: "VIEWER_SCROLL_RESTORE_STOP", detail: `saved ${s.x},${s.y} → ${after.x},${after.y}` });
-          const focusRestored = !!target && document.activeElement === target;
-          if (!focusRestored) stops.push({ stop: "VIEWER_FOCUS_RESTORE_STOP", detail: `focus on ${document.activeElement?.tagName ?? "null"} (${focusTarget})` });
-          onReport?.({ kind: "close", origin, theme, mediaId: media.mediaId, via, scrollSaved: { x: s.x, y: s.y }, scrollAfter: after, focusTarget, focusRestored, stops });
+          const c = check(target, focusTarget);
+          report("close", c.after, c.stops, c.restored, focusTarget);
         }),
       );
     },
-    [geometry, restoreDocument, trigger, container, onClosed, onReport, origin, theme, media.mediaId],
+    [geometry, restoreDocument, trigger, container, originIdentity, onClosed, onReport, origin, theme, media.mediaId],
   );
 
   // Escape closes; Tab / Shift+Tab stay on the Viewer's only control.
@@ -480,16 +614,38 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
  * and unmounts it once closed.
  */
 export function useMemoryViewer(onReport?: (r: ViewerReport) => void) {
-  const [req, setReq] = useState<{ media: MemoryViewerMedia; theme: ViewerTheme; origin: ViewerOrigin; language: Language; trigger: HTMLElement | null; container: HTMLElement | null; n: number } | null>(null);
+  const [req, setReq] = useState<{
+    media: MemoryViewerMedia;
+    theme: ViewerTheme;
+    origin: ViewerOrigin;
+    language: Language;
+    trigger: HTMLElement | null;
+    container: HTMLElement | null;
+    originIdentity: ViewerOriginIdentity | null;
+    n: number;
+  } | null>(null);
   const count = useRef(0);
   const open = useCallback((media: MemoryViewerMedia, theme: ViewerTheme, origin: ViewerOrigin, language: Language, trigger?: HTMLElement | null) => {
     const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const t = trigger ?? active;
-    const container = t?.closest<HTMLElement>(origin === "album" ? "[data-testid=album-memory-table]" : "[data-testid=a13-pilot-scene]") ?? null;
+    const container = t?.closest<HTMLElement>(ORIGIN_CONTAINERS[origin]) ?? null;
     count.current += 1;
-    setReq({ media, theme, origin, language, trigger: t, container, n: count.current });
+    setReq({ media, theme, origin, language, trigger: t, container, originIdentity: viewerOriginIdentity(t, origin), n: count.current });
   }, []);
   const onClosed = useCallback(() => setReq(null), []);
-  const node = req ? <MemoryViewer key={req.n} media={req.media} theme={req.theme} origin={req.origin} language={req.language} trigger={req.trigger} container={req.container} onClosed={onClosed} onReport={onReport} /> : null;
+  const node = req ? (
+    <MemoryViewer
+      key={req.n}
+      media={req.media}
+      theme={req.theme}
+      origin={req.origin}
+      language={req.language}
+      trigger={req.trigger}
+      container={req.container}
+      originIdentity={req.originIdentity}
+      onClosed={onClosed}
+      onReport={onReport}
+    />
+  ) : null;
   return { open, node, isOpen: req !== null };
 }
