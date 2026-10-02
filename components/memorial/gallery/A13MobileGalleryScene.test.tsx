@@ -8,6 +8,7 @@ import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
 import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import { runMobileGallery } from "@/lib/memorial/gallery/gallery-mobile-runtime";
 import { a13MobileFixture } from "@/lib/memorial/gallery/a13-mobile-pilot-fixtures";
+import { A13_MOBILE_DARK_BACKGROUND, A13_MOBILE_DARK_BOTTOM_CONTINUATION, A13_MOBILE_DARK_SEPARATOR_ART } from "@/config/gallery-a13-mobile-dark-material";
 
 /**
  * A13 Mobile Light scene (V1.7) — render contracts only (layers, order,
@@ -187,3 +188,87 @@ describe("A13MobileGalleryScene", () => {
     expect(fig.querySelectorAll("polygon")).toHaveLength(1);
   });
 });
+
+/**
+ * Geometry-only serialisation of a rendered scene: every attribute and
+ * inline style, minus the material (theme marker, background / sprig
+ * sources and sprig framing, rule fills, continuation colour, Dark
+ * per-print custom properties).
+ */
+function geometryDom(root: HTMLElement) {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("data-a13-theme");
+  clone.querySelectorAll("*").forEach((el) => {
+    for (const a of ["data-continuation", "href", "fill"]) el.removeAttribute(a);
+    if (el.closest("[data-a13-separator]") && el.parentElement?.hasAttribute("data-a13-separator") && el.tagName.toLowerCase() === "svg") el.removeAttribute("viewBox");
+    const st = (el as HTMLElement).style;
+    if (st) for (const name of [...st].filter((n) => n.startsWith("--a13-dark-"))) st.removeProperty(name);
+  });
+  clone.querySelector("img[aria-hidden=true]")?.removeAttribute("src");
+  return clone.outerHTML;
+}
+
+describe("A13 Mobile Gallery Dark — the same scene, Dark materials only", () => {
+  const STATES: [string, number][] = [
+    ["G2", 2],
+    ["G3", 3],
+    ["G4", 4],
+    ["G5", 5],
+    ["G6", 6],
+    ["7+", 7],
+  ];
+
+  it("G2 → 7+: Dark renders the Light geometry DOM byte for byte (material only differs)", () => {
+    for (const [id, n] of STATES) {
+      const { run, entries } = sceneFor(n);
+      const props = {
+        entries,
+        title: "Souvenirs de famille",
+        subtitle: "Les instants partagés",
+        stageWidth: 390,
+        stageHeight: run.stageHeight,
+        translateY: run.translateY,
+        captionFontSizePx: run.metrics.captionFontPx,
+        stateId: run.stateId!,
+        cta: run.cta ? { label: "Voir plus de souvenirs", lang: "fr" as const, box: run.cta.box } : null,
+      };
+      const light = render(<A13MobileGalleryScene {...props} />);
+      const lightStage = light.getByTestId("a13-mobile-scene");
+      const lightDom = geometryDom(lightStage);
+      const lightHtml = lightStage.outerHTML;
+      light.unmount();
+      const explicit = render(<A13MobileGalleryScene {...props} theme="light" />);
+      // Light is unchanged: theme="light" is the default, byte for byte.
+      expect(explicit.getByTestId("a13-mobile-scene").outerHTML, id).toBe(lightHtml);
+      expect(lightHtml, id).not.toContain("data-a13-theme");
+      explicit.unmount();
+      const dark = render(<A13MobileGalleryScene {...props} theme="dark" />);
+      const stage = dark.getByTestId("a13-mobile-scene");
+      expect(geometryDom(stage), id).toBe(lightDom);
+      expect(stage.dataset.a13Theme).toBe("dark");
+      dark.unmount();
+    }
+  });
+
+  it("Dark materials: the verified Dark background in the same <img>, the shared Dark sprig and rule ink, the Dark continuation, Dark prints", () => {
+    const { run, entries } = sceneFor(7);
+    const { container, getByTestId } = render(
+      <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} cta={{ label: "Voir plus", lang: "fr", box: run.cta!.box }} theme="dark" />,
+    );
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs[0].getAttribute("src")).toBe(A13_MOBILE_DARK_BACKGROUND.src);
+    expect(imgs.filter((i) => i.getAttribute("src") === A13_MOBILE_BACKGROUND.src)).toHaveLength(0);
+    expect([imgs[0].getAttribute("width"), imgs[0].getAttribute("height")]).toEqual([String(A13_MOBILE_BACKGROUND.width), String(A13_MOBILE_BACKGROUND.height)]);
+    const sep = container.querySelector("[data-a13-separator]")!;
+    expect(sep.querySelector("image")!.getAttribute("href")).toBe(A13_MOBILE_DARK_SEPARATOR_ART.sprigSrc);
+    const vb = A13_MOBILE_DARK_SEPARATOR_ART.sprigViewBox;
+    expect(sep.querySelector("svg")!.getAttribute("viewBox")).toBe(`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+    expect([...sep.querySelectorAll("rect")].map((r) => r.getAttribute("fill"))).toEqual([A13_MOBILE_DARK_SEPARATOR_ART.ruleColor, A13_MOBILE_DARK_SEPARATOR_ART.ruleColor]);
+    expect(A13_MOBILE_DARK_SEPARATOR_ART.sprigSrc).not.toBe(A13_MOBILE_SEPARATOR_ART.sprigSrc);
+    expect(getByTestId("stage-extension").dataset.continuation).toBe(A13_MOBILE_DARK_BOTTOM_CONTINUATION.baseColor);
+    const prints = [...container.querySelectorAll<HTMLElement>("figure[data-print]")];
+    expect(prints).toHaveLength(6);
+    for (const el of prints) expect(el.style.getPropertyValue("--a13-dark-paper")).toMatch(/^#[0-9A-F]{6}$/);
+  });
+});
+

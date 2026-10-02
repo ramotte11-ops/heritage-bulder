@@ -242,3 +242,20 @@
 [data-a13-theme="dark"] .print[role="button"]:focus-visible {
   outline-color: #f1d6a3;
 }
+
+/*
+ * A13 Mobile Gallery DARK — a widened bottom band (narrow print, Mobile
+ * only, never on Desktop) under the Dark material: the V1.5 T shape keeps
+ * its shape shadow (`.printWidened` drop shadows — a Dark rule never
+ * declares `filter`, DARK_PHOTO_PROCESSING_STOP), so the rectangular Dark
+ * box shadows are not added around it; the inner stroke follows the T
+ * outline in the Dark stroke ink. The wing inherits the Dark paper
+ * (`.bandWing`). Colours and shadows only.
+ */
+[data-a13-theme="dark"] .printWidened {
+  box-shadow: none;
+}
+
+[data-a13-theme="dark"] .strokeShape polygon {
+  stroke: rgba(93, 65, 42, 0.3);
+}

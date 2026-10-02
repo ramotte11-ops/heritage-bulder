@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { A13_MOBILE_GROUP_TRANSLATION, a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
 import type { Language } from "@/config/languages";
+import type { A13Theme } from "@/config/gallery-a13-dark-material";
 import { translate } from "@/lib/i18n/translate";
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -46,9 +47,11 @@ export interface A13MobileGalleryProps {
   onRun?: (run: MobileGalleryRun<A13FamilyMedia>) => void;
   /** QA overlay (pilot only). */
   qa?: boolean;
+  /** Material theme (default Light): the same run, Dark materials only. */
+  theme?: A13Theme;
 }
 
-export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, onActivateMemory, onRun, qa = false }: A13MobileGalleryProps) {
+export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, onActivateMemory, onRun, qa = false, theme = "light" }: A13MobileGalleryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const [width, setWidth] = useState<number | null>(null);
@@ -123,7 +126,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
       <A13CaptionFontProbe />
       {!run && state && width !== null ? (
         <div style={{ visibility: "hidden" }} aria-hidden="true" inert data-testid="a13-mobile-gallery-pending">
-          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={width} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} />
+          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={width} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} theme={theme} />
         </div>
       ) : null}
       {run?.outcome === "resolved" && run.stateId ? (
@@ -143,6 +146,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
             if (e) onActivateMemory?.(e.mediaIndex);
           }}
           qa={qaLayer}
+          theme={theme}
         />
       ) : null}
     </div>

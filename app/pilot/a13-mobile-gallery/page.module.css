@@ -11,6 +11,11 @@
   background: #f1e6d6;
 }
 
+/* Board mode, Dark theme: the page under the stage in the Mobile Dark continuation colour. */
+.boardDark {
+  background: #27160a;
+}
+
 .panel {
   padding: 10px 12px 14px;
   font-size: 0.74rem;

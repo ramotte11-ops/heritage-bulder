@@ -12,6 +12,8 @@ import {
   type A13MobileRect,
 } from "@/config/gallery-a13-mobile-manifest";
 import type { Language } from "@/config/languages";
+import type { A13Theme } from "@/config/gallery-a13-dark-material";
+import { A13_MOBILE_DARK_BACKGROUND, A13_MOBILE_DARK_BOTTOM_CONTINUATION, A13_MOBILE_DARK_SEPARATOR_ART } from "@/config/gallery-a13-mobile-dark-material";
 import type { PolaroidLayout } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import { translateWith } from "@/lib/i18n/translate";
@@ -42,6 +44,15 @@ import styles from "./A13MobileGalleryScene.module.css";
  *   IS the protected block. Inert for the pointer.
  * - CTA (7+): the box resolved after the photo group (`runMobileGallery`),
  *   stage frame, a real button.
+ * - Theme (A13 Mobile Gallery Dark): MATERIAL ONLY, applied after the
+ *   runtime. Dark swaps the background source for the Dark asset (same
+ *   `<img>`, same box), the separator art for the shared Dark sprig and
+ *   rule ink (same SVG box and parts), and marks the stage
+ *   `data-a13-theme="dark"`, which the Dark stylesheet rules key on (inks,
+ *   CTA states, focus, bottom continuation); prints get the shared
+ *   `DynamicPolaroid` Dark material. Every geometry style is computed by
+ *   the same code for both themes; Light (default) renders exactly as
+ *   before.
  */
 
 export interface A13MobileSceneEntry {
@@ -92,17 +103,20 @@ export type A13MobileGallerySceneProps = {
   /** Caption size in source px (per viewport), passed to every print. */
   captionFontSizePx?: number;
   qa?: A13MobileSceneQa | null;
+  /** Material theme (default Light). Never an input of the geometry. */
+  theme?: A13Theme;
 } & Activation;
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 const box = (r: A13MobileRect) => ({ left: k(r.x), top: k(r.y), width: k(r.width), height: k(r.height) });
 const pts = (p: Pts) => p.map((q) => `${q.x},${q.y}`).join(" ");
 
+type SeparatorArt = typeof A13_MOBILE_SEPARATOR_ART | typeof A13_MOBILE_DARK_SEPARATOR_ART;
+
 /** Runtime separator: two short rules + the shared leaf sprig (contract parts, CSS px). */
-function Separator({ width, height }: { width: number; height: number }) {
+function Separator({ width, height, art }: { width: number; height: number; art: SeparatorArt }) {
   const p = A13_MOBILE_TITLE_BLOCK.separator.partsPercent;
   const t = A13_MOBILE_TITLE_BLOCK.separator.ruleThicknessCss;
-  const art = A13_MOBILE_SEPARATOR_ART;
   const rule = Math.round((height - t) / 2);
   const x = (pc: number) => (pc * width) / 100;
   return (
@@ -134,19 +148,21 @@ export function A13MobileGalleryScene({
   cta = null,
   captionFontSizePx,
   qa = null,
+  theme = "light",
   onActivate,
   language,
 }: A13MobileGallerySceneProps) {
+  const dark = theme === "dark";
   const tb = A13_MOBILE_TITLE_BLOCK;
   const v = (t: Parameters<typeof resolveByViewport>[0]) => resolveByViewport(t, stageWidth);
   const extension = Math.round((stageHeight - A13_MOBILE_BACKGROUND.height) * 1e6) / 1e6;
   const titleBlock: CSSProperties = { top: `${tb.topCss}px`, width: `${v(tb.protectedBlockWidthCss)}px`, height: `${v(tb.protectedBlockBottomCss)}px`, zIndex: A13_MOBILE_LAYER_Z.runtimeTitle };
   return (
-    <div className={`${styles.stage} ${laBelleAurore.variable}`} data-testid="a13-mobile-scene" data-state={stateId} data-profile="mobile">
+    <div className={`${styles.stage} ${laBelleAurore.variable}`} data-testid="a13-mobile-scene" data-state={stateId} data-profile="mobile" {...(dark ? { "data-a13-theme": "dark" } : {})}>
       <div className={styles.canvas} style={{ aspectRatio: `${A13_MOBILE_CANVAS.width} / ${stageHeight}` }} data-a13-mobile-canvas="" data-stage-height={stageHeight}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={A13_MOBILE_BACKGROUND.src}
+          src={dark ? A13_MOBILE_DARK_BACKGROUND.src : A13_MOBILE_BACKGROUND.src}
           alt=""
           aria-hidden="true"
           className={styles.background}
@@ -161,7 +177,7 @@ export function A13MobileGalleryScene({
             style={{ top: k(A13_MOBILE_BACKGROUND.height), height: k(extension), zIndex: A13_MOBILE_LAYER_Z.background }}
             aria-hidden="true"
             data-testid="stage-extension"
-            data-continuation={A13_MOBILE_BOTTOM_CONTINUATION.baseColor}
+            data-continuation={dark ? A13_MOBILE_DARK_BOTTOM_CONTINUATION.baseColor : A13_MOBILE_BOTTOM_CONTINUATION.baseColor}
           />
         ) : null}
         <div className={styles.group} style={{ transform: `translateY(${k(translateY)})` }} data-testid="print-group" data-translate-y={translateY}>
@@ -174,6 +190,7 @@ export function A13MobileGalleryScene({
               alt={alt}
               caption={caption}
               captionFontSizePx={captionFontSizePx}
+              {...(dark ? { theme } : {})}
               {...(onActivate && language
                 ? {
                     onActivate: () => onActivate(slot.slotId),
@@ -185,7 +202,7 @@ export function A13MobileGalleryScene({
           ))}
         </div>
         <header className={styles.titleBlock} style={titleBlock} data-testid="title-block">
-          <Separator width={v(tb.separator.widthCss)} height={v(tb.separator.heightCss)} />
+          <Separator width={v(tb.separator.widthCss)} height={v(tb.separator.heightCss)} art={dark ? A13_MOBILE_DARK_SEPARATOR_ART : A13_MOBILE_SEPARATOR_ART} />
           <h2
             className={`${styles.title} ${ebGaramond.className}`}
             style={{ marginTop: `${v(tb.separatorToTitleGapCss)}px`, fontSize: `${v(tb.title.fontSizeCss)}px`, maxWidth: `${v(tb.title.maxWidthCss)}px` }}

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LANGUAGES, type Language } from "@/config/languages";
+import type { A13Theme } from "@/config/gallery-a13-dark-material";
 import { A13_MOBILE_HANDOFF_ID } from "@/config/gallery-a13-mobile-manifest";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import type { MobileGalleryRun } from "@/lib/memorial/gallery/gallery-mobile-runtime";
@@ -22,7 +23,7 @@ import styles from "./page.module.css";
 /**
  * A13 Mobile Light — Gallery pilot (PILOT ONLY, QA harness).
  *
- * `?n=0…40&ratios=mixte|3x4|4x3|1x1|9x16|16x9|239&captions=aucune|courte|24|32|deux-lignes|etroit-fr|etroit-en|etroit-es&lang=fr|en|es&qa=1&planche=1`
+ * `?n=0…40&ratios=mixte|3x4|4x3|1x1|9x16|16x9|239&captions=aucune|courte|24|32|deux-lignes|etroit-fr|etroit-en|etroit-es&lang=fr|en|es&theme=light|dark&qa=1&planche=1`
  * — or `?matrice=1`: the whole QA matrix run in the browser (`MobileMatrixRunner`).
  *
  * Open at a 375–430 px viewport (the Mobile profile). `qa=1` draws the
@@ -40,6 +41,7 @@ declare global {
       ratios: A13MobileRatioSet;
       captions: A13MobileCaptionSet;
       lang: Language;
+      theme?: A13Theme;
       viewportWidth: number;
       run: MobileGalleryRun<A13FamilyMedia> | null;
       title: MobileTitleInkMeasure | null;
@@ -63,6 +65,7 @@ function MobileGalleryPilot() {
   const lang: Language = (LANGUAGES as readonly string[]).includes(q.get("lang") ?? "") ? (q.get("lang") as Language) : "fr";
   const qa = q.get("qa") === "1";
   const board = q.get("planche") === "1";
+  const theme: A13Theme = q.get("theme") === "dark" ? "dark" : "light";
   const media = useMemo(() => a13MobileFixture(n, ratios, captions), [n, ratios, captions]);
   const texts = A13_MOBILE_PILOT_TITLE[lang];
   const [status, setStatus] = useState("…");
@@ -78,7 +81,7 @@ function MobileGalleryPilot() {
 
   const onRun = useCallback(
     (run: MobileGalleryRun<A13FamilyMedia>) => {
-      const qa: NonNullable<Window["__a13Mobile"]> = { handoff: A13_MOBILE_HANDOFF_ID, n, ratios, captions, lang, viewportWidth: window.innerWidth, run, title: null, activations: [] };
+      const qa: NonNullable<Window["__a13Mobile"]> = { handoff: A13_MOBILE_HANDOFF_ID, n, ratios, captions, lang, theme, viewportWidth: window.innerWidth, run, title: null, activations: [] };
       window.__a13Mobile = qa;
       setActivations([]);
       setStatus(`${run.stateId ?? "—"} · ${run.outcome} · ${run.status} · ${run.stageWidth.toFixed(0)} px`);
@@ -88,23 +91,24 @@ function MobileGalleryPilot() {
         qa.title = t;
       });
     },
-    [n, ratios, captions, lang],
+    [n, ratios, captions, lang, theme],
   );
 
   const href = (p: Record<string, string | number>) => {
-    const s = new URLSearchParams({ n: String(n), ratios, captions, lang, ...(qa ? { qa: "1" } : {}), ...(board ? { planche: "1" } : {}) });
+    const s = new URLSearchParams({ n: String(n), ratios, captions, lang, ...(theme === "dark" ? { theme } : {}), ...(qa ? { qa: "1" } : {}), ...(board ? { planche: "1" } : {}) });
     for (const [a, b] of Object.entries(p)) s.set(a, String(b));
     return `?${s.toString()}`;
   };
 
   return (
-    <div className={`${styles.page} ${board ? styles.board : ""}`} data-testid="a13-mobile-pilot">
+    <div className={`${styles.page} ${board ? styles.board : ""}${board && theme === "dark" ? ` ${styles.boardDark}` : ""}`} data-testid="a13-mobile-pilot">
       <A13MobileGallery
         media={media}
         title={texts.title}
         subtitle={texts.subtitle}
         language={lang}
         qa={qa}
+        theme={theme}
         onRun={onRun}
         onSeeMore={() => record({ kind: "cta" })}
         onActivateMemory={(mediaIndex) => record({ kind: "memory", mediaIndex })}
@@ -138,6 +142,7 @@ function MobileGalleryPilot() {
               </a>
             ))}
             <a href={qa ? href({ qa: 0 }) : href({ qa: 1 })}>{qa ? "QA off" : "QA on"}</a>
+            <a href={href({ theme: theme === "dark" ? "light" : "dark" })}>{theme === "dark" ? "Light" : "Dark"}</a>
           </div>
           <span className={styles.log} data-testid="mobile-status">
             {status}

@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { A13_DARK_BACKGROUND, A13_DARK_MATERIAL, A13_DARK_PARITY_CONTRACT } from "@/config/gallery-a13-dark-material";
+import { A13_MOBILE_DARK_BACKGROUND, A13_MOBILE_DARK_BOTTOM_CONTINUATION } from "@/config/gallery-a13-mobile-dark-material";
 import { A13_V2_1_TITLE } from "@/config/gallery-a13-v2-manifests";
 import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { maskFromRects } from "@/lib/memorial/gallery/title-glyph-mask";
@@ -67,7 +68,10 @@ const ENGINE_ENTRIES = [
   "config/gallery-a13-multi-state-manifests.ts",
   "config/gallery-a13-desktop-manifest.ts",
 ];
-const DARK_MODULES = ["config/gallery-a13-dark-material.ts", "lib/memorial/gallery/theme-material.ts"];
+const DARK_MODULES = ["config/gallery-a13-dark-material.ts", "lib/memorial/gallery/theme-material.ts", "config/gallery-a13-mobile-dark-material.ts"];
+
+/** Every module the Mobile runtime (Gallery Mobile V1.7) is made of. */
+const MOBILE_ENGINE_ENTRIES = ["lib/memorial/gallery/gallery-mobile-runtime.ts", "config/gallery-a13-mobile-manifest.ts"];
 
 describe("Dark V1.1 — the solver never reads a Dark token", () => {
   it("no Dark material module and no component is reachable from the engine (DARK_TOKEN_READ_BY_SOLVER_STOP)", () => {
@@ -77,7 +81,14 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
     for (const f of graph) expect(readFileSync(path.join(ROOT, f), "utf8")).not.toMatch(/A13_DARK_|data-a13-theme|--a13-dark-/);
   });
 
-  it("Dark tokens are imported only by the rendering layer and the Dark pilot", () => {
+  it("Mobile Gallery Dark: no Dark material module and no component is reachable from the Mobile runtime", () => {
+    const graph = [...importGraph(MOBILE_ENGINE_ENTRIES)].map(rel);
+    expect(graph).toContain("lib/memorial/gallery/gallery-mobile-runtime.ts");
+    expect(graph.filter((f) => DARK_MODULES.includes(f) || f.startsWith("components/"))).toEqual([]);
+    for (const f of graph) expect(readFileSync(path.join(ROOT, f), "utf8")).not.toMatch(/A13_DARK_|A13_MOBILE_DARK_|data-a13-theme|--a13-dark-/);
+  });
+
+  it("Dark tokens are imported only by the rendering layer and the Dark pilots", () => {
     const files: string[] = [];
     const walk = (d: string) => {
       for (const n of readdirSync(d)) {
@@ -88,11 +99,15 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
       }
     };
     for (const d of ["app", "components", "config", "lib"]) walk(path.join(ROOT, d));
-    const readers = files.filter((f) => /gallery-a13-dark-material|theme-material/.test(readFileSync(f, "utf8").match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
+    const readers = files.filter((f) => /gallery-a13-dark-material|gallery-a13-mobile-dark-material|theme-material/.test(readFileSync(f, "utf8").match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
     expect(readers).toEqual([
       "app/pilot/a13-dynamic-polaroid/dark/DarkPilotClient.tsx",
+      "app/pilot/a13-mobile-gallery/MobileGalleryPilotClient.tsx",
       "components/memorial/gallery/A13GalleryScene.tsx",
+      "components/memorial/gallery/A13MobileGallery.tsx",
+      "components/memorial/gallery/A13MobileGalleryScene.tsx",
       "components/memorial/gallery/DynamicPolaroid.tsx",
+      "config/gallery-a13-mobile-dark-material.ts",
       "lib/memorial/gallery/theme-material.ts",
     ]);
   });
@@ -108,7 +123,7 @@ function darkRules(file: string) {
 }
 
 describe("Dark V1.1 — stylesheets are material only", () => {
-  const files = ["components/memorial/gallery/A13GalleryScene.module.css", "components/memorial/gallery/DynamicPolaroid.module.css"];
+  const files = ["components/memorial/gallery/A13GalleryScene.module.css", "components/memorial/gallery/DynamicPolaroid.module.css", "components/memorial/gallery/A13MobileGalleryScene.module.css"];
   const rules = files.flatMap(darkRules);
   const forbidden = new Set<string>(A13_DARK_MATERIAL.materialOnlyGuard.forbiddenProperties);
   // Shorthands/longhands that carry a forbidden length or a photo process.
@@ -137,6 +152,27 @@ describe("Dark V1.1 — stylesheets are material only", () => {
     expect(polaroid).toContain("box-shadow: inset 0 0 0 calc(1.2 * var(--k)) rgba(116, 91, 67, 0.24);");
     expect(polaroid).toContain("fill: #5a4a3e;");
     expect(polaroid).toContain("outline: calc(3 * var(--k)) solid #2f5d8a;");
+    // Mobile Gallery Light (V1.7) values the Dark rules sit on.
+    const mobile = readFileSync(path.join(ROOT, files[2]), "utf8");
+    expect(mobile).toContain("  color: #3d3024;");
+    expect(mobile).toContain("  color: #5a4633;");
+    expect(mobile).toContain("border: calc(1.5 * var(--k)) solid rgb(92 74 41);\n  border-radius: calc(8 * var(--k));\n  background: transparent;\n  color: rgb(54 50 25);");
+    expect(mobile).toContain("outline: 2px solid currentColor;\n  outline-offset: 4px;");
+    expect(mobile).toContain("background-color: #f4dfcb;");
+    expect(mobile).toContain("background: linear-gradient(to bottom, rgb(244 223 203 / 0), #f4dfcb);");
+    // The Dark rules come after every Light rule (appended, never interleaved).
+    const firstDark = mobile.indexOf('.stage[data-a13-theme="dark"]');
+    expect(firstDark).toBeGreaterThan(mobile.lastIndexOf(".qaLabel"));
+  });
+
+  it("Mobile Gallery Dark: recolours the title block, subtitle, CTA states, focus and continuation — and nothing else", () => {
+    const mobile = darkRules(files[2]).map((r) => r.selector.replace(/\.stage\[data-a13-theme="dark"\]\s*/, "")).sort();
+    expect(mobile).toEqual([".cta", ".cta:active", ".cta:disabled", ".cta:focus-visible", ".cta:hover", ".extension", ".extension::after", ".extension::before", ".subtitle", ".titleBlock"]);
+    const css = readFileSync(path.join(ROOT, files[2]), "utf8");
+    expect(css).toContain(`background-color: ${A13_MOBILE_DARK_BOTTOM_CONTINUATION.baseColor.toLowerCase()};`);
+    expect(css).toContain(`color: ${A13_DARK_MATERIAL.runtimeText.titleInk.toLowerCase()};`);
+    expect(css).toContain(`color: ${A13_DARK_MATERIAL.runtimeText.microcopyInk.toLowerCase()};`);
+    expect(css).toContain(`outline-color: ${A13_DARK_MATERIAL.focus.color.toLowerCase()};`);
   });
 });
 
@@ -151,6 +187,19 @@ describe("Dark V1.1 — background asset", () => {
   it("is a 1670 × 941 PNG (DARK_BACKGROUND_DIMENSION_MISMATCH_STOP)", () => {
     expect(buf.subarray(1, 4).toString("ascii")).toBe("PNG");
     expect([buf.readUInt32BE(16), buf.readUInt32BE(20)]).toEqual([A13_DARK_BACKGROUND.width, A13_DARK_BACKGROUND.height]);
+  });
+});
+
+describe("Mobile Gallery Dark — background asset", () => {
+  const file = path.join(ROOT, "public", A13_MOBILE_DARK_BACKGROUND.src);
+  const buf = readFileSync(file);
+  it("is the QG asset byte for byte (BACKGROUND_DIMENSION_OR_HASH_MISMATCH)", () => {
+    expect(createHash("sha256").update(buf).digest("hex")).toBe(A13_MOBILE_DARK_BACKGROUND.sha256);
+  });
+  it("is a 941 × 1672 RGBA PNG, the Light V2 canvas", () => {
+    expect(buf.subarray(1, 4).toString("ascii")).toBe("PNG");
+    expect([buf.readUInt32BE(16), buf.readUInt32BE(20)]).toEqual([A13_MOBILE_DARK_BACKGROUND.width, A13_MOBILE_DARK_BACKGROUND.height]);
+    expect(buf[25]).toBe(6); // colour type 6 = RGBA
   });
 });
 
