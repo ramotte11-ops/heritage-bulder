@@ -18,18 +18,21 @@ import { A13_DARK_MATERIAL } from "@/config/gallery-a13-dark-material";
  */
 
 /**
- * The common photo-free Mobile Dark background — byte-identical copy of the
- * QG asset `A13_MOBILE_GALLERY_DARK_BACKGROUND_COMMON_PHOTO_FREE_V1.png`
- * (package `A13_MOBILE_GALLERY_DARK_BACKGROUND_CANONICAL_V1.zip`; PNG RGBA,
- * fully opaque). Exact thematic replacement of the Light V2 background, for
- * the six states, in the same box: `width:100%; height:auto; no crop`.
+ * The common photo-free Mobile Dark background V2 (GREEN QG/PO: the Studio
+ * freed the title / subtitle corridor, nothing else changed) — byte-identical
+ * copy of `A13_MOBILE_GALLERY_DARK_BACKGROUND_COMMON_PHOTO_FREE_V2.png`
+ * (package `A13_MOBILE_GALLERY_DARK_BACKGROUND_COMMON_PHOTO_FREE_V2.zip`;
+ * PNG RGBA, fully opaque). Shipped under a new versioned name (`…-v2.png`):
+ * the V1 file is left untouched and no URL serves two different images.
+ * Exact thematic replacement of the Light V2 background, for the six
+ * states, in the same box: `width:100%; height:auto; no crop`.
  */
 export const A13_MOBILE_DARK_BACKGROUND = {
-  src: "/assets/gallery/a13-mobile/a13-mobile-dark-gallery-background-common-photo-free-v1.png",
-  packageAsset: "A13_MOBILE_GALLERY_DARK_BACKGROUND_COMMON_PHOTO_FREE_V1.png",
+  src: "/assets/gallery/a13-mobile/a13-mobile-dark-gallery-background-common-photo-free-v2.png",
+  packageAsset: "A13_MOBILE_GALLERY_DARK_BACKGROUND_COMMON_PHOTO_FREE_V2.png",
   width: 941,
   height: 1672,
-  sha256: "28938f6a6a9a8bbbf4a481c8c2ad05ebbe8f329d334eeb6e165f1990029e096c",
+  sha256: "3f2c9a57e340e47835a5ad732887d6e4a2d8691e29583fec320aa721d83db3b6",
   recolor: false,
   filter: "none",
 } as const;
@@ -52,7 +55,8 @@ export const A13_MOBILE_DARK_SEPARATOR_ART = {
 
 /**
  * `bottomMaterialContinuation` (V1.7 rule), Dark: the median RGB of the
- * neutral central bottom strip of the Dark background — the same strip
+ * neutral central bottom strip of the Dark background (V1 and V2 share
+ * the same bottom rows) — the same strip
  * (central 30–70 % of the width, last 60 source rows) that gives the Light
  * authority #F4DFCB on background V2 — and the Dark paper texture (the
  * shared fixed-seed paper noise in the Dark fibre tone, its grain cap) at
