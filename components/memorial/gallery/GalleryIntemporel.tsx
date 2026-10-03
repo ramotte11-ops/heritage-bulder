@@ -36,7 +36,7 @@ import styles from "./GalleryIntemporel.module.css";
  *
  * The section's own width W (the A13 container, measured before paint and
  * on every resize) selects ONE family (`selectA13ResponsiveFamily`):
- *  - 375–430 Mobile CLOSED and 431–1023 Tablet vertical →
+ *  - 320–374 Small Mobile (V1.4.1), 375–430 Mobile CLOSED and 431–1023 Tablet vertical →
  *    `A13MobileGallery` / `A13MobileFullAlbum` (`responsive`: the Tablet
  *    is the 430 authority remapped to W); the Mobile Gallery reports its
  *    activations, so this host opens the Viewer for it, exactly as the
@@ -44,7 +44,7 @@ import styles from "./GalleryIntemporel.module.css";
  *  - 1024–1199 Horizontal intermediate and ≥ 1200 Desktop CLOSED →
  *    `A13DesktopGallery` / `A13DesktopFullAlbum` (their uniform 1670
  *    canvas IS the 1200 authority × W / 1200 in 1024–1199);
- *  - below 375: out of the V1 contract — `STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE`
+ *  - below 320: out of the V1 contract — `STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE`
  *    is exposed (`data-a13-responsive-stop`) and logged once, and NO
  *    Gallery is rendered (the D7 fail-closed policy; no A13 behaviour is
  *    invented there).
@@ -131,7 +131,7 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
   const selection = width === null ? null : selectA13ResponsiveFamily(width);
   const stop = selection?.family === null ? selection.stop : null;
 
-  // Below 375 px: the contract's own STOP, exposed and logged once per entry — never silent, never a substitute.
+  // Below 320 px: the contract's own STOP, exposed and logged once per entry — never silent, never a substitute.
   const stopLogged = useRef(false);
   useEffect(() => {
     if (!stop) {

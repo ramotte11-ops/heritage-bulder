@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { A13_MOBILE_GROUP_TRANSLATION } from "@/config/gallery-a13-mobile-manifest";
 import { a13MobileAuthorityFrame } from "@/config/a13-responsive-bridge";
 import type { Language } from "@/config/languages";
@@ -11,6 +11,7 @@ import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runt
 import { runMobileGallery, selectMobileGalleryState, type MobileGalleryRun } from "@/lib/memorial/gallery/gallery-mobile-runtime";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GalleryScene";
 import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memorial/gallery/A13MobileGalleryScene";
+import { smallMobileGallery } from "@/lib/memorial/gallery/gallery-small-mobile";
 
 /**
  * A13 Gallery — MOBILE LIGHT section (Handoff V1.7), the Mobile counterpart
@@ -38,8 +39,11 @@ import { A13MobileGalleryScene, type A13MobileSceneQa } from "@/components/memor
  *   is the Tablet vertical family — the run is the 430 one
  *   (`runMobileGallery` at stage width 430: same state, slots, solver
  *   decisions, captions, CTA) painted on the real W-wide stage with
- *   `remap` W / 430 (`config/a13-responsive-bridge.ts`). Without it, only
- *   375–430 renders, exactly as before.
+ *   `remap` W / 430 (`config/a13-responsive-bridge.ts`). 320–374 px is the
+ *   Small Mobile family (V1.4.1): the 375 run, its horizontal implantation
+ *   re-solved by `smallMobileGallery`, painted at 375 scale on a 375 canvas
+ *   centred in the W stage (material cropped); a Small Mobile STOP renders
+ *   no Gallery (D7). Without it, only 375–430 renders, exactly as before.
  */
 
 export interface A13MobileGalleryProps {
@@ -84,6 +88,29 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
     () => (sourceWidth !== null && font?.fontCheck ? runMobileGallery({ media, captionOf: (m) => m.caption, measurer: font.measurer, stageWidth: sourceWidth, devicePixelRatio: window.devicePixelRatio || 1 }) : null),
     [sourceWidth, media, font],
   );
+
+  // Small Mobile (320–374): the 375 run, horizontal implantation re-solved for W.
+  const small = useMemo(
+    () => (frame?.family === "small" && width !== null && run?.outcome === "resolved" ? smallMobileGallery(run, width, font?.measurer ?? null, (m) => m.caption) : null),
+    [frame?.family, width, run, font],
+  );
+  const smallStop = small && small.status !== "PASS" ? `${small.status}: ${small.detail}` : null;
+  const smallLogged = useRef<string | null>(null);
+  useEffect(() => {
+    if (!smallStop || smallLogged.current === smallStop) return;
+    smallLogged.current = smallStop;
+    console.error("Gallery Small Mobile: composition unresolved (no Gallery rendered):", smallStop);
+  }, [smallStop]);
+  const entries = small?.status === "PASS" ? small.entries : run?.entries;
+  // Small Mobile: the 375 canvas, centred in the W stage, its material cropped.
+  const frameSmall = (node: ReactNode) =>
+    frame?.family === "small" && width !== null ? (
+      <div style={{ width: "100%", overflow: "hidden" }} data-a13-small-mobile="">
+        <div style={{ width: 375, marginLeft: (width - 375) / 2 }}>{node}</div>
+      </div>
+    ) : (
+      node
+    );
 
   const logged = useRef<string | null>(null);
   useEffect(() => {
@@ -133,6 +160,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
       data-testid="a13-mobile-gallery"
       data-gallery-profile={width === null ? "pending" : (frame?.family ?? "inactive")}
       {...(frame?.family === "tablet" ? { "data-a13-source-width": frame.sourceWidth, "data-a13-remap": frame.remap } : {})}
+      {...(small ? { "data-small-mobile-status": small.status, "data-small-mobile-fallbacks": small.status === "PASS" ? small.fallbackCount : 0 } : {})}
       data-gallery-state={run?.stateId ?? (run ? "absent" : "pending")}
       data-gallery-outcome={run?.outcome ?? "pending"}
       data-gallery-status={run?.status ?? "pending"}
@@ -140,18 +168,18 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
       <A13CaptionFontProbe />
       {!run && state && sourceWidth !== null ? (
         <div style={{ visibility: "hidden" }} aria-hidden="true" inert data-testid="a13-mobile-gallery-pending">
-          <A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={sourceWidth} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} theme={theme} remap={remap} />
+          {frameSmall(<A13MobileGalleryScene stateId="pending" title={title} subtitle={subtitle} entries={[]} stageWidth={sourceWidth} stageHeight={A13_MOBILE_GROUP_TRANSLATION[state].stageHeightSource} theme={theme} remap={remap} />)}
         </div>
       ) : null}
-      {run?.outcome === "resolved" && run.stateId ? (
-        <A13MobileGalleryScene
+      {run?.outcome === "resolved" && run.stateId && entries && !smallStop ? (
+        frameSmall(<A13MobileGalleryScene
           stateId={run.stateId}
           title={title}
           subtitle={subtitle}
           stageWidth={run.stageWidth}
           stageHeight={run.stageHeight}
           translateY={run.translateY}
-          entries={run.entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption }))}
+          entries={entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption }))}
           captionFontSizePx={run.metrics.captionFontPx}
           cta={run.cta ? { label: translate(language, "gallery.seeMoreMemories"), lang: language, onActivate: onSeeMore, box: run.cta.box } : null}
           language={language}
@@ -162,7 +190,7 @@ export function A13MobileGallery({ media, title, subtitle, language, onSeeMore, 
           qa={qaLayer}
           theme={theme}
           remap={remap}
-        />
+        />)
       ) : null}
     </div>
   );

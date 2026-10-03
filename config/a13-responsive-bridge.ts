@@ -12,11 +12,12 @@ import { a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
  *
  * | CSS width  | family                  | geometric authority                      |
  * |-----------:|-------------------------|------------------------------------------|
+ * | 320–374    | Small Mobile (V1.3)     | Mobile CLOSED at 375, X projection       |
  * | 375–430    | Mobile CLOSED           | unchanged                                |
  * | 431–1023   | Tablet vertical         | Mobile CLOSED at 430, × W / 430          |
  * | 1024–1199  | Horizontal intermediate | Desktop CLOSED at 1200, × W / 1200       |
  * | ≥ 1200     | Desktop CLOSED          | unchanged                                |
- * | < 375      | out of the V1 contract  | `STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE` |
+ * | < 320      | out of the V1 contract  | `STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE` |
  *
  * W is the width of the A13 container (the available width), never a
  * device class. Boundaries:
@@ -28,6 +29,14 @@ import { a13MobileProfileActive } from "@/config/gallery-a13-mobile-manifest";
  *
  * ## How each family is realised (no CLOSED authority is modified)
  *
+ * - Small Mobile (Handoff V1.3, `A13_RESPONSIVE_BRIDGE_HANDOFF_V1_3`,
+ *   SHA-256 95365431…71a6): the Mobile runtimes are run at their exact 375
+ *   frame and painted at 375 scale (objects, type and controls keep their
+ *   375 size) on a 375 canvas centred in the W stage (the material is
+ *   cropped, never the geometry); only the horizontal implantation moves —
+ *   `lib/memorial/gallery/gallery-small-mobile.ts` (Gallery: ordered
+ *   interval projection V1.2 + the Studio intrinsic-paper fallback V1.3;
+ *   Album: centre compression + minimal group shift V1.1).
  * - Tablet: the Mobile runtimes (Gallery `runMobileGallery`, Album
  *   `layoutAlbumMobile`) are run at their canonical 430 frame — the
  *   composition, solver decisions, partition and captions are exactly the
@@ -49,15 +58,16 @@ export const A13_RESPONSIVE_BRIDGE_HANDOFF_ID = "A13_RESPONSIVE_BRIDGE_HANDOFF_V
 
 /** `breakpoints` (CSS px, inclusive), `families.*.sourceWidthCssPx`. */
 export const A13_RESPONSIVE_BRIDGE = {
+  small: { min: 320, max: 374, sourceWidthCssPx: 375 },
   mobile: { min: 375, max: 430 },
   tablet: { min: 431, max: 1023, sourceWidthCssPx: 430 },
   horizontal: { min: 1024, max: 1199, sourceWidthCssPx: 1200 },
   desktop: { min: 1200, max: null },
 } as const;
 
-export type A13ResponsiveFamily = "mobile" | "tablet" | "horizontal" | "desktop";
+export type A13ResponsiveFamily = "small" | "mobile" | "tablet" | "horizontal" | "desktop";
 
-export const A13_RESPONSIVE_BELOW_375_STOP = "STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE" as const;
+export const A13_RESPONSIVE_BELOW_320_STOP = "STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE" as const;
 
 export type A13ResponsiveSelection =
   | {
@@ -68,40 +78,44 @@ export type A13ResponsiveSelection =
       /** W / sourceWidth: 1 for the two CLOSED families. */
       scale: number;
     }
-  | { family: null; width: number; stop: typeof A13_RESPONSIVE_BELOW_375_STOP };
+  | { family: null; width: number; stop: typeof A13_RESPONSIVE_BELOW_320_STOP };
 
 /**
  * The family of an A13 container of width `width` (CSS px). Contiguous
- * over [375, ∞) — a fractional width belongs to exactly one family
- * (430.5 is Tablet, 1023.5 Tablet, 1199.5 Horizontal): no gap, no overlap.
+ * over [320, ∞) — a fractional width belongs to exactly one family
+ * (374.5 is Small Mobile, 430.5 Tablet, 1023.5 Tablet, 1199.5 Horizontal):
+ * no gap, no overlap.
  * Mobile is exactly `a13MobileProfileActive` (375–430).
  */
 export function selectA13ResponsiveFamily(width: number): A13ResponsiveSelection {
   const B = A13_RESPONSIVE_BRIDGE;
-  if (!(width >= B.mobile.min)) return { family: null, width, stop: A13_RESPONSIVE_BELOW_375_STOP };
+  if (!(width >= B.small.min)) return { family: null, width, stop: A13_RESPONSIVE_BELOW_320_STOP };
+  if (width < B.mobile.min) return { family: "small", width, sourceWidth: B.small.sourceWidthCssPx, scale: 1 };
   if (a13MobileProfileActive(width)) return { family: "mobile", width, sourceWidth: width, scale: 1 };
   if (width < B.horizontal.min) return { family: "tablet", width, sourceWidth: B.tablet.sourceWidthCssPx, scale: width / B.tablet.sourceWidthCssPx };
   if (width < B.desktop.min) return { family: "horizontal", width, sourceWidth: B.horizontal.sourceWidthCssPx, scale: width / B.horizontal.sourceWidthCssPx };
   return { family: "desktop", width, sourceWidth: width, scale: 1 };
 }
 
-/** The Mobile authority's frame for a Mobile-derived family (Mobile CLOSED or Tablet). */
+/** The Mobile authority's frame for a Mobile-derived family (Small Mobile, Mobile CLOSED or Tablet). */
 export interface A13MobileAuthorityFrame {
-  family: "mobile" | "tablet";
-  /** Stage width the Mobile runtime is run at: W itself (Mobile) or 430 (Tablet). */
+  family: "small" | "mobile" | "tablet";
+  /** Stage width the Mobile runtime is run at: 375 (Small Mobile), W itself (Mobile) or 430 (Tablet). */
   sourceWidth: number;
-  /** CSS px of the rendered stage per CSS px of the source frame: 1 (Mobile) or W / 430 (Tablet). */
+  /** CSS px of the rendered stage per CSS px of the source frame: 1 (Small Mobile, Mobile) or W / 430 (Tablet). */
   remap: number;
 }
 
 /**
  * The Mobile authority's frame at width `width`: Mobile CLOSED (375–430,
- * itself), Tablet (431–1023, the 430 frame remapped) when the host opts
- * into the bridge, otherwise `null` (not a Mobile-derived width).
+ * itself); when the host opts into the bridge, Small Mobile (320–374, the
+ * 375 frame at 375 scale) and Tablet (431–1023, the 430 frame remapped);
+ * otherwise `null` (not a Mobile-derived width).
  */
 export function a13MobileAuthorityFrame(width: number, bridge: boolean): A13MobileAuthorityFrame | null {
   if (a13MobileProfileActive(width)) return { family: "mobile", sourceWidth: width, remap: 1 };
   if (!bridge) return null;
   const s = selectA13ResponsiveFamily(width);
+  if (s.family === "small") return { family: "small", sourceWidth: s.sourceWidth, remap: 1 };
   return s.family === "tablet" ? { family: "tablet", sourceWidth: s.sourceWidth, remap: s.scale } : null;
 }

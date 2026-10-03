@@ -223,6 +223,9 @@ describe("A13 Responsive Bridge V1 — one family per width, wired in the real h
 
   it("375–430 Mobile, 431–1023 Tablet (Mobile sections, the 430 frame), 1024–1199 Horizontal and ≥ 1200 Desktop (Desktop sections)", async () => {
     for (const [w, family, sourceWidth, kind] of [
+      [320, "small", 375, "mobile"],
+      [360, "small", 375, "mobile"],
+      [374, "small", 375, "mobile"],
       [375, "mobile", 375, "mobile"],
       [430, "mobile", 430, "mobile"],
       [431, "tablet", 430, "mobile"],
@@ -248,14 +251,14 @@ describe("A13 Responsive Bridge V1 — one family per width, wired in the real h
     }
   });
 
-  it("below 375: STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE — exposed, logged once, no Gallery (no invented behaviour)", async () => {
+  it("below 320: STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE — exposed, logged once, no Gallery (no invented behaviour)", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { root } = await mountAt(360, 7);
+    const { root } = await mountAt(310, 7);
     expect(root.dataset.a13Family).toBe("none");
-    expect(root.dataset.a13ResponsiveStop).toBe("STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE");
+    expect(root.dataset.a13ResponsiveStop).toBe("STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE");
     expect(root.querySelector("[data-testid=a13-mobile-gallery], [data-testid=a13-desktop-gallery], [data-print]")).toBeNull();
-    resize(320);
-    expect(error.mock.calls.filter((c) => String(c[1]) === "STOP_RESPONSIVE_BELOW_375_OUT_OF_SCOPE")).toHaveLength(1);
+    resize(300);
+    expect(error.mock.calls.filter((c) => String(c[1]) === "STOP_RESPONSIVE_BELOW_320_OUT_OF_SCOPE")).toHaveLength(1);
     resize(390);
     expect(root.dataset.a13ResponsiveStop).toBeUndefined();
     await waitFor(() => expect(mobileGallery(root)!.dataset.galleryOutcome).toBe("resolved"));
@@ -263,7 +266,7 @@ describe("A13 Responsive Bridge V1 — one family per width, wired in the real h
   });
 
   it("Mobile / Tablet, Dark: Gallery → Viewer (Dark, origin Gallery) → 7+ CTA → Full Album (Dark, family order) → Viewer (Dark, origin Album) → Retour", async () => {
-    for (const w of [390, 768]) {
+    for (const w of [360, 390, 768]) {
       const { media, root } = await mountAt(w, 9, "dark");
       const gallery = mobileGallery(root)!;
       await waitFor(() => expect(gallery.dataset.galleryOutcome).toBe("resolved"));
@@ -285,7 +288,7 @@ describe("A13 Responsive Bridge V1 — one family per width, wired in the real h
       expect(gallery.parentElement!.dataset.memorialGalleryScene).toBe("parked");
       const album = root.querySelector<HTMLElement>("[data-memorial-gallery-album] [data-testid=a13-mobile-full-album]")!;
       await waitFor(() => expect(album.dataset.albumStatus).toBe("PASS"));
-      expect(album.dataset.albumFamily, String(w)).toBe(w > 430 ? "tablet" : undefined);
+      expect(album.dataset.albumFamily, String(w)).toBe(w > 430 ? "tablet" : w < 375 ? "small" : undefined);
       const table = album.querySelector<HTMLElement>("[data-testid=album-memory-table]")!;
       expect(table.dataset.a13Theme).toBe("dark");
       const albumPrints = [...table.querySelectorAll<HTMLElement>("[data-print][role=button]")];

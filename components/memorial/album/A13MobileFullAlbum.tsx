@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { a13AlbumMobileActive } from "@/config/album-a13-mobile-light";
 import { a13MobileAuthorityFrame, type A13MobileAuthorityFrame } from "@/config/a13-responsive-bridge";
 import type { Language } from "@/config/languages";
@@ -9,6 +9,7 @@ import { layoutAlbumMobile, solveAlbumMobileGeometry, type AlbumMobileLayout } f
 import { useCaptionMeasurer } from "@/lib/memorial/gallery/use-caption-measurer";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import { A13CaptionFontProbe } from "@/components/memorial/gallery/A13GalleryScene";
+import { smallMobileAlbum } from "@/lib/memorial/gallery/gallery-small-mobile";
 import { AlbumMobileTable } from "@/components/memorial/album/AlbumMobileTable";
 import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer/MemoryViewer";
 
@@ -31,8 +32,10 @@ import { useMemoryViewer, type ViewerReport } from "@/components/memorial/viewer
  *   is the Tablet vertical family — the Mobile partition, grammars, solved
  *   groups and captions laid out at the 430 frame (`layoutAlbumMobile` at
  *   430), painted on the real W-wide table (`--k = W / 1024`), i.e. × W /
- *   430. The media count never enters the factor. Without it, only 375–430
- *   renders, exactly as before.
+ *   430. The media count never enters the factor. 320–374 px is the Small
+ *   Mobile family (V1.4.1): the 375 layout, centres compressed and one
+ *   minimal shift per group (`smallMobileAlbum`), on a 375 table centred in
+ *   the W stage. Without it, only 375–430 renders, exactly as before.
  */
 
 export interface A13MobileFullAlbumProps {
@@ -71,7 +74,13 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
   const frame: A13MobileAuthorityFrame | null = width === null ? null : responsive ? a13MobileAuthorityFrame(width, true) : a13AlbumMobileActive(width) ? { family: "mobile", sourceWidth: width, remap: 1 } : null;
   const active = frame !== null;
   const sourceWidth = frame?.sourceWidth ?? null;
-  const layout = useMemo(() => (sourceWidth !== null ? layoutAlbumMobile(albumMedia, font?.fontCheck ? font.measurer : null, sourceWidth, geometry) : null), [sourceWidth, albumMedia, font, geometry]);
+  const base = useMemo(() => (sourceWidth !== null ? layoutAlbumMobile(albumMedia, font?.fontCheck ? font.measurer : null, sourceWidth, geometry) : null), [sourceWidth, albumMedia, font, geometry]);
+  // Small Mobile (320–374): the 375 layout, centres compressed, one minimal shift per group (FULL_ALBUM_CONTRACT V1.1).
+  const small = useMemo(() => (frame?.family === "small" && width !== null && base?.status === "PASS" ? smallMobileAlbum(base, width) : null), [frame?.family, width, base]);
+  const layout = small ? (small.status === "PASS" ? small.layout : null) : base;
+  useEffect(() => {
+    if (small && small.status !== "PASS") console.error("Album Small Mobile: composition unresolved (no Album rendered):", small.status, small.detail);
+  }, [small]);
 
   const logged = useRef<string | null>(null);
   useEffect(() => {
@@ -86,18 +95,29 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
     onLayout?.(layout);
   }, [layout, onLayout]);
 
+  // Small Mobile: the 375 table, centred in the W stage, its material cropped.
+  const frameSmall = (node: ReactNode) =>
+    frame?.family === "small" && width !== null ? (
+      <div style={{ width: "100%", overflow: "hidden" }} data-a13-small-mobile="">
+        <div style={{ width: 375, marginLeft: (width - 375) / 2 }}>{node}</div>
+      </div>
+    ) : (
+      node
+    );
+
   return (
     <div
       ref={rootRef}
       data-testid="a13-mobile-full-album"
       data-album-count={media.length}
-      data-album-status={layout?.status ?? (active ? "pending" : "inactive")}
+      data-album-status={small && small.status !== "PASS" ? small.status : (layout?.status ?? (active ? "pending" : "inactive"))}
       data-album-captions={font?.fontCheck ? "measured" : "pending"}
       {...(frame?.family === "tablet" ? { "data-album-family": "tablet", "data-a13-source-width": frame.sourceWidth, "data-a13-remap": frame.remap } : {})}
+      {...(frame?.family === "small" ? { "data-album-family": "small" } : {})}
     >
       <A13CaptionFontProbe />
       {layout && layout.status === "PASS" ? (
-        <AlbumMobileTable
+        frameSmall(<AlbumMobileTable
           layout={layout}
           media={media.map(({ mediaId, src, alt }) => ({ mediaId, src, alt }))}
           language={language}
@@ -108,7 +128,7 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
             const m = media[mediaIndex];
             viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album", language);
           }}
-        />
+        />)
       ) : null}
       {viewer.node}
     </div>
