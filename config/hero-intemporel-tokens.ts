@@ -30,6 +30,37 @@ import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
+/**
+ * Handoff V1.2 — the contract applies only to the Mobile Light scene
+ * rendered between 320px and 430px. The existing masters and geometry
+ * remain authoritative everywhere else.
+ */
+export const HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME = {
+  contractedWidthCssPx: { min: 320, max: 430 },
+  canvasPx: { width: 941, height: 1672 },
+  /** A convenient 4:5 pixel rectangle used only as the CSS transform's
+   * source coordinate system. Its aspect ratio, not its resolution, is
+   * contractual; the homography below still consumes normalized u/v. */
+  logicalRasterPx: { width: 400, height: 500 },
+  destinationQuadPx: [
+    [257.6950988769531, 219.0428009033203],
+    [657.7222290039062, 175.31520080566406],
+    [710.5056762695312, 649.205078125],
+    [303.7381896972656, 696.8555297851562],
+  ],
+  homographyNormalizedSourceToReference: [
+    [404.319837107753, 40.752744666416, 257.695098876953],
+    [-42.583383355159, 465.6752792727, 219.04280090332],
+    [0.00652662597, -0.017417454681, 1],
+  ],
+  plateSrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V1.png",
+  maskSrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_MASK_RUNTIME_CLEAN_V1.png",
+  plateSha256: "6a8f555310613e6dc13b7714c8887c7e4b632c9cea9528d1c2b5ab55e0082980",
+  maskSha256: "8df35f9e9222e0dca243e70e629c600cf9c0f1ff72028735f459db2ed82653f8",
+} as const;
+
 /** Where the 4 runtime masters actually live — copied verbatim (same
  * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
  * `public/`. */
