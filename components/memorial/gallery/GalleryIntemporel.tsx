@@ -10,7 +10,7 @@ import { A13DesktopGallery } from "@/components/memorial/gallery/A13DesktopGalle
 import { A13MobileGallery } from "@/components/memorial/gallery/A13MobileGallery";
 import { A13DesktopFullAlbum } from "@/components/memorial/album/A13DesktopFullAlbum";
 import { A13MobileFullAlbum } from "@/components/memorial/album/A13MobileFullAlbum";
-import { useMemoryViewer } from "@/components/memorial/viewer/MemoryViewer";
+import { useMemoryViewer, type ViewerOrigin } from "@/components/memorial/viewer/MemoryViewer";
 import styles from "./GalleryIntemporel.module.css";
 
 /**
@@ -49,7 +49,14 @@ import styles from "./GalleryIntemporel.module.css";
  *    Gallery is rendered (the D7 fail-closed policy; no A13 behaviour is
  *    invented there).
  * Crossing 1023 / 1024 swaps the family atomically (never an
- * interpolation); the view (Gallery or Album) and the theme are kept.
+ * interpolation); the view (Gallery or Album), the theme and an open
+ * Viewer are kept (the Mobile Gallery's and both Albums' Viewer is this
+ * host's, never the swapped section's). When the family changed while the
+ * Album's Viewer was open, the print it was opened from no longer exists:
+ * once the Viewer has finished its own (unchanged) close, the host brings
+ * the SAME memory of the new Album on screen and gives it focus — found by
+ * `data-media-index`, never by a family-specific slot id — or, failing
+ * that, the new Album itself. Nothing else ever triggers it.
  *
  * ## Focus and scroll (QG D3) — the Preview host's own convention
  *
@@ -108,6 +115,23 @@ function uncoverFromStickyChrome(target: HTMLElement): void {
   }
 }
 
+/**
+ * After a family switch under the Album's Viewer: the same memory in the new
+ * Album (its print, by `data-media-index`) on screen and focused; if that print
+ * cannot be found, the new Album itself on screen and focused.
+ */
+function revealAlbumMemory(album: HTMLElement, mediaIndex: number): void {
+  const container = album.querySelector<HTMLElement>("[data-testid=album-memory-table]") ?? album;
+  const print = container.querySelector<HTMLElement>(`[data-media-index="${mediaIndex}"] [data-print]`);
+  const target = print ?? container;
+  const r = target.getBoundingClientRect();
+  const off = print ? r.top < 0 || r.bottom > window.innerHeight : r.bottom <= 0 || r.top >= window.innerHeight;
+  if (off) window.scrollTo({ left: window.scrollX, top: window.scrollY + (print ? r.top + r.height / 2 - window.innerHeight / 2 : r.top), behavior: "instant" });
+  uncoverFromStickyChrome(target);
+  if (!print && !container.hasAttribute("tabindex")) container.setAttribute("tabindex", "-1");
+  target.focus({ preventScroll: true });
+}
+
 export function GalleryIntemporel({ media, theme, title, subtitle, language }: GalleryIntemporelProps) {
   const [view, setView] = useState<View>("gallery");
   const [width, setWidth] = useState<number | null>(null);
@@ -115,7 +139,7 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
   const backRef = useRef<HTMLButtonElement>(null);
   const galleryScrollY = useRef(0);
   const previousView = useRef<View>("gallery");
-  // The Viewer of the Mobile-derived Gallery (the Desktop Gallery and both Albums own theirs).
+  // The Viewer of the Mobile-derived Gallery and of both Albums (the Desktop Gallery owns its own).
   const viewer = useMemoryViewer();
 
   // The A13 container's width, before the first paint and on every resize.
@@ -130,6 +154,7 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
   }, []);
   const selection = width === null ? null : selectA13ResponsiveFamily(width);
   const stop = selection?.family === null ? selection.stop : null;
+  const family = selection?.family ?? null;
 
   // Below 320 px: the contract's own STOP, exposed and logged once per entry — never silent, never a substitute.
   const stopLogged = useRef(false);
@@ -185,17 +210,45 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
     }
   }, [view]);
 
-  // Same request as the Desktop Gallery's own: the media, its natural size and caption, the memorial's theme, origin Gallery.
+  // Same request as the sections' own: the media, its natural size and caption, the memorial's theme, the origin.
   const openViewer = viewer.open;
-  const openMemory = useCallback(
-    (mediaIndex: number) => {
+  const openMedia = useCallback(
+    (mediaIndex: number, origin: ViewerOrigin) => {
       const m = media[mediaIndex];
-      if (m) openViewer({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "gallery", language);
+      if (m) openViewer({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, origin, language);
     },
     [media, openViewer, theme, language],
   );
+  // The Album's Viewer: the memory it was opened on, whether the family changed since.
+  const albumViewer = useRef<{ mediaIndex: number; switched: boolean } | null>(null);
+  const openMemory = useCallback(
+    (mediaIndex: number) => {
+      albumViewer.current = null;
+      openMedia(mediaIndex, "gallery");
+    },
+    [openMedia],
+  );
+  const openAlbumMemory = useCallback(
+    (mediaIndex: number) => {
+      albumViewer.current = media[mediaIndex] ? { mediaIndex, switched: false } : null;
+      openMedia(mediaIndex, "album");
+    },
+    [openMedia, media],
+  );
+  // Runs only when the family changes: with that Viewer open, its Album has just been replaced.
+  useEffect(() => {
+    if (albumViewer.current) albumViewer.current.switched = true;
+  }, [family]);
+  // Once that Viewer has closed (its own scroll / focus restore has run, untouched): only after a family switch.
+  const viewerOpen = viewer.isOpen;
+  useEffect(() => {
+    const a = albumViewer.current;
+    if (viewerOpen || !a) return;
+    albumViewer.current = null;
+    const album = rootRef.current?.querySelector<HTMLElement>("[data-memorial-gallery-album]");
+    if (a.switched && album) revealAlbumMemory(album, a.mediaIndex);
+  }, [viewerOpen]);
 
-  const family = selection?.family ?? null;
   const desktop = desktopDerived(selection);
   return (
     <div
@@ -222,7 +275,11 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
                   {translate(language, "common.back")}
                 </button>
               </div>
-              {desktop ? <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} /> : <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} />}
+              {desktop ? (
+                <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} />
+              ) : (
+                <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} />
+              )}
             </div>
           ) : null}
         </>

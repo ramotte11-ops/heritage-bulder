@@ -51,9 +51,11 @@ export interface A13MobileFullAlbumProps {
   theme?: AlbumTheme;
   /** Responsive Bridge V1: also render 431–1023 px as the Tablet family (the 430 layout, remapped). Default false: 375–430 only. */
   responsive?: boolean;
+  /** Host-owned Viewer: when given, a print asks the host to open the Viewer (origin Album) instead of this section's own — so it outlives a family switch. */
+  onOpenMemory?: (mediaIndex: number) => void;
 }
 
-export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false }: A13MobileFullAlbumProps) {
+export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false, onOpenMemory }: A13MobileFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -125,6 +127,7 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
           theme={theme}
           onActivate={(mediaId, mediaIndex) => {
             onActivateMemory?.(mediaId, mediaIndex);
+            if (onOpenMemory) return onOpenMemory(mediaIndex);
             const m = media[mediaIndex];
             viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album", language);
           }}

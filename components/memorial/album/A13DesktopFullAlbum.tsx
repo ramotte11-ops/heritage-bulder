@@ -25,9 +25,11 @@ export interface A13DesktopFullAlbumProps {
   /** Language of the product text (Album and Viewer — i18n, dette D5). Family content is never translated. */
   language: Language;
   onViewerReport?: (report: ViewerReport) => void;
+  /** Host-owned Viewer: when given, a print asks the host to open the Viewer (origin Album) instead of this section's own — so it outlives a family switch. */
+  onOpenMemory?: (mediaIndex: number) => void;
 }
 
-export function A13DesktopFullAlbum({ media, theme, language, onViewerReport }: A13DesktopFullAlbumProps) {
+export function A13DesktopFullAlbum({ media, theme, language, onViewerReport, onOpenMemory }: A13DesktopFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -43,6 +45,7 @@ export function A13DesktopFullAlbum({ media, theme, language, onViewerReport }: 
           theme={theme}
           language={language}
           onActivate={(_mediaId, mediaIndex) => {
+            if (onOpenMemory) return onOpenMemory(mediaIndex);
             const m = media[mediaIndex];
             viewer.open({ mediaId: m.mediaId, src: m.src, alt: m.alt, naturalWidth: m.width, naturalHeight: m.height, caption: m.caption }, theme, "album", language);
           }}

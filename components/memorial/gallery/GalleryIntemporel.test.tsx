@@ -384,4 +384,49 @@ describe("A13 Responsive Bridge V1 — one family per width, wired in the real h
     expect(desktopGallery(root)).toBeNull();
     await waitFor(() => expect(mobileGallery(root)!.dataset.galleryOutcome).toBe("resolved"));
   });
+
+  it("a Viewer opened from the Album survives 1023 ↔ 1024 (same media, theme, origin Album); once closed, the same memory of the NEW Album is focused", async () => {
+    for (const [from, to, theme] of [
+      [1023, 1024, "dark"],
+      [1024, 1023, "light"],
+    ] as const) {
+      const { media, root } = await mountAt(from, 9, theme);
+      await waitFor(() => expect(root.querySelector("[data-testid=cta-7plus]")).not.toBeNull(), { timeout: 60000 });
+      fireEvent.click(root.querySelector("[data-testid=cta-7plus]")!);
+      const table = () => root.querySelector<HTMLElement>("[data-memorial-gallery-album] [data-testid=album-memory-table]");
+      const print7 = () => table()?.querySelector<HTMLElement>('[data-media-index="7"] [data-print][role=button]') ?? null;
+      const openPrint7 = async () => {
+        const print = print7()!;
+        print.focus(); // as a real click does
+        fireEvent.click(print);
+        await waitFor(() => expect(viewerState()).toBe("open"));
+        return print;
+      };
+      await waitFor(() => expect(print7()).not.toBeNull());
+      // No family switch: the CLOSED close, untouched (focus back on the print that opened it).
+      let trigger = await openPrint7();
+      fireEvent.click(document.querySelector("[data-viewer-close]")!);
+      await waitFor(() => expect(document.querySelector("[data-a13-viewer]")).toBeNull());
+      expect(document.activeElement).toBe(trigger);
+      // Family switch while open.
+      trigger = await openPrint7();
+      const before = table()!;
+      resize(to);
+      expect(root.dataset.a13Family, `${from}→${to}`).toBe(to === 1024 ? "horizontal" : "tablet");
+      await waitFor(() => expect(print7()).not.toBeNull());
+      expect(table()).not.toBe(before);
+      expect(trigger.isConnected).toBe(false);
+      expect(document.querySelectorAll("[data-a13-viewer]")).toHaveLength(1);
+      const v = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
+      expect(viewerState()).toBe("open");
+      expect([v.dataset.viewerOrigin, v.dataset.a13ViewerTheme ?? "light"]).toEqual(["album", theme]);
+      expect(v.querySelector("[data-viewer-photo]")!.getAttribute("src")).toBe(media[7].src);
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() => expect(document.querySelector("[data-a13-viewer]")).toBeNull());
+      expect([...document.body.children].filter((el) => el.hasAttribute("inert"))).toEqual([]);
+      await waitFor(() => expect(document.activeElement).toBe(print7()));
+      expect(root.dataset.galleryView).toBe("album");
+      cleanup();
+    }
+  });
 });
