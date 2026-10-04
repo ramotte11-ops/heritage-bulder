@@ -6,11 +6,11 @@
  * ROTATED window without rotating the photo's own pixels. V3 FINAL's
  * masters give a plain axis-aligned photo window (no rotation, no
  * polygon, at all) — see HeroIntemporel.tsx's own docstring — so that
- * whole mechanism is gone. `.photoWindow` below is now exactly the same
- * kind of box as `.textZone`: one absolutely-positioned rectangle, sized
- * from CSS custom properties, switched desktop/mobile by the same
- * 960px breakpoint as the two master images. No rule in this file
- * declares a `transform` of any kind.
+ * legacy mechanism is gone. `.photoWindow` below remains exactly the
+ * same kind of box as `.textZone` for the legacy masters. Desktop Dark
+ * Runtime V1 adds one QG-supplied projective transform, explicitly
+ * clipped to its authoritative quadrilateral and scoped to the existing
+ * 960px Desktop breakpoint.
  *
  * Ink colors are the one thing still tokenized per
  * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own scope
@@ -49,6 +49,11 @@
   .hero {
     /* The desktop master's own intrinsic ratio (1536×1024). */
     aspect-ratio: 1536 / 1024;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+    max-width: 1672px;
+    aspect-ratio: 1672 / 941;
   }
 }
 
@@ -114,6 +119,58 @@
 .photoImage {
   position: absolute;
   max-width: none;
+}
+
+/* --- QG Handoff Runtime V1: Desktop Dark --------------------------
+   The existing 960px product breakpoint selects this exact 1672×941
+   reference scene. The photo is projectively mapped and clipped to the
+   contractual quadrilateral before the byte-identical overlay is
+   painted; unrelated alpha-zero pixels can therefore never reveal it. */
+
+.desktopDarkPhotoRuntime,
+.desktopDarkRuntimeOverlay {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterDesktop {
+    display: none;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkPhotoRuntime,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkRuntimeOverlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkPhotoRuntime {
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkRuntimeOverlay {
+    z-index: 10;
+    object-fit: fill;
+    pointer-events: none;
+  }
+}
+
+.desktopDarkLogicalRaster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.desktopDarkLogicalRaster .photoImage {
+  image-orientation: from-image;
 }
 
 /* --- Text zone (mission section 5) ------------------------------------

@@ -30,6 +30,34 @@ import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
+/** Exact QG-supplied geometry and byte identity for Desktop Dark Runtime V1. */
+export const HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME = {
+  canvasPx: { width: 1672, height: 941 },
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.04768016287499899,
+    width: 4,
+    height: 4.904639674250002,
+  },
+  destinationQuadPx: [
+    [248.58025692688105, 213.71605447233398],
+    [692.7847001103855, 132.91020146330993],
+    [807.9103742411495, 686.5327039663346],
+    [354.41363947986156, 753.7077330592662],
+  ],
+  homographyNormalizedSourceToReference: [
+    [106.48220936986688, 20.577212488731398, 247.56575323552485],
+    [-21.07242999591678, 107.96074197549991, 208.53977135624035],
+    [-0.006573455951470907, -0.0028162226428227314, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_DARK_ALPHA_RUNTIME_ASSET_V1(1).png",
+  overlaySha256: "9e8419e9446838367210893897f1f02434e30a34e61f1231f04634d95a2d2f8b",
+  fullyTransparentPixels: 250532,
+} as const;
+
 /** Where the 4 runtime masters actually live — copied verbatim (same
  * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
  * `public/`. */
