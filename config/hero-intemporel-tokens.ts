@@ -30,6 +30,41 @@ import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
+/**
+ * QG Handoff Runtime V1 — Mobile Dark V2 photo runtime. These values
+ * are transcribed from the authoritative 982×1602 contract and apply
+ * only inside its explicitly supported 320–430px width band.
+ */
+export const HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME = {
+  contractedWidthCssPx: { min: 320, max: 430 },
+  canvasPx: { width: 982, height: 1602 },
+  /** Fixed 4:5 source plane. The contract's homography consumes its
+   * normalized 0..4 × 0..5 coordinate system. */
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.3159091855091911,
+    width: 4,
+    height: 4.368181628981618,
+  },
+  destinationQuadPx: [
+    [285.387045982091, 185.931750076958],
+    [734.530248408402, 135.18266449704],
+    [795.67051800863, 625.898221989843],
+    [339.571832964632, 684.227521064665],
+  ],
+  homographyNormalizedSourceToReference: [
+    [114.60897005534757, 11.065434355612389, 281.53992671680476],
+    [-12.218643662535635, 111.26622935568122, 150.5527559508917],
+    [0.003351048606059601, -0.003898191948665708, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_DARK_ALPHA_RUNTIME_ASSET_V2(1).png",
+  overlaySha256: "aab7752aad7d707a0db4c46cef344d852b32dfd86ee3dcfa4eeac1e09c1a36c0",
+  fullyTransparentPixels: 226292,
+} as const;
+
 /** Where the 4 runtime masters actually live — copied verbatim (same
  * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
  * `public/`. */

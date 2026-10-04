@@ -5,7 +5,10 @@ import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { HeroContent } from "@/types/hero";
 import type { Media } from "@/types/media";
-import { HERO_INTEMPOREL_RUNTIME_MASTER_SPECS } from "@/config/hero-intemporel-tokens";
+import {
+  HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
+} from "@/config/hero-intemporel-tokens";
 
 /**
  * Mission 035 v4 (Studio V3 FINAL runtime masters) — contract tests for
@@ -185,6 +188,58 @@ describe("HeroIntemporel — Light/Dark scoping (mission section 9)", () => {
   });
 });
 
+describe("HeroIntemporel — Mobile Dark V2 Handoff Runtime V1", () => {
+  const CSS_SOURCE = readFileSync(
+    path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
+    "utf8",
+  );
+
+  it("paints the projected family photo, authoritative overlay, then dynamic content", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const layers = Array.from(container.querySelectorAll("[data-hero-mobile-dark-layer]"));
+
+    expect(layers.map((node) => node.getAttribute("data-hero-mobile-dark-layer"))).toEqual([
+      "projected-photo",
+      "authoritative-overlay",
+      "dynamic-content",
+    ]);
+    expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect((layers[1] as HTMLImageElement).src).toContain(
+      HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySrc,
+    );
+  });
+
+  it("renders exactly one authoritative Dark V2 overlay and no reconstructed artistic parts", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const overlays = container.querySelectorAll('[data-hero-mobile-dark-layer="authoritative-overlay"]');
+    expect(overlays).toHaveLength(1);
+    expect(container.querySelector('[data-hero-mobile-dark-part="paperclip"]')).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-part="leaf"]')).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-part="seal"]')).toBeNull();
+  });
+
+  it("uses the real RGBA overlay as visibility authority, never a bbox mask", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const projected = container.querySelector('[data-hero-mobile-dark-layer="projected-photo"]');
+    expect(projected?.querySelector("mask, clipPath")).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-layer="authoritative-overlay"]')).toBeTruthy();
+  });
+
+  it("scopes the 982×1602 runtime and uniform width band to Dark 320–430 only", () => {
+    expect(CSS_SOURCE).toContain("@media (min-width: 320px) and (max-width: 430px)");
+    expect(CSS_SOURCE).toContain('[data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero');
+    expect(CSS_SOURCE).toContain("aspect-ratio: 982 / 1602;");
+    expect(CSS_SOURCE).not.toContain('[data-heritage-skin-variant="light"] .mobileDark');
+  });
+
+  it("does not add any Dark V2 runtime layer to Mobile Light", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(container.querySelector("[data-hero-mobile-dark-layer]")).toBeNull();
+    expect(container.querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect(container.querySelector('img[src*="hero-runtime-light-mobile.png"]')).toBeTruthy();
+  });
+});
+
 describe("HeroIntemporel — dynamic content: photo, context label, name, dates, shortPhrase", () => {
   it("renders the family's own content — name, dates and phrase", () => {
     renderHero();
@@ -240,10 +295,9 @@ describe("HeroIntemporel — a missing photo degrades cleanly, never crashes", (
 
 /**
  * Mission 035 v4 — the photo's pixels are never rotated. V3 FINAL's
- * masters give an axis-aligned window (no rotation anywhere in the
- * manifest), and this component now declares no `transform` at all —
- * this guard stays as a structural guarantee against that v2 defect
- * class ever recurring, whatever future masters this component renders.
+ * masters give an axis-aligned window. The new Dark V2 path uses the
+ * contract's projective matrix only; no CSS rotation approximation is
+ * allowed on either the legacy path or the homographic source plane.
  */
 describe("HeroIntemporel — the photo's pixels are never rotated", () => {
   const CSS_SOURCE = readFileSync(
@@ -276,10 +330,11 @@ describe("HeroIntemporel — the photo's pixels are never rotated", () => {
     }
   });
 
-  it("the component source itself declares no `transform` of any kind on the photo or its ancestors", () => {
+  it("the component source uses the single contracted Dark projective transform only", () => {
     const SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.tsx"), "utf8");
     const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    expect(CODE).not.toMatch(/transform:/);
+    expect(CODE.match(/style=\{\{ transform:/g)).toHaveLength(1);
+    expect(CODE).toContain("style={{ transform: mobileDarkPhotoTransform }}");
   });
 });
 

@@ -116,6 +116,62 @@
   max-width: none;
 }
 
+/* --- QG Handoff Runtime V1: Mobile Dark V2, 320–430px only --------
+   The SVG supplies the single uniformly-scaled 982×1602 reference
+   scene. Its 400×500 logical photo plane receives the exact Dark V2
+   homography; the byte-identical RGBA overlay then supplies every
+   artistic pixel and its real alpha is the final visibility authority. */
+
+.mobileDarkPhotoRuntime,
+.mobileDarkRuntimeOverlay {
+  display: none;
+}
+
+@media (min-width: 320px) and (max-width: 430px) {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+    aspect-ratio: 982 / 1602;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterMobile {
+    display: none;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkRuntimeOverlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime {
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkRuntimeOverlay {
+    z-index: 10;
+    object-fit: fill;
+    pointer-events: none;
+  }
+}
+
+.mobileDarkLogicalRaster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.mobileDarkLogicalRaster .photoImage {
+  image-orientation: from-image;
+}
+
 /* --- Text zone (mission section 5) ------------------------------------
    A plain conditional vertical flow inside the master's own text box —
    never a rigid, absolutely-positioned pile. On top of the master

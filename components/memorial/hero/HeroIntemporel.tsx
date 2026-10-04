@@ -15,11 +15,13 @@ import {
 import { SkinScope } from "@/components/memorial/SkinScope";
 import {
   HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX,
+  HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
   HERO_INTEMPOREL_RUNTIME_MASTER_SRC,
   HERO_INTEMPOREL_TYPOGRAPHY,
   type HeroRuntimeMasterSpec,
 } from "@/config/hero-intemporel-tokens";
+import { heroMobileDarkPhotoCssTransform } from "@/lib/memorial/hero-mobile-dark-photo-runtime";
 import { cormorantGaramond, laBelleAurore } from "@/components/builder/fonts";
 import styles from "./HeroIntemporel.module.css";
 
@@ -383,32 +385,70 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
 
   const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
   const textZoneVars = boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile));
+  const mobileDarkPhotoTransform = heroMobileDarkPhotoCssTransform();
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.hero} ${cormorantGaramond.variable} ${laBelleAurore.variable}`}>
         {photo !== null && (
-          <div className={styles.photoWindow} style={photoWindowVars}>
-            {/* Never a static asset next/image can optimize, and never
-                persisted — Mission 030's short-lived signed read URL. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photo.readUrl}
-              alt={translate(language, "hero.photoAlt")}
-              className={styles.photoImage}
-              draggable={false}
-              onLoad={(event) => {
-                const img = event.currentTarget;
-                setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
-              }}
-              style={{
-                left: `${geometry.leftPercent}%`,
-                top: `${geometry.topPercent}%`,
-                width: `${geometry.widthPercent}%`,
-                height: `${geometry.heightPercent}%`,
-              }}
-            />
-          </div>
+          <>
+            <div className={styles.photoWindow} style={photoWindowVars}>
+              {/* Never a static asset next/image can optimize, and never
+                  persisted — Mission 030's short-lived signed read URL. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.readUrl}
+                alt={translate(language, "hero.photoAlt")}
+                className={styles.photoImage}
+                draggable={false}
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                }}
+                style={{
+                  left: `${geometry.leftPercent}%`,
+                  top: `${geometry.topPercent}%`,
+                  width: `${geometry.widthPercent}%`,
+                  height: `${geometry.heightPercent}%`,
+                }}
+              />
+            </div>
+
+            {skinVariant === "dark" && (
+              <svg
+                className={styles.mobileDarkPhotoRuntime}
+                viewBox="0 0 982 1602"
+                preserveAspectRatio="xMidYMid meet"
+                focusable="false"
+                data-hero-mobile-dark-layer="projected-photo"
+              >
+                <foreignObject x="0" y="0" width="982" height="1602">
+                  <div
+                    className={styles.mobileDarkLogicalRaster}
+                    style={{ transform: mobileDarkPhotoTransform }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.readUrl}
+                      alt={translate(language, "hero.photoAlt")}
+                      className={styles.photoImage}
+                      draggable={false}
+                      onLoad={(event) => {
+                        const img = event.currentTarget;
+                        setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                      }}
+                      style={{
+                        left: `${geometry.leftPercent}%`,
+                        top: `${geometry.topPercent}%`,
+                        width: `${geometry.widthPercent}%`,
+                        height: `${geometry.heightPercent}%`,
+                      }}
+                    />
+                  </div>
+                </foreignObject>
+              </svg>
+            )}
+          </>
         )}
 
         {/* The Studio's own runtime masters — the whole artistic
@@ -422,7 +462,22 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterMobile} />
 
-        <div className={styles.textZone} style={textZoneVars}>
+        {skinVariant === "dark" && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySrc}
+            alt=""
+            aria-hidden="true"
+            className={styles.mobileDarkRuntimeOverlay}
+            data-hero-mobile-dark-layer="authoritative-overlay"
+          />
+        )}
+
+        <div
+          className={styles.textZone}
+          style={textZoneVars}
+          data-hero-mobile-dark-layer={skinVariant === "dark" ? "dynamic-content" : undefined}
+        >
           <p className={styles.contextLabel}>{contextLabel}</p>
           <h1
             ref={nameRef}
