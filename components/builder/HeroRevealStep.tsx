@@ -200,7 +200,7 @@ export function HeroRevealStep({
         <h1 className={styles.title}>{translate(language, "hero.revealTitle")}</h1>
       </div>
 
-      <div className={styles.stage}>
+      <div className={styles.stage} data-hero-skin-variant={previewVariant}>
         <HeroIntemporel
           hero={read.hero}
           photo={photo}

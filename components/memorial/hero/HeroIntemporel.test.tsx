@@ -5,7 +5,10 @@ import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { HeroContent } from "@/types/hero";
 import type { Media } from "@/types/media";
-import { HERO_INTEMPOREL_RUNTIME_MASTER_SPECS } from "@/config/hero-intemporel-tokens";
+import {
+  HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
+} from "@/config/hero-intemporel-tokens";
 
 /**
  * Mission 035 v4 (Studio V3 FINAL runtime masters) — contract tests for
@@ -185,6 +188,62 @@ describe("HeroIntemporel — Light/Dark scoping (mission section 9)", () => {
   });
 });
 
+describe("HeroIntemporel — Desktop Light Handoff Runtime V1", () => {
+  const CSS_SOURCE = readFileSync(
+    path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
+    "utf8",
+  );
+
+  it("paints the clipped projected photo, authoritative overlay, then dynamic content", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    const layers = Array.from(container.querySelectorAll("[data-hero-desktop-light-layer]"));
+    expect(layers.map((node) => node.getAttribute("data-hero-desktop-light-layer"))).toEqual([
+      "projected-clipped-photo",
+      "authoritative-overlay",
+      "dynamic-content",
+    ]);
+    expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect((layers[1] as HTMLImageElement).src).toContain(
+      HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc,
+    );
+  });
+
+  it("clips the projected photo to the exact quad before overlay composition", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    const projected = container.querySelector('[data-hero-desktop-light-layer="projected-clipped-photo"]');
+    const polygon = projected?.querySelector("clipPath polygon");
+    expect(polygon?.getAttribute("points")).toBe(
+      HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.destinationQuadPx
+        .map(([x, y]) => `${x},${y}`)
+        .join(" "),
+    );
+    const group = projected?.querySelector("g");
+    expect(group?.getAttribute("clip-path")).toMatch(/^url\(#hero-desktop-light-photo-clip-/);
+  });
+
+  it("renders exactly one authoritative overlay and reconstructs no artistic element", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(
+      container.querySelectorAll('[data-hero-desktop-light-layer="authoritative-overlay"]'),
+    ).toHaveLength(1);
+    expect(container.querySelector('[data-hero-desktop-light-part="seal"]')).toBeNull();
+    expect(container.querySelector('[data-hero-desktop-light-part="botanical"]')).toBeNull();
+  });
+
+  it("uses only the existing desktop breakpoint and the native 1672×941 ratio", () => {
+    expect(CSS_SOURCE).toContain("@media (min-width: 960px)");
+    expect(CSS_SOURCE).toContain("max-width: 1672px;");
+    expect(CSS_SOURCE).toContain("aspect-ratio: 1672 / 941;");
+    expect(CSS_SOURCE).not.toMatch(/min-width:\s*(1024|1280|1440|1672)px/);
+  });
+
+  it("does not add any Desktop Light runtime layer to Dark", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    expect(container.querySelector("[data-hero-desktop-light-layer]")).toBeNull();
+    expect(container.querySelector('img[src*="hero-runtime-dark-desktop.png"]')).toBeTruthy();
+  });
+});
+
 describe("HeroIntemporel — dynamic content: photo, context label, name, dates, shortPhrase", () => {
   it("renders the family's own content — name, dates and phrase", () => {
     renderHero();
@@ -216,15 +275,15 @@ describe("HeroIntemporel — accessibility", () => {
 
     const images = Array.from(container.querySelectorAll("img"));
     const decorative = images.filter((img) => img.getAttribute("src") !== PHOTO.readUrl);
-    expect(decorative.length).toBe(2); // exactly the two master images
+    expect(decorative.length).toBe(3); // two legacy masters plus the exact Desktop Light overlay
     for (const img of decorative) {
       expect(img.getAttribute("aria-hidden")).toBe("true");
       expect(img.getAttribute("alt")).toBe("");
     }
 
     const photoImgs = images.filter((img) => img.getAttribute("src") === PHOTO.readUrl);
-    expect(photoImgs.length).toBe(1); // one single photo window, no per-breakpoint duplicate
-    expect(photoImgs[0].getAttribute("alt")).not.toBe("");
+    expect(photoImgs.length).toBe(2); // legacy/mobile path plus Desktop Light projective path
+    for (const photoImg of photoImgs) expect(photoImg.getAttribute("alt")).not.toBe("");
   });
 });
 
@@ -240,10 +299,8 @@ describe("HeroIntemporel — a missing photo degrades cleanly, never crashes", (
 
 /**
  * Mission 035 v4 — the photo's pixels are never rotated. V3 FINAL's
- * masters give an axis-aligned window (no rotation anywhere in the
- * manifest), and this component now declares no `transform` at all —
- * this guard stays as a structural guarantee against that v2 defect
- * class ever recurring, whatever future masters this component renders.
+ * masters give an axis-aligned window. Desktop Light V1 adds the exact
+ * projective matrix from its handoff, never an approximate CSS rotation.
  */
 describe("HeroIntemporel — the photo's pixels are never rotated", () => {
   const CSS_SOURCE = readFileSync(
@@ -276,10 +333,11 @@ describe("HeroIntemporel — the photo's pixels are never rotated", () => {
     }
   });
 
-  it("the component source itself declares no `transform` of any kind on the photo or its ancestors", () => {
+  it("the component source uses the single contracted Desktop Light projective transform only", () => {
     const SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.tsx"), "utf8");
     const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    expect(CODE).not.toMatch(/transform:/);
+    expect(CODE.match(/style=\{\{ transform:/g)).toHaveLength(1);
+    expect(CODE).toContain("style={{ transform: desktopLightPhotoTransform }}");
   });
 });
 

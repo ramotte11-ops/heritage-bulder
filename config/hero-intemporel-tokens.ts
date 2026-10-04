@@ -30,6 +30,38 @@ import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
+/**
+ * QG Handoff Runtime V1 — Desktop Light photo runtime. Geometry is in
+ * the authoritative 1672×941 reference canvas and uses the existing
+ * HERITAGE desktop breakpoint without introducing another one.
+ */
+export const HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME = {
+  canvasPx: { width: 1672, height: 941 },
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.05862393342704664,
+    width: 4,
+    height: 4.882752133145907,
+  },
+  destinationQuadPx: [
+    [249.60878661, 219.92887029],
+    [700.18878886, 131.96314317],
+    [808.46999733, 684.38083385],
+    [354.02947306, 772.74426913],
+  ],
+  homographyNormalizedSourceToReference: [
+    [112.52598716490353, 20.77822361049548, 248.36566853615486],
+    [-22.009530153937288, 111.88555121460418, 213.34765695803256],
+    [-0.00015384940226202226, -0.0017096147467908099, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V1(1).png",
+  overlaySha256: "216818582aa1b6c58bd750a2fe4e936f433213b3645eb9a1292f15ebc6e49995",
+  fullyTransparentPixels: 295048,
+} as const;
+
 /** Where the 4 runtime masters actually live — copied verbatim (same
  * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
  * `public/`. */

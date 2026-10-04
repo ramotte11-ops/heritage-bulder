@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
@@ -15,11 +15,16 @@ import {
 import { SkinScope } from "@/components/memorial/SkinScope";
 import {
   HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX,
+  HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
   HERO_INTEMPOREL_RUNTIME_MASTER_SRC,
   HERO_INTEMPOREL_TYPOGRAPHY,
   type HeroRuntimeMasterSpec,
 } from "@/config/hero-intemporel-tokens";
+import {
+  heroDesktopLightPhotoClipPoints,
+  heroDesktopLightPhotoCssTransform,
+} from "@/lib/memorial/hero-desktop-light-photo-runtime";
 import { cormorantGaramond, laBelleAurore } from "@/components/builder/fonts";
 import styles from "./HeroIntemporel.module.css";
 
@@ -38,13 +43,10 @@ import styles from "./HeroIntemporel.module.css";
  * manifest). v3's entire `photoMask()`/`clip-path`/bounding-box
  * machinery existed ONLY to fit a family photo into a ROTATED window
  * without rotating the photo's own pixels — with no rotation left to
- * counteract, that whole mechanism is gone. A window that was never
- * rotated cannot suffer v2's original defect (a parent's
- * `transform: rotate()` visually rotating the photo inside it) by
- * construction, not by a masking trick — this file now contains no
- * `transform` of any kind on the photo or its ancestors, which is
- * strictly stronger than v3's proof that none of the transforms it did
- * use carried a rotation.
+ * counteract, that whole legacy mechanism is gone. Desktop Light
+ * Runtime V1 now adds one different, contract-driven mechanism: the
+ * exact projective matrix and quadrilateral clip supplied by QG. It is
+ * scoped to Light Desktop and never approximated with a CSS rotation.
  *
  * The doctrine otherwise carries forward unchanged: this component
  * renders exactly the Studio's own master PNG (one per skin_variant ×
@@ -57,8 +59,9 @@ import styles from "./HeroIntemporel.module.css";
  *
  * ## Photo placement (mission section 4)
  *
- * `photoWindowPx` (`{x, y, width, height}`, in the master's own pixel
- * space) becomes one axis-aligned, absolutely-positioned box —
+ * Outside Desktop Light Runtime V1, `photoWindowPx` (`{x, y, width,
+ * height}`, in the master's own pixel space) becomes one axis-aligned,
+ * absolutely-positioned box —
  * left/top/width/height as a percentage of the master canvas, exactly
  * like the text zone below it, no different mechanism. Inside it,
  * Mission 034's own `resolveHeroCropGeometry` runs completely
@@ -66,7 +69,9 @@ import styles from "./HeroIntemporel.module.css";
  * ratio, so nothing new is computed, and there is still no second crop
  * engine anywhere in this codebase. T07 and T08 render the identical
  * geometry for the identical `HeroCrop` — the crop the family confirmed
- * at T07 is exactly what they see at T08.
+ * at T07 is exactly what they see at T08. Desktop Light V1 keeps that
+ * same validated 4:5 source plane, then applies the QG-supplied centered
+ * crop, homography and explicit photo-plane clip.
  *
  * ## Text zone + context label (mission sections 1, 5, 10)
  *
@@ -366,6 +371,7 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
 
 export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, language }: HeroIntemporelProps) {
   const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
+  const desktopLightClipId = `hero-desktop-light-photo-clip-${useId().replace(/:/g, "")}`;
 
   const masterSrc = HERO_INTEMPOREL_RUNTIME_MASTER_SRC[skinVariant];
   const { desktop, mobile } = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[skinVariant];
@@ -383,32 +389,78 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
 
   const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
   const textZoneVars = boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile));
+  const desktopLightPhotoTransform = heroDesktopLightPhotoCssTransform();
+  const desktopLightPhotoClipPoints = heroDesktopLightPhotoClipPoints();
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.hero} ${cormorantGaramond.variable} ${laBelleAurore.variable}`}>
         {photo !== null && (
-          <div className={styles.photoWindow} style={photoWindowVars}>
-            {/* Never a static asset next/image can optimize, and never
-                persisted — Mission 030's short-lived signed read URL. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photo.readUrl}
-              alt={translate(language, "hero.photoAlt")}
-              className={styles.photoImage}
-              draggable={false}
-              onLoad={(event) => {
-                const img = event.currentTarget;
-                setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
-              }}
-              style={{
-                left: `${geometry.leftPercent}%`,
-                top: `${geometry.topPercent}%`,
-                width: `${geometry.widthPercent}%`,
-                height: `${geometry.heightPercent}%`,
-              }}
-            />
-          </div>
+          <>
+            <div className={styles.photoWindow} style={photoWindowVars}>
+              {/* Never a static asset next/image can optimize, and never
+                  persisted — Mission 030's short-lived signed read URL. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.readUrl}
+                alt={translate(language, "hero.photoAlt")}
+                className={styles.photoImage}
+                draggable={false}
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                }}
+                style={{
+                  left: `${geometry.leftPercent}%`,
+                  top: `${geometry.topPercent}%`,
+                  width: `${geometry.widthPercent}%`,
+                  height: `${geometry.heightPercent}%`,
+                }}
+              />
+            </div>
+
+            {skinVariant === "light" && (
+              <svg
+                className={styles.desktopLightPhotoRuntime}
+                viewBox="0 0 1672 941"
+                preserveAspectRatio="xMidYMid meet"
+                focusable="false"
+                data-hero-desktop-light-layer="projected-clipped-photo"
+              >
+                <defs>
+                  <clipPath id={desktopLightClipId} clipPathUnits="userSpaceOnUse">
+                    <polygon points={desktopLightPhotoClipPoints} />
+                  </clipPath>
+                </defs>
+                <g clipPath={`url(#${desktopLightClipId})`}>
+                  <foreignObject x="0" y="0" width="1672" height="941">
+                    <div
+                      className={styles.desktopLightLogicalRaster}
+                      style={{ transform: desktopLightPhotoTransform }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.readUrl}
+                        alt={translate(language, "hero.photoAlt")}
+                        className={styles.photoImage}
+                        draggable={false}
+                        onLoad={(event) => {
+                          const img = event.currentTarget;
+                          setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                        }}
+                        style={{
+                          left: `${geometry.leftPercent}%`,
+                          top: `${geometry.topPercent}%`,
+                          width: `${geometry.widthPercent}%`,
+                          height: `${geometry.heightPercent}%`,
+                        }}
+                      />
+                    </div>
+                  </foreignObject>
+                </g>
+              </svg>
+            )}
+          </>
         )}
 
         {/* The Studio's own runtime masters — the whole artistic
@@ -422,7 +474,22 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterMobile} />
 
-        <div className={styles.textZone} style={textZoneVars}>
+        {skinVariant === "light" && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc}
+            alt=""
+            aria-hidden="true"
+            className={styles.desktopLightRuntimeOverlay}
+            data-hero-desktop-light-layer="authoritative-overlay"
+          />
+        )}
+
+        <div
+          className={styles.textZone}
+          style={textZoneVars}
+          data-hero-desktop-light-layer={skinVariant === "light" ? "dynamic-content" : undefined}
+        >
           <p className={styles.contextLabel}>{contextLabel}</p>
           <h1
             ref={nameRef}
