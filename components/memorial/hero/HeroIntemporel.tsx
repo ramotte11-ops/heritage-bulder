@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { Language } from "@/config/languages";
 import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
@@ -15,11 +15,13 @@ import {
 import { SkinScope } from "@/components/memorial/SkinScope";
 import {
   HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX,
+  HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
   HERO_INTEMPOREL_RUNTIME_MASTER_SRC,
   HERO_INTEMPOREL_TYPOGRAPHY,
   type HeroRuntimeMasterSpec,
 } from "@/config/hero-intemporel-tokens";
+import { heroMobileLightPhotoCssTransform } from "@/lib/memorial/hero-mobile-light-photo-runtime";
 import { cormorantGaramond, laBelleAurore } from "@/components/builder/fonts";
 import styles from "./HeroIntemporel.module.css";
 
@@ -366,6 +368,7 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
 
 export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, language }: HeroIntemporelProps) {
   const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
+  const mobileLightMaskId = `hero-mobile-light-photo-mask-${useId().replace(/:/g, "")}`;
 
   const masterSrc = HERO_INTEMPOREL_RUNTIME_MASTER_SRC[skinVariant];
   const { desktop, mobile } = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[skinVariant];
@@ -383,32 +386,92 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
 
   const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
   const textZoneVars = boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile));
+  const mobileLightPhotoTransform = heroMobileLightPhotoCssTransform();
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
       <div className={`${styles.hero} ${cormorantGaramond.variable} ${laBelleAurore.variable}`}>
         {photo !== null && (
-          <div className={styles.photoWindow} style={photoWindowVars}>
-            {/* Never a static asset next/image can optimize, and never
-                persisted — Mission 030's short-lived signed read URL. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photo.readUrl}
-              alt={translate(language, "hero.photoAlt")}
-              className={styles.photoImage}
-              draggable={false}
-              onLoad={(event) => {
-                const img = event.currentTarget;
-                setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
-              }}
-              style={{
-                left: `${geometry.leftPercent}%`,
-                top: `${geometry.topPercent}%`,
-                width: `${geometry.widthPercent}%`,
-                height: `${geometry.heightPercent}%`,
-              }}
-            />
-          </div>
+          <>
+            <div className={styles.photoWindow} style={photoWindowVars}>
+              {/* Never a static asset next/image can optimize, and never
+                  persisted — Mission 030's short-lived signed read URL. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.readUrl}
+                alt={translate(language, "hero.photoAlt")}
+                className={styles.photoImage}
+                draggable={false}
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                }}
+                style={{
+                  left: `${geometry.leftPercent}%`,
+                  top: `${geometry.topPercent}%`,
+                  width: `${geometry.widthPercent}%`,
+                  height: `${geometry.heightPercent}%`,
+                }}
+              />
+            </div>
+
+            {skinVariant === "light" && (
+              <svg
+                className={styles.mobileLightPhotoRuntime}
+                viewBox="0 0 941 1672"
+                preserveAspectRatio="xMidYMid meet"
+                focusable="false"
+                data-hero-mobile-light-layer="projected-masked-photo"
+              >
+                <defs>
+                  <mask
+                    id={mobileLightMaskId}
+                    x="0"
+                    y="0"
+                    width="941"
+                    height="1672"
+                    maskUnits="userSpaceOnUse"
+                    style={{ maskType: "luminance" }}
+                  >
+                    <image
+                      href={HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.maskSrc}
+                      x="0"
+                      y="0"
+                      width="941"
+                      height="1672"
+                      preserveAspectRatio="none"
+                    />
+                  </mask>
+                </defs>
+                <g mask={`url(#${mobileLightMaskId})`}>
+                  <foreignObject x="0" y="0" width="941" height="1672">
+                    <div
+                      className={styles.mobileLightLogicalRaster}
+                      style={{ transform: mobileLightPhotoTransform }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.readUrl}
+                        alt={translate(language, "hero.photoAlt")}
+                        className={styles.photoImage}
+                        draggable={false}
+                        onLoad={(event) => {
+                          const img = event.currentTarget;
+                          setImageSize({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+                        }}
+                        style={{
+                          left: `${geometry.leftPercent}%`,
+                          top: `${geometry.topPercent}%`,
+                          width: `${geometry.widthPercent}%`,
+                          height: `${geometry.heightPercent}%`,
+                        }}
+                      />
+                    </div>
+                  </foreignObject>
+                </g>
+              </svg>
+            )}
+          </>
         )}
 
         {/* The Studio's own runtime masters — the whole artistic
@@ -422,7 +485,22 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterMobile} />
 
-        <div className={styles.textZone} style={textZoneVars}>
+        {skinVariant === "light" && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.plateSrc}
+            alt=""
+            aria-hidden="true"
+            className={styles.mobileLightRuntimePlate}
+            data-hero-mobile-light-layer="clean-plate"
+          />
+        )}
+
+        <div
+          className={styles.textZone}
+          style={textZoneVars}
+          data-hero-mobile-light-layer="dynamic-content"
+        >
           <p className={styles.contextLabel}>{contextLabel}</p>
           <h1
             ref={nameRef}
