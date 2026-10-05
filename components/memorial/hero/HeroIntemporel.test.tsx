@@ -6,6 +6,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { HeroContent } from "@/types/hero";
 import type { Media } from "@/types/media";
 import {
+  HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
 } from "@/config/hero-intemporel-tokens";
@@ -193,8 +196,8 @@ describe("HeroIntemporel — Handoff V1.2 Mobile Light photo runtime", () => {
     };
     const { container } = renderHero({ hero });
     const photos = Array.from(container.querySelectorAll(`img[src="${PHOTO.readUrl}"]`)) as HTMLElement[];
-    expect(photos).toHaveLength(2);
-    expect(photos[0].getAttribute("style")).toBe(photos[1].getAttribute("style"));
+    expect(photos).toHaveLength(3);
+    expect(new Set(photos.map((photo) => photo.getAttribute("style"))).size).toBe(1);
     expect(photos[0].style.width).not.toBe("100%");
   });
 
@@ -237,10 +240,156 @@ describe("HeroIntemporel — Handoff V1.2 Mobile Light photo runtime", () => {
   });
 
   it("negative control: bbox/contain/stretch/isolated-paperclip/raster-text alternatives are absent", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    const projected = container.querySelector('[data-hero-mobile-light-layer="projected-masked-photo"]');
     const SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.tsx"), "utf8");
-    expect(SOURCE).not.toMatch(/clipPath=|objectFit:\s*["']contain|paperclip_foreground|Élise Martin/);
+    expect(projected?.querySelector("clipPath")).toBeNull();
+    expect(projected?.querySelector("mask image")).toBeTruthy();
+    expect(SOURCE).not.toMatch(/objectFit:\s*["']contain|paperclip_foreground|Élise Martin/);
     expect(SOURCE).toContain("maskSrc");
     expect(SOURCE).toContain("resolveHeroCropGeometry");
+  });
+});
+
+describe("HeroIntemporel — Mobile Dark V2 Handoff Runtime V1", () => {
+  const CSS_SOURCE = readFileSync(
+    path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
+    "utf8",
+  );
+
+  it("paints the projected family photo, authoritative overlay, then dynamic content", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const layers = Array.from(container.querySelectorAll("[data-hero-mobile-dark-layer]"));
+
+    expect(layers.map((node) => node.getAttribute("data-hero-mobile-dark-layer"))).toEqual([
+      "projected-photo",
+      "authoritative-overlay",
+      "dynamic-content",
+    ]);
+    expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect((layers[1] as HTMLImageElement).src).toContain(
+      HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySrc,
+    );
+  });
+
+  it("uses the real RGBA overlay as visibility authority, never a bbox mask", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const projected = container.querySelector('[data-hero-mobile-dark-layer="projected-photo"]');
+    expect(projected?.querySelector("mask, clipPath")).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-layer="authoritative-overlay"]')).toBeTruthy();
+  });
+
+  it("renders exactly one authoritative Dark V2 overlay and no reconstructed artistic parts", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    expect(
+      container.querySelectorAll('[data-hero-mobile-dark-layer="authoritative-overlay"]'),
+    ).toHaveLength(1);
+    expect(container.querySelector('[data-hero-mobile-dark-part="paperclip"]')).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-part="leaf"]')).toBeNull();
+    expect(container.querySelector('[data-hero-mobile-dark-part="seal"]')).toBeNull();
+  });
+
+  it("scopes the 982×1602 runtime to Dark 320–430 only", () => {
+    expect(CSS_SOURCE).toContain("@media (min-width: 320px) and (max-width: 430px)");
+    expect(CSS_SOURCE).toContain('[data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime');
+    expect(CSS_SOURCE).toContain("aspect-ratio: 982 / 1602;");
+    expect(CSS_SOURCE).not.toContain('[data-heritage-skin-variant="light"] .mobileDarkPhotoRuntime');
+  });
+
+  it("does not add a Mobile Dark runtime layer to Light", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(container.querySelector("[data-hero-mobile-dark-layer]")).toBeNull();
+  });
+});
+
+describe("HeroIntemporel — Desktop Light Handoff Runtime V1", () => {
+  const CSS_SOURCE = readFileSync(
+    path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
+    "utf8",
+  );
+
+  it("paints the clipped projected photo, authoritative overlay, then dynamic content", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    const layers = Array.from(container.querySelectorAll("[data-hero-desktop-light-layer]"));
+    expect(layers.map((node) => node.getAttribute("data-hero-desktop-light-layer"))).toEqual([
+      "projected-clipped-photo",
+      "authoritative-overlay",
+      "dynamic-content",
+    ]);
+    expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect((layers[1] as HTMLImageElement).src).toContain(
+      HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc,
+    );
+  });
+
+  it("clips the projected photo to the exact quad before overlay composition", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    const projected = container.querySelector('[data-hero-desktop-light-layer="projected-clipped-photo"]');
+    const polygon = projected?.querySelector("clipPath polygon");
+    expect(polygon?.getAttribute("points")).toBe(
+      HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.destinationQuadPx
+        .map(([x, y]) => `${x},${y}`)
+        .join(" "),
+    );
+    expect(projected?.querySelector("g")?.getAttribute("clip-path")).toMatch(
+      /^url\(#hero-desktop-light-photo-clip-/,
+    );
+  });
+
+  it("uses only the existing desktop breakpoint and the native 1672×941 ratio", () => {
+    expect(CSS_SOURCE).toContain("@media (min-width: 960px)");
+    expect(CSS_SOURCE).toContain("max-width: 1672px;");
+    expect(CSS_SOURCE).toContain("aspect-ratio: 1672 / 941;");
+    expect(CSS_SOURCE).not.toMatch(/min-width:\s*(1024|1280|1440|1672)px/);
+  });
+
+  it("does not add a Desktop Light runtime layer to Dark", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    expect(container.querySelector("[data-hero-desktop-light-layer]")).toBeNull();
+  });
+});
+
+describe("HeroIntemporel — Desktop Dark Handoff Runtime V1", () => {
+  it("paints the clipped projected photo, authoritative overlay, then dynamic content", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const layers = Array.from(container.querySelectorAll("[data-hero-desktop-dark-layer]"));
+    expect(layers.map((node) => node.getAttribute("data-hero-desktop-dark-layer"))).toEqual([
+      "projected-clipped-photo",
+      "authoritative-overlay",
+      "dynamic-content",
+    ]);
+    expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
+    expect((layers[1] as HTMLImageElement).src).toContain(
+      HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySrc,
+    );
+  });
+
+  it("clips the projected photo to the exact quad before overlay composition", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const projected = container.querySelector('[data-hero-desktop-dark-layer="projected-clipped-photo"]');
+    const polygon = projected?.querySelector("clipPath polygon");
+    expect(polygon?.getAttribute("points")).toBe(
+      HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.destinationQuadPx
+        .map(([x, y]) => `${x},${y}`)
+        .join(" "),
+    );
+    expect(projected?.querySelector("g")?.getAttribute("clip-path")).toMatch(
+      /^url\(#hero-desktop-dark-photo-clip-/,
+    );
+  });
+
+  it("renders exactly one authoritative overlay and no reconstructed artistic element", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    expect(
+      container.querySelectorAll('[data-hero-desktop-dark-layer="authoritative-overlay"]'),
+    ).toHaveLength(1);
+    expect(container.querySelector('[data-hero-desktop-dark-part="seal"]')).toBeNull();
+    expect(container.querySelector('[data-hero-desktop-dark-part="botanical"]')).toBeNull();
+  });
+
+  it("does not add a Desktop Dark runtime layer to Light", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(container.querySelector("[data-hero-desktop-dark-layer]")).toBeNull();
   });
 });
 
@@ -313,14 +462,14 @@ describe("HeroIntemporel — accessibility", () => {
 
     const images = Array.from(container.querySelectorAll("img"));
     const decorative = images.filter((img) => img.getAttribute("src") !== PHOTO.readUrl);
-    expect(decorative.length).toBe(3); // two legacy masters plus the CLEAN runtime plate
+    expect(decorative.length).toBe(4); // two legacy masters plus the Mobile/ Desktop Light overlays
     for (const img of decorative) {
       expect(img.getAttribute("aria-hidden")).toBe("true");
       expect(img.getAttribute("alt")).toBe("");
     }
 
     const photoImgs = images.filter((img) => img.getAttribute("src") === PHOTO.readUrl);
-    expect(photoImgs.length).toBe(2); // legacy path + contracted Mobile Light path; CSS activates exactly one
+    expect(photoImgs.length).toBe(3); // legacy path plus contracted Mobile and Desktop Light paths
     for (const img of photoImgs) expect(img.getAttribute("alt")).not.toBe("");
   });
 });
@@ -335,12 +484,7 @@ describe("HeroIntemporel — a missing photo degrades cleanly, never crashes", (
   });
 });
 
-/**
- * The Handoff V1.2 projective transform is isolated to Mobile Light.
- * Legacy Mobile Dark and both desktop variants keep their axis-aligned,
- * non-rotated photo path.
- */
-describe("HeroIntemporel — legacy variants remain axis-aligned", () => {
+describe("HeroIntemporel — projective transforms remain isolated to their four runtimes", () => {
   const CSS_SOURCE = readFileSync(
     path.resolve(import.meta.dirname, "HeroIntemporel.module.css"),
     "utf8",
@@ -355,27 +499,17 @@ describe("HeroIntemporel — legacy variants remain axis-aligned", () => {
     expect(CSS_RULES_ONLY).not.toMatch(/rotate\(/);
   });
 
-  it("Mobile Dark keeps one photo whose ancestor chain has no inline transform", () => {
-    const { container } = renderHero({ skinVariant: "dark" });
-
-    const photoImgs = Array.from(container.querySelectorAll(`img[src="${PHOTO.readUrl}"]`));
-    expect(photoImgs.length).toBeGreaterThan(0);
-
-    for (const img of photoImgs) {
-      let node: HTMLElement | null = img as HTMLElement;
-      while (node !== null) {
-        const inlineTransform = node.style.transform;
-        expect(inlineTransform).not.toMatch(/rotate/);
-        node = node.parentElement;
-      }
-    }
-  });
-
-  it("keeps the V1.2 transform scoped to the dedicated Mobile Light logical raster", () => {
-    const { container } = renderHero();
+  it.each([
+    ["light", ["mobileLightLogicalRaster", "desktopLightLogicalRaster"]],
+    ["dark", ["mobileDarkLogicalRaster", "desktopDarkLogicalRaster"]],
+  ] as const)("keeps %s transforms on the two dedicated logical rasters only", (variant, classes) => {
+    const { container } = renderHero({ skinVariant: variant });
     const transformed = Array.from(container.querySelectorAll<HTMLElement>("[style*='transform']"));
-    expect(transformed).toHaveLength(1);
-    expect(transformed[0].className).toMatch(/mobileLightLogicalRaster/);
+    expect(transformed).toHaveLength(2);
+    expect(transformed.map((node) => node.className)).toEqual(
+      expect.arrayContaining(classes.map((className) => expect.stringMatching(className))),
+    );
+    for (const node of transformed) expect(node.style.transform).not.toMatch(/rotate/);
   });
 });
 

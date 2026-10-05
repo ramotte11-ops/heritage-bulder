@@ -6,18 +6,17 @@
  * ROTATED window without rotating the photo's own pixels. V3 FINAL's
  * masters give a plain axis-aligned photo window (no rotation, no
  * polygon, at all) — see HeroIntemporel.tsx's own docstring — so that
- * whole mechanism is gone. `.photoWindow` below is now exactly the same
- * kind of box as `.textZone`: one absolutely-positioned rectangle, sized
- * from CSS custom properties, switched desktop/mobile by the same
- * 960px breakpoint as the two master images. No rule in this file
- * declares a `transform` of any kind.
+ * legacy mechanism is gone. `.photoWindow` below remains the same kind
+ * of box as `.textZone` for the legacy masters. The four validated photo
+ * runtimes add only their QG-supplied projective transforms, scoped by
+ * variant and by the existing Mobile/Desktop contracts.
  *
  * Ink colors are the one thing still tokenized per
  * `data-heritage-skin-variant` (lib/memorial/skin-runtime.ts's own scope
  * attribute — never `prefers-color-scheme`): the master's own paper tone
  * differs Light/Dark, so the injected text needs its own matching ink.
- * The only transform introduced below is the contracted V1.2 projective
- * transform, isolated to Mobile Light at 320–430 px.
+ * Each transform below is isolated to its dedicated logical 4:5 source
+ * plane; none is an artistic reconstruction or CSS rotation shortcut.
  */
 
 .hero {
@@ -51,6 +50,12 @@
   .hero {
     /* The desktop master's own intrinsic ratio (1536×1024). */
     aspect-ratio: 1536 / 1024;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+    max-width: 1672px;
+    aspect-ratio: 1672 / 941;
   }
 }
 
@@ -167,6 +172,164 @@
   height: 500px;
   overflow: hidden;
   transform-origin: 0 0;
+}
+
+/* --- QG Handoff Runtime V1: Mobile Dark V2, 320–430px only --------
+   The SVG supplies the single uniformly-scaled 982×1602 reference
+   scene. Its 400×500 logical photo plane receives the exact Dark V2
+   homography; the byte-identical RGBA overlay then supplies every
+   artistic pixel and its real alpha is the final visibility authority. */
+
+.mobileDarkPhotoRuntime,
+.mobileDarkRuntimeOverlay {
+  display: none;
+}
+
+@media (min-width: 320px) and (max-width: 430px) {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
+    aspect-ratio: 982 / 1602;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterMobile {
+    display: none;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkRuntimeOverlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime {
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .mobileDarkRuntimeOverlay {
+    z-index: 10;
+    object-fit: fill;
+    pointer-events: none;
+  }
+}
+
+.mobileDarkLogicalRaster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.mobileDarkLogicalRaster .photoImage {
+  image-orientation: from-image;
+}
+
+/* --- QG Handoff Runtime V1: Desktop Light -------------------------
+   The existing 960px product breakpoint selects this exact 1672×941
+   reference scene. The photo is projectively mapped and clipped to the
+   contractual quadrilateral before the byte-identical overlay is
+   painted; unrelated alpha-zero pixels can therefore never reveal it. */
+
+.desktopLightPhotoRuntime,
+.desktopLightRuntimeOverlay {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .photoWindow,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterDesktop {
+    display: none;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .desktopLightPhotoRuntime,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .desktopLightRuntimeOverlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .desktopLightPhotoRuntime {
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .desktopLightRuntimeOverlay {
+    z-index: 10;
+    object-fit: fill;
+    pointer-events: none;
+  }
+}
+
+.desktopLightLogicalRaster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.desktopLightLogicalRaster .photoImage {
+  image-orientation: from-image;
+}
+
+/* --- QG Handoff Runtime V1: Desktop Dark --------------------------
+   Same explicit projective/clipped composition as Desktop Light, using
+   only the Dark V1 geometry and byte-identical authoritative overlay. */
+
+.desktopDarkPhotoRuntime,
+.desktopDarkRuntimeOverlay {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterDesktop {
+    display: none;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkPhotoRuntime,
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkRuntimeOverlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkPhotoRuntime {
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .desktopDarkRuntimeOverlay {
+    z-index: 10;
+    object-fit: fill;
+    pointer-events: none;
+  }
+}
+
+.desktopDarkLogicalRaster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.desktopDarkLogicalRaster .photoImage {
+  image-orientation: from-image;
 }
 
 /* --- Text zone (mission section 5) ------------------------------------
