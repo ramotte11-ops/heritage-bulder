@@ -38,9 +38,7 @@ describe("A13 Mobile Light — Handoff V1.7 authority", () => {
     expect(bytes[25]).toBe(6);
   });
 
-  it("the V1 background file stays in the repository, untouched (assets are never deleted or rewritten)", () => {
-    const v1 = readFileSync(path.join(ROOT, "public/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common.png"));
-    expect(createHash("sha256").update(v1).digest("hex")).toBe("825439dd5bb6793caf6dbe3cc37a8221a72d43ece32364476fa0dc705fa83b2d");
+  it("the runtime never uses the superseded V1 background (removed by explicit QG/PO decision, pre-PR cleanup)", () => {
     expect(A13_MOBILE_BACKGROUND.src).not.toBe("/assets/gallery/a13-mobile/a13-mobile-light-gallery-background-common.png");
   });
 

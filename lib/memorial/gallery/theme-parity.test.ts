@@ -88,7 +88,7 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
     for (const f of graph) expect(readFileSync(path.join(ROOT, f), "utf8")).not.toMatch(/A13_DARK_|A13_MOBILE_DARK_|data-a13-theme|--a13-dark-/);
   });
 
-  it("Dark tokens are imported only by the rendering layer and the Dark pilots", () => {
+  it("Dark tokens are imported only by the rendering layer", () => {
     const files: string[] = [];
     const walk = (d: string) => {
       for (const n of readdirSync(d)) {
@@ -101,8 +101,6 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
     for (const d of ["app", "components", "config", "lib"]) walk(path.join(ROOT, d));
     const readers = files.filter((f) => /gallery-a13-dark-material|gallery-a13-mobile-dark-material|theme-material/.test(readFileSync(f, "utf8").match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
     expect(readers).toEqual([
-      "app/pilot/a13-dynamic-polaroid/dark/DarkPilotClient.tsx",
-      "app/pilot/a13-mobile-gallery/MobileGalleryPilotClient.tsx",
       "components/memorial/gallery/A13GalleryScene.tsx",
       "components/memorial/gallery/A13MobileGallery.tsx",
       "components/memorial/gallery/A13MobileGalleryScene.tsx",
