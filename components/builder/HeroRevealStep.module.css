@@ -64,6 +64,11 @@
   margin-inline: auto;
 }
 
+.stage[data-hero-skin-variant="light"],
+.stage[data-hero-skin-variant="dark"] {
+  max-width: 1672px;
+}
+
 .builderControls {
   width: 100%;
   max-width: 28rem;

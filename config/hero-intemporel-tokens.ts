@@ -30,6 +30,132 @@ import type { SkinVariant } from "@/config/skins";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
+/**
+ * Handoff V1.2 — the contract applies only to the Mobile Light scene
+ * rendered between 320px and 430px. The existing masters and geometry
+ * remain authoritative everywhere else.
+ */
+export const HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME = {
+  contractedWidthCssPx: { min: 320, max: 430 },
+  canvasPx: { width: 941, height: 1672 },
+  /** A convenient 4:5 pixel rectangle used only as the CSS transform's
+   * source coordinate system. Its aspect ratio, not its resolution, is
+   * contractual; the homography below still consumes normalized u/v. */
+  logicalRasterPx: { width: 400, height: 500 },
+  destinationQuadPx: [
+    [257.6950988769531, 219.0428009033203],
+    [657.7222290039062, 175.31520080566406],
+    [710.5056762695312, 649.205078125],
+    [303.7381896972656, 696.8555297851562],
+  ],
+  homographyNormalizedSourceToReference: [
+    [404.319837107753, 40.752744666416, 257.695098876953],
+    [-42.583383355159, 465.6752792727, 219.04280090332],
+    [0.00652662597, -0.017417454681, 1],
+  ],
+  plateSrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V1.png",
+  maskSrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_MASK_RUNTIME_CLEAN_V1.png",
+  plateSha256: "6a8f555310613e6dc13b7714c8887c7e4b632c9cea9528d1c2b5ab55e0082980",
+  maskSha256: "8df35f9e9222e0dca243e70e629c600cf9c0f1ff72028735f459db2ed82653f8",
+} as const;
+
+/**
+ * QG Handoff Runtime V1 — Mobile Dark V2 photo runtime. These values
+ * are transcribed from the authoritative 982×1602 contract and apply
+ * only inside its explicitly supported 320–430px width band.
+ */
+export const HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME = {
+  contractedWidthCssPx: { min: 320, max: 430 },
+  canvasPx: { width: 982, height: 1602 },
+  /** Fixed 4:5 source plane. The contract's homography consumes its
+   * normalized 0..4 × 0..5 coordinate system. */
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.3159091855091911,
+    width: 4,
+    height: 4.368181628981618,
+  },
+  destinationQuadPx: [
+    [285.387045982091, 185.931750076958],
+    [734.530248408402, 135.18266449704],
+    [795.67051800863, 625.898221989843],
+    [339.571832964632, 684.227521064665],
+  ],
+  homographyNormalizedSourceToReference: [
+    [114.60897005534757, 11.065434355612389, 281.53992671680476],
+    [-12.218643662535635, 111.26622935568122, 150.5527559508917],
+    [0.003351048606059601, -0.003898191948665708, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_DARK_ALPHA_RUNTIME_ASSET_V2(1).png",
+  overlaySha256: "aab7752aad7d707a0db4c46cef344d852b32dfd86ee3dcfa4eeac1e09c1a36c0",
+  fullyTransparentPixels: 226292,
+} as const;
+
+/**
+ * QG Handoff Runtime V1 — Desktop Light photo runtime. Geometry is in
+ * the authoritative 1672×941 reference canvas and uses the existing
+ * HERITAGE desktop breakpoint without introducing another one.
+ */
+export const HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME = {
+  canvasPx: { width: 1672, height: 941 },
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.05862393342704664,
+    width: 4,
+    height: 4.882752133145907,
+  },
+  destinationQuadPx: [
+    [249.60878661, 219.92887029],
+    [700.18878886, 131.96314317],
+    [808.46999733, 684.38083385],
+    [354.02947306, 772.74426913],
+  ],
+  homographyNormalizedSourceToReference: [
+    [112.52598716490353, 20.77822361049548, 248.36566853615486],
+    [-22.009530153937288, 111.88555121460418, 213.34765695803256],
+    [-0.00015384940226202226, -0.0017096147467908099, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V1(1).png",
+  overlaySha256: "216818582aa1b6c58bd750a2fe4e936f433213b3645eb9a1292f15ebc6e49995",
+  fullyTransparentPixels: 295048,
+} as const;
+
+/** Exact QG-supplied geometry and byte identity for Desktop Dark Runtime V1. */
+export const HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME = {
+  canvasPx: { width: 1672, height: 941 },
+  logicalRasterPx: { width: 400, height: 500 },
+  normalizedSourceSize: { width: 4, height: 5 },
+  normalizedCropRect: {
+    x: 0,
+    y: 0.04768016287499899,
+    width: 4,
+    height: 4.904639674250002,
+  },
+  destinationQuadPx: [
+    [248.58025692688105, 213.71605447233398],
+    [692.7847001103855, 132.91020146330993],
+    [807.9103742411495, 686.5327039663346],
+    [354.41363947986156, 753.7077330592662],
+  ],
+  homographyNormalizedSourceToReference: [
+    [106.48220936986688, 20.577212488731398, 247.56575323552485],
+    [-21.07242999591678, 107.96074197549991, 208.53977135624035],
+    [-0.006573455951470907, -0.0028162226428227314, 1],
+  ],
+  overlaySrc:
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_DARK_ALPHA_RUNTIME_ASSET_V1(1).png",
+  overlaySha256: "9e8419e9446838367210893897f1f02434e30a34e61f1231f04634d95a2d2f8b",
+  fullyTransparentPixels: 250532,
+} as const;
+
 /** Where the 4 runtime masters actually live — copied verbatim (same
  * bytes, `CHECKSUMS.sha256` verified) from the Studio package into
  * `public/`. */
