@@ -16,8 +16,8 @@
  * displayable URL ever reaches a renderer.
  */
 
-/** Only the Hero consumes a media today; A13 Galerie will widen this. */
-export type AssemblyMediaPurpose = "hero";
+/** The Hero and the A13 Gallery (dettes D2–D4) consume media. */
+export type AssemblyMediaPurpose = "hero" | "gallery";
 
 export interface MediaRequest {
   mediaId: string;
@@ -28,6 +28,14 @@ export interface ResolvedMedia {
   /** Echo of the requested id — the assembler refuses any mismatch. */
   mediaId: string;
   readUrl: string;
+  /**
+   * The media's natural dimensions, MEASURED at finalization (dette D1) —
+   * `null` for a media whose dimensions were never established. Geometry
+   * inputs only, never an internal column: the Gallery lays photographs
+   * out at their natural ratio and needs them; the Hero ignores them.
+   */
+  width?: number | null;
+  height?: number | null;
 }
 
 /**

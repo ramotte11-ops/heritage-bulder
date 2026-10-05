@@ -1,0 +1,684 @@
+"use client";
+
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { laBelleAurore } from "@/components/builder/fonts";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
+import type { Language } from "@/config/languages";
+import { translate, translateWith } from "@/lib/i18n/translate";
+import { awaitViewerCaptionFont, createViewerCaptionMeasure, viewerCaptionFontStatus, type ViewerCaptionFontGate, type ViewerCaptionMeasure } from "@/lib/memorial/viewer/viewer-caption-measure";
+import { layoutViewer, normalizeViewerCaption, viewerGeometrySnapshot, type ViewerGeometry } from "@/lib/memorial/viewer/viewer-layout";
+import { viewerDomSnapshot, viewerDomStops, type MotionRecord, type ViewerStopFinding } from "@/lib/memorial/viewer/viewer-dom-qa";
+import styles from "./MemoryViewer.module.css";
+
+/**
+ * A13 Viewer Desktop V2 — the ONE Viewer of the Gallery and the Album.
+ *
+ * VIEWER = CONTEMPLER: the visitor takes one photograph out of the pile.
+ * Photo first — its natural ratio drives the print (`layoutViewer`, pure
+ * and theme-free); the HERITAGE paper, the edge and the caption are built
+ * around it. `theme` selects MATERIAL only (Studio tiles, inks, shadows):
+ * Light and Dark share every length (GEOMETRY DIVERGENCE LIGHT/DARK: NONE).
+ *
+ * Behaviour (Handoff §6–§9):
+ * - opening memorises the trigger, the scroll X/Y and the Gallery/Album
+ *   container; locks the document without changing its available width;
+ *   makes the background inert; renders a named modal dialog; focuses the
+ *   close button after mounting;
+ * - Tab / Shift+Tab stay in the Viewer, Escape closes, the native close
+ *   button (48 × 48 target, discreet `×`) closes;
+ * - closing unmounts the Viewer, restores the exact scroll, gives focus
+ *   back to the trigger (or to the nearest Gallery/Album container when
+ *   the trigger no longer exists), and never recomputes the composition.
+ *   The trigger is remembered by a stable identity too (its `data-print`
+ *   slot and `data-media-index`, under its origin's container): when its
+ *   host remounted it — a Mobile section leaves its 375–430 territory on a
+ *   rotation to landscape and comes back — the live print is found again;
+ *   when the host is not mounted at all at close, nothing destroyed is
+ *   focused and the focus and scroll restoration waits until the print is
+ *   back (cancelled as soon as the visitor focuses something else or opens
+ *   another memory);
+ * - motion: 240 ms cubic-bezier(.22,1,.36,1) from opacity 0,
+ *   translateY(12s), scale .985; closing 160 ms cubic-bezier(.4,0,1,1) to
+ *   opacity 0, translateY(6s), scale .99; `prefers-reduced-motion: reduce`
+ *   → 0 ms, no spatial transform. No flip, no bounce, no rotation.
+ *
+ * The photo is rendered at its natural ratio with `object-fit: contain`,
+ * `filter: none`, `opacity: 1`, `mix-blend-mode: normal` — never cropped,
+ * never processed. Before the first frame the intrinsic size is decoded
+ * and the caption font confirmed, so the reserved box never shifts.
+ *
+ * Caption (`A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`): the browser breaks
+ * it. The shared primitive wraps it offscreen at the displayed size, with
+ * the computed styles of the visible caption (style source: a hidden
+ * element of the same class) in the paper's usable width; the visible
+ * caption is the same single text node, same class, same size and width,
+ * so the browser lays out the same lines. Measured again when fonts finish
+ * loading and on resize.
+ */
+
+export type ViewerOrigin = "gallery" | "album";
+
+export interface MemoryViewerMedia {
+  mediaId: string;
+  src: string;
+  /** Validated accessible text — never a raw filename. */
+  alt: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  caption: string | null;
+}
+
+export interface ViewerOpenReport {
+  kind: "open";
+  origin: ViewerOrigin;
+  theme: ViewerTheme;
+  mediaId: string;
+  engine: string;
+  dom: ReturnType<typeof viewerDomSnapshot>;
+  stops: ViewerStopFinding[];
+  codes: string[];
+  scrollAtOpen: { x: number; y: number };
+  reduced: boolean;
+  settledMs: number;
+}
+
+export interface ViewerCloseReport {
+  kind: "close";
+  origin: ViewerOrigin;
+  theme: ViewerTheme;
+  mediaId: string;
+  via: "button" | "escape";
+  scrollSaved: { x: number; y: number };
+  scrollAfter: { x: number; y: number };
+  /** `deferred`: the origin is not mounted at close; see the `restore` report. */
+  focusTarget: "trigger" | "container" | "none" | "deferred";
+  focusRestored: boolean;
+  stops: ViewerStopFinding[];
+}
+
+/** A deferred origin restoration completed (the host mounted the print again). */
+export interface ViewerRestoreReport {
+  kind: "restore";
+  origin: ViewerOrigin;
+  theme: ViewerTheme;
+  mediaId: string;
+  via: "deferred";
+  scrollSaved: { x: number; y: number };
+  scrollAfter: { x: number; y: number };
+  focusTarget: "trigger" | "container";
+  focusRestored: boolean;
+  stops: ViewerStopFinding[];
+}
+
+export type ViewerReport = ViewerOpenReport | ViewerCloseReport | ViewerRestoreReport;
+
+export interface MemoryViewerProps {
+  media: MemoryViewerMedia;
+  theme: ViewerTheme;
+  origin: ViewerOrigin;
+  /** Language of the product text (dialog name, close button — i18n, dette D5). The caption and alt text are family content, never translated. */
+  language: Language;
+  /** The print that opened the Viewer (focus is given back to it). */
+  trigger: HTMLElement | null;
+  /** Nearest Gallery/Album container — focus fallback. */
+  container: HTMLElement | null;
+  /** Stable identity of the trigger (`viewerOriginIdentity`), to find it again after its host remounted. */
+  originIdentity?: ViewerOriginIdentity | null;
+  /** Called once the Viewer has closed (scroll and focus restored): unmount it. */
+  onClosed: () => void;
+  onReport?: (report: ViewerReport) => void;
+}
+
+const C = A13_VIEWER_CONTRACT;
+const SLICE_OVERLAP = 0.75;
+
+/** Gallery / Album containers of each origin (Desktop and Mobile scenes). */
+const ORIGIN_CONTAINERS: Record<ViewerOrigin, string> = {
+  album: "[data-testid=album-memory-table]",
+  gallery: "[data-testid=a13-pilot-scene], [data-testid=a13-mobile-scene]",
+};
+/** A deferred restoration gives up after this long (the visitor never came back to the origin's territory). */
+const DEFERRED_RESTORE_MAX_MS = 10 * 60 * 1000;
+
+/** Stable address of the print that opened the Viewer (survives a remount of its host). */
+export interface ViewerOriginIdentity {
+  origin: ViewerOrigin;
+  print: string;
+  mediaIndex: string | null;
+}
+
+export function viewerOriginIdentity(trigger: HTMLElement | null, origin: ViewerOrigin): ViewerOriginIdentity | null {
+  const print = trigger?.getAttribute("data-print");
+  if (!trigger || !print) return null;
+  return { origin, print, mediaIndex: trigger.closest("[data-media-index]")?.getAttribute("data-media-index") ?? null };
+}
+
+/** Connected and not inert: the only nodes the Viewer ever gives focus to. */
+const focusable = (el: Element | null | undefined): el is HTMLElement => el instanceof HTMLElement && el.isConnected && !el.closest("[inert]");
+
+/** The live print of an identity (or its live container), never a destroyed or inert node. */
+export function resolveViewerOrigin(id: ViewerOriginIdentity): { target: HTMLElement; kind: "trigger" | "container" } | null {
+  const containers = [...document.querySelectorAll<HTMLElement>(ORIGIN_CONTAINERS[id.origin])].filter(focusable);
+  for (const c of containers) {
+    const print = [...c.querySelectorAll<HTMLElement>("[data-print]")].find(
+      (el) => el.getAttribute("data-print") === id.print && (id.mediaIndex === null || el.closest("[data-media-index]")?.getAttribute("data-media-index") === id.mediaIndex) && focusable(el),
+    );
+    if (print) return { target: print, kind: "trigger" };
+  }
+  return containers[0] ? { target: containers[0], kind: "container" } : null;
+}
+
+let cancelPendingRestore: (() => void) | null = null;
+
+/** Cancels a deferred origin restoration (a new memory is opened). */
+export function cancelViewerOriginRestore() {
+  cancelPendingRestore?.();
+}
+
+/**
+ * Waits for the origin to be mounted again (DOM mutations, resizes), then
+ * restores the opening scroll and gives focus to the print — only if no
+ * Viewer is open and nothing else holds focus. Stops as soon as the
+ * visitor focuses anything, a new memory opens, or after
+ * `DEFERRED_RESTORE_MAX_MS`.
+ */
+function deferViewerOriginRestore(id: ViewerOriginIdentity, scroll: { x: number; y: number }, done: (r: { target: HTMLElement; kind: "trigger" | "container" }) => void) {
+  cancelViewerOriginRestore();
+  const observer = new MutationObserver(attempt);
+  const timer = window.setTimeout(stop, DEFERRED_RESTORE_MAX_MS);
+  function onFocusIn(e: FocusEvent) {
+    if (e.target instanceof HTMLElement && e.target !== document.body) stop();
+  }
+  function stop() {
+    observer.disconnect();
+    window.clearTimeout(timer);
+    window.removeEventListener("resize", attempt);
+    document.removeEventListener("focusin", onFocusIn, true);
+    if (cancelPendingRestore === stop) cancelPendingRestore = null;
+  }
+  function attempt() {
+    if (document.querySelector("[data-a13-viewer]")) return;
+    const r = resolveViewerOrigin(id);
+    if (!r) return;
+    stop();
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    window.scrollTo({ left: scroll.x, top: scroll.y, behavior: "instant" });
+    if (r.kind === "container" && !r.target.hasAttribute("tabindex")) r.target.setAttribute("tabindex", "-1");
+    r.target.focus({ preventScroll: true });
+    done(r);
+  }
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["inert"] });
+  window.addEventListener("resize", attempt);
+  document.addEventListener("focusin", onFocusIn, true);
+  cancelPendingRestore = stop;
+}
+
+function parseShadow(s: string) {
+  const m = /^(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/.exec(s.trim())!;
+  return { dx: parseFloat(m[1]), dy: parseFloat(m[2]), blur: parseFloat(m[3]), color: m[4] };
+}
+
+async function decodeImage(src: string, timeoutMs: number) {
+  const img = new Image();
+  img.src = src;
+  if (typeof img.decode === "function") await Promise.race([img.decode().catch(() => undefined), new Promise((r) => setTimeout(r, timeoutMs))]);
+  return img;
+}
+
+/**
+ * The print's rendered left, and the photo's left inside it. A widened
+ * caption paper (`g.captionWidening`) grows by half its widening on each
+ * side of the canonical paper's rendered position, laid on the 1/64 px
+ * layout grid, so that the photo keeps exactly its canonical pixels.
+ */
+const LAYOUT_UNITS_PER_PX = 64;
+function printPlacement(g: ViewerGeometry) {
+  if (!g.captionWidening || g.captionWidening.widening === 0) return { left: Math.round(g.paper.x), photoLeft: g.photoLocal.x };
+  const half = Math.round((g.captionWidening.widening / 2) * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
+  return { left: Math.round(g.captionWidening.naturalPaper.x) - half, photoLeft: g.edge + half };
+}
+
+/**
+ * The real orientation (`A13_VIEWER_CAPTION_WIDENING`), confirmed by the
+ * window AND the orientation media query, else `null`: read on every layout,
+ * never stored.
+ */
+const viewerOrientation = (): "landscape" | "portrait" | null => {
+  const mq = (q: string) => window.matchMedia?.(q).matches === true;
+  if (window.innerWidth > window.innerHeight && mq("(orientation: landscape)")) return "landscape";
+  if (window.innerHeight >= window.innerWidth && mq("(orientation: portrait)")) return "portrait";
+  return null;
+};
+
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+const canAnimate = (el: Element | null): el is HTMLElement => !!el && typeof (el as HTMLElement).animate === "function";
+
+function Paper({ g, theme }: { g: ViewerGeometry; theme: ViewerTheme }) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const { box, slices } = g.mask;
+  const ox = -box.x;
+  const oy = -box.y;
+  const T = g.paperTextureSize;
+  const inner = (A13_VIEWER_ASSETS.edgeMask.medianContour + 8) * g.s;
+  const shadows = [A13_VIEWER_MATERIAL[theme].shadowMain, A13_VIEWER_MATERIAL[theme].shadowContact].map(parseShadow);
+  return (
+    <svg
+      className={styles.paper}
+      data-viewer-paper=""
+      style={{ left: box.x, top: box.y }}
+      width={box.w}
+      height={box.h}
+      viewBox={`0 0 ${box.w} ${box.h}`}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <pattern id={`${id}p`} patternUnits="userSpaceOnUse" x={ox} y={oy} width={T} height={T}>
+          <image href={A13_VIEWER_ASSETS.paper[theme].src} width={T} height={T} preserveAspectRatio="none" />
+        </pattern>
+        <mask id={`${id}m`} maskUnits="userSpaceOnUse" x={0} y={0} width={box.w} height={box.h} style={{ maskType: "alpha" }}>
+          {slices.map((q, i) => (
+            // +0.75 px overlap: adjacent slices never leave an anti-aliasing hairline between them.
+            <svg key={i} data-viewer-slice="" x={q.dx + ox} y={q.dy + oy} width={q.dw + SLICE_OVERLAP} height={q.dh + SLICE_OVERLAP} viewBox={`${q.sx} ${q.sy} ${q.sw} ${q.sh}`} preserveAspectRatio="none">
+              <image href={A13_VIEWER_ASSETS.edgeMask.src} width={A13_VIEWER_ASSETS.edgeMask.size} height={A13_VIEWER_ASSETS.edgeMask.size} />
+            </svg>
+          ))}
+          <rect x={inner} y={inner} width={Math.max(0, box.w - 2 * inner)} height={Math.max(0, box.h - 2 * inner)} fill="#fff" />
+        </mask>
+        {/* Two independent shadows (contact + main), cast by the masked paper: visual only, never dimensioning. */}
+        <filter id={`${id}s`} filterUnits="userSpaceOnUse" x={-80} y={-80} width={box.w + 160} height={box.h + 200} colorInterpolationFilters="sRGB">
+          {shadows.map((sh, i) => (
+            <Fragment key={i}>
+              <feGaussianBlur in="SourceAlpha" stdDeviation={sh.blur / 2} result={`b${i}`} />
+              <feOffset in={`b${i}`} dx={sh.dx} dy={sh.dy} result={`o${i}`} />
+              <feFlood floodColor={sh.color} result={`f${i}`} />
+              <feComposite in={`f${i}`} in2={`o${i}`} operator="in" result={`s${i}`} />
+            </Fragment>
+          ))}
+          <feMerge>
+            <feMergeNode in="s0" />
+            <feMergeNode in="s1" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <g filter={`url(#${id}s)`}>
+        <rect x={0} y={0} width={box.w} height={box.h} fill={`url(#${id}p)`} mask={`url(#${id}m)`} />
+      </g>
+    </svg>
+  );
+}
+
+export function MemoryViewer({ media, theme, origin, language, trigger, container, originIdentity = null, onClosed, onReport }: MemoryViewerProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const printRef = useRef<HTMLElement>(null);
+  const envRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const styleSourceRef = useRef<HTMLSpanElement>(null);
+  const measureHostRef = useRef<HTMLDivElement>(null);
+  const saved = useRef({ x: 0, y: 0, overflow: "", paddingRight: "", inerted: [] as Element[], restored: false, t0: 0 });
+  const natural = useRef({ w: media.naturalWidth, h: media.naturalHeight });
+  const closing = useRef(false);
+  const motion = useRef<MotionRecord>({ open: null, reduced: false });
+  const captionMeasure = useRef<ViewerCaptionMeasure | null>(null);
+  const captionFont = useRef<ViewerCaptionFontGate | null>(null);
+  const [geometry, setGeometry] = useState<ViewerGeometry | null>(null);
+  const caption = normalizeViewerCaption(media.caption);
+
+  const compute = useCallback(() => {
+    const el = document.documentElement;
+    return layoutViewer({
+      viewportW: el.clientWidth,
+      viewportH: el.clientHeight,
+      naturalW: natural.current.w,
+      naturalH: natural.current.h,
+      caption,
+      wrap: captionMeasure.current?.wrap ?? null,
+      captionFontReady: captionFont.current?.ready ?? null,
+      orientation: viewerOrientation(),
+    });
+  }, [caption]);
+
+  const restoreDocument = useCallback(() => {
+    const s = saved.current;
+    if (s.restored) return;
+    s.restored = true;
+    const html = document.documentElement;
+    html.style.overflow = s.overflow;
+    html.style.paddingRight = s.paddingRight;
+    for (const el of s.inerted) el.removeAttribute("inert");
+    window.scrollTo({ left: s.x, top: s.y, behavior: "instant" });
+  }, []);
+
+  // Opening: memorise scroll, lock the document (same available width), inert background.
+  useLayoutEffect(() => {
+    cancelViewerOriginRestore();
+    const s = saved.current;
+    s.t0 = performance.now();
+    s.x = window.scrollX;
+    s.y = window.scrollY;
+    const html = document.documentElement;
+    const scrollbar = window.innerWidth - html.clientWidth;
+    s.overflow = html.style.overflow;
+    s.paddingRight = html.style.paddingRight;
+    html.style.overflow = "hidden";
+    if (scrollbar > 0) html.style.paddingRight = `${parseFloat(getComputedStyle(html).paddingRight) + scrollbar}px`;
+    s.inerted = [...document.body.children].filter((el) => el !== rootRef.current && !el.hasAttribute("inert"));
+    for (const el of s.inerted) el.setAttribute("inert", "");
+    return () => restoreDocument();
+  }, [restoreDocument]);
+
+  // Intrinsic size + caption font gate + material tiles before the first frame.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const tasks: Promise<unknown>[] = [
+        decodeImage(media.src, 2500).then((img) => {
+          if (img.naturalWidth && img.naturalHeight) natural.current = { w: img.naturalWidth, h: img.naturalHeight };
+        }),
+        ...[A13_VIEWER_ASSETS.environment[theme].src, A13_VIEWER_ASSETS.paper[theme].src, A13_VIEWER_ASSETS.edgeMask.src].map((src) => decodeImage(src, 2500)),
+      ];
+      const source = styleSourceRef.current;
+      const host = measureHostRef.current;
+      if (caption && source && host) {
+        tasks.push(
+          awaitViewerCaptionFont(source, caption).then((gate) => {
+            captionFont.current = gate;
+            captionMeasure.current ??= createViewerCaptionMeasure(source, host);
+          }),
+        );
+      }
+      await Promise.all(tasks);
+      if (alive) setGeometry(compute());
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [media.src, theme, caption, compute]);
+
+  // First frame: focus the close button, play the opening, then report.
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    if (!geometry || opened.current) return;
+    opened.current = true;
+    const reduced = reducedMotion();
+    motion.current = { open: null, reduced };
+    closeRef.current?.focus({ preventScroll: true });
+    const done: Promise<unknown>[] = [];
+    if (!reduced && canAnimate(printRef.current)) {
+      const o = geometry.motion.open;
+      const keyframes = [
+        { opacity: String(o.fromOpacity), transform: `translateY(${o.fromTranslateY}px) scale(${o.fromScale})` },
+        { opacity: "1", transform: "translateY(0px) scale(1)" },
+      ];
+      motion.current.open = { durationMs: o.durationMs, easing: o.easing, keyframes };
+      const opts = { duration: o.durationMs, easing: o.easing };
+      done.push(printRef.current.animate(keyframes, opts).finished);
+      for (const el of [envRef.current, closeRef.current]) if (canAnimate(el)) done.push(el.animate([{ opacity: 0 }, { opacity: 1 }], opts).finished);
+    }
+    if (!onReport) return;
+    void Promise.all(done.map((p) => p.catch(() => undefined))).then(() =>
+      requestAnimationFrame(() => {
+        const root = rootRef.current;
+        if (!root || closing.current) return;
+        onReport({
+          kind: "open",
+          origin,
+          theme,
+          mediaId: media.mediaId,
+          engine: viewerGeometrySnapshot(geometry),
+          dom: viewerDomSnapshot(root, motion.current),
+          stops: viewerDomStops(root, geometry, reduced),
+          codes: geometry.codes,
+          scrollAtOpen: { x: saved.current.x, y: saved.current.y },
+          reduced,
+          settledMs: Math.round(performance.now() - saved.current.t0),
+        });
+      }),
+    );
+  }, [geometry, onReport, origin, theme, media.mediaId]);
+
+  // Fonts finished loading after the gate: confirm the face again and re-measure.
+  const prepared = geometry !== null;
+  useEffect(() => {
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    if (!prepared || !caption || !fonts) return;
+    const onFonts = () => {
+      if (closing.current || !styleSourceRef.current || !captionMeasure.current) return;
+      captionFont.current = viewerCaptionFontStatus(styleSourceRef.current, caption);
+      setGeometry(compute());
+    };
+    fonts.addEventListener("loadingdone", onFonts);
+    return () => fonts.removeEventListener("loadingdone", onFonts);
+  }, [prepared, caption, compute]);
+
+  // Resize: the same continuous formula, recomputed (no animation).
+  useEffect(() => {
+    if (!geometry) return;
+    const onResize = () => {
+      if (!closing.current) setGeometry(compute());
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [geometry, compute]);
+
+  const close = useCallback(
+    async (via: "button" | "escape") => {
+      if (closing.current || !geometry) return;
+      closing.current = true;
+      if (!reducedMotion() && canAnimate(printRef.current)) {
+        const c = geometry.motion.close;
+        const opts = { duration: c.durationMs, easing: c.easing, fill: "forwards" as const };
+        const anims = [
+          printRef.current.animate(
+            [
+              { opacity: 1, transform: "translateY(0px) scale(1)" },
+              { opacity: c.toOpacity, transform: `translateY(${c.toTranslateY}px) scale(${c.toScale})` },
+            ],
+            opts,
+          ),
+          ...[envRef.current, closeRef.current].flatMap((el) => (canAnimate(el) ? [el.animate([{ opacity: 1 }, { opacity: 0 }], opts)] : [])),
+        ];
+        await Promise.all(anims.map((a) => a.finished.catch(() => undefined)));
+      }
+      restoreDocument();
+      const s = saved.current;
+      let target: HTMLElement | null = null;
+      let focusTarget: ViewerCloseReport["focusTarget"] = "none";
+      // The trigger itself; else the same print remounted by its host; else the container; else wait for the origin.
+      const again = !focusable(trigger) && originIdentity ? resolveViewerOrigin(originIdentity) : null;
+      if (focusable(trigger)) {
+        target = trigger;
+        focusTarget = "trigger";
+      } else if (again) {
+        target = again.target;
+        focusTarget = again.kind;
+      } else if (focusable(container)) {
+        target = container;
+        focusTarget = "container";
+      } else if (originIdentity) focusTarget = "deferred";
+      if (focusTarget === "container" && target && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+      target?.focus({ preventScroll: true });
+      onClosed();
+      const report = (kind: "close" | "restore", after: { x: number; y: number }, stops: ViewerStopFinding[], restored: boolean, to: ViewerCloseReport["focusTarget"]) =>
+        kind === "close"
+          ? onReport?.({ kind, origin, theme, mediaId: media.mediaId, via, scrollSaved: { x: s.x, y: s.y }, scrollAfter: after, focusTarget: to, focusRestored: restored, stops })
+          : onReport?.({ kind, origin, theme, mediaId: media.mediaId, via: "deferred", scrollSaved: { x: s.x, y: s.y }, scrollAfter: after, focusTarget: to as "trigger" | "container", focusRestored: restored, stops });
+      const check = (to: HTMLElement | null, label: ViewerCloseReport["focusTarget"]) => {
+        const after = { x: window.scrollX, y: window.scrollY };
+        const stops: ViewerStopFinding[] = [];
+        if (Math.abs(after.x - s.x) > 0.5 || Math.abs(after.y - s.y) > 0.5) stops.push({ stop: "VIEWER_SCROLL_RESTORE_STOP", detail: `saved ${s.x},${s.y} → ${after.x},${after.y}` });
+        const restored = !!to && document.activeElement === to;
+        if (!restored) stops.push({ stop: "VIEWER_FOCUS_RESTORE_STOP", detail: `focus on ${document.activeElement?.tagName ?? "null"} (${label})` });
+        return { after, stops, restored };
+      };
+      if (focusTarget === "deferred" && originIdentity) {
+        // The origin is not mounted (e.g. a Mobile section out of its territory): nothing to focus now.
+        deferViewerOriginRestore(originIdentity, { x: s.x, y: s.y }, (r) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const c = check(r.target, r.kind);
+              report("restore", c.after, c.stops, c.restored, r.kind);
+            }),
+          ),
+        );
+        requestAnimationFrame(() => requestAnimationFrame(() => report("close", { x: window.scrollX, y: window.scrollY }, [], false, "deferred")));
+        return;
+      }
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const c = check(target, focusTarget);
+          report("close", c.after, c.stops, c.restored, focusTarget);
+        }),
+      );
+    },
+    [geometry, restoreDocument, trigger, container, originIdentity, onClosed, onReport, origin, theme, media.mediaId],
+  );
+
+  // Escape closes; Tab / Shift+Tab stay on the Viewer's only control.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        void close("escape");
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        closeRef.current?.focus({ preventScroll: true });
+      }
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      if (!closing.current && rootRef.current && !rootRef.current.contains(e.target as Node)) closeRef.current?.focus({ preventScroll: true });
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", onFocusIn, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+    };
+  }, [close]);
+
+  const mat = A13_VIEWER_MATERIAL[theme];
+  const rootStyle = {
+    "--viewer-environment": mat.environment,
+    "--viewer-environment-tile": `url("${A13_VIEWER_ASSETS.environment[theme].src}")`,
+    "--viewer-caption-ink": mat.captionInk,
+    "--viewer-close-ink": mat.closeInk,
+  } as CSSProperties;
+  const g = geometry;
+  const placed = g ? printPlacement(g) : null;
+  // Product prefix in the active language + the family caption / alt text, untranslated.
+  const label = translateWith(language, C.accessibility.dialogLabelKey, { subject: caption ?? media.alt });
+
+  const node: ReactNode = (
+    <div
+      ref={rootRef}
+      className={`${styles.root} ${laBelleAurore.variable}`}
+      style={rootStyle}
+      data-a13-viewer=""
+      data-a13-viewer-theme={theme}
+      data-viewer-origin={origin}
+      data-viewer-state={g ? "open" : "preparing"}
+    >
+      <span className={styles.probe} aria-hidden="true">
+        <span ref={styleSourceRef} className={styles.caption} data-caption-probe="" data-caption-style-source="">
+          Aa
+        </span>
+      </span>
+      <div ref={measureHostRef} className={styles.measureHost} aria-hidden="true" data-viewer-caption-measure-host="" />
+      <div ref={envRef} className={styles.environment} aria-hidden="true" data-viewer-environment="" />
+      <div role="dialog" aria-modal="true" aria-label={label} className={styles.dialog}>
+        {g ? (
+          <figure
+            ref={printRef}
+            className={styles.print}
+            data-viewer-print=""
+            data-viewer-caption-widening={g.captionWidening ? (g.captionWidening.stop ? "stop" : g.captionWidening.profile) : undefined}
+            style={{ left: placed!.left, top: Math.round(g.paper.y), width: g.paper.w, height: g.paper.h }}
+          >
+            <Paper g={g} theme={theme} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={styles.photo}
+              data-viewer-photo=""
+              src={media.src}
+              alt={media.alt}
+              width={Math.round(g.photoLocal.w)}
+              height={Math.round(g.photoLocal.h)}
+              style={{ left: placed!.photoLeft, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
+              draggable={false}
+              decoding="sync"
+            />
+            {g.caption ? (
+              // Same text node, class, size and width as the measured clone: the browser lays out the measured lines.
+              <figcaption
+                className={styles.caption}
+                data-viewer-caption=""
+                data-viewer-caption-lines={g.caption.lines.length}
+                style={{ left: g.caption.box.x, top: g.caption.box.y, width: g.caption.box.w, height: g.caption.box.h, fontSize: g.caption.fontSize, lineHeight: `${g.caption.lineHeight}px` }}
+              >
+                {g.caption.text}
+              </figcaption>
+            ) : null}
+          </figure>
+        ) : null}
+        <button
+          ref={closeRef}
+          type="button"
+          className={styles.close}
+          data-viewer-close=""
+          aria-label={translate(language, C.close.labelKey)}
+          style={g ? { top: g.close.offset, right: g.close.offset } : { top: 28, right: 28 }}
+          onClick={() => void close("button")}
+        >
+          <span aria-hidden="true">{C.close.glyph}</span>
+        </button>
+      </div>
+    </div>
+  );
+  return createPortal(node, document.body);
+}
+
+/**
+ * Host helper shared by the Gallery and the Album: remembers the trigger
+ * (the focused print at activation) and its container, renders the Viewer
+ * and unmounts it once closed.
+ */
+export function useMemoryViewer(onReport?: (r: ViewerReport) => void) {
+  const [req, setReq] = useState<{
+    media: MemoryViewerMedia;
+    theme: ViewerTheme;
+    origin: ViewerOrigin;
+    language: Language;
+    trigger: HTMLElement | null;
+    container: HTMLElement | null;
+    originIdentity: ViewerOriginIdentity | null;
+    n: number;
+  } | null>(null);
+  const count = useRef(0);
+  const open = useCallback((media: MemoryViewerMedia, theme: ViewerTheme, origin: ViewerOrigin, language: Language, trigger?: HTMLElement | null) => {
+    const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    const t = trigger ?? active;
+    const container = t?.closest<HTMLElement>(ORIGIN_CONTAINERS[origin]) ?? null;
+    count.current += 1;
+    setReq({ media, theme, origin, language, trigger: t, container, originIdentity: viewerOriginIdentity(t, origin), n: count.current });
+  }, []);
+  const onClosed = useCallback(() => setReq(null), []);
+  const node = req ? (
+    <MemoryViewer
+      key={req.n}
+      media={req.media}
+      theme={req.theme}
+      origin={req.origin}
+      language={req.language}
+      trigger={req.trigger}
+      container={req.container}
+      originIdentity={req.originIdentity}
+      onClosed={onClosed}
+      onReport={onReport}
+    />
+  ) : null;
+  return { open, node, isOpen: req !== null };
+}

@@ -24,6 +24,7 @@ import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
+import { GalleryStep } from "@/components/builder/GalleryStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { isPreviewUnlocked } from "@/lib/builder/guided-flow/preview-lock";
@@ -42,6 +43,8 @@ import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-no
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
+import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
+import { resolveGalleryStepData } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import {
   resolveHeroPhotoStepData,
   reconcileHeroMediaOnResume,
@@ -55,6 +58,11 @@ import {
   finalizeHeroPhotoUploadAction,
   retireHeroPhotoUploadAction,
 } from "./media-actions";
+import {
+  reserveGalleryPhotoUploadAction,
+  finalizeGalleryPhotoUploadAction,
+  retireGalleryPhotoAction,
+} from "./gallery-media-actions";
 import { saveSkinVariantAction } from "./hero-reveal-actions";
 import { loadMemorialPreviewAction } from "./preview-actions";
 import styles from "./page.module.css";
@@ -251,6 +259,16 @@ import styles from "./page.module.css";
  * once, whichever way (all three matières resolved together, by one
  * Continue/Skip click). No `skin`/culture input at all (this sheet never
  * narrows or infers anything from either).
+ *
+ * ## A13 — the Gallery ("Vos souvenirs en images") sits right after the sheet
+ *
+ * Shown once the A10+A11+A12 sheet is resolved (`needsA13`,
+ * lib/builder/guided-flow/gallery-step.ts) and until A13's own
+ * `StepRecord` exists. `resolveGalleryStepData` mints the thumbnails'
+ * short-lived read URLs through the Preview's Owner draft resolver
+ * (purpose `"gallery"`), and the three Gallery actions
+ * (./gallery-media-actions.ts) are bound to `access.memorialId` — the
+ * purpose is fixed server-side, never chosen by the browser.
  */
 export const dynamic = "force-dynamic";
 
@@ -725,6 +743,38 @@ export default async function BuilderMemorialPage({
         previewAvailable(heroReconciledContent),
       );
     }
+
+    // A13 — "Vos souvenirs en images". Shown once the A10–A12 sheet is
+    // genuinely behind the family (never before — `needsA13` gates on
+    // `isPersonSheetResolved`) and only until A13 itself has been treated
+    // once, whichever way. The thumbnails are resolved here, server-side,
+    // through the Preview's own Owner draft resolver (purpose "gallery");
+    // the three Gallery actions are bound to the AUTHORIZED id exactly
+    // like the Hero's — the browser never picks a memorial or a purpose.
+    // A corrupted stored Gallery still renders the step, which shows its
+    // own calm notice instead of an editor (same as every other step).
+    if (needsA13(heroReconciledContent)) {
+      const galleryStepData = await resolveGalleryStepData(
+        { mediaEngine: createServerMediaEngineDeps() },
+        actor,
+        access.memorialId,
+        heroReconciledContent,
+      );
+
+      return withPreview(
+        <GalleryStep
+          language={resumed.memorial.language}
+          editorialContext={resumed.memorial.editorialContext}
+          content={heroReconciledContent}
+          thumbnails={galleryStepData.status === "ready" ? galleryStepData.thumbnails : {}}
+          persist={saveDraftAction.bind(null, access.memorialId)}
+          reserveUpload={reserveGalleryPhotoUploadAction.bind(null, access.memorialId)}
+          finalizeUpload={finalizeGalleryPhotoUploadAction.bind(null, access.memorialId)}
+          retirePhoto={retireGalleryPhotoAction.bind(null, access.memorialId)}
+        />,
+        previewAvailable(heroReconciledContent),
+      );
+    }
   }
 
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
@@ -735,15 +785,15 @@ export default async function BuilderMemorialPage({
   // NULLs).
   //
   // Builder continuity mission — what a memorial past every BUILT gate
-  // above reaches instead (today: past the A10+A11+A12 sheet for
-  // `announcement`, past PAGE E for `remembrance`). This used to be a
+  // above reaches instead (today: past A13 for `announcement`, past
+  // PAGE E for `remembrance`). This used to be a
   // bare "your memorial still needs to be configured" notice: a dead end
   // that asked the family for a step no screen offers. It is now the
   // Guided Flow's own resting screen — same chrome, the real engine's
   // progress (never 1 while unbuilt steps remain on the route), a
   // confirmation that the answers are stored, and the way back to the
   // owner space. It decides nothing about publication or `slug`, and
-  // simulates no later step: when A13 (or M01) is built, its own
+  // simulates no later step: when M01 (or a later step) is built, its own
   // `needsX` gate goes right above this line, exactly like every gate
   // before it, and this screen moves one step further down on its own.
   // `resumed.memorial.language`/`editorialContext` are narrowed non-null

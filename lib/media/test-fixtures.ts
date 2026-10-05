@@ -35,18 +35,102 @@ export const OWNER_B = "22222222-2222-4222-8222-222222222222";
 export const MEMORIAL_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const MEMORIAL_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-/** A valid, minimal JPEG header — `FF D8 FF` plus filler. */
-export const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+// ---------------------------------------------------------------------
+// Minimal but REAL image headers (dette D1): the signature the type check
+// reads AND the dimensions finalization now measures. No pixel data — the
+// engine never decodes one.
+// ---------------------------------------------------------------------
 
-/** The 8-byte PNG signature plus filler. */
-export const PNG_BYTES = new Uint8Array([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-]);
+function segment(marker: number, data: readonly number[] | Uint8Array): Uint8Array {
+  const length = data.length + 2;
+  const out = new Uint8Array(length + 2);
+  out.set([0xff, marker, length >> 8, length & 0xff]);
+  out.set(data, 4);
+  return out;
+}
 
-/** "RIFF" + size + "WEBP". */
-export const WEBP_BYTES = new Uint8Array([
-  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
-]);
+function concat(parts: readonly Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+const ascii = (text: string) => [...text].map((c) => c.charCodeAt(0));
+
+/** A JPEG header: SOI, APP0 JFIF, optional APP1 EXIF orientation / padding / DHT / SOS, a SOF, EOI. */
+export function jpegWithDimensions(
+  width: number,
+  height: number,
+  options: {
+    sof?: number;
+    orientation?: number;
+    byteOrder?: "II" | "MM";
+    /** APP2 segments of ~64 KiB each (EXIF thumbnail / ICC / XMP stand-ins). */
+    paddingSegments?: number;
+    dhtFirst?: boolean;
+    sosBeforeSof?: boolean;
+  } = {},
+): Uint8Array {
+  const parts: Uint8Array[] = [new Uint8Array([0xff, 0xd8])];
+  parts.push(segment(0xe0, [...ascii("JFIF"), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]));
+  if (options.orientation !== undefined) {
+    const le = options.byteOrder === "II";
+    const u16 = (v: number) => (le ? [v & 0xff, v >> 8] : [v >> 8, v & 0xff]);
+    const u32 = (v: number) => (le ? [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, v >>> 24] : [v >>> 24, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff]);
+    const tiff = [...ascii(le ? "II" : "MM"), ...u16(42), ...u32(8), ...u16(1), ...u16(0x0112), ...u16(3), ...u32(1), ...u16(options.orientation), 0, 0, ...u32(0)];
+    parts.push(segment(0xe1, [...ascii("Exif"), 0, 0, ...tiff]));
+  }
+  for (let i = 0; i < (options.paddingSegments ?? 0); i += 1) parts.push(segment(0xe2, new Uint8Array(65533)));
+  if (options.dhtFirst) parts.push(segment(0xc4, [0x00, ...new Array(16).fill(0)]));
+  if (options.sosBeforeSof) parts.push(segment(0xda, [1, 1, 0, 0, 63, 0]));
+  parts.push(segment(options.sof ?? 0xc0, [8, height >> 8, height & 0xff, width >> 8, width & 0xff, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]));
+  parts.push(new Uint8Array([0xff, 0xd9]));
+  return concat(parts);
+}
+
+/** A PNG header: signature + IHDR (width, height big-endian). */
+export function pngWithDimensions(width: number, height: number): Uint8Array {
+  const u32 = (v: number) => [v >>> 24, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+  return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, ...ascii("IHDR"), ...u32(width), ...u32(height), 8, 2, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+function webp(chunk: string, body: number[]): Uint8Array {
+  const bytes = new Uint8Array(30);
+  bytes.set([...ascii("RIFF"), 0x24, 0, 0, 0, ...ascii("WEBP"), ...ascii(chunk), body.length, 0, 0, 0]);
+  bytes.set(body, 20);
+  return bytes;
+}
+
+/** A lossy WebP header (`VP8 `). */
+export function webpVp8WithDimensions(width: number, height: number): Uint8Array {
+  return webp("VP8 ", [0x10, 0x02, 0x00, 0x9d, 0x01, 0x2a, width & 0xff, (width >> 8) & 0x3f, height & 0xff, (height >> 8) & 0x3f]);
+}
+
+/** A lossless WebP header (`VP8L`): 14-bit width-1 and height-1, packed LSB first. */
+export function webpVp8lWithDimensions(width: number, height: number): Uint8Array {
+  const bits = ((width - 1) | ((height - 1) << 14)) >>> 0;
+  return webp("VP8L", [0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, (bits >>> 24) & 0xff, 0, 0, 0, 0, 0]);
+}
+
+/** An extended WebP header (`VP8X`): 24-bit canvas width-1 and height-1. */
+export function webpVp8xWithDimensions(width: number, height: number): Uint8Array {
+  const w = width - 1;
+  const h = height - 1;
+  return webp("VP8X", [0, 0, 0, 0, w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff, h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff]);
+}
+
+/** A valid JPEG header — `FF D8 FF`, and a real SOF (1200 × 1600, portrait 3:4). */
+export const JPEG_BYTES = jpegWithDimensions(1200, 1600);
+
+/** A valid PNG header — signature + IHDR (1600 × 1200). */
+export const PNG_BYTES = pngWithDimensions(1600, 1200);
+
+/** "RIFF" + size + "WEBP" + a VP8X canvas (1920 × 1080). */
+export const WEBP_BYTES = webpVp8xWithDimensions(1920, 1080);
 
 /** `<svg ...` — the format that must never be accepted. */
 export const SVG_BYTES = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg">');
@@ -177,6 +261,8 @@ export class FakeMediaRepository implements MediaRepository {
     mediaId: string;
     mimeType: string;
     sizeBytes: number;
+    width: number | null;
+    height: number | null;
   }): Promise<Media | null> {
     this.guard("markReady");
 
@@ -195,6 +281,8 @@ export class FakeMediaRepository implements MediaRepository {
       status: "ready",
       mimeType: input.mimeType,
       sizeBytes: input.sizeBytes,
+      width: input.width,
+      height: input.height,
       updatedAt: this.now().toISOString(),
     };
 

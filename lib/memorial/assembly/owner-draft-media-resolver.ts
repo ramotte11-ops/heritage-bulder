@@ -18,8 +18,10 @@ import type { MediaResolver } from "./media-resolver";
  * the media, so this is where a Hero photo that was since deleted,
  * replaced or repurposed is refused.
  *
- * Only `{ mediaId, readUrl }` leaves this function — never the `Media`
- * row (`storagePath`, `ownerId`, ...).
+ * Only `{ mediaId, readUrl, width, height }` leaves this function —
+ * never the `Media` row (`storagePath`, `ownerId`, ...). The dimensions
+ * are the natural ones measured at finalization (dette D1), needed by the
+ * Gallery's natural-ratio layout.
  */
 export function createOwnerDraftMediaResolver(
   deps: MediaEngineDeps,
@@ -36,7 +38,7 @@ export function createOwnerDraftMediaResolver(
       if (media.purpose !== request.purpose) return null;
       if (media.status !== "ready") return null;
 
-      return { mediaId: media.id, readUrl };
+      return { mediaId: media.id, readUrl, width: media.width, height: media.height };
     } catch {
       return null;
     }

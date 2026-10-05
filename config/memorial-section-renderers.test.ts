@@ -9,11 +9,12 @@ describe("SECTION_RENDERERS", () => {
     expect(resolveSectionRenderer("story", "intemporel")).toBe("RecitDeVieIntemporel");
   });
 
-  it("maps the four existing Intemporel renderers and nothing else", () => {
+  it("maps the five existing Intemporel renderers and nothing else", () => {
     expect(resolveSectionRenderer("hero", "intemporel")).toBe("HeroIntemporel");
     expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeIntemporel");
     expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyIntemporel");
-    for (const section of ["traditions", "gallery", "testimonials", "condolences", "video", "memoryMessage"] as const) {
+    expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
+    for (const section of ["traditions", "testimonials", "condolences", "video", "memoryMessage"] as const) {
       expect(resolveSectionRenderer(section, "intemporel")).toBeNull();
     }
   });
@@ -32,6 +33,7 @@ describe("SECTION_RENDERERS", () => {
       DeathNoticeIntemporel: "death-notice",
       CeremonyIntemporel: "ceremony",
       RecitDeVieIntemporel: "life-story",
+      GalleryIntemporel: "gallery",
     };
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);

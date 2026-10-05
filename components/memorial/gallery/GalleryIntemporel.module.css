@@ -1,0 +1,44 @@
+/*
+ * Dettes D2–D4 — the Gallery host's only own chrome: the Full Album's
+ * "Retour" control, and the parked Gallery. Deliberately neutral (no new art direction): aligned
+ * on the Album's canonical 1670 width, inherits the page's type and
+ * colour, and shows a visible keyboard focus. Nothing here styles the A13
+ * scene, the Album or the Viewer.
+ */
+
+.albumBar {
+  width: 100%;
+  max-width: 1670px;
+  margin-inline: auto;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+.back {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.back:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+/*
+ * The Gallery while the Album is open: kept mounted and laid out at the
+ * section's full width (a Mobile-derived Gallery measures its own width),
+ * but taking no height and painting nothing — invisible, so out of the
+ * focus order and the accessibility tree. No geometry of the scene changes.
+ */
+.parked {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}

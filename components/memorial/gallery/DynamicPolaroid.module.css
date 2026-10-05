@@ -1,0 +1,261 @@
+/*
+ * A13 Dynamic Polaroid — PILOT, Desktop Light, CALIBRATION V2.
+ *
+ * Every length is `N * var(--k)` (one canonical 1670-frame px), set inline
+ * by the component from `layoutDynamicPolaroid`. This sheet only carries
+ * the material of the print, transcribed from contract V2 §6 /
+ * `A13_DESKTOP_POLAROID` — no value here is a free aesthetic choice:
+ *
+ * - paper #F4EBDF;
+ * - deterministic CSS texture (fixed-seed fractal noise, a warm paper
+ *   fibre tone at ≤ 6 % alpha: under the 8 % opacity / 4 % contrast caps);
+ * - inner stroke 1.2 px rgba(116, 91, 67, 0.24);
+ * - two shadows, contact 0 3 5 rgba(55, 39, 25, 0.20) and diffusion
+ *   0 14 24 rgba(55, 39, 25, 0.14), cast by the rotated print itself;
+ * - caption (V2.1): `--heritage-caption-hand`, 27 px, line-height 1.05,
+ *   400, #5A4A3E, placed by `layoutCaption`, two lines max, no auto-shrink.
+ *
+ * Edge irregularity (contract: "maximale 1,5 px") is left at 0: the
+ * contract caps it but specifies no shape, and drawing one would be an
+ * improvised artistic decision.
+ */
+
+.slot {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.print {
+  position: absolute;
+  margin: 0;
+  background-color: #f4ebdf;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .26  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: calc(160 * var(--k)) calc(160 * var(--k));
+  box-shadow:
+    0 calc(3 * var(--k)) calc(5 * var(--k)) rgba(55, 39, 25, 0.2),
+    0 calc(14 * var(--k)) calc(24 * var(--k)) rgba(55, 39, 25, 0.14);
+}
+
+/* Inner stroke, drawn above the photo window so it reads as the paper's
+ * own cut edge on every side. */
+.stroke {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 calc(1.2 * var(--k)) rgba(116, 91, 67, 0.24);
+  pointer-events: none;
+}
+
+.window {
+  position: absolute;
+  overflow: hidden;
+}
+
+.photo {
+  position: absolute;
+  display: block;
+  max-width: none;
+  user-select: none;
+}
+
+.band {
+  position: absolute;
+  margin: 0;
+}
+
+/*
+ * A13 Mobile Light V1.5 — widened bottom band of a narrow print (never on
+ * Desktop): the T-shaped paper keeps the print's material. The wing takes
+ * the print's own paper and texture (tiles aligned inline); the shadows
+ * become drop shadows of the whole shape (same offsets, blurs and inks);
+ * the inner stroke follows the T outline (same width and ink).
+ */
+.printWidened {
+  box-shadow: none;
+  filter: drop-shadow(0 calc(3 * var(--k)) calc(5 * var(--k)) rgba(55, 39, 25, 0.2)) drop-shadow(0 calc(14 * var(--k)) calc(24 * var(--k)) rgba(55, 39, 25, 0.14));
+}
+
+.bandWing {
+  position: absolute;
+  background-color: inherit;
+  background-image: inherit;
+  background-size: inherit;
+}
+
+.strokeShape {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.strokeShape polygon {
+  fill: none;
+  stroke: rgba(116, 91, 67, 0.24);
+  stroke-width: 1.2;
+}
+
+/* Caption — contract V2.1: `--heritage-caption-hand` (La Belle Aurore),
+ * 27 px source, 400, #5A4A3E. Positions are SVG user units = source px, so
+ * the text scales with the print; no auto-shrink exists anywhere. */
+.captionSvg {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.captionText {
+  font-family: var(--heritage-caption-hand), cursive;
+  font-size: 27px;
+  font-weight: 400;
+  fill: #5a4a3e;
+  text-rendering: geometricPrecision;
+  white-space: pre;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------
+ * QA overlays (pilot only)
+ * ------------------------------------------------------------------- */
+
+.qaReference {
+  position: absolute;
+  outline: calc(1.5 * var(--k)) dashed rgb(200 30 30 / 0.85);
+  z-index: 200;
+}
+
+.qaLabel {
+  position: absolute;
+  left: 0;
+  top: calc(-18 * var(--k));
+  font: 600 calc(12 * var(--k)) / 1.2 ui-monospace, monospace;
+  color: #fff;
+  background: rgb(200 30 30 / 0.85);
+  padding: 0 calc(4 * var(--k));
+  white-space: nowrap;
+}
+
+.qaAnchor {
+  position: absolute;
+  width: calc(12 * var(--k));
+  height: calc(12 * var(--k));
+  margin: calc(-6 * var(--k)) 0 0 calc(-6 * var(--k));
+  border-radius: 50%;
+  background: rgb(200 30 30);
+  box-shadow: 0 0 0 calc(2 * var(--k)) #fff;
+  z-index: 201;
+}
+
+.qaSource {
+  position: absolute;
+  outline: calc(1.5 * var(--k)) dotted rgb(20 90 200 / 0.9);
+  z-index: 199;
+}
+
+/* Diagnostic only: ink box (green) and protected box = ink + 6/4 px
+ * (dashed). */
+.qaInk {
+  fill: rgb(20 130 60 / 0.1);
+  stroke: rgb(20 130 60 / 0.95);
+  stroke-width: 1;
+}
+
+.qaProtected {
+  fill: none;
+  stroke: rgb(20 130 60 / 0.95);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+/* Gallery V2.1 (G2–G5 pilot) — the real Polaroid control is interactive:
+ * neither the slot frame nor the control uses `pointer-events: none` (only
+ * inert decorative layers may). Non-interactive prints (G6, Signature 7+)
+ * keep the frame rule above unchanged. */
+.slot[data-interactive] {
+  pointer-events: auto;
+}
+
+/* Inert layers next to the control (QA overlays) never take the pointer. */
+.slot[data-interactive] > :not(.print) {
+  pointer-events: none;
+}
+
+.print[role="button"] {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.print[role="button"]:focus-visible {
+  outline: calc(3 * var(--k)) solid #2f5d8a;
+  outline-offset: calc(4 * var(--k));
+}
+
+/*
+ * A13 Desktop DARK V1.1 — MATERIAL ONLY (`dark-material-tokens.v1.1.json`).
+ *
+ * Keyed on the scene's `data-a13-theme="dark"`; the per-print values
+ * (`--a13-dark-paper`, `--a13-dark-grain`, `--a13-dark-sheen`) come from
+ * `theme-material.ts`, seeded by the slotId only. The Dark print stays a
+ * light, warm, patinated paper on the night scene.
+ *
+ * - paper: base #E7D3B2 ± 2.5 % lightness per slot, highlight/lowlight
+ *   sheen (≤ 2 % lightness at the bottom), fibre grain rgb(88,62,39) at
+ *   ≤ 0.09 alpha — all painted inside the paper box, under the photo
+ *   window: the alpha hull and the box are the Light ones;
+ * - edge: rgba(91,64,42,0.34), a 1 px inset rule on the paper's cut edge
+ *   (inside the box — never outside the hull);
+ * - inner stroke: Light width (1.2 px) kept, colour rgba(93,65,42,0.30);
+ * - shadows: contact / main / ambient, visual only (box-shadow never
+ *   takes layout space: excluded from geometry, collision, occlusion);
+ * - caption ink #4A3527 (La Belle Aurore, metrics and arbitration Light);
+ * - focus colour #F1D6A3 (Light width and offset kept).
+ * The photo has NO Dark rule: filter none, opacity 1, blend normal.
+ */
+[data-a13-theme="dark"] .print {
+  background-color: var(--a13-dark-paper, #e7d3b2);
+  background-image: var(--a13-dark-grain), var(--a13-dark-sheen);
+  background-size: calc(160 * var(--k)) calc(160 * var(--k)), 100% 100%;
+  box-shadow:
+    inset 0 0 0 calc(1 * var(--k)) rgba(91, 64, 42, 0.34),
+    0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(6, 4, 3, 0.44),
+    0 calc(13 * var(--k)) calc(27 * var(--k)) rgba(6, 4, 3, 0.36),
+    0 calc(24 * var(--k)) calc(42 * var(--k)) rgba(6, 4, 3, 0.16);
+}
+
+[data-a13-theme="dark"] .stroke {
+  box-shadow: inset 0 0 0 calc(1.2 * var(--k)) rgba(93, 65, 42, 0.3);
+}
+
+[data-a13-theme="dark"] .captionText {
+  fill: #4a3527;
+}
+
+[data-a13-theme="dark"] .print[role="button"]:focus-visible {
+  outline-color: #f1d6a3;
+}
+
+/*
+ * A13 Mobile Gallery DARK — a widened bottom band (narrow print, Mobile
+ * only, never on Desktop) under the Dark material: the V1.5 T shape keeps
+ * its shape shadow (`.printWidened` drop shadows — a Dark rule never
+ * declares `filter`, DARK_PHOTO_PROCESSING_STOP), so the rectangular Dark
+ * box shadows are not added around it; the inner stroke follows the T
+ * outline in the Dark stroke ink. The wing inherits the Dark paper
+ * (`.bandWing`). Colours and shadows only.
+ */
+[data-a13-theme="dark"] .printWidened {
+  box-shadow: none;
+}
+
+[data-a13-theme="dark"] .strokeShape polygon {
+  stroke: rgba(93, 65, 42, 0.3);
+}

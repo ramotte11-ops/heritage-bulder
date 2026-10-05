@@ -174,6 +174,29 @@ vi.mock("@/components/builder/PersonSheetStep", () => ({ PersonSheetStep }));
 
 // Builder continuity mission — the Guided Flow's resting screen, which
 // replaced the old "not configured yet" dead end. Mocked like every step.
+// A13 — the Gallery screen, mocked the same way and for the same reason
+// as every other step: this file tests which screen the route returns
+// and what it hands it, never the screen's own DOM (GalleryStep.test.tsx).
+const { GalleryStep } = vi.hoisted(() => ({ GalleryStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/GalleryStep", () => ({ GalleryStep }));
+const { resolveGalleryStepData } = vi.hoisted(() => ({
+  resolveGalleryStepData: vi.fn(
+    (): Promise<{ status: "ready"; thumbnails: Record<string, string | null> } | { status: "corrupted" }> =>
+      Promise.resolve({ status: "ready", thumbnails: {} }),
+  ),
+}));
+vi.mock("@/lib/builder/guided-flow/resolve-gallery-step", () => ({ resolveGalleryStepData }));
+const { reserveGalleryPhotoUploadAction, finalizeGalleryPhotoUploadAction, retireGalleryPhotoAction } = vi.hoisted(() => ({
+  reserveGalleryPhotoUploadAction: vi.fn(),
+  finalizeGalleryPhotoUploadAction: vi.fn(),
+  retireGalleryPhotoAction: vi.fn(),
+}));
+vi.mock("./gallery-media-actions", () => ({
+  reserveGalleryPhotoUploadAction,
+  finalizeGalleryPhotoUploadAction,
+  retireGalleryPhotoAction,
+}));
+
 const { GuidedFlowPause } = vi.hoisted(() => ({ GuidedFlowPause: vi.fn(() => null) }));
 vi.mock("@/components/builder/GuidedFlowPause", () => ({ GuidedFlowPause }));
 
@@ -358,6 +381,7 @@ const REAL_DRAFT_CONTENT_BASE = {
     A10: { status: "skipped" },
     A11: { status: "skipped" },
     A12: { status: "skipped" },
+    A13: { status: "skipped" },
   },
 };
 
@@ -474,6 +498,11 @@ describe("BuilderMemorialPage — granted access", () => {
     reserveHeroPhotoUploadAction.mockClear();
     finalizeHeroPhotoUploadAction.mockClear();
     retireHeroPhotoUploadAction.mockClear();
+    GalleryStep.mockClear();
+    resolveGalleryStepData.mockClear();
+    reserveGalleryPhotoUploadAction.mockClear();
+    finalizeGalleryPhotoUploadAction.mockClear();
+    retireGalleryPhotoAction.mockClear();
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
     saveLanguageAction.mockClear();
@@ -1396,6 +1425,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A10: { status: "skipped" },
           A11: { status: "skipped" },
           A12: { status: "skipped" },
+          A13: { status: "skipped" },
         },
       };
       const reconciledContent = {
@@ -2732,6 +2762,99 @@ describe("BuilderMemorialPage — granted access", () => {
         expect(result.props.progress).toBeGreaterThan(0);
         expect(result.props.progress).toBeLessThan(1);
         expect(JSON.stringify(result)).not.toContain("doit encore être configuré");
+      });
+
+      describe("A13 — the Gallery (Vos souvenirs en images)", () => {
+        const sheetResolved = (extra: Record<string, unknown> = {}) =>
+          draftWithA04Yes({
+            A05: { status: "skipped" },
+            A06: { status: "skipped" },
+            A07: { status: "skipped" },
+            A08: { status: "completed" },
+            A09: { status: "skipped" },
+            A10: { status: "skipped" },
+            A11: { status: "skipped" },
+            A12: { status: "skipped" },
+            A13: undefined,
+            ...extra,
+          });
+        const withoutA13 = (draft: MemorialVersion): MemorialVersion => {
+          const guidedFlow = { ...(draft.content as { guidedFlow: Record<string, unknown> }).guidedFlow };
+          delete guidedFlow.A13;
+          return { ...draft, content: { ...draft.content, guidedFlow } as MemorialVersion["content"] };
+        };
+        function granted(draft: MemorialVersion, memorial = CONFIGURED_MEMORIAL) {
+          getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+          authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: MEMORIAL_ID });
+          resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
+        }
+
+        it("renders GalleryStep right after the sheet is resolved, and never before", async () => {
+          granted(withoutA13(sheetResolved()));
+          expect((await callPage()).type).toBe(GalleryStep);
+
+          granted(withoutA13(sheetResolved({ A12: undefined })));
+          const before = await callPage();
+          expect(before.type).toBe(PersonSheetStep);
+          expect(GalleryStep).not.toHaveBeenCalled();
+        });
+
+        it("resolves the thumbnails server-side with the real actor, the AUTHORIZED id and the reconciled content, and wires the Gallery actions to that id", async () => {
+          const draft = withoutA13(sheetResolved());
+          granted(draft);
+          resolveGalleryStepData.mockResolvedValueOnce({ status: "ready", thumbnails: { m1: "https://signed/m1" } });
+          const result = await callPage();
+
+          expect(resolveGalleryStepData).toHaveBeenCalledWith({ mediaEngine: { fake: "media-engine-deps" } }, OWNER_ACTOR, MEMORIAL_ID, draft.content);
+          expect(result.props.thumbnails).toEqual({ m1: "https://signed/m1" });
+          expect(result.props.content).toBe(draft.content);
+          expect(result.props.language).toBe("fr");
+          expect(result.props.editorialContext).toBe("announcement");
+
+          result.props.persist("c");
+          expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, "c");
+          result.props.reserveUpload("image/jpeg");
+          expect(reserveGalleryPhotoUploadAction).toHaveBeenCalledWith(MEMORIAL_ID, "image/jpeg");
+          result.props.finalizeUpload("media-1");
+          expect(finalizeGalleryPhotoUploadAction).toHaveBeenCalledWith(MEMORIAL_ID, "media-1");
+          result.props.retirePhoto("media-2");
+          expect(retireGalleryPhotoAction).toHaveBeenCalledWith(MEMORIAL_ID, "media-2");
+          // The browser never passes a purpose: the reserve action takes a MIME type only.
+          expect(reserveGalleryPhotoUploadAction.mock.calls[0]).toHaveLength(2);
+        });
+
+        it("keeps the Preview host around it, available exactly like the other post-T08 steps", async () => {
+          granted(withoutA13(sheetResolved()));
+          const raw = await callPageRaw();
+          expect(raw.type).toBe(BuilderPreviewHost);
+          expect(raw.props.children.type).toBe(GalleryStep);
+          expect(raw.props.available).toBe(true);
+        });
+
+        it("a corrupted Gallery still renders the step (which shows its own notice), with no thumbnail", async () => {
+          granted(withoutA13(sheetResolved()));
+          resolveGalleryStepData.mockResolvedValueOnce({ status: "corrupted" });
+          const result = await callPage();
+          expect(result.type).toBe(GalleryStep);
+          expect(result.props.thumbnails).toEqual({});
+        });
+
+        it("once A13 is resolved (completed or skipped), the route moves past it to the pause — A13 is never re-posed", async () => {
+          for (const status of ["completed", "skipped"]) {
+            GalleryStep.mockClear();
+            granted(sheetResolved({ A13: { status } }), { ...CONFIGURED_MEMORIAL, slug: null });
+            const result = await callPage();
+            expect(result.type).toBe(GuidedFlowPause);
+            expect(GalleryStep).not.toHaveBeenCalled();
+          }
+        });
+
+        it("never renders GalleryStep for a remembrance memorial (A13 belongs to the announcement branch for now)", async () => {
+          granted(withoutA13(REAL_DRAFT), { ...CONFIGURED_MEMORIAL, editorialContext: "remembrance", slug: null });
+          const result = await callPage();
+          expect(result.type).not.toBe(GalleryStep);
+          expect(resolveGalleryStepData).not.toHaveBeenCalled();
+        });
       });
     });
   });

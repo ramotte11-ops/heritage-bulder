@@ -52,12 +52,19 @@ export interface MediaRepository {
    * compare-and-set rather than a blind update: two finalizations
    * racing the same reservation produce one winner, and a finalization
    * racing the sweep cannot resurrect a row the sweep already claimed.
+   *
+   * `width`/`height` (dette D1) are the natural dimensions MEASURED from
+   * the stored bytes (lib/media/image-dimensions.ts) — `null` only for a
+   * non-Gallery media whose header could not be read, which is how every
+   * media finalized before D1 already looks.
    */
   markReady(input: {
     memorialId: string;
     mediaId: string;
     mimeType: string;
     sizeBytes: number;
+    width: number | null;
+    height: number | null;
   }): Promise<Media | null>;
 
   /**

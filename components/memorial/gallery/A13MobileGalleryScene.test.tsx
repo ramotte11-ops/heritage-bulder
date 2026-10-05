@@ -1,0 +1,348 @@
+// @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { A13_MOBILE_BACKGROUND, A13_MOBILE_BOTTOM_CONTINUATION, A13_MOBILE_CTA, A13_MOBILE_GROUP_TRANSLATION, A13_MOBILE_SEPARATOR_ART, A13_MOBILE_STATE_SLOTS } from "@/config/gallery-a13-mobile-manifest";
+import { A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
+import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
+import { layoutCaption } from "@/lib/memorial/gallery/caption-layout";
+import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
+import { runMobileGallery } from "@/lib/memorial/gallery/gallery-mobile-runtime";
+import { a13MobileFixture } from "@/lib/memorial/gallery/a13-mobile-pilot-fixtures";
+import { A13_MOBILE_DARK_BACKGROUND, A13_MOBILE_DARK_BOTTOM_CONTINUATION, A13_MOBILE_DARK_SEPARATOR_ART } from "@/config/gallery-a13-mobile-dark-material";
+
+/**
+ * A13 Mobile Light scene (V1.7) — render contracts only (layers, order,
+ * stacking, title block, group translation, bottom continuation, CTA,
+ * interaction). Pixel layout and reachability are proven in the browser
+ * pilot (`/pilot/a13-mobile-gallery`), not by jsdom.
+ */
+
+vi.mock("next/font/google", () => ({
+  Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
+  La_Belle_Aurore: () => ({ variable: "v-aurore", className: "" }),
+  Playfair_Display: () => ({ variable: "v-playfair", className: "" }),
+  Inter: () => ({ variable: "v-inter", className: "" }),
+  EB_Garamond: () => ({ variable: "v-eb", className: "" }),
+}));
+
+const { A13MobileGalleryScene } = await import("./A13MobileGalleryScene");
+const { DynamicPolaroid } = await import("./DynamicPolaroid");
+
+afterEach(cleanup);
+
+const fake: CaptionMeasurer = {
+  measure: (t) => ({ width: t.length * 11.5, actualBoundingBoxLeft: 0, actualBoundingBoxRight: t.length * 11.5, actualBoundingBoxAscent: 20, actualBoundingBoxDescent: 8 }),
+  fontAscent: 22,
+  fontDescent: 8,
+};
+function sceneFor(n: number, captions: "courte" | "aucune" = "courte") {
+  const media = a13MobileFixture(n, "mixte", captions);
+  const run = runMobileGallery({ media, captionOf: (m) => m.caption, measurer: fake, stageWidth: 390 });
+  expect(run.status).toBe("PASS");
+  return { run, entries: run.entries.map((e) => ({ slot: e.slot, layout: e.layout, src: e.media.src, alt: e.media.alt, caption: e.caption })) };
+}
+
+describe("A13MobileGalleryScene", () => {
+  it("renders the ONE common background (layer 0) and the prints only — no foreground, no other image", () => {
+    const { entries } = sceneFor(6);
+    const { container } = render(<A13MobileGalleryScene entries={entries} title="Souvenirs de famille" subtitle="Les instants" stageWidth={390} />);
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs[0].getAttribute("src")).toBe(A13_MOBILE_BACKGROUND.src);
+    expect(imgs[0].style.zIndex).toBe("0");
+    expect(imgs.filter((i) => i.getAttribute("src") === A13_MOBILE_BACKGROUND.src)).toHaveLength(1);
+    expect(imgs).toHaveLength(1 + 6);
+    expect(container.querySelector("h2")!.textContent).toBe("Souvenirs de famille");
+  });
+
+  it("title block: a centred header box = the protected block, separator (runtime SVG, aria-hidden: two rules + the shared sprig), title, subtitle — per-viewport sizes", () => {
+    for (const [W, sepW, sepH, font, blockW, blockH] of [
+      [375, 92, 24, 20, 285, 104],
+      [390, 96, 24, 20, 285, 106],
+      [430, 108, 30, 21, 300, 115.05],
+    ]) {
+      const { container, unmount } = render(<A13MobileGalleryScene entries={[]} title="Souvenirs de famille" subtitle="Les instants" stageWidth={W} />);
+      const header = container.querySelector<HTMLElement>("header")!;
+      expect([header.style.top, header.style.width, header.style.height, header.style.zIndex]).toEqual(["0px", `${blockW}px`, `${blockH}px`, "900"]);
+      const sep = header.querySelector("svg[data-a13-separator]")!;
+      expect([sep.getAttribute("width"), sep.getAttribute("height"), sep.getAttribute("aria-hidden")]).toEqual([String(sepW), String(sepH), "true"]);
+      const rules = [...sep.querySelectorAll(":scope > rect")];
+      expect(rules.map((r) => [r.getAttribute("width"), r.getAttribute("height"), r.getAttribute("fill")])).toEqual([
+        [String((26 * sepW) / 100), "1", A13_MOBILE_SEPARATOR_ART.ruleColor],
+        [String((26 * sepW) / 100), "1", A13_MOBILE_SEPARATOR_ART.ruleColor],
+      ]);
+      expect(sep.querySelector("image")!.getAttribute("href")).toBe(A13_MOBILE_SEPARATOR_ART.sprigSrc);
+      expect(header.firstElementChild).toBe(sep);
+      const h2 = header.querySelector<HTMLElement>("h2")!;
+      expect(h2.style.fontSize).toBe(`${font}px`);
+      expect(h2.previousElementSibling).toBe(sep);
+      expect(h2.nextElementSibling!.tagName).toBe("P");
+      unmount();
+    }
+  });
+
+  it("the stage is 941 × stageHeightSource; the ONE group container carries the state translation; below the raster, the V1.7 bottom continuation only", () => {
+    const { run, entries } = sceneFor(5, "aucune");
+    const { container, getByTestId } = render(
+      <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} />,
+    );
+    const T = A13_MOBILE_GROUP_TRANSLATION.G5;
+    expect(container.querySelector<HTMLElement>("[data-a13-mobile-canvas]")!.style.aspectRatio).toBe(`941 / ${T.stageHeightSource}`);
+    const group = getByTestId("print-group");
+    expect(group.style.transform).toBe(`translateY(calc(${T.translateYSource} * var(--k)))`);
+    // Every print is inside the group, none is translated on its own.
+    expect(group.querySelectorAll("[data-slot-id]")).toHaveLength(5);
+    expect(container.querySelectorAll("[data-slot-id]")).toHaveLength(5);
+    const ext = getByTestId("stage-extension");
+    expect([ext.style.top, ext.style.height]).toEqual([`calc(${A13_MOBILE_BACKGROUND.height} * var(--k))`, `calc(${T.backgroundExtensionSource} * var(--k))`]);
+    expect(ext.children).toHaveLength(0);
+    expect(ext.dataset.continuation).toBe(A13_MOBILE_BOTTOM_CONTINUATION.baseColor);
+    expect(ext.getAttribute("aria-hidden")).toBe("true");
+    // G2: no translation, no extension.
+    const g2 = sceneFor(2, "aucune");
+    const second = render(<A13MobileGalleryScene entries={g2.entries} title="T" subtitle="S" stageWidth={390} stageHeight={g2.run.stageHeight} translateY={g2.run.translateY} />);
+    expect(second.container.querySelectorAll("[data-testid=stage-extension]")).toHaveLength(0);
+    expect(second.container.querySelector<HTMLElement>("[data-testid=print-group]")!.style.transform).toBe("translateY(calc(0 * var(--k)))");
+  });
+
+  it("prints in family order, each with the manifest rotation and paint order (G6: D5 in front of D6)", () => {
+    const { entries } = sceneFor(6);
+    const { container } = render(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} />);
+    const slots = [...container.querySelectorAll<HTMLElement>("[data-slot-id]")];
+    expect(slots.map((s) => [s.dataset.slotId, s.dataset.mediaIndex])).toEqual(A13_MOBILE_STATE_SLOTS.G6.map((s) => [s.slotId, String(s.mediaIndex)]));
+    slots.forEach((el, i) => {
+      expect(el.style.zIndex).toBe(String(A13_MOBILE_STATE_SLOTS.G6[i].paintOrder));
+      expect(el.style.transform).toBe(`rotate(${A13_MOBILE_STATE_SLOTS.G6[i].rotationDeg}deg)`);
+    });
+    const z = (id: string) => Number(slots.find((s) => s.dataset.slotId === id)!.style.zIndex);
+    expect(z("G6-D5")).toBeGreaterThan(z("G6-D6"));
+  });
+
+  it("the CTA exists only when passed (Signature 7+), as a real button with the i18n label and its action, at the box resolved after the group", () => {
+    const { run, entries } = sceneFor(7);
+    const onSee = vi.fn();
+    const { queryByTestId, rerender, getByTestId, container } = render(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} />);
+    expect(queryByTestId("cta-7plus")).toBeNull();
+    const box = run.cta!.box;
+    rerender(
+      <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} cta={{ label: "Voir plus de souvenirs", lang: "fr", onActivate: onSee, box }} />,
+    );
+    const btn = getByTestId("cta-7plus");
+    expect([btn.tagName, btn.getAttribute("type"), btn.getAttribute("lang"), btn.textContent]).toEqual(["BUTTON", "button", "fr", "Voir plus de souvenirs"]);
+    expect(box.x).toBe(A13_MOBILE_CTA.horizontal.boxX);
+    expect([btn.style.left, btn.style.top, btn.style.width, btn.style.height]).toEqual([`calc(${box.x} * var(--k))`, `calc(${box.y} * var(--k))`, `calc(${box.width} * var(--k))`, `calc(${box.height} * var(--k))`]);
+    // The stage ends at the resolved height; the continuation fills it below the raster.
+    expect(container.querySelector<HTMLElement>("[data-a13-mobile-canvas]")!.style.aspectRatio).toBe(`941 / ${run.stageHeight}`);
+    expect(getByTestId("stage-extension").style.height).toBe(`calc(${Math.round((run.stageHeight - A13_MOBILE_BACKGROUND.height) * 1e6) / 1e6} * var(--k))`);
+    // Stage frame (not in the translated group).
+    expect(btn.closest("[data-testid=print-group]")).toBeNull();
+    fireEvent.click(btn);
+    expect(onSee).toHaveBeenCalledTimes(1);
+  });
+
+  it("every print is a control (click, Enter, Space) named by its caption, or the position label", () => {
+    const { entries } = sceneFor(3);
+    const onActivate = vi.fn();
+    const noCaption = entries.map((e, i) => (i === 2 ? { ...e, caption: null } : e));
+    const { container } = render(<A13MobileGalleryScene entries={noCaption} title="T" subtitle="S" stageWidth={390} language="fr" onActivate={onActivate} />);
+    const prints = [...container.querySelectorAll<HTMLElement>("[data-print]")];
+    expect(prints.map((p) => [p.getAttribute("role"), p.tabIndex])).toEqual([
+      ["button", 0],
+      ["button", 0],
+      ["button", 0],
+    ]);
+    expect(prints[0].getAttribute("aria-label")).toBe(entries[0].caption!.lines.map((l) => l.text).join(" "));
+    expect(prints[2].getAttribute("aria-label")).toMatch(/3/);
+    fireEvent.click(prints[0]);
+    fireEvent.keyDown(prints[1], { key: "Enter" });
+    fireEvent.keyDown(prints[2], { key: " " });
+    expect(onActivate.mock.calls.map((c) => c[0])).toEqual(["G3-D1", "G3-D2", "G3-D3"]);
+  });
+
+  it("captions are drawn at the Mobile size inside the print; Desktop prints keep no size attribute", () => {
+    const { run, entries } = sceneFor(2);
+    const { getByTestId, unmount } = render(<A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} captionFontSizePx={run.metrics.captionFontPx} />);
+    const text = getByTestId("caption-G2-D1").querySelector("text")!;
+    expect(text.style.fontSize).toBe(`${run.metrics.captionFontPx}px`);
+    unmount();
+    const slot = A13_DESKTOP_G6_SLOTS[0];
+    const layout = layoutDynamicPolaroid(slot, { width: 1200, height: 1600 });
+    const caption = layoutCaption(slot, layout, "Maman", fake, []);
+    const desk = render(<DynamicPolaroid slot={slot} layout={layout} src="/x.jpg" alt="x" caption={caption} />);
+    expect(desk.getByTestId("caption-D1").querySelector("text")!.hasAttribute("style")).toBe(false);
+    // Desktop prints: the band is the paper's width — never a widened band.
+    expect(desk.container.querySelector("[data-band-wing]")).toBeNull();
+    expect(desk.container.querySelector("figure")!.className).not.toMatch(/printWidened/);
+  });
+
+  it("a widened band (narrow print) is drawn as one T-shaped paper: wing under the window, stroke along the T outline", () => {
+    const { entries } = sceneFor(2, "aucune");
+    const e = entries[0];
+    const extra = 40;
+    const layout = { ...e.layout, band: { ...e.layout.band, x: -extra / 2, width: e.layout.outer.width + extra } };
+    const { container } = render(<DynamicPolaroid slot={e.slot} layout={layout} src="/x.jpg" alt="x" caption={null} />);
+    const fig = container.querySelector("figure")!;
+    expect(fig.className).toMatch(/printWidened/);
+    const wing = fig.querySelector<HTMLElement>("[data-band-wing]")!;
+    expect(fig.firstElementChild).toBe(wing);
+    expect([wing.style.left, wing.style.width]).toEqual([`calc(${-extra / 2} * var(--k))`, `calc(${e.layout.outer.width + extra} * var(--k))`]);
+    expect(fig.querySelectorAll("polygon")).toHaveLength(1);
+  });
+});
+
+/**
+ * Geometry-only serialisation of a rendered scene: every attribute and
+ * inline style, minus the material (theme marker, background / sprig
+ * sources and sprig framing, rule fills, continuation colour, Dark
+ * per-print custom properties).
+ */
+function geometryDom(root: HTMLElement) {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("data-a13-theme");
+  clone.querySelectorAll("*").forEach((el) => {
+    for (const a of ["data-continuation", "href", "fill"]) el.removeAttribute(a);
+    if (el.closest("[data-a13-separator]") && el.parentElement?.hasAttribute("data-a13-separator") && el.tagName.toLowerCase() === "svg") el.removeAttribute("viewBox");
+    const st = (el as HTMLElement).style;
+    if (st) for (const name of [...st].filter((n) => n.startsWith("--a13-dark-"))) st.removeProperty(name);
+  });
+  clone.querySelector("img[aria-hidden=true]")?.removeAttribute("src");
+  return clone.outerHTML;
+}
+
+describe("A13 Mobile Gallery Dark — the same scene, Dark materials only", () => {
+  const STATES: [string, number][] = [
+    ["G2", 2],
+    ["G3", 3],
+    ["G4", 4],
+    ["G5", 5],
+    ["G6", 6],
+    ["7+", 7],
+  ];
+
+  it("G2 → 7+: Dark renders the Light geometry DOM byte for byte (material only differs)", () => {
+    for (const [id, n] of STATES) {
+      const { run, entries } = sceneFor(n);
+      const props = {
+        entries,
+        title: "Souvenirs de famille",
+        subtitle: "Les instants partagés",
+        stageWidth: 390,
+        stageHeight: run.stageHeight,
+        translateY: run.translateY,
+        captionFontSizePx: run.metrics.captionFontPx,
+        stateId: run.stateId!,
+        cta: run.cta ? { label: "Voir plus de souvenirs", lang: "fr" as const, box: run.cta.box } : null,
+      };
+      const light = render(<A13MobileGalleryScene {...props} />);
+      const lightStage = light.getByTestId("a13-mobile-scene");
+      const lightDom = geometryDom(lightStage);
+      const lightHtml = lightStage.outerHTML;
+      light.unmount();
+      const explicit = render(<A13MobileGalleryScene {...props} theme="light" />);
+      // Light is unchanged: theme="light" is the default, byte for byte.
+      expect(explicit.getByTestId("a13-mobile-scene").outerHTML, id).toBe(lightHtml);
+      expect(lightHtml, id).not.toContain("data-a13-theme");
+      explicit.unmount();
+      const dark = render(<A13MobileGalleryScene {...props} theme="dark" />);
+      const stage = dark.getByTestId("a13-mobile-scene");
+      expect(geometryDom(stage), id).toBe(lightDom);
+      expect(stage.dataset.a13Theme).toBe("dark");
+      dark.unmount();
+    }
+  });
+
+  it("Dark materials: the verified Dark background in the same <img>, the shared Dark sprig and rule ink, the Dark continuation, Dark prints", () => {
+    const { run, entries } = sceneFor(7);
+    const { container, getByTestId } = render(
+      <A13MobileGalleryScene entries={entries} title="T" subtitle="S" stageWidth={390} stageHeight={run.stageHeight} translateY={run.translateY} cta={{ label: "Voir plus", lang: "fr", box: run.cta!.box }} theme="dark" />,
+    );
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs[0].getAttribute("src")).toBe(A13_MOBILE_DARK_BACKGROUND.src);
+    expect(imgs.filter((i) => i.getAttribute("src") === A13_MOBILE_BACKGROUND.src)).toHaveLength(0);
+    expect([imgs[0].getAttribute("width"), imgs[0].getAttribute("height")]).toEqual([String(A13_MOBILE_BACKGROUND.width), String(A13_MOBILE_BACKGROUND.height)]);
+    const sep = container.querySelector("[data-a13-separator]")!;
+    expect(sep.querySelector("image")!.getAttribute("href")).toBe(A13_MOBILE_DARK_SEPARATOR_ART.sprigSrc);
+    const vb = A13_MOBILE_DARK_SEPARATOR_ART.sprigViewBox;
+    expect(sep.querySelector("svg")!.getAttribute("viewBox")).toBe(`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+    expect([...sep.querySelectorAll("rect")].map((r) => r.getAttribute("fill"))).toEqual([A13_MOBILE_DARK_SEPARATOR_ART.ruleColor, A13_MOBILE_DARK_SEPARATOR_ART.ruleColor]);
+    expect(A13_MOBILE_DARK_SEPARATOR_ART.sprigSrc).not.toBe(A13_MOBILE_SEPARATOR_ART.sprigSrc);
+    expect(getByTestId("stage-extension").dataset.continuation).toBe(A13_MOBILE_DARK_BOTTOM_CONTINUATION.baseColor);
+    const prints = [...container.querySelectorAll<HTMLElement>("figure[data-print]")];
+    expect(prints).toHaveLength(6);
+    for (const el of prints) expect(el.style.getPropertyValue("--a13-dark-paper")).toMatch(/^#[0-9A-F]{6}$/);
+  });
+});
+
+
+describe("A13 Responsive Bridge V1 — Tablet remap of the Mobile scene", () => {
+  const css = readFileSync(resolve(process.cwd(), "components/memorial/gallery/A13MobileGalleryScene.module.css"), "utf8");
+  const propsFor = (n: number) => {
+    const { run, entries } = sceneFor(n);
+    return {
+      entries,
+      title: "Souvenirs de famille",
+      subtitle: "Les instants partagés",
+      stageWidth: 390,
+      stageHeight: run.stageHeight,
+      translateY: run.translateY,
+      captionFontSizePx: run.metrics.captionFontPx,
+      stateId: run.stateId!,
+      cta: run.cta ? { label: "Voir plus de souvenirs", lang: "fr" as const, box: run.cta.box } : null,
+    };
+  };
+
+  it("remap 1 (default, Mobile CLOSED) renders byte for byte as before: no --a13-remap, no data-a13-remap", () => {
+    for (const n of [2, 4, 6, 7]) {
+      const props = propsFor(n);
+      const a = render(<A13MobileGalleryScene {...props} />);
+      const html = a.getByTestId("a13-mobile-scene").outerHTML;
+      a.unmount();
+      const b = render(<A13MobileGalleryScene {...props} remap={1} />);
+      expect(b.getByTestId("a13-mobile-scene").outerHTML).toBe(html);
+      expect(html).not.toContain("a13-remap");
+      b.unmount();
+    }
+  });
+
+  it("Tablet: every source-px box is unchanged (it follows the W stage through --k); the CSS-px lengths are × remap; Light and Dark share it", () => {
+    const props = propsFor(7);
+    const r = 768 / 430;
+    const m = render(<A13MobileGalleryScene {...props} />);
+    const mStage = m.getByTestId("a13-mobile-scene");
+    const mPrints = mStage.querySelector("[data-testid=print-group]")!.outerHTML;
+    const mCta = mStage.querySelector<HTMLElement>("[data-testid=cta-7plus]")!.getAttribute("style");
+    const mTitle = mStage.querySelector<HTMLElement>("[data-testid=title-block]")!;
+    const mt = [mTitle.style.top, mTitle.style.width, mTitle.style.height].map(parseFloat);
+    m.unmount();
+    for (const theme of ["light", "dark"] as const) {
+      const t = render(<A13MobileGalleryScene {...props} remap={r} theme={theme} />);
+      const stage = t.getByTestId("a13-mobile-scene");
+      expect(stage.style.getPropertyValue("--a13-remap")).toBe(String(r));
+      if (theme === "light") expect(stage.querySelector("[data-testid=print-group]")!.outerHTML).toBe(mPrints);
+      expect(stage.querySelector<HTMLElement>("[data-testid=cta-7plus]")!.getAttribute("style")).toBe(mCta);
+      const title = stage.querySelector<HTMLElement>("[data-testid=title-block]")!;
+      [title.style.top, title.style.width, title.style.height].map(parseFloat).forEach((v, i) => expect(v).toBeCloseTo(mt[i] * r, 9));
+      t.unmount();
+    }
+    const light = render(<A13MobileGalleryScene {...props} remap={r} />);
+    const lightDom = geometryDom(light.getByTestId("a13-mobile-scene"));
+    light.unmount();
+    const dark = render(<A13MobileGalleryScene {...props} remap={r} theme="dark" />);
+    expect(geometryDom(dark.getByTestId("a13-mobile-scene"))).toBe(lightDom);
+    dark.unmount();
+  });
+
+  it("the sheet: Mobile CLOSED rules untouched; Tablet rules keyed on data-a13-remap remap every CSS-px length of the scene, except the 44 px floor and the focus ring", () => {
+    const [closed, bridge] = css.split("A13 Responsive Bridge V1");
+    expect(closed).not.toContain("a13-remap");
+    const rule = (sel: string) => bridge.match(new RegExp(`${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1].trim().split(/;\s*/).filter(Boolean) ?? [];
+    expect(rule(".stage[data-a13-remap] .subtitle")).toEqual(["max-width: calc(285px * var(--a13-remap))", "font-size: calc(13px * var(--a13-remap))", "line-height: calc(16px * var(--a13-remap))"]);
+    expect(rule(".stage[data-a13-remap] .cta")).toEqual(["font-size: clamp(calc(16px * var(--a13-remap)), 4.6cqw, calc(20px * var(--a13-remap)))"]);
+    expect(rule(".stage[data-a13-remap] .extension::after")).toEqual(["top: calc(-20px * var(--a13-remap))", "height: calc(20px * var(--a13-remap))"]);
+    // Every CSS-px length of the CLOSED scene rules (comments, QA overlay and Dark aside) is remapped above, or is the floor / the focus ring.
+    const rules = closed.split("/* QA overlay")[0].replace(/\/\*[\s\S]*?\*\//g, "");
+    const declarations = rules.split(/[;{}]/).filter((d) => /\dpx/.test(d)).map((d) => d.trim());
+    expect(declarations).toEqual(["top: -20px", "height: 20px", "max-width: 285px", "font-size: 13px", "line-height: 16px", "font-size: clamp(16px, 4.6cqw, 20px)", "height: max(100%, 44px)", "outline: 2px solid currentColor", "outline-offset: 4px"]);
+  });
+});

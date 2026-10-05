@@ -186,6 +186,8 @@ describe("markReady", () => {
       mediaId: "media-1",
       mimeType: "image/jpeg",
       sizeBytes: 2048,
+      width: 1600,
+      height: 1200,
     });
 
     expect(log.eq).toContainEqual(["status", "pending"]);
@@ -199,6 +201,8 @@ describe("markReady", () => {
       mediaId: "media-1",
       mimeType: "image/jpeg",
       sizeBytes: 2048,
+      width: 1600,
+      height: 1200,
     });
 
     expect(log.eq).toContainEqual(["memorial_id", "memorial-a"]);
@@ -214,6 +218,8 @@ describe("markReady", () => {
       mediaId: "media-1",
       mimeType: "image/png",
       sizeBytes: 999,
+      width: 1600,
+      height: 1200,
     });
 
     expect(log.update[0]).toMatchObject({
@@ -221,6 +227,16 @@ describe("markReady", () => {
       mime_type: "image/png",
       size_bytes: 999,
     });
+  });
+
+  it("writes the MEASURED natural dimensions (dette D1), including an honest null", async () => {
+    const measured = repository({ data: ROW, error: null });
+    await measured.repo.markReady({ memorialId: "memorial-a", mediaId: "media-1", mimeType: "image/jpeg", sizeBytes: 10, width: 3024, height: 4032 });
+    expect(measured.log.update[0]).toMatchObject({ width: 3024, height: 4032 });
+
+    const unknown = repository({ data: ROW, error: null });
+    await unknown.repo.markReady({ memorialId: "memorial-a", mediaId: "media-1", mimeType: "image/jpeg", sizeBytes: 10, width: null, height: null });
+    expect(unknown.log.update[0]).toMatchObject({ width: null, height: null });
   });
 
   it("returns null when it matched nothing, rather than erroring", async () => {
@@ -233,6 +249,8 @@ describe("markReady", () => {
         mediaId: "media-1",
         mimeType: "image/jpeg",
         sizeBytes: 1,
+        width: 1600,
+        height: 1200,
       }),
     ).toBeNull();
   });

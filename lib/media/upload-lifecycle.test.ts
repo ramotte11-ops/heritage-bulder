@@ -18,7 +18,10 @@ import {
   WEBP_BYTES,
   ZIP_BYTES,
   createTestEngine,
+  jpegWithDimensions,
   ownerActor,
+  pngWithDimensions,
+  webpVp8lWithDimensions,
 } from "./test-fixtures";
 
 /** Reserve, then simulate the browser uploading `bytes`. */
@@ -788,5 +791,100 @@ describe("refusals leak nothing", () => {
     expect(result).toEqual({ ok: false, code: "storage_unavailable" });
     expect(JSON.stringify(result)).not.toContain("permission denied");
     expect(JSON.stringify(result)).not.toContain("service_role");
+  });
+});
+
+// =====================================================================
+// DETTE D1 — natural dimensions measured at finalization
+// =====================================================================
+
+describe("finalizeMediaUpload — natural dimensions (dette D1)", () => {
+  /** A real JPEG signature with no Start-Of-Frame: its dimensions cannot be established. */
+  const JPEG_WITHOUT_SOF = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9]);
+
+  it("records width/height MEASURED from the stored bytes, for every admitted format", async () => {
+    for (const [declaredMimeType, bytes, expected] of [
+      ["image/jpeg", jpegWithDimensions(3024, 4032), { width: 3024, height: 4032 }],
+      ["image/png", pngWithDimensions(1600, 1200), { width: 1600, height: 1200 }],
+      ["image/webp", webpVp8lWithDimensions(2390, 1000), { width: 2390, height: 1000 }],
+    ] as const) {
+      const engine = createTestEngine();
+      const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose: "gallery" });
+      const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+      expect(result.ok && { width: result.value.width, height: result.value.height }).toEqual(expected);
+      expect(engine.mediaRepository.rows.get(reserved.mediaId)).toMatchObject({ status: "ready", ...expected });
+    }
+  });
+
+  it("reports the ratio the photograph is SEEN at: an EXIF quarter turn swaps the sides, the bytes stay untouched", async () => {
+    const engine = createTestEngine();
+    const bytes = jpegWithDimensions(4032, 3024, { orientation: 6 });
+    const reserved = await uploadedMedia(engine, { bytes, purpose: "gallery" });
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(result.ok && [result.value.width, result.value.height]).toEqual([3024, 4032]);
+    expect(engine.objectStore.objects.get(reserved.storagePath)).toEqual(bytes);
+  });
+
+  it("refuses a Gallery media whose dimensions cannot be established — discarded like any unusable file", async () => {
+    for (const bytes of [JPEG_WITHOUT_SOF, jpegWithDimensions(0, 1600), pngWithDimensions(1200, 0)]) {
+      const engine = createTestEngine();
+      const declaredMimeType = bytes[0] === 0x89 ? "image/png" : "image/jpeg";
+      const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose: "gallery" });
+      const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+      expect(result).toEqual({ ok: false, code: "invalid_file" });
+      expect(engine.mediaRepository.rows.has(reserved.mediaId)).toBe(false);
+      expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(false);
+    }
+  });
+
+  it("keeps the pre-D1 Hero behaviour: unreadable dimensions are an honest null, never a refusal", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: JPEG_WITHOUT_SOF, purpose: "hero" });
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(result.ok).toBe(true);
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)).toMatchObject({ status: "ready", width: null, height: null });
+  });
+
+  it("a Hero media with a readable header gets its dimensions too", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: jpegWithDimensions(1200, 1600), purpose: "hero" });
+    await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)).toMatchObject({ width: 1200, height: 1600 });
+  });
+
+  it("an already-ready media finalized before D1 (dimensions null) is returned unchanged — no re-measurement, no refusal", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: JPEG_WITHOUT_SOF, purpose: "hero" });
+    await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    const again = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(again.ok && [again.value.status, again.value.width, again.value.height]).toEqual(["ready", null, null]);
+  });
+
+  it("the API takes no client dimension: the input type has no width/height at all", () => {
+    type Input = Parameters<typeof finalizeMediaUpload>[2];
+    const keys: (keyof Input)[] = ["memorialId", "mediaId", "expectedPurpose"];
+    expect(keys).not.toContain("width");
+    // compile-time: `{ width: 1 }` is not assignable to Input
+    // @ts-expect-error — no client-declared dimension can be passed
+    const forged: Input = { memorialId: MEMORIAL_A, mediaId: "x", width: 99999 };
+    void forged;
+  });
+});
+
+describe("finalizeMediaUpload — expectedPurpose (dette D1)", () => {
+  it("refuses, as access_denied, to finalize a media reserved for another purpose — before and after it is ready", async () => {
+    const engine = createTestEngine();
+    const hero = await uploadedMedia(engine, { bytes: jpegWithDimensions(10, 10), purpose: "hero" });
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: hero.mediaId, expectedPurpose: "gallery" })).toEqual({ ok: false, code: "access_denied" });
+    expect(engine.mediaRepository.rows.get(hero.mediaId)?.status).toBe("pending");
+    await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: hero.mediaId });
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: hero.mediaId, expectedPurpose: "gallery" })).toEqual({ ok: false, code: "access_denied" });
+  });
+
+  it("finalizes normally when the purpose matches", async () => {
+    const engine = createTestEngine();
+    const gallery = await uploadedMedia(engine, { bytes: jpegWithDimensions(10, 20), purpose: "gallery" });
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: gallery.mediaId, expectedPurpose: "gallery" });
+    expect(result.ok && result.value.purpose).toBe("gallery");
   });
 });

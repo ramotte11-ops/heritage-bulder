@@ -15,14 +15,14 @@ interface GuidedFlowPauseProps {
  * Builder continuity mission — the Guided Flow's resting screen.
  *
  * Shown by app/builder/[memorialId]/page.tsx once every step built so
- * far is genuinely behind the family (today: past the combined
- * A10+A11+A12 sheet for `announcement`, past PAGE E for `remembrance`),
+ * far is genuinely behind the family (today: past A13, the Gallery, for
+ * `announcement`, past PAGE E for `remembrance`),
  * in place of the old "your memorial still needs to be configured"
  * dead end — which blamed the family for a step (`slug`) no screen asks
  * them for.
  *
- * Deliberately says nothing about what comes next: no gallery, no
- * publication, no invented step. It confirms the answers are stored
+ * Deliberately says nothing about what comes next: no publication, no
+ * invented step. It confirms the answers are stored
  * (they are — every previous step persisted before routing here) and
  * offers the one real way back: the owner space (/owner), which lists
  * this Owner's memorials and reopens this Builder. When a later mission

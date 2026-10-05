@@ -1,0 +1,130 @@
+/*
+ * A13 Viewer Desktop V2 — layers (Handoff §1): silent environment, shadow
+ * (non-dimensioning), HERITAGE paper, natural photograph, optional runtime
+ * caption, runtime close. Every length comes inline from `layoutViewer`;
+ * this sheet carries positioning primitives and the MATERIAL only, read
+ * from custom properties set per theme by the component (no texture is
+ * drawn here: the environment and paper are the Studio tiles, the edge is
+ * the Studio 9-slice mask).
+ */
+
+.root {
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+}
+
+.root[data-viewer-state="preparing"] {
+  visibility: hidden;
+}
+
+.environment {
+  position: absolute;
+  inset: 0;
+  background-color: var(--viewer-environment);
+  background-image: var(--viewer-environment-tile);
+  background-repeat: repeat;
+  background-size: 1024px 1024px;
+}
+
+.dialog {
+  position: absolute;
+  inset: 0;
+  outline: none;
+}
+
+.print {
+  position: absolute;
+  margin: 0;
+  transform-origin: 50% 50%;
+}
+
+.paper {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The photograph is never processed, in either theme. */
+.photo {
+  position: absolute;
+  display: block;
+  max-width: none;
+  object-fit: contain;
+  filter: none;
+  opacity: 1;
+  mix-blend-mode: normal;
+  user-select: none;
+}
+
+/*
+ * The caption: ONE text node broken by the browser (A13_VIEWER_CAPTION_
+ * MEASUREMENT_HANDOFF_V1). The same class styles the hidden style source
+ * whose computed styles the offscreen measurement clone copies, so the
+ * measured and the visible lines come from the same styles. `text-wrap:
+ * balance` keeps the contract's balanced break (smallest longest line).
+ */
+.caption {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  font-family: var(--heritage-caption-hand), cursive;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  font-kerning: auto;
+  text-transform: none;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-wrap: balance;
+  text-align: center;
+  color: var(--viewer-caption-ink);
+}
+
+.close {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--viewer-close-ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:focus {
+  outline: none;
+}
+
+.close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Offscreen host of the caption measurement clone: off the page, no transform. */
+.measureHost {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}

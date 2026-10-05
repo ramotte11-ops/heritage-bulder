@@ -1,0 +1,237 @@
+/**
+ * A13 — VIEWER DESKTOP V2 — runtime contract (GREEN QG).
+ *
+ * Transcription of `contract/viewer-desktop-v2.v1.json`
+ * (`A13_VIEWER_DESKTOP_V2_RUNTIME_HANDOFF_V1`, SHA-256 fff7277e…a7d2) and of
+ * the material package `A13_VIEWER_DESKTOP_V2_RUNTIME_MATERIAL_ASSETS_V1`
+ * (GREEN QG — `VIEWER_MATERIAL_SOURCE_STOP` lifted). Artistic authority:
+ * `A13_VIEWER_DESKTOP_V2_PROPOSITION_STUDIO.zip` (SHA-256 e299b477…0522).
+ *
+ * GALERIE = COMPOSER. ALBUM = PARCOURIR. VIEWER = CONTEMPLER.
+ *
+ * ONE Viewer shared by the Gallery and the Album. The geometry
+ * (`viewer-layout.ts`) never reads `theme`: only `A13_VIEWER_MATERIAL`
+ * diverges between Light and Dark (GEOMETRY DIVERGENCE LIGHT/DARK: NONE).
+ */
+
+export const A13_VIEWER_THEMES = ["light", "dark"] as const;
+export type ViewerTheme = (typeof A13_VIEWER_THEMES)[number];
+
+/**
+ * Geometry, typography, close, motion, accessibility — theme-free.
+ * Accessible names are i18n keys (dette D5: FR / EN / ES under
+ * `lib/i18n`), never a literal of one language here.
+ */
+export const A13_VIEWER_CONTRACT = {
+  contractId: "A13_VIEWER_DESKTOP_V2_RUNTIME_HANDOFF_V1",
+  referenceCanvas: { width: 1670, height: 941 },
+  scale: { min: 0.72, max: 1, captionFontMinPx: 20 },
+  safeArea: { xMin: 32, xPerS: 48, yMin: 24, yPerS: 40, closeReservedPx: 64, closeExtraClearancePx: 16 },
+  photo: { maxW: 1112, maxH: 622, guaranteedRatioRange: [0.5, 4.0] as const, objectFit: "contain" as const },
+  paper: { edgePerS: 40, edgeMin: 14, edgeMax: 42, topEdgeFactor: 0.75, bandNoneExtraPerS: 14, bandTextExtraPerS: 20, radiusPxMax: 1 },
+  caption: { maxCharacters: 32, maxLines: 2, fontSizePerS: 27, fontSizeMin: 20, fontSizeMax: 27, lineHeight: 1.05, usableInsetPerS: 16, usableInsetMin: 12 },
+  close: { glyph: "×", visualSizePx: 26, fontWeight: 300, targetMinPx: 48, offsetPerS: 28, offsetMin: 16, focusWidthPx: 2, focusOffsetPx: 4, labelKey: "viewer.close" },
+  motion: {
+    open: { durationMs: 240, easing: "cubic-bezier(.22,1,.36,1)", from: { opacity: 0, translateYPerS: 12, scale: 0.985 }, to: { opacity: 1, translateY: 0, scale: 1 } },
+    close: { durationMs: 160, easing: "cubic-bezier(.4,0,1,1)", to: { opacity: 0, translateYPerS: 6, scale: 0.99 } },
+    reduced: { durationMs: 0, spatialTransform: false },
+  },
+  accessibility: { modalDialog: true, initialFocus: "close", focusTrap: true, escape: true, restoreTriggerFocus: true, restoreScroll: true, backgroundInert: true, dialogLabelKey: "viewer.dialogLabel" },
+  /**
+   * Readings stated for QG (the contract leaves them implicit):
+   * - the 64×64 reserved close zone is centred on the 48×48 target (8 px
+   *   around it); the paper may not meet it dilated by 16 px;
+   * - the caption block starts `20s` under the photo — the band reads
+   *   photo | 20s | lines | edge (`edge + n·lineHeight + 20s`), which puts
+   *   the Master caption ink at y≈774–815 (measured on both Masters);
+   * - "taille intrinsèque utile" = the source's natural width in CSS px.
+   */
+  readings: {
+    closeZone: "64×64 centred on the 48×48 close target",
+    captionTop: "photoBottom + 20s",
+    intrinsicUsefulWidth: "naturalWidth (1 source px = 1 CSS px)",
+  },
+} as const;
+
+/**
+ * A13 — VIEWER CAPTION MEASUREMENT — `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`
+ * (SHA-256 be50f401…5383, GREEN QG). Replaces ONLY how the caption is
+ * measured: the browser is the line-breaking authority. One shared primitive
+ * (`viewer-caption-measure.ts`) wraps the caption in an offscreen DOM clone
+ * at the DISPLAYED size, with the loaded face, the computed styles of the
+ * visible caption and the paper's real usable width, then reads every line
+ * with `Range.getClientRects()`. No "measure at 27 px then × fontSize/27",
+ * no canvas approximation, no Mobile fork, no autoshrink, no truncation.
+ */
+export const A13_VIEWER_CAPTION_MEASUREMENT = {
+  handoffId: "A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1",
+  handoffSha256: "be50f4012d3c616b3e9009d19d0ebfe8b872855adbc623971905cb084b1a5383",
+  /** `canonicalMeasurement.propertiesCopied` of the contract, verbatim. */
+  contractProperties: [
+    "font-family",
+    "font-style",
+    "font-weight",
+    "font-size",
+    "line-height",
+    "letter-spacing",
+    "font-kerning",
+    "font-feature-settings",
+    "font-variation-settings",
+    "text-transform",
+    "white-space",
+    "word-break",
+    "overflow-wrap",
+    "text-align",
+  ],
+  /** The other computed properties that change line widths or breaks — copied too ("mêmes computed styles"). */
+  additionalProperties: [
+    "text-wrap-mode",
+    "text-wrap-style",
+    "word-spacing",
+    "text-indent",
+    "font-stretch",
+    "font-size-adjust",
+    "font-optical-sizing",
+    "font-synthesis-weight",
+    "font-synthesis-style",
+    "font-variant-ligatures",
+    "font-variant-caps",
+    "font-variant-numeric",
+    "font-variant-east-asian",
+    "font-variant-position",
+    "text-rendering",
+    "hyphens",
+    "line-break",
+    "direction",
+    "unicode-bidi",
+    "tab-size",
+  ],
+  limits: { maxLines: 2, subpixelToleranceCssPx: 0.5, measurementRenderDeltaMaxCssPx: 0.5 },
+  /** Font gate: wait for the face (and `document.fonts.ready`) at most this long before confirming it. */
+  fontGateTimeoutMs: 2500,
+} as const;
+
+/**
+ * A13_VIEWER_CAPTION_FINAL_HANDOFF_V1 (SHA-256 cd56a491…79ed5, runtime
+ * checkpoint b6e610c) — the Viewer caption debt closed by a strictly local
+ * extension of the existing paper. It consolidates the CLOSED DOM
+ * measurement (`A13_VIEWER_CAPTION_MEASUREMENT`), the landscape widening of
+ * `A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1` (SHA-256 5f89ae82…afe9)
+ * and the Studio arbitration A (extreme portrait).
+ *
+ * Trigger (all required): a caption, the canonical face confirmed, and a
+ * NATURAL failure at the canonical paper `W0` (more than two rendered lines,
+ * or a line over its column by more than 0.5 px). Then one profile:
+ *  - L, landscape: `innerWidth > innerHeight` and `(orientation: landscape)`,
+ *    media ratio ≤ 1 (any window — no phone restriction any more);
+ *  - P04, extreme portrait: `innerHeight ≥ innerWidth` and
+ *    `(orientation: portrait)`, media ratio ≤ 0.4.
+ * The paper widens symmetrically to the FIRST 0.5 px quantum in
+ * `[W0, WsafeMax]` that the shared DOM measurement keeps within two lines
+ * and 0.5 px, `WsafeMax = V − 2·24` with `V` the Viewer content safe rect
+ * (viewport − 2·safeX); the former 150 px cap is telemetry only. The photo
+ * rect, the common centre, the paper height, the band and the typography
+ * never move; only the paper's horizontal edges and the caption column
+ * follow. Once the derivation is triggered, the caption column is
+ * `Wcaption(W) = W − 2·12` — 12 px from each side of the paper, centred
+ * (QG/PO arbitration A: the CLOSED measurement method, thresholds, face and
+ * line/overflow criteria are kept; the CLOSED column formula is not).
+ * `WsafeMax < W0`, or no compliant quantum: `VIEWER_CAPTION_SAFE_WIDTH_STOP`,
+ * the paper and its CLOSED column stay `W0`. Derived on every layout from
+ * `W0`, never persisted.
+ */
+export const A13_VIEWER_CAPTION_WIDENING = {
+  handoffId: "A13_VIEWER_CAPTION_FINAL_HANDOFF_V1",
+  handoffSha256: "cd56a491001aad0eafbb4c62cdc745df544089e4b213c13b61b7a02399479ed5",
+  /** Caption inset from each side of the paper once the derivation is triggered (`I`): `Wcaption = W − 2·I`. */
+  captionInsetEachSideCssPx: 12,
+  /** Breathing between the widened paper and each side of the content safe rect (`B`). */
+  safeBreathingCssPx: 24,
+  /** Result quantum, rounded up. */
+  widthQuantumCssPx: 0.5,
+  /** Profile L: portrait or square media only (`naturalWidth / naturalHeight ≤ 1`). */
+  landscapeMediaRatioMax: 1,
+  /** Profile P04: extreme portrait media only (`naturalWidth / naturalHeight ≤ 0.4`). */
+  portraitExtremeMediaRatioMax: 0.4,
+  /** The former blocking cap, kept as a telemetry threshold only (never a layout decision). */
+  formerWidenCapTelemetryCssPx: 150,
+} as const;
+
+/** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */
+export const A13_VIEWER_STOPS = [
+  "VIEWER_CROP_STOP",
+  "VIEWER_DISTORTION_STOP",
+  "VIEWER_VIEWPORT_FIT_STOP",
+  "VIEWER_CAPTION_OVERFLOW_STOP",
+  "VIEWER_CAPTION_LINE_COUNT_STOP",
+  "VIEWER_CAPTION_MEASUREMENT_DIVERGENCE_STOP",
+  "VIEWER_CAPTION_FONT_NOT_READY_STOP",
+  "VIEWER_CAPTION_SAFE_WIDTH_STOP",
+  "VIEWER_CAPTION_SYMMETRY_STOP",
+  "VIEWER_CAPTION_UNAUTHORIZED_EXPANSION_STOP",
+  "VIEWER_CAPTION_NON_MINIMAL_WIDTH_STOP",
+  "VIEWER_CLOSE_INACCESSIBLE_STOP",
+  "VIEWER_SCROLL_RESTORE_STOP",
+  "VIEWER_FOCUS_RESTORE_STOP",
+  "VIEWER_REDUCED_MOTION_STOP",
+  "THEME_GEOMETRY_PARITY_STOP",
+  "VIEWER_DARK_PHOTO_PROCESSING_STOP",
+  "VIEWER_MATERIAL_SOURCE_STOP",
+] as const;
+export type ViewerStop = (typeof A13_VIEWER_STOPS)[number];
+export const VIEWER_EXTREME_RATIO_REVIEW = "VIEWER_EXTREME_RATIO_REVIEW" as const;
+
+const ASSET_DIR = "/assets/viewer/a13-desktop-v2";
+
+/** Studio material assets — byte-identical copies (SHA-256 of the package). */
+export const A13_VIEWER_ASSETS = {
+  environment: {
+    light: { src: `${ASSET_DIR}/a13-viewer-environment-light-tile-v1.png`, packageAsset: "A13_VIEWER_ENVIRONMENT_LIGHT_TILE_V1.png", size: 1024, sha256: "4ef7c853cc201f0104e54177d91e9e9c2261feaf418bbe5a23895dbaed4db4db", targetToken: "#F2EADF" },
+    dark: { src: `${ASSET_DIR}/a13-viewer-environment-dark-tile-v1.png`, packageAsset: "A13_VIEWER_ENVIRONMENT_DARK_TILE_V1.png", size: 1024, sha256: "38a0e9267223465d05249404015e46cdd1d7e58d02048526c46628e45a5bc7b0", targetToken: "#24150E" },
+  },
+  paper: {
+    light: { src: `${ASSET_DIR}/a13-viewer-print-paper-light-tile-v1.png`, packageAsset: "A13_VIEWER_PRINT_PAPER_LIGHT_TILE_V1.png", size: 1024, sha256: "98ea98d6921fd1ead4ad82898b0106fda9ab97a46dacb03f89c84e8630a47d69" },
+    dark: { src: `${ASSET_DIR}/a13-viewer-print-paper-dark-tile-v1.png`, packageAsset: "A13_VIEWER_PRINT_PAPER_DARK_TILE_V1.png", size: 1024, sha256: "d52bf978b5b4f577ec0d3732b47fa4506dbe700aa4bc0b73da34147b7116ef89" },
+  },
+  /**
+   * 9-slice RGBA edge mask V2 (`A13_VIEWER_DESKTOP_V2_RUNTIME_MASK_PATCH_V2`,
+   * SHA-256 620a2e6e…1bbd — GREEN QG; replaces the V1 mask only): common to
+   * both themes, corners fixed, periodic edge bands (alpha delta 0 on the
+   * four sides) repeated with `round`, centre opaque, never stretched as a
+   * whole. One mask px renders as `s` CSS px (canonical 1670 px). The
+   * measured median contour (first α ≥ 128 from the border: 14.47 / 13.53 /
+   * 14.51 / 13.55 px, top / bottom / left / right — 14.0 on average, as V1)
+   * is aligned on the paper geometry box: the mask is laid `14s` outside
+   * it, so the fringe straddles the geometric edge and the paper envelope
+   * keeps the Master measurements.
+   */
+  edgeMask: { src: `${ASSET_DIR}/a13-viewer-irregular-edge-mask-9slice-v2.png`, packageAsset: "A13_VIEWER_IRREGULAR_EDGE_MASK_9SLICE_V2.png", size: 512, slice: 96, medianContour: 14, sha256: "7c0d9d6300e310f2cb010d75048cf79630052a82ceb2f88a82d458faa782c4db" },
+  /** Both paper tiles are 1024 × 1024, rendered at `1024s` from the paper origin. */
+  paperTileSize: 1024,
+  recolor: false,
+} as const;
+
+/** Colours and shadows only — never read by the layout. */
+export const A13_VIEWER_MATERIAL = {
+  light: {
+    environment: "#F2EADF",
+    paperBase: "#EFE3CF",
+    paperHighlight: "#F7EEDF",
+    paperLowlight: "#D7C3A4",
+    captionInk: "#5A4030",
+    closeInk: "#61452F",
+    shadowContact: "0 2px 3px rgba(64,43,27,.20)",
+    shadowMain: "0 18px 34px rgba(64,43,27,.18)",
+  },
+  dark: {
+    environment: "#24150E",
+    paperBase: "#E7D3B2",
+    paperHighlight: "#F1E2C8",
+    paperLowlight: "#C9AE86",
+    captionInk: "#4A3527",
+    closeInk: "#E2BE87",
+    shadowContact: "0 2px 3px rgba(6,4,3,.44)",
+    shadowMain: "0 18px 36px rgba(6,4,3,.42)",
+  },
+  photo: { filter: "none", opacity: 1, mixBlendMode: "normal", backdropFilter: "none" },
+} as const satisfies Record<ViewerTheme, Record<string, string>> & { photo: Record<string, string | number> };

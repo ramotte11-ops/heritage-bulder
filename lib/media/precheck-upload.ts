@@ -27,3 +27,10 @@ export function precheckHeroPhotoFile(file: { type: string; size: number }): Med
   if (file.size > MAX_MEDIA_BYTES) return "file_too_large";
   return null;
 }
+
+/**
+ * A13 — the same UX pre-check for a Gallery photograph: identical rules
+ * (the one allowlist, the one size limit), never a second copy of them.
+ * Still only a convenience; `finalizeMediaUpload` stays the decision.
+ */
+export const precheckPhotoFile = precheckHeroPhotoFile;

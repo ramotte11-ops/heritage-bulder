@@ -1,0 +1,345 @@
+/*
+ * A13 Gallery — MOBILE LIGHT scene (Handoff V1.7).
+ *
+ * `.stage` is the size container (full-bleed, 375–430 px); `.canvas` is the
+ * 941-wide frame, `stageHeightSource` high (inline aspect ratio), and
+ * defines `--k`, one source pixel at the current width, which the shared
+ * DynamicPolaroid reads: uniform scale, no reflow, no internal breakpoint.
+ * Text sizes are CSS px from the contract (per viewport, set inline;
+ * `vw` of a clamp token = `cqw` of the full-bleed stage), never
+ * raster-scaled.
+ */
+
+.stage {
+  /* Caption hand: the shared token (La Belle Aurore, self-hosted). */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  container-type: inline-size;
+  width: 100%;
+}
+
+.canvas {
+  --k: calc(100cqw / 941);
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/*
+ * Touch: no browser tap highlight on a print (Mobile browsers paint it over
+ * the print's axis-aligned bounds, i.e. over its neighbours). Keyboard focus
+ * keeps the shared `:focus-visible` ring of DynamicPolaroid.
+ */
+.canvas [data-print] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The one common background: width 100%, height auto, no crop, no stretch (941 × 1672 at the top). */
+.background {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Bottom continuation (V1.7 `bottomMaterialContinuation`), whenever the
+ * stage is taller than the 941 × 1672 raster: neutral Light paper from the
+ * raster's bottom edge to the stage bottom — #F4DFCB (median of the
+ * neutral central bottom strip of background V2) with the shared A13 Light
+ * paper texture (the fixed-seed noise of `DynamicPolaroid`) at 0.18 — and,
+ * over the raster's last 20 CSS px, a linear fade from transparent to the
+ * same colour. No stretch or repetition of the PNG, no decor.
+ */
+.extension {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background-color: #f4dfcb;
+  pointer-events: none;
+}
+
+.extension::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .26  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: calc(160 * var(--k)) calc(160 * var(--k));
+  opacity: 0.18;
+}
+
+.extension::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -20px;
+  height: 20px;
+  background: linear-gradient(to bottom, rgb(244 223 203 / 0), #f4dfcb);
+}
+
+/* The ONE group container: the state's translation, applied once (inline). */
+.group {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/*
+ * Canonical title block (V1.5) — the header box IS the protected block
+ * (centred, from y = 0, width and height per viewport, set inline). A
+ * centred stack: separator, gap, title (one line), gap, subtitle; the
+ * breathing space below the subtitle is the rest of the box. Shared A13
+ * title tokens (EB Garamond / EB Garamond italic, Desktop inks). Inert for
+ * the pointer.
+ */
+.titleBlock {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  color: #3d3024;
+  pointer-events: none;
+}
+
+.separator {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.title {
+  margin: 0;
+  line-height: 1.05;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 285px;
+  font-size: 13px;
+  line-height: 16px;
+  color: #5a4633;
+  white-space: nowrap;
+}
+
+/*
+ * Signature 7+ CTA — a real <button>, runtime i18n text, one line. Box
+ * resolved after the photo group (V1.7, set inline): x 247, 446 wide, top =
+ * safe box top + 23 source px, height max(44 CSS px, 77 source px); shared
+ * A13 CTA tokens (rule, radius, inks, EB Garamond italic), Mobile size
+ * clamp(16px, 4.6vw, 20px). The touch target is never under 44 CSS px
+ * (the pseudo-element keeps that guarantee for any box). Focus is an
+ * outline (never layout space).
+ */
+.cta {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: calc(1.5 * var(--k)) solid rgb(92 74 41);
+  border-radius: calc(8 * var(--k));
+  background: transparent;
+  color: rgb(54 50 25);
+  font-size: clamp(16px, 4.6cqw, 20px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cta::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: max(100%, 44px);
+  transform: translateY(-50%);
+}
+
+.cta:focus {
+  outline: none;
+}
+
+.cta:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.ctaLabel {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* QA overlay (pilot only): title block, territories, witnesses, centres, caption safe zones (diagnostic), targets. */
+.qaLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaTerritory {
+  fill: rgb(230 120 20 / 0.1);
+  stroke: rgb(230 120 20);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.qaWitness {
+  fill: none;
+  stroke: rgb(0 90 255);
+  stroke-width: 2.5;
+  stroke-dasharray: 10 6;
+}
+
+.qaCenter {
+  fill: rgb(0 90 255);
+}
+
+.qaPivotCenter {
+  fill: #fff;
+  stroke: rgb(0 90 255);
+  stroke-width: 2;
+}
+
+.qaBlock {
+  fill: rgb(200 30 150 / 0.16);
+  stroke: rgb(200 30 150);
+  stroke-width: 2;
+}
+
+.qaSafeZone {
+  fill: rgb(0 170 190 / 0.18);
+  stroke: rgb(0 140 160);
+  stroke-width: 1.5;
+}
+
+.qaHit {
+  fill: rgb(20 160 70 / 0.18);
+  stroke: rgb(20 160 70);
+  stroke-width: 2;
+}
+
+.qaSafe {
+  fill: none;
+  stroke: rgb(220 0 0);
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+}
+
+.qaLabel {
+  font: 600 18px ui-monospace, monospace;
+  fill: rgb(0 60 200);
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+}
+
+/*
+ * A13 Mobile Gallery DARK — MATERIAL ONLY. The A13 Dark tokens
+ * (`A13_DARK_MATERIAL`, the Desktop Dark V1.1 rules) and the Mobile Dark
+ * continuation (`A13_MOBILE_DARK_BOTTOM_CONTINUATION`), keyed on
+ * `.stage[data-a13-theme="dark"]`, set by the scene AFTER the Mobile runtime
+ * has fixed the geometry. These rules only recolour: no length, box, font
+ * metric, transform, z-index or overflow is declared here (materialOnlyGuard,
+ * checked by `theme-parity.test.ts`). The title text-shadow is optical (the
+ * title QA rasterises the glyphs without it). The CTA and its focus keep the
+ * Light box, border width, outline width and offset; only colours change.
+ * The continuation keeps the Light layers (raster bottom, 0.18 texture, 20
+ * CSS px seam) in the Dark colour and the Dark paper texture.
+ */
+.stage[data-a13-theme="dark"] .titleBlock {
+  color: #d8c39b;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
+}
+
+.stage[data-a13-theme="dark"] .subtitle {
+  color: #b99b6c;
+}
+
+.stage[data-a13-theme="dark"] .cta {
+  border-color: rgba(198, 158, 94, 0.72);
+  color: #d7bd8e;
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:hover {
+  border-color: rgba(215, 178, 116, 0.9);
+  color: #e5cda2;
+  background-color: rgba(190, 145, 78, 0.08);
+}
+
+.stage[data-a13-theme="dark"] .cta:active {
+  border-color: rgba(220, 181, 117, 0.96);
+  color: #e8d2aa;
+  background-color: rgba(190, 145, 78, 0.13);
+}
+
+.stage[data-a13-theme="dark"] .cta:disabled {
+  border-color: rgba(183, 151, 102, 0.34);
+  color: rgba(215, 189, 142, 0.46);
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:focus-visible {
+  outline-color: #f1d6a3;
+}
+
+.stage[data-a13-theme="dark"] .extension {
+  background-color: #27160a;
+}
+
+.stage[data-a13-theme="dark"] .extension::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .3451  0 0 0 0 .2431  0 0 0 0 .1529  0 0 0 1.7778 0'/><feComponentTransfer><feFuncA type='linear' slope='.09'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.stage[data-a13-theme="dark"] .extension::after {
+  background: linear-gradient(to bottom, rgb(39 22 10 / 0), #27160a);
+}
+
+/*
+ * A13 Responsive Bridge V1 — Tablet vertical (431–1023 px). The stage is
+ * the real W-wide container and the run is the 430 one: the CSS-px lengths
+ * of the rules above are the 430 values × W / 430 (`--a13-remap`, set
+ * inline with `data-a13-remap` by the scene, only when bridged). Mobile
+ * CLOSED never carries the attribute — the rules above are untouched for
+ * it. The 44 px floor of the CTA and the focus outline are a minimum and an
+ * indicator: never remapped.
+ */
+.stage[data-a13-remap] .subtitle {
+  max-width: calc(285px * var(--a13-remap));
+  font-size: calc(13px * var(--a13-remap));
+  line-height: calc(16px * var(--a13-remap));
+}
+
+.stage[data-a13-remap] .cta {
+  font-size: clamp(calc(16px * var(--a13-remap)), 4.6cqw, calc(20px * var(--a13-remap)));
+}
+
+.stage[data-a13-remap] .extension::after {
+  top: calc(-20px * var(--a13-remap));
+  height: calc(20px * var(--a13-remap));
+}

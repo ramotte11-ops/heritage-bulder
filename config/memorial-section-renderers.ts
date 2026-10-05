@@ -20,7 +20,9 @@ import type { Skin } from "./skins";
  *  - `story` → `RecitDeVieIntemporel`: the link between the catalog's
  *    `story` section and the Récit de vie runtime (A10/A11/A12), which no
  *    code on `main` expressed until now.
- *  - `traditions`, `gallery`, `testimonials`, `condolences`, `video`,
+ *  - `gallery` → `GalleryIntemporel` (dettes D2–D4): the product host of
+ *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
+ *  - `traditions`, `testimonials`, `condolences`, `video`,
  *    `memoryMessage`: no renderer exists yet — deliberately absent.
  *
  * Known duplication, not resolved here: `DeathNoticePreviewStep`'s own
@@ -33,6 +35,7 @@ export const RENDERER_KEYS = [
   "DeathNoticeIntemporel",
   "CeremonyIntemporel",
   "RecitDeVieIntemporel",
+  "GalleryIntemporel",
 ] as const;
 
 export type RendererKey = (typeof RENDERER_KEYS)[number];
@@ -44,6 +47,7 @@ export const SECTION_RENDERERS: Readonly<
   deathNotice: { intemporel: "DeathNoticeIntemporel" },
   ceremony: { intemporel: "CeremonyIntemporel" },
   story: { intemporel: "RecitDeVieIntemporel" },
+  gallery: { intemporel: "GalleryIntemporel" },
 };
 
 /** The renderer for this section in this skin, or `null` when none

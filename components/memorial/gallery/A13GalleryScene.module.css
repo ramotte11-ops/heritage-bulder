@@ -1,0 +1,316 @@
+/*
+ * A13 G6 Desktop Light — PILOT scene.
+ *
+ * `.stage` is the size container (width 100%, capped at the canonical
+ * 1670); `.canvas` keeps the 1670 × 941 ratio and defines `--k`, one
+ * canonical pixel at the current rendered width. Everything inside is
+ * `N * var(--k)`: uniform scale, no reflow, no breakpoint.
+ */
+
+.stage {
+  /*
+   * Caption hand — contract V2 §6 "police manuscrite déjà utilisée dans le
+   * prototype V1, figée sous le token --heritage-caption-hand". That font is
+   * La Belle Aurore, already authorized in HERITAGE (Hero Intemporel
+   * handoff, Mission 035) and self-hosted by `laBelleAurore` in
+   * components/builder/fonts.ts as `--font-heritage-hero-script`. The token
+   * is an alias of that one resource — no new font is loaded.
+   */
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  container-type: inline-size;
+  width: 100%;
+  max-width: 1670px;
+  margin-inline: auto;
+}
+
+.canvas {
+  --k: calc(100cqw / 1670);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1670 / 941;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Runtime title — upper safe zone of the Master, under the baked leaf
+ * ornament (y ≈ 78) and above the first envelope (D2 top y = 231).
+ * The contract leaves its final measure to a QA overlay; this pilot
+ * box (x 535–1135, y 104–204) is a documented placeholder, not a lock.
+ */
+.titleBlock {
+  position: absolute;
+  left: calc(535 * var(--k));
+  top: calc(104 * var(--k));
+  width: calc(600 * var(--k));
+  height: calc(100 * var(--k));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  color: #3d3024;
+}
+
+.title {
+  margin: 0;
+  font-size: calc(40 * var(--k));
+  line-height: 1.15;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  margin: calc(6 * var(--k)) 0 0;
+  font-size: calc(19 * var(--k));
+  line-height: 1.3;
+  color: #5a4633;
+}
+
+.qaTitleZone {
+  position: absolute;
+  left: calc(535 * var(--k));
+  top: calc(104 * var(--k));
+  width: calc(600 * var(--k));
+  height: calc(100 * var(--k));
+  outline: calc(1.5 * var(--k)) dashed rgb(20 120 60 / 0.85);
+  z-index: 202;
+  pointer-events: none;
+}
+
+.probeHost {
+  --heritage-caption-hand: var(--font-heritage-hero-script);
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.captionProbe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  font-family: var(--heritage-caption-hand), cursive;
+  font-size: 27px;
+  pointer-events: none;
+}
+
+/*
+ * CTA_7PLUS_V1 — rest state measured on the 7+ Master
+ * (`QA_OVERLAY_G6_SIGNATURE_7PLUS_1670.png`, "rest: master-authority"):
+ * 1.5 px rule rgb(92 74 41), ~8 px radius, no fill (the common background
+ * shows through), EB Garamond italic 400 34 px / 1.1, ink rgb(54 50 25).
+ * Hover/active: no geometry change (and no visual change is specified, so
+ * none is added). Focus: 2 px solid currentColor, 4 px offset (outline —
+ * never layout space). The box never changes size in any state.
+ */
+.cta {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  border: calc(1.5 * var(--k)) solid rgb(92 74 41);
+  border-radius: calc(8 * var(--k));
+  background: transparent;
+  color: rgb(54 50 25);
+  font-size: calc(34 * var(--k));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cta:focus {
+  outline: none;
+}
+
+.cta:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.ctaLabel {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Calibration V1.1 diagnostics: slot envelopes (blue) and the protected
+ * title zone (magenta). QA only. */
+.qaEnvelope {
+  position: absolute;
+  outline: calc(1.5 * var(--k)) solid rgb(20 140 200 / 0.9);
+  z-index: 203;
+  pointer-events: none;
+}
+
+.qaEnvelope span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font: 600 calc(11 * var(--k)) / 1.2 ui-monospace, monospace;
+  color: #fff;
+  background: rgb(20 140 200 / 0.9);
+  padding: 0 calc(3 * var(--k));
+}
+
+.qaProtectedZone {
+  position: absolute;
+  outline: calc(2 * var(--k)) solid rgb(200 30 150 / 0.95);
+  background: rgb(200 30 150 / 0.08);
+  z-index: 204;
+  pointer-events: none;
+}
+
+/* G3 territory study diagnostics: territories (orange), witness centre
+ * (hollow), chosen centre (filled) and displacement, measured title
+ * protection (magenta). QA only — never in the artistic proof. */
+.qaTerritoryLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 205;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qaTerritory {
+  fill: rgb(230 120 20 / 0.08);
+  stroke: rgb(230 120 20 / 0.95);
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+}
+
+.qaTerritoryLabel {
+  font: 600 13px ui-monospace, monospace;
+  fill: rgb(170 80 0);
+}
+
+.qaWitness {
+  fill: #fff;
+  stroke: rgb(200 30 30);
+  stroke-width: 3;
+}
+
+.qaChosen {
+  fill: rgb(20 120 200);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.qaMove {
+  stroke: rgb(20 120 200);
+  stroke-width: 3;
+}
+
+.qaCoupleTerritory {
+  fill: rgb(20 140 90 / 0.08);
+  stroke: rgb(20 140 90 / 0.95);
+  stroke-width: 2.5;
+}
+
+.qaCoupleLabel {
+  font: 700 14px ui-monospace, monospace;
+  fill: rgb(10 110 70);
+}
+
+.qaCoupleWitnessVector {
+  stroke: rgb(200 30 30 / 0.9);
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+}
+
+.qaCoupleWitnessCenter {
+  fill: #fff;
+  stroke: rgb(200 30 30);
+  stroke-width: 3;
+}
+
+.qaCoupleEllipse {
+  fill: rgb(130 60 200 / 0.08);
+  stroke: rgb(130 60 200 / 0.95);
+  stroke-width: 2.5;
+}
+
+.qaCoupleVector {
+  stroke: rgb(20 120 200);
+  stroke-width: 4;
+}
+
+.qaCoupleCenter {
+  fill: rgb(20 140 90);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.qaTitleInk {
+  fill: rgb(200 30 150 / 0.1);
+  stroke: rgb(200 30 150 / 0.95);
+  stroke-width: 2;
+}
+
+/*
+ * A13 Desktop DARK V1.1 — MATERIAL ONLY (`dark-material-tokens.v1.1.json`).
+ *
+ * Keyed on `.stage[data-a13-theme="dark"]`, set by the scene AFTER the
+ * Light V2.1 engine has fixed the geometry. These rules only recolour:
+ * no length, box, font metric, transform, z-index or overflow is declared
+ * here (materialOnlyGuard, checked by `theme-parity.test.ts`). The title
+ * text-shadow is optical: the title glyph authority rasterises the glyphs
+ * without it. CTA and focus keep the Light box, border width, outline
+ * width and offset; only their colours change.
+ */
+.stage[data-a13-theme="dark"] .titleBlock {
+  color: #d8c39b;
+  text-shadow: 0 calc(1 * var(--k)) calc(1 * var(--k)) rgba(0, 0, 0, 0.22);
+}
+
+.stage[data-a13-theme="dark"] .subtitle {
+  color: #b99b6c;
+}
+
+.stage[data-a13-theme="dark"] .cta {
+  border-color: rgba(198, 158, 94, 0.72);
+  color: #d7bd8e;
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:hover {
+  border-color: rgba(215, 178, 116, 0.9);
+  color: #e5cda2;
+  background-color: rgba(190, 145, 78, 0.08);
+}
+
+.stage[data-a13-theme="dark"] .cta:active {
+  border-color: rgba(220, 181, 117, 0.96);
+  color: #e8d2aa;
+  background-color: rgba(190, 145, 78, 0.13);
+}
+
+.stage[data-a13-theme="dark"] .cta:disabled {
+  border-color: rgba(183, 151, 102, 0.34);
+  color: rgba(215, 189, 142, 0.46);
+  background-color: transparent;
+}
+
+.stage[data-a13-theme="dark"] .cta:focus-visible {
+  outline-color: #f1d6a3;
+}
