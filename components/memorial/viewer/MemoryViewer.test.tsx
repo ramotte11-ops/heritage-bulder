@@ -278,16 +278,16 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
         at(w, h);
         const light = (await open("light")).root;
         const lightDom = geometryDom(light);
-        const widened = light.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption ?? null;
+        const widened = light.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerCaptionWidening ?? null;
         expect(light.dataset.a13ViewerTheme).toBe("light");
         cleanup();
         document.body.innerHTML = "";
         const dark = (await open("dark")).root;
         expect(dark.dataset.a13ViewerTheme).toBe("dark");
         expect(geometryDom(dark), `${w}×${h}`).toBe(lightDom);
-        expect(dark.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption ?? null).toBe(widened);
+        expect(dark.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerCaptionWidening ?? null).toBe(widened);
         // Landscape: the 9:16 + 32-character caption takes the widened paper in both themes.
-        expect(widened).toBe(w > h ? "widened" : null);
+        expect(widened).toBe(w > h ? "landscape" : null);
         cleanup();
         document.body.innerHTML = "";
       }
@@ -299,7 +299,7 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     }
   });
 
-  it("Landscape caption: a phone in landscape widens the paper around the photo, which keeps its viewport position", async () => {
+  it("Landscape caption: a confirmed landscape widens the paper around the photo, which keeps its viewport position", async () => {
     Object.defineProperty(document.documentElement, "clientWidth", { value: 812, configurable: true });
     Object.defineProperty(document.documentElement, "clientHeight", { value: 375, configurable: true });
     const inner = { w: window.innerWidth, h: window.innerHeight, matchMedia: window.matchMedia };
@@ -314,13 +314,13 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
       Object.defineProperty(window, "innerWidth", { value: 812, configurable: true });
       Object.defineProperty(window, "innerHeight", { value: 375, configurable: true });
       const natural = photoAt((await open("light")).root);
-      expect(natural.print.dataset.viewerLandscapeCaption).toBeUndefined();
+      expect(natural.print.dataset.viewerCaptionWidening).toBeUndefined();
       cleanup();
       document.body.innerHTML = "";
       landscape = true;
       const { root } = await open("light");
       const widened = photoAt(root);
-      expect(widened.print.dataset.viewerLandscapeCaption).toBe("widened");
+      expect(widened.print.dataset.viewerCaptionWidening).toBe("landscape");
       expect(parseFloat(widened.print.style.width)).toBeGreaterThan(parseFloat(natural.print.style.width));
       expect(widened.x).toBeCloseTo(natural.x, 9);
       expect([widened.y, widened.w, widened.h]).toEqual([natural.y, natural.w, natural.h]);
@@ -338,7 +338,7 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
       Object.defineProperty(window, "innerHeight", { value: 812, configurable: true });
       landscape = false;
       fireEvent(window, new Event("resize"));
-      await waitFor(() => expect(root.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerLandscapeCaption).toBeUndefined());
+      await waitFor(() => expect(root.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerCaptionWidening).toBeUndefined());
     } finally {
       Object.defineProperty(window, "innerWidth", { value: inner.w, configurable: true });
       Object.defineProperty(window, "innerHeight", { value: inner.h, configurable: true });

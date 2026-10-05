@@ -1,4 +1,4 @@
-import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CONTRACT, A13_VIEWER_LANDSCAPE_CAPTION, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CAPTION_WIDENING, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
 import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
 /**
@@ -26,9 +26,10 @@ import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-m
  *   displayed size in that usable width (`ViewerInput.wrap`, the shared
  *   primitive of `A13_VIEWER_CAPTION_MEASUREMENT_HANDOFF_V1`): no measure
  *   at 27 px scaled down, the same call for every profile;
- * - a phone held in landscape (`ViewerInput.landscapePhone`) widens the
- *   paper of a portrait or square photo whose caption does not fit it
- *   (`A13_VIEWER_LANDSCAPE_CAPTION`): symmetric, minimal, photo untouched.
+ * - a caption that does not fit the canonical paper widens it — symmetric,
+ *   minimal, photo untouched — in a confirmed landscape for a portrait or
+ *   square photo, or in a confirmed portrait for an extreme portrait photo
+ *   (`A13_VIEWER_CAPTION_WIDENING`, `ViewerInput.orientation`).
  */
 
 const C = A13_VIEWER_CONTRACT;
@@ -112,17 +113,22 @@ export interface ViewerGeometry {
   };
   codes: string[];
   /**
-   * Landscape caption widening — present only when it applied
-   * (`A13_VIEWER_LANDSCAPE_CAPTION`); absent, the geometry is the canonical one.
+   * Caption widening (`A13_VIEWER_CAPTION_WIDENING`) — present only when an
+   * eligible profile failed naturally at `W0`; absent, the geometry is the
+   * canonical one.
    */
-  landscapeCaption?: {
+  captionWidening?: {
+    profile: "landscape" | "portraitExtreme";
     /** The canonical paper (`W0`), before widening. */
     naturalPaper: Rect;
-    widthMax: number;
-    /** `paper.w − W0`, half on each side. */
+    /** `WsafeMax = V − 48` (and the CLOSED close clearance). */
+    safeMax: number;
+    /** `paper.w − W0`, half on each side (0 on a STOP). */
     widening: number;
-    /** No width up to `widthMax` keeps the caption within two lines (kept at `widthMax`). */
-    fitStop: boolean;
+    /** `VIEWER_CAPTION_SAFE_WIDTH_STOP`: no compliant 0.5 px quantum in `[W0, WsafeMax]` — the paper stays `W0`. */
+    stop: boolean;
+    /** Telemetry only: the widening exceeds the former 150 px cap. */
+    beyondFormerCap: boolean;
   };
 }
 
@@ -136,8 +142,12 @@ export interface ViewerInput {
   wrap: ViewerCaptionWrapFn | null;
   /** Font gate result (`awaitViewerCaptionFont`): `false` → VIEWER_CAPTION_FONT_NOT_READY_STOP. */
   captionFontReady?: boolean | null;
-  /** A phone held in landscape (`A13_VIEWER_LANDSCAPE_CAPTION.phoneShortSideMaxCssPx`). */
-  landscapePhone?: boolean;
+  /**
+   * The real orientation, confirmed by both the window (`innerWidth` vs
+   * `innerHeight`) and the orientation media query; `null`/absent → not
+   * confirmed (never widened).
+   */
+  orientation?: "landscape" | "portrait" | null;
 }
 
 /** Renderer normalisation: whitespace runs → one space, trimmed; empty → null. */
@@ -277,32 +287,48 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   const overflows = (ls: ViewerCaptionLine[], width: number) => ls.some((l) => l.x < -tol || l.x + l.width > width + tol);
   const fitsColumn = (ls: ViewerCaptionLine[], width: number) => ls.length <= C.caption.maxLines && !overflows(ls, width);
 
-  // Landscape caption: the paper widens, symmetrically and minimally, until
-  // the browser keeps the caption within two lines at its canonical inset
-  // from the photo. Recomputed from the canonical paper `W0` every time.
+  // Caption widening (A13_VIEWER_CAPTION_FINAL_HANDOFF_V1): only for a
+  // caption, a confirmed face, an eligible orientation × ratio profile, and
+  // a NATURAL failure at the canonical paper `W0` (its CLOSED column). The
+  // paper widens, symmetrically, to the first 0.5 px quantum ≥ W0 whose
+  // caption column `W − 24` (12 px from each side of the paper, QG/PO
+  // arbitration A) the browser keeps within two lines and 0.5 px.
+  // Recomputed from `W0` every time; never persisted.
   let paper = g.paper;
   let usableWidth = g.usableWidth;
-  let landscapeCaption: ViewerGeometry["landscapeCaption"];
-  const L = A13_VIEWER_LANDSCAPE_CAPTION;
-  if (inp.landscapePhone && r <= L.mediaRatioMax && text && inp.wrap && !fitsColumn(lines, g.usableWidth)) {
+  let captionWidening: ViewerGeometry["captionWidening"];
+  const Wd = A13_VIEWER_CAPTION_WIDENING;
+  const profile =
+    !text || !inp.wrap || inp.captionFontReady !== true
+      ? null
+      : inp.orientation === "landscape" && r <= Wd.landscapeMediaRatioMax
+        ? "landscape"
+        : inp.orientation === "portrait" && r <= Wd.portraitExtremeMediaRatioMax
+          ? "portraitExtreme"
+          : null;
+  if (profile && text && inp.wrap && !fitsColumn(lines, g.usableWidth)) {
     const wrap = inp.wrap;
     const W0 = g.paper.w;
-    let widthMax = Math.max(W0, Math.min(W0 + L.widenMaxCssPx, inp.viewportW - 2 * g.safeX - 2 * L.safeBreathingCssPx));
-    // The close clearance zone never meets the paper.
-    if (g.clearance.y < g.paper.y + g.paper.h && g.paper.y < g.clearance.y + g.clearance.h) widthMax = Math.max(W0, Math.min(widthMax, 2 * (g.clearance.x - (g.paper.x + W0 / 2))));
-    const column = (w: number) => w - 2 * g.edge - 2 * g.inset;
+    // WsafeMax = V − 2B, V the content safe rect (viewport − 2·safeX); the former 150 px cap is gone.
+    let safeMax = inp.viewportW - 2 * g.safeX - 2 * Wd.safeBreathingCssPx;
+    // CLOSED invariant kept: the close clearance zone never meets the paper.
+    if (g.clearance.y < g.paper.y + g.paper.h && g.paper.y < g.clearance.y + g.clearance.h) safeMax = Math.min(safeMax, 2 * (g.clearance.x - (g.paper.x + W0 / 2)));
+    const column = (w: number) => w - 2 * Wd.captionInsetEachSideCssPx;
     const measure = (w: number) => wrap(text, g.fontSize, g.lineHeight, column(w))?.lines ?? null;
     const fitsAt = (w: number, ls: ViewerCaptionLine[] | null): ls is ViewerCaptionLine[] => ls !== null && fitsColumn(ls, column(w));
-    let width = widthMax;
-    let widthLines = measure(widthMax);
-    const fitStop = !fitsAt(widthMax, widthLines);
-    if (!fitStop) {
-      // Smallest half-pixel step that fits: `lo·q ≤ W0` fails, `hi·q` fits (monotone).
-      const q = L.widthQuantumCssPx;
-      let lo = Math.floor(W0 / q);
-      let hi = Math.floor(widthMax / q);
-      const top = hi > lo ? measure(hi * q) : null;
-      if (fitsAt(hi * q, top) && hi > lo) {
+    // Monotone search on the 0.5 px grid within [W0, WsafeMax]: index `lo` is below the domain
+    // (< W0), `hi` (≤ WsafeMax) the candidate; the result is the first compliant quantum ≥ W0,
+    // measured at that exact width.
+    const q = Wd.widthQuantumCssPx;
+    let lo = Math.ceil(W0 / q - 1e-9) - 1;
+    let hi = Math.floor(safeMax / q);
+    let width = W0;
+    let widthLines: ViewerCaptionLine[] = lines;
+    let stop = safeMax < W0 || hi <= lo;
+    if (!stop) {
+      const top = measure(hi * q);
+      if (!fitsAt(hi * q, top)) stop = true;
+      else {
         width = hi * q;
         widthLines = top;
         while (hi - lo > 1) {
@@ -318,9 +344,12 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
     }
     const widening = width - W0;
     paper = { x: g.paper.x - widening / 2, y: g.paper.y, w: width, h: g.paper.h };
-    usableWidth = column(width);
-    lines = widthLines ?? [];
-    landscapeCaption = { naturalPaper: g.paper, widthMax, widening, fitStop };
+    // On a STOP nothing is derived: the CLOSED column and its lines stay.
+    if (!stop) {
+      usableWidth = column(width);
+      lines = widthLines;
+    }
+    captionWidening = { profile, naturalPaper: g.paper, safeMax, widening, stop, beyondFormerCap: widening > Wd.formerWidenCapTelemetryCssPx };
   }
 
   const captionOverflow = overflows(lines, usableWidth);
@@ -329,12 +358,16 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   if (captionLineCount) codes.push("VIEWER_CAPTION_LINE_COUNT_STOP");
   const captionFontReady = text && inp.wrap ? (inp.captionFontReady ?? null) : null;
   if (captionFontReady === false) codes.push("VIEWER_CAPTION_FONT_NOT_READY_STOP");
-  if (landscapeCaption?.fitStop) codes.push("VIEWER_LANDSCAPE_CAPTION_FIT_STOP");
+  if (captionWidening?.stop) codes.push("VIEWER_CAPTION_SAFE_WIDTH_STOP");
+  // The common centre never moves (data tolerance 0 px; 1e-9 absorbs binary noise only).
+  if (captionWidening && Math.abs(paper.x + paper.w / 2 - (g.paper.x + g.paper.w / 2)) > 1e-9) codes.push("VIEWER_CAPTION_SYMMETRY_STOP");
 
   // Widened paper: the photo keeps its viewport rect (the paper grew around it).
-  const photoLocal = { x: landscapeCaption ? g.edge + landscapeCaption.widening / 2 : g.edge, y: g.topEdge, w: g.photoW, h: g.photoH };
+  const photoLocal = { x: g.edge + (captionWidening?.widening ?? 0) / 2, y: g.topEdge, w: g.photoW, h: g.photoH };
   const blockTop = g.topEdge + g.photoH + C.paper.bandTextExtraPerS * g.s;
-  const capBox = { x: g.edge + g.inset, y: blockTop, w: usableWidth, h: lines.length * g.lineHeight };
+  // Derived column: centred on the paper (12 px from each side); else the CLOSED column.
+  const capX = captionWidening && !captionWidening.stop ? (paper.w - usableWidth) / 2 : g.edge + g.inset;
+  const capBox = { x: capX, y: blockTop, w: usableWidth, h: lines.length * g.lineHeight };
   const mask = nineSlice(paper.w, paper.h, g.s);
   const bandKind = g.lines === 0 ? "none" : g.lines === 1 ? "oneLine" : "twoLines";
 
@@ -372,7 +405,7 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
     },
     flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < sNominal, captionOverflow, captionLineCount, captionFontReady, viewportFitStop },
     codes,
-    ...(landscapeCaption ? { landscapeCaption } : {}),
+    ...(captionWidening ? { captionWidening } : {}),
   };
 }
 

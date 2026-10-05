@@ -112,36 +112,49 @@ export const A13_VIEWER_CAPTION_MEASUREMENT = {
 } as const;
 
 /**
- * A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1 (SHA-256 5f89ae82…afe9),
- * with the QG arbitration of its 150 px cap: on a phone held in landscape,
- * a portrait or square photo whose caption does not fit the natural paper
- * (more than two lines, or a line over its column by more than 0.5 px)
- * widens the paper symmetrically — the photo, its centre, the scale, the
- * typography and the paper height never move. The caption keeps its
- * canonical inset from the photo (column = paper − 2·edge − 2·inset). The
- * width is the smallest 0.5 px step in `[W0, Wmax]` that the shared DOM
- * measurement (`A13_VIEWER_CAPTION_MEASUREMENT`) keeps within two lines,
- * `Wmax = max(W0, min(W0 + 150, V − 2·24))` with `V` the safe-area width:
- * 150 px caps the WIDENING, not the final paper width (QG). Derived on every
- * layout from the canonical `W0`, never persisted.
+ * A13_VIEWER_CAPTION_FINAL_HANDOFF_V1 (SHA-256 cd56a491…79ed5, runtime
+ * checkpoint b6e610c) — the Viewer caption debt closed by a strictly local
+ * extension of the existing paper. It consolidates the CLOSED DOM
+ * measurement (`A13_VIEWER_CAPTION_MEASUREMENT`), the landscape widening of
+ * `A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1` (SHA-256 5f89ae82…afe9)
+ * and the Studio arbitration A (extreme portrait).
+ *
+ * Trigger (all required): a caption, the canonical face confirmed, and a
+ * NATURAL failure at the canonical paper `W0` (more than two rendered lines,
+ * or a line over its column by more than 0.5 px). Then one profile:
+ *  - L, landscape: `innerWidth > innerHeight` and `(orientation: landscape)`,
+ *    media ratio ≤ 1 (any window — no phone restriction any more);
+ *  - P04, extreme portrait: `innerHeight ≥ innerWidth` and
+ *    `(orientation: portrait)`, media ratio ≤ 0.4.
+ * The paper widens symmetrically to the FIRST 0.5 px quantum in
+ * `[W0, WsafeMax]` that the shared DOM measurement keeps within two lines
+ * and 0.5 px, `WsafeMax = V − 2·24` with `V` the Viewer content safe rect
+ * (viewport − 2·safeX); the former 150 px cap is telemetry only. The photo
+ * rect, the common centre, the paper height, the band and the typography
+ * never move; only the paper's horizontal edges and the caption column
+ * follow. Once the derivation is triggered, the caption column is
+ * `Wcaption(W) = W − 2·12` — 12 px from each side of the paper, centred
+ * (QG/PO arbitration A: the CLOSED measurement method, thresholds, face and
+ * line/overflow criteria are kept; the CLOSED column formula is not).
+ * `WsafeMax < W0`, or no compliant quantum: `VIEWER_CAPTION_SAFE_WIDTH_STOP`,
+ * the paper and its CLOSED column stay `W0`. Derived on every layout from
+ * `W0`, never persisted.
  */
-export const A13_VIEWER_LANDSCAPE_CAPTION = {
-  handoffId: "A13_VIEWER_MOBILE_LANDSCAPE_CAPTION_HANDOFF_V1",
-  handoffSha256: "5f89ae823e6f96878dcaa26502d6149e9f6d2584754f980105e48e0b415aafe9",
-  /** Paper widening cap, relative to the natural width `W0` (QG arbitration). */
-  widenMaxCssPx: 150,
-  /** Breathing between the widened paper and each side of the safe area. */
+export const A13_VIEWER_CAPTION_WIDENING = {
+  handoffId: "A13_VIEWER_CAPTION_FINAL_HANDOFF_V1",
+  handoffSha256: "cd56a491001aad0eafbb4c62cdc745df544089e4b213c13b61b7a02399479ed5",
+  /** Caption inset from each side of the paper once the derivation is triggered (`I`): `Wcaption = W − 2·I`. */
+  captionInsetEachSideCssPx: 12,
+  /** Breathing between the widened paper and each side of the content safe rect (`B`). */
   safeBreathingCssPx: 24,
   /** Result quantum, rounded up. */
   widthQuantumCssPx: 0.5,
-  /** Portrait or square media only (`naturalWidth / naturalHeight ≤ 1`). */
-  mediaRatioMax: 1,
-  /**
-   * A phone held in landscape: `innerWidth > innerHeight`, `(orientation:
-   * landscape)`, and the short side within the Mobile territory (375–430 in
-   * portrait) — a Desktop window is never adapted.
-   */
-  phoneShortSideMaxCssPx: 430,
+  /** Profile L: portrait or square media only (`naturalWidth / naturalHeight ≤ 1`). */
+  landscapeMediaRatioMax: 1,
+  /** Profile P04: extreme portrait media only (`naturalWidth / naturalHeight ≤ 0.4`). */
+  portraitExtremeMediaRatioMax: 0.4,
+  /** The former blocking cap, kept as a telemetry threshold only (never a layout decision). */
+  formerWidenCapTelemetryCssPx: 150,
 } as const;
 
 /** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */
@@ -153,7 +166,10 @@ export const A13_VIEWER_STOPS = [
   "VIEWER_CAPTION_LINE_COUNT_STOP",
   "VIEWER_CAPTION_MEASUREMENT_DIVERGENCE_STOP",
   "VIEWER_CAPTION_FONT_NOT_READY_STOP",
-  "VIEWER_LANDSCAPE_CAPTION_FIT_STOP",
+  "VIEWER_CAPTION_SAFE_WIDTH_STOP",
+  "VIEWER_CAPTION_SYMMETRY_STOP",
+  "VIEWER_CAPTION_UNAUTHORIZED_EXPANSION_STOP",
+  "VIEWER_CAPTION_NON_MINIMAL_WIDTH_STOP",
   "VIEWER_CLOSE_INACCESSIBLE_STOP",
   "VIEWER_SCROLL_RESTORE_STOP",
   "VIEWER_FOCUS_RESTORE_STOP",

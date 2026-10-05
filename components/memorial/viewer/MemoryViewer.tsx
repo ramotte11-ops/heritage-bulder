@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { laBelleAurore } from "@/components/builder/fonts";
-import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_LANDSCAPE_CAPTION, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { awaitViewerCaptionFont, createViewerCaptionMeasure, viewerCaptionFontStatus, type ViewerCaptionFontGate, type ViewerCaptionMeasure } from "@/lib/memorial/viewer/viewer-caption-measure";
@@ -229,22 +229,28 @@ async function decodeImage(src: string, timeoutMs: number) {
 
 /**
  * The print's rendered left, and the photo's left inside it. A widened
- * landscape paper (`g.landscapeCaption`) grows by half its widening on each
+ * caption paper (`g.captionWidening`) grows by half its widening on each
  * side of the canonical paper's rendered position, laid on the 1/64 px
  * layout grid, so that the photo keeps exactly its canonical pixels.
  */
 const LAYOUT_UNITS_PER_PX = 64;
 function printPlacement(g: ViewerGeometry) {
-  if (!g.landscapeCaption) return { left: Math.round(g.paper.x), photoLeft: g.photoLocal.x };
-  const half = Math.round((g.landscapeCaption.widening / 2) * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
-  return { left: Math.round(g.landscapeCaption.naturalPaper.x) - half, photoLeft: g.edge + half };
+  if (!g.captionWidening || g.captionWidening.widening === 0) return { left: Math.round(g.paper.x), photoLeft: g.photoLocal.x };
+  const half = Math.round((g.captionWidening.widening / 2) * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
+  return { left: Math.round(g.captionWidening.naturalPaper.x) - half, photoLeft: g.edge + half };
 }
 
-/** A phone held in landscape (`A13_VIEWER_LANDSCAPE_CAPTION`): read on every layout, never stored. */
-const viewerLandscapePhone = () =>
-  window.innerWidth > window.innerHeight &&
-  window.matchMedia?.("(orientation: landscape)").matches === true &&
-  window.innerHeight <= A13_VIEWER_LANDSCAPE_CAPTION.phoneShortSideMaxCssPx;
+/**
+ * The real orientation (`A13_VIEWER_CAPTION_WIDENING`), confirmed by the
+ * window AND the orientation media query, else `null`: read on every layout,
+ * never stored.
+ */
+const viewerOrientation = (): "landscape" | "portrait" | null => {
+  const mq = (q: string) => window.matchMedia?.(q).matches === true;
+  if (window.innerWidth > window.innerHeight && mq("(orientation: landscape)")) return "landscape";
+  if (window.innerHeight >= window.innerWidth && mq("(orientation: portrait)")) return "portrait";
+  return null;
+};
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 const canAnimate = (el: Element | null): el is HTMLElement => !!el && typeof (el as HTMLElement).animate === "function";
@@ -331,7 +337,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       caption,
       wrap: captionMeasure.current?.wrap ?? null,
       captionFontReady: captionFont.current?.ready ?? null,
-      landscapePhone: viewerLandscapePhone(),
+      orientation: viewerOrientation(),
     });
   }, [caption]);
 
@@ -589,7 +595,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
             ref={printRef}
             className={styles.print}
             data-viewer-print=""
-            data-viewer-landscape-caption={g.landscapeCaption ? (g.landscapeCaption.fitStop ? "stop" : "widened") : undefined}
+            data-viewer-caption-widening={g.captionWidening ? (g.captionWidening.stop ? "stop" : g.captionWidening.profile) : undefined}
             style={{ left: placed!.left, top: Math.round(g.paper.y), width: g.paper.w, height: g.paper.h }}
           >
             <Paper g={g} theme={theme} />

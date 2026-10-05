@@ -181,7 +181,20 @@ export function viewerCaptionStops(root: HTMLElement, g: ViewerGeometry): Viewer
   const out: ViewerStopFinding[] = [];
   const p = viewerParts(root);
   if (g.flags.captionFontReady === false) out.push({ stop: "VIEWER_CAPTION_FONT_NOT_READY_STOP", detail: "caption face not confirmed loaded before measurement" });
-  if (g.landscapeCaption?.fitStop) out.push({ stop: "VIEWER_LANDSCAPE_CAPTION_FIT_STOP", detail: `caption over two lines at the widened paper ${g.landscapeCaption.widthMax.toFixed(2)} px` });
+  const w = g.captionWidening;
+  if (w?.stop) out.push({ stop: "VIEWER_CAPTION_SAFE_WIDTH_STOP", detail: `no compliant 0.5 px quantum in [${w.naturalPaper.w.toFixed(2)}, ${w.safeMax.toFixed(2)}] px` });
+  if (w && w.widening > 0) {
+    // Rendered symmetry: the photo keeps its canonical pixels, the paper gains the same on each side.
+    // The data is exactly symmetric; the browser lays print left/width and photo left/width on the
+    // 1/64 px layout grid independently (≤ 1/128 each) and the half widening is itself on that grid
+    // (≤ 1/64): 3/64 px bounds the rendered difference.
+    const pr = p.print.getBoundingClientRect();
+    const ph = p.photo.getBoundingClientRect();
+    const gainL = ph.left - pr.left - g.edge;
+    const gainR = pr.right - ph.right - g.edge;
+    if (Math.abs(gainL - gainR) > 3 / 64 + 1e-6 || Math.abs(ph.width - g.photo.w) > 1 / 64 + 1e-6)
+      out.push({ stop: "VIEWER_CAPTION_SYMMETRY_STOP", detail: `gains ${gainL.toFixed(4)} / ${gainR.toFixed(4)} px, photo ${ph.width.toFixed(3)} vs ${g.photo.w.toFixed(3)} px` });
+  }
   if (!g.caption || !p.caption) return out;
   const cs = getComputedStyle(p.caption);
   if (cs.overflow !== "visible" || cs.textOverflow === "ellipsis" || cs.clipPath !== "none")
