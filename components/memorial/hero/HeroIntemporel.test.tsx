@@ -13,6 +13,7 @@ import {
   HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
   HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
+  HERO_INTEMPOREL_TYPOGRAPHY,
 } from "@/config/hero-intemporel-tokens";
 import { heroMobileLightPhotoCssTransform } from "@/lib/memorial/hero-mobile-light-photo-runtime";
 
@@ -900,6 +901,14 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1);
     expect(desktopBlocks.some((block) => /^\s*\{\s*\.contextLabel\s*\{\s*display:\s*none;/.test(block))).toBe(true);
     expect(CSS_SOURCE).not.toMatch(/max-width:\s*959px/);
+  });
+
+  it("Desktop keeps the label's structural space (18px line box + existing 0.5em gap) without its text", () => {
+    const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1).join("\n");
+    // HERO_INTEMPOREL_TYPOGRAPHY.contextLabel: 15px × 1.2 line-height = the historical label line box.
+    expect(HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.desktopPx * HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.lineHeight).toBe(18);
+    expect(desktopBlocks).toMatch(/\.textZone::before\s*\{\s*content:\s*"";\s*display:\s*block;\s*flex:\s*none;\s*height:\s*calc\(15px \* 1\.2\);\s*\}/);
+    expect(CSS_SOURCE.split("@media (min-width: 960px)")[0]).not.toMatch(/::before/);
   });
 
   it("the runtime separator is laid out nowhere outside the 320–430px band", () => {

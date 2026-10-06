@@ -535,12 +535,23 @@
   }
 }
 
-/* Desktop: the context label leaves the Hero (mission: "suppression du
-   contexte" — the only Desktop change authorized). Nothing else moves
-   in this breakpoint's own CSS. */
+/* Desktop: the context label text leaves the Hero for good, but the
+   structural space it occupied stays (QG Handoff correctif Desktop) —
+   otherwise NAME rises into the main sheet's torn edge. The empty
+   `::before` is a flex item exactly as tall as the label's own line box
+   (HERO_INTEMPOREL_TYPOGRAPHY.contextLabel: 15px × 1.2 = 18px), and the
+   existing 0.5em flex gap still follows it: NAME starts 26px below the
+   zone's top, the value measured on main. Nothing else moves. */
 @media (min-width: 960px) {
   .contextLabel {
     display: none;
+  }
+
+  .textZone::before {
+    content: "";
+    display: block;
+    flex: none;
+    height: calc(15px * 1.2);
   }
 }
 
