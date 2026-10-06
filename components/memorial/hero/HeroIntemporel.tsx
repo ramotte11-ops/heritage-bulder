@@ -19,6 +19,8 @@ import {
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
+  HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
   HERO_INTEMPOREL_RUNTIME_MASTER_SRC,
   HERO_INTEMPOREL_TYPOGRAPHY,
@@ -82,6 +84,19 @@ import styles from "./HeroIntemporel.module.css";
  * at T07 is exactly what they see at T08. Each contracted runtime uses
  * that same saved 4:5 crop as its source plane before applying its
  * validated homography and mask/clip.
+ *
+ * ## Mobile text contract REV1 (320–430px only)
+ *
+ * Inside the 320–430px band — the band the four-layer Mobile Light/Dark
+ * photo runtimes already own — the text follows
+ * `HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT` (config/hero-intemporel-tokens.ts)
+ * instead of the legacy flow below: NAME → DATES → TRAITS+CŒUR → optional
+ * phrase, each centered on its variant's native box, sized in Hero-width
+ * units, no context label. Light uses the separator baked into its frozen
+ * plate (never a second one); Dark draws the runtime separator
+ * reproduced from that same ornament. Below 320px, 431–959px and Desktop
+ * keep the legacy flow; the context label is additionally hidden on
+ * Desktop (HeroIntemporel.module.css).
  *
  * ## Text zone + context label (mission sections 1, 5, 10)
  *
@@ -274,6 +289,56 @@ export interface FitDisplayNameResult {
  * name is always the element's `textContent`; only `fontSizePx` (every
  * tier) and, now, `maxWidth` (Tier 4, narrow mobile only) ever change.
  */
+/** The Mobile Text Contract REV1 band, in the exact form the CSS module
+ * switches on — so the fitting engine and the layout can never disagree
+ * about which contract applies. */
+const MOBILE_TEXT_CONTRACT_MEDIA_QUERY = `(min-width: ${HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.contractedWidthCssPx.min}px) and (max-width: ${HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.contractedWidthCssPx.max}px)`;
+
+export interface MobileContractNameFit {
+  fontSizePx: number;
+  lines: number;
+  usedExtremeFallback: boolean;
+}
+
+/**
+ * Mobile Text Contract REV1 (`TYPOGRAPHY_CORRECTED.md`) — the
+ * deterministic long-name engine, as a pure function of the Hero's own
+ * width and a line-count probe (so it is unit-testable without a layout
+ * engine):
+ *
+ *   1. nominal 10vw;
+ *   2. wrap naturally, up to 2 lines;
+ *   3. still more: reduce in 1px steps, never below the 7.6vw floor;
+ *   4. still more at that floor: the exceptional 3rd line is allowed;
+ *   5. still more: reduce in 1px steps, never below the 6.8vw extreme floor;
+ *   6. never truncate or ellipsize — whatever remains is rendered whole.
+ *
+ * No legacy 72/48/40/32px value or 88% narrow cap takes part here.
+ */
+export function fitMobileContractName(
+  heroWidthPx: number,
+  measureLinesAt: (fontSizePx: number) => number,
+): MobileContractNameFit {
+  const t = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.typography.name;
+  const nominalPx = (heroWidthPx * t.vw) / 100;
+  const normalMinPx = (heroWidthPx * t.normalMinVw) / 100;
+  const extremeMinPx = (heroWidthPx * t.extremeMinVw) / 100;
+
+  let size = nominalPx;
+  let lines = measureLinesAt(size);
+  while (lines > t.maxLinesNormal && size > normalMinPx) {
+    size = Math.max(normalMinPx, size - 1);
+    lines = measureLinesAt(size);
+  }
+  if (lines <= t.maxLinesExtreme) return { fontSizePx: size, lines, usedExtremeFallback: false };
+
+  while (lines > t.maxLinesExtreme && size > extremeMinPx) {
+    size = Math.max(extremeMinPx, size - 1);
+    lines = measureLinesAt(size);
+  }
+  return { fontSizePx: size, lines, usedExtremeFallback: size < normalMinPx };
+}
+
 const NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX = 380;
 const NARROW_MOBILE_SAFE_AREA_RATIO = 0.88;
 /** A dedicated floor for Tier 4 on narrow mobile ONLY — deliberately
@@ -295,8 +360,27 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
 
     const t = HERO_INTEMPOREL_TYPOGRAPHY.displayedName;
 
+    const mobileContract =
+      typeof window.matchMedia === "function" ? window.matchMedia(MOBILE_TEXT_CONTRACT_MEDIA_QUERY) : null;
+    let disposed = false;
+
     function fit() {
       if (!el) return;
+
+      // Mobile Text Contract REV1 (320–430px): its own engine, sized
+      // against the Hero's own width, never the legacy tiers below.
+      if (mobileContract?.matches) {
+        el.style.maxWidth = "";
+        const heroWidthPx = el.parentElement?.getBoundingClientRect().width || window.innerWidth;
+        const fitted = fitMobileContractName(heroWidthPx, (px) => {
+          el.style.fontSize = `${px}px`;
+          return countVisualLines(el);
+        });
+        el.style.fontSize = `${fitted.fontSizePx}px`;
+        setResult(fitted);
+        return;
+      }
+
       const isDesktop = window.innerWidth >= HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX;
       const maxPx = isDesktop ? t.desktopPx : t.mobilePx;
       const normalMinPx = isDesktop ? t.minNormalDesktopPx : t.minNormalMobilePx;
@@ -373,10 +457,73 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
 
     fit();
     window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
+    // Re-measure once the real webfonts are in: a measurement taken
+    // against a fallback face would count lines for the wrong glyphs.
+    document.fonts?.ready.then(() => {
+      if (!disposed) fit();
+    });
+    return () => {
+      disposed = true;
+      window.removeEventListener("resize", fit);
+    };
   }, [text]);
 
   return { ref, ...result };
+}
+
+/** One contract box as left/width/vertical-center percentages of its
+ * variant's own native scene. */
+function contractBoxVars(prefix: string, box: readonly [number, number, number, number], canvas: readonly [number, number]) {
+  const [canvasW, canvasH] = canvas;
+  const [x0, y0, x1, y1] = box;
+  return {
+    [`--mt-${prefix}-x`]: `${(x0 / canvasW) * 100}%`,
+    [`--mt-${prefix}-w`]: `${((x1 - x0) / canvasW) * 100}%`,
+    [`--mt-${prefix}-cy`]: `${(((y0 + y1) / 2) / canvasH) * 100}%`,
+    [`--mt-${prefix}-y1`]: `${(y1 / canvasH) * 100}%`,
+  };
+}
+
+/** Mobile Text Contract REV1 — the variant's native boxes as CSS custom
+ * properties, consumed only inside the 320–430px media query. */
+function mobileTextContractVars(skinVariant: SkinVariant): CSSProperties {
+  const m = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT[skinVariant];
+  const [canvasW, canvasH] = m.canvasPx;
+  const [sx0, sy0, sx1, sy1] = m.separator.bbox;
+  return {
+    ...contractBoxVars("name", m.nameBox, m.canvasPx),
+    ...contractBoxVars("dates", m.datesBox, m.canvasPx),
+    ...contractBoxVars("phrase", m.phraseBox, m.canvasPx),
+    "--mt-axis": `${(m.axisX / canvasW) * 100}%`,
+    "--mt-sep-x": `${(sx0 / canvasW) * 100}%`,
+    "--mt-sep-y": `${(sy0 / canvasH) * 100}%`,
+    "--mt-sep-w": `${((sx1 - sx0) / canvasW) * 100}%`,
+    "--mt-sep-h": `${((sy1 - sy0) / canvasH) * 100}%`,
+  } as CSSProperties;
+}
+
+/** Dark only (REV1 `MAPPING_DARK.md`): the runtime traits+cœur — the
+ * Light plate's own baked ornament, reproduced from its measured
+ * geometry (`HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY`). Purely
+ * decorative; laid out (and visible) only inside the 320–430px band. */
+function MobileRuntimeSeparator() {
+  const g = HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY;
+  return (
+    <svg
+      className={styles.mobileSeparator}
+      viewBox={g.viewBox}
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+      focusable="false"
+      data-hero-mobile-text-contract="runtime-separator"
+    >
+      <g stroke="currentColor" fill="none" strokeLinecap="butt" strokeLinejoin="round">
+        <path d={`M${g.leftRule[0]} ${g.ruleY} H${g.leftRule[1]}`} strokeWidth={g.ruleStrokeWidth} />
+        <path d={`M${g.rightRule[0]} ${g.ruleY} H${g.rightRule[1]}`} strokeWidth={g.ruleStrokeWidth} />
+        <path d={g.heartPath} strokeWidth={g.heartStrokeWidth} />
+      </g>
+    </svg>
+  );
 }
 
 export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, language }: HeroIntemporelProps) {
@@ -400,7 +547,10 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
   const { ref: nameRef, fontSizePx: nameFontSizePx } = useFitDisplayName(hero.displayName ?? "");
 
   const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
-  const textZoneVars = boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile));
+  const textZoneVars = {
+    ...boxStyleVars("tz", textZoneBox(desktop), textZoneBox(mobile)),
+    ...mobileTextContractVars(skinVariant),
+  } as CSSProperties;
   const mobileLightPhotoTransform = heroMobileLightPhotoCssTransform();
   const mobileDarkPhotoTransform = heroMobileDarkPhotoCssTransform();
   const desktopLightPhotoTransform = heroDesktopLightPhotoCssTransform();
@@ -685,6 +835,9 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
             {hero.displayName}
           </h1>
           {dateRangeText !== null && <p className={styles.dates}>{dateRangeText}</p>}
+          {HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT[skinVariant].separator.mode === "runtime" && (
+            <MobileRuntimeSeparator />
+          )}
           {hero.shortPhrase !== null && <p className={styles.shortPhrase}>{hero.shortPhrase}</p>}
         </div>
       </div>

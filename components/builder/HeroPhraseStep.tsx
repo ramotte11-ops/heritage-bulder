@@ -8,6 +8,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { HERO_SHORT_PHRASE_MAX_CHARS } from "@/lib/memorial/hero";
 import {
   commitPageB,
   heroStepProgress,
@@ -130,6 +131,7 @@ export function HeroPhraseStep({
         <textarea
           className={styles.textarea}
           defaultValue={read.hero.shortPhrase ?? ""}
+          maxLength={HERO_SHORT_PHRASE_MAX_CHARS}
           disabled={isSubmitting}
           aria-label={translate(language, titleKey)}
           onChange={(event) => handleChange(event.target.value)}

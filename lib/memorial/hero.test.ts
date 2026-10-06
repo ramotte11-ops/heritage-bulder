@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   inspectHero,
   isHeroComplete,
+  isHeroShortPhraseWithinLimit,
+  HERO_SHORT_PHRASE_MAX_CHARS,
   isHeroContentComplete,
   isHeroPhotoMediaUsable,
   parseHeroContent,
@@ -183,6 +185,28 @@ describe("parseHeroContent — shortPhrase (T05)", () => {
     const phrase = "Toujours dans nos cœurs";
     const result = parseHeroContent({ shortPhrase: phrase });
     expect(result.ok && result.hero.shortPhrase).toBe(phrase);
+  });
+});
+
+describe("shortPhrase 40-character limit (Mobile Text Contract REV1)", () => {
+  it("is exactly 40", () => {
+    expect(HERO_SHORT_PHRASE_MAX_CHARS).toBe(40);
+  });
+
+  it("accepts absence and anything up to 40 code points", () => {
+    expect(isHeroShortPhraseWithinLimit(null)).toBe(true);
+    expect(isHeroShortPhraseWithinLimit("a".repeat(40))).toBe(true);
+    expect(isHeroShortPhraseWithinLimit("🌿".repeat(40))).toBe(true);
+  });
+
+  it("rejects 41 code points", () => {
+    expect(isHeroShortPhraseWithinLimit("a".repeat(41))).toBe(false);
+  });
+
+  it("is a write-time rule only: a longer phrase stored earlier still parses, whole", () => {
+    const legacy = "Une phrase enregistrée avant la limite, plus longue que quarante caractères";
+    const result = parseHeroContent({ shortPhrase: legacy });
+    expect(result.ok && result.hero.shortPhrase).toBe(legacy);
   });
 });
 

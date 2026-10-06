@@ -10,6 +10,8 @@ import {
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
+  HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
 } from "@/config/hero-intemporel-tokens";
 import { heroMobileLightPhotoCssTransform } from "@/lib/memorial/hero-mobile-light-photo-runtime";
@@ -32,7 +34,7 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
-const { HeroIntemporel } = await import("./HeroIntemporel");
+const { HeroIntemporel, fitMobileContractName } = await import("./HeroIntemporel");
 
 afterEach(cleanup);
 
@@ -774,5 +776,133 @@ describe("HeroIntemporel — Étape 2 assembler contract", () => {
       expect(heroRule).toContain(`max-width: ${desktopWidth}px;`);
     }
     expect(heroRule).toContain("margin-inline: auto;");
+  });
+});
+
+/**
+ * HERO INTEMPOREL — MOBILE TEXT CONTRACT V1 REV1 (320–430px). Same
+ * discipline as the rest of this file: render/state contracts plus
+ * source-level CSS checks; the real-browser geometry is QA'd against the
+ * contract with real witnesses, not here.
+ */
+describe("HeroIntemporel — Mobile Text Contract REV1", () => {
+  const CSS_SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const MOBILE_BLOCKS = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)").slice(1).join("\n");
+
+  describe("fitMobileContractName — deterministic REV1 engine", () => {
+    it("keeps a name that fits at the nominal 10vw — never the legacy 72px", () => {
+      expect(fitMobileContractName(320, () => 1)).toEqual({ fontSizePx: 32, lines: 1, usedExtremeFallback: false });
+      expect(fitMobileContractName(430, () => 1)).toEqual({ fontSizePx: 43, lines: 1, usedExtremeFallback: false });
+    });
+
+    it("lets a long name wrap to 2 lines at nominal size before any reduction", () => {
+      const probe = vi.fn(() => 2);
+      expect(fitMobileContractName(375, probe)).toEqual({ fontSizePx: 37.5, lines: 2, usedExtremeFallback: false });
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it("then reduces in 1px steps until it fits 2 lines", () => {
+      const sizes: number[] = [];
+      const result = fitMobileContractName(375, (px) => {
+        sizes.push(px);
+        return px > 33 ? 3 : 2;
+      });
+      expect(sizes).toEqual([37.5, 36.5, 35.5, 34.5, 33.5, 32.5]);
+      expect(result).toEqual({ fontSizePx: 32.5, lines: 2, usedExtremeFallback: false });
+    });
+
+    it("allows the exceptional 3rd line at the 7.6vw normal floor, without shrinking further", () => {
+      const result = fitMobileContractName(375, (px) => (px > 28.5 ? 4 : 3));
+      expect(result).toEqual({ fontSizePx: 28.5, lines: 3, usedExtremeFallback: false });
+    });
+
+    it("only then reduces toward the 6.8vw extreme floor", () => {
+      const result = fitMobileContractName(375, (px) => (px > 26 ? 4 : 3));
+      expect(result).toEqual({ fontSizePx: 25.5, lines: 3, usedExtremeFallback: true });
+    });
+
+    it("never goes below the extreme floor and never truncates — the remaining lines stay", () => {
+      const result = fitMobileContractName(320, () => 5);
+      expect(result.fontSizePx).toBeCloseTo(21.76, 10);
+      expect(result.lines).toBe(5);
+      expect(result.usedExtremeFallback).toBe(true);
+    });
+  });
+
+  it("Light renders no runtime separator — the plate's baked traits+cœur is the only one", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.light.separator.mode).toBe("baked");
+    expect(container.querySelector('[data-hero-mobile-text-contract="runtime-separator"]')).toBeNull();
+  });
+
+  it("Dark renders exactly one decorative runtime separator, between dates and phrase", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const separators = container.querySelectorAll('[data-hero-mobile-text-contract="runtime-separator"]');
+    expect(separators).toHaveLength(1);
+    const separator = separators[0];
+    expect(separator.getAttribute("aria-hidden")).toBe("true");
+    expect(separator.getAttribute("viewBox")).toBe(HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY.viewBox);
+    expect(separator.previousElementSibling?.textContent).toBe("1948 – 2023");
+    expect(separator.nextElementSibling?.textContent).toBe("Toujours dans nos cœurs");
+  });
+
+  it("phrase absent: only the phrase node goes — the Dark separator stays, nothing is invented", () => {
+    const { container } = renderHero({ skinVariant: "dark", hero: { ...FULL_HERO, shortPhrase: null } });
+    const separator = container.querySelector('[data-hero-mobile-text-contract="runtime-separator"]');
+    expect(separator).toBeTruthy();
+    expect(separator?.nextElementSibling).toBeNull();
+  });
+
+  it.each(["light", "dark"] as const)("maps %s from its own native scene, never from the other variant", (variant) => {
+    const m = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT[variant];
+    const [canvasW, canvasH] = m.canvasPx;
+    const { container } = renderHero({ skinVariant: variant });
+    const zone = container.querySelector('[class*="textZone"]') as HTMLElement;
+    expect(zone.style.getPropertyValue("--mt-name-x")).toBe(`${(m.nameBox[0] / canvasW) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-name-y1")).toBe(`${(m.nameBox[3] / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-dates-cy")).toBe(`${((m.datesBox[1] + m.datesBox[3]) / 2 / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-phrase-cy")).toBe(`${((m.phraseBox[1] + m.phraseBox[3]) / 2 / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-axis")).toBe(`${(m.axisX / canvasW) * 100}%`);
+  });
+
+  it("carries REV1's exact boxes and corrected typography", () => {
+    const c = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT;
+    expect(c.light.canvasPx).toEqual([941, 1672]);
+    expect(c.light.nameBox).toEqual([150, 1008, 791, 1104]);
+    expect(c.light.datesBox).toEqual([260, 1107, 681, 1131]);
+    expect(c.light.separator.bbox).toEqual([346, 1134, 594, 1159]);
+    expect(c.light.phraseBox).toEqual([145, 1174, 796, 1296]);
+    expect(c.dark.canvasPx).toEqual([982, 1602]);
+    expect(c.dark.nameBox).toEqual([155, 884, 827, 978]);
+    expect(c.dark.datesBox).toEqual([270, 991, 712, 1017]);
+    expect(c.dark.separator.bbox).toEqual([350, 1032, 632, 1062]);
+    expect(c.dark.phraseBox).toEqual([150, 1082, 832, 1206]);
+    expect(c.typography.name).toMatchObject({ vw: 10, normalMinVw: 7.6, extremeMinVw: 6.8, lineHeight: 0.95 });
+    expect(c.typography.dates).toMatchObject({ vw: 3.25, lineHeight: 1.1 });
+    expect(c.typography.phrase).toMatchObject({ vw: 5.15, lineHeight: 1.15, maxWidthVw: 72 });
+  });
+
+  it("applies the corrected sizes only inside the 320–430px band", () => {
+    expect(MOBILE_BLOCKS).toContain("font-size: 10cqw;");
+    expect(MOBILE_BLOCKS).toContain("font-size: 3.25cqw;");
+    expect(MOBILE_BLOCKS).toContain("font-size: 5.15cqw;");
+    expect(MOBILE_BLOCKS).toContain("width: 72%;");
+    expect(MOBILE_BLOCKS).toContain("container-type: inline-size;");
+    const outside = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0];
+    expect(outside).not.toMatch(/cqw/);
+  });
+
+  it("hides the context label in the Mobile band and on Desktop only — 431–959px keeps it", () => {
+    expect(MOBILE_BLOCKS).toMatch(/\.contextLabel\s*\{\s*display:\s*none;\s*\}/);
+    const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1);
+    expect(desktopBlocks.some((block) => /^\s*\{\s*\.contextLabel\s*\{\s*display:\s*none;/.test(block))).toBe(true);
+    expect(CSS_SOURCE).not.toMatch(/max-width:\s*959px/);
+  });
+
+  it("the runtime separator is laid out nowhere outside the 320–430px band", () => {
+    expect(CSS_SOURCE).toMatch(/^\.mobileSeparator\s*\{\s*display:\s*none;\s*\}/m);
   });
 });
