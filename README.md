@@ -54,6 +54,13 @@ npm run build
 npm run start
 ```
 
+## Sentry Error Monitoring V1
+
+Sentry is wired for browser, Node.js and Edge errors with private source-map
+upload and an explicit privacy boundary. Tracing, Replay, profiling and Sentry
+Logs are not enabled. Configuration, Netlify variable scopes and the controlled
+verification procedure are documented in [`docs/sentry-v1.md`](docs/sentry-v1.md).
+
 No environment variables or external service is required to install, run,
 or build this project — see `.env.example` for what a future mission will
 need once Supabase is actually connected.
