@@ -448,6 +448,142 @@
   max-width: 100%;
 }
 
+/* --- Mobile Text Contract V1 REV1 — 320–430px only ---------------------
+   Same band as the Mobile Light/Dark photo runtimes above, so the text
+   always sits on the exact scene it was mapped against. Every box comes
+   from HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT (config/hero-intemporel-
+   tokens.ts) as `--mt-*` custom properties (HeroIntemporel.tsx's
+   `mobileTextContractVars`), in the variant's OWN native scene — Light
+   941×1672, Dark 982×1602. Typography is in Hero-width units (`cqw`,
+   i.e. REV1's `vw` resolved against the full-bleed Hero itself).
+
+   Dates and phrase are centered on their boxes. The name is anchored
+   on its box's BOTTOM edge, by its deepest descender: REV1 leaves only
+   3 native px between the NAME box (bottom) and the DATES box (top), and
+   Cormorant Garamond's descenders (`j` = 0.297em; font ascent 0.924em /
+   descent 0.287em, so 0.14em below a 0.95 line box) would otherwise
+   reach into the dates. A 2nd or exceptional 3rd line therefore grows
+   upward, toward the photo — never down into the dates or the separator.
+   Nothing is clipped. */
+
+.mobileSeparator {
+  display: none;
+}
+
+@media (min-width: 320px) and (max-width: 430px) {
+  .hero {
+    container-type: inline-size;
+  }
+
+  .textZone {
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    padding: 0;
+    overflow: visible;
+    text-align: center;
+  }
+
+  .contextLabel {
+    display: none;
+  }
+
+  .displayedName {
+    position: absolute;
+    left: var(--mt-name-x);
+    top: var(--mt-name-y1);
+    width: var(--mt-name-w);
+    transform: translateY(calc(-100% - 0.14em));
+    /* SSR/no-JS fallback = REV1 nominal 10vw; `useFitDisplayName`
+       replaces it with the measured size. */
+    font-size: 10cqw;
+    text-align: center;
+  }
+
+  /* Mobile Dark: a 2-line NAME is balanced (never a long first line over
+     a lone short word) — the art-aware engine in `useFitDisplayName`
+     measures this exact layout. Mobile Light is untouched. */
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .displayedName {
+    text-wrap: balance;
+  }
+
+  .dates {
+    position: absolute;
+    left: var(--mt-dates-x);
+    top: var(--mt-dates-cy);
+    width: var(--mt-dates-w);
+    transform: translateY(-50%);
+    font-size: 3.25cqw;
+    text-align: center;
+  }
+
+  .mobileSeparator {
+    display: block;
+    position: absolute;
+    left: var(--mt-sep-x);
+    top: var(--mt-sep-y);
+    width: var(--mt-sep-w);
+    height: var(--mt-sep-h);
+    color: var(--hero-ink-primary);
+    overflow: visible;
+  }
+
+  .shortPhrase {
+    position: absolute;
+    left: calc(var(--mt-axis) - 36%);
+    top: var(--mt-phrase-cy);
+    width: 72%;
+    max-width: 72%;
+    transform: translateY(-50%);
+    font-size: 5.15cqw;
+    text-align: center;
+  }
+}
+
+/* Desktop: the context label text leaves the Hero for good, but the
+   structural space it occupied stays (QG Handoff correctif Desktop) —
+   otherwise NAME rises into the main sheet's torn edge. The empty
+   `::before` is a flex item exactly as tall as the label's own line box
+   (HERO_INTEMPOREL_TYPOGRAPHY.contextLabel: 15px × 1.2 = 18px), and the
+   existing 0.5em flex gap still follows it: NAME starts 26px below the
+   zone's top, the value measured on main. Nothing else moves. */
+@media (min-width: 960px) {
+  .contextLabel {
+    display: none;
+  }
+
+  .textZone::before {
+    content: "";
+    display: block;
+    flex: none;
+    height: calc(15px * 1.2);
+  }
+}
+
+/* Desktop 960–1279px only — FAMILY PHRASE vs the bottom-left torn sheet
+   (QG final execution order). At these widths the scene is drawn at
+   0.57–0.76× while the text stays in fixed px, so the phrase's 2nd line
+   reaches the band (native y > ~665) where that sheet's edge recedes to
+   x ≈ 930–965, and the column itself starts at x ≈ 903. Measured on the
+   real runtime, phrase-only, minimum change:
+     - size: the phrase's own floor (HERO_INTEMPOREL_TYPOGRAPHY
+       .shortPhrase.minPx, 34px — already the clamp's floor above), which
+       keeps every 1–40-character phrase on 1–2 lines and lifts line 2;
+     - hanging indent: line 1 stays aligned on NAME and DATES, lines 2+
+       start 50px further right, clear of the sheet.
+   Neither alone is enough (34px alone: 9/32 renders still touch at 960).
+   NAME, DATES and the +26px chain do not move; ≥1280px is untouched. */
+@media (min-width: 960px) and (max-width: 1279.98px) {
+  .shortPhrase {
+    box-sizing: border-box;
+    font-size: 34px;
+    padding-left: 50px;
+    text-indent: -50px;
+  }
+}
+
 /* --- Accessibility -----------------------------------------------------
    No motion is used anywhere in this component (mission brief section
    21 — "Hero statique excellent"), so `prefers-reduced-motion` has

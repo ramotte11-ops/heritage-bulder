@@ -146,6 +146,32 @@ describe("writeDisplayName / writeShortPhrase — T03 / T05, never rejected, cor
     expect(result).toEqual({ ok: true, content: heroContent({ shortPhrase: null }) });
   });
 
+  it("accepts a shortPhrase of exactly 40 characters, spaces and punctuation included (Mobile Text Contract REV1)", () => {
+    const phrase = "Il fait si beau, il fait si bon, ici, là";
+    expect(Array.from(phrase)).toHaveLength(40);
+    expect(writeShortPhrase(EMPTY_CONTENT, phrase)).toEqual({ ok: true, content: heroContent({ shortPhrase: phrase }) });
+  });
+
+  it("refuses a shortPhrase over 40 characters whole — never truncated, the stored phrase is untouched", () => {
+    const phrase = "Une belle âme, pour toujours avec nous et";
+    expect(Array.from(phrase)).toHaveLength(41);
+    expect(writeShortPhrase(heroContent({ shortPhrase: "Avant" }), phrase)).toEqual({ ok: false, reason: "shortPhrase" });
+  });
+
+  it("counts the 40 characters after the existing peripheral-whitespace normalization", () => {
+    const phrase = "Il fait si beau, il fait si bon, ici, là";
+    expect(writeShortPhrase(EMPTY_CONTENT, `   ${phrase}   `)).toEqual({
+      ok: true,
+      content: heroContent({ shortPhrase: phrase }),
+    });
+  });
+
+  it("counts characters as Unicode code points — an accent or an emoji is one character", () => {
+    const phrase = `${"é".repeat(38)}🌿♡`;
+    expect(phrase.length).toBe(41);
+    expect(writeShortPhrase(EMPTY_CONTENT, phrase)).toEqual({ ok: true, content: heroContent({ shortPhrase: phrase }) });
+  });
+
   it("refuses to write over a corrupted stored hero — never silently replaced by an empty one", () => {
     const corrupted = { hero: 42 } as unknown as MemorialContent;
     expect(writeDisplayName(corrupted, "New Name")).toEqual({ ok: false, reason: "corrupted" });

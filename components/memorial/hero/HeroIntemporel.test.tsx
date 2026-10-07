@@ -8,9 +8,13 @@ import type { Media } from "@/types/media";
 import {
   HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY,
   HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
+  HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT,
   HERO_INTEMPOREL_RUNTIME_MASTER_SPECS,
+  HERO_INTEMPOREL_TYPOGRAPHY,
 } from "@/config/hero-intemporel-tokens";
 import { heroMobileLightPhotoCssTransform } from "@/lib/memorial/hero-mobile-light-photo-runtime";
 
@@ -32,7 +36,7 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
-const { HeroIntemporel } = await import("./HeroIntemporel");
+const { HeroIntemporel, fitMobileContractName, fitMobileDarkName } = await import("./HeroIntemporel");
 
 afterEach(cleanup);
 
@@ -774,5 +778,226 @@ describe("HeroIntemporel — Étape 2 assembler contract", () => {
       expect(heroRule).toContain(`max-width: ${desktopWidth}px;`);
     }
     expect(heroRule).toContain("margin-inline: auto;");
+  });
+});
+
+/**
+ * HERO INTEMPOREL — MOBILE TEXT CONTRACT V1 REV1 (320–430px). Same
+ * discipline as the rest of this file: render/state contracts plus
+ * source-level CSS checks; the real-browser geometry is QA'd against the
+ * contract with real witnesses, not here.
+ */
+describe("HeroIntemporel — Mobile Text Contract REV1", () => {
+  const CSS_SOURCE = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const MOBILE_BLOCKS = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)").slice(1).join("\n");
+
+  describe("fitMobileContractName — deterministic REV1 engine", () => {
+    it("keeps a name that fits at the nominal 10vw — never the legacy 72px", () => {
+      expect(fitMobileContractName(320, () => 1)).toEqual({ fontSizePx: 32, lines: 1, usedExtremeFallback: false });
+      expect(fitMobileContractName(430, () => 1)).toEqual({ fontSizePx: 43, lines: 1, usedExtremeFallback: false });
+    });
+
+    it("lets a long name wrap to 2 lines at nominal size before any reduction", () => {
+      const probe = vi.fn(() => 2);
+      expect(fitMobileContractName(375, probe)).toEqual({ fontSizePx: 37.5, lines: 2, usedExtremeFallback: false });
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it("then reduces in 1px steps until it fits 2 lines", () => {
+      const sizes: number[] = [];
+      const result = fitMobileContractName(375, (px) => {
+        sizes.push(px);
+        return px > 33 ? 3 : 2;
+      });
+      expect(sizes).toEqual([37.5, 36.5, 35.5, 34.5, 33.5, 32.5]);
+      expect(result).toEqual({ fontSizePx: 32.5, lines: 2, usedExtremeFallback: false });
+    });
+
+    it("allows the exceptional 3rd line at the 7.6vw normal floor, without shrinking further", () => {
+      const result = fitMobileContractName(375, (px) => (px > 28.5 ? 4 : 3));
+      expect(result).toEqual({ fontSizePx: 28.5, lines: 3, usedExtremeFallback: false });
+    });
+
+    it("only then reduces toward the 6.8vw extreme floor", () => {
+      const result = fitMobileContractName(375, (px) => (px > 26 ? 4 : 3));
+      expect(result).toEqual({ fontSizePx: 25.5, lines: 3, usedExtremeFallback: true });
+    });
+
+    it("never goes below the extreme floor and never truncates — the remaining lines stay", () => {
+      const result = fitMobileContractName(320, () => 5);
+      expect(result.fontSizePx).toBeCloseTo(21.76, 10);
+      expect(result.lines).toBe(5);
+      expect(result.usedExtremeFallback).toBe(true);
+    });
+  });
+
+  describe("fitMobileDarkName — art-aware adaptive engine (Mobile Dark only)", () => {
+    const clean = (lines = 1) => ({ lines, intrusionPx: 0, paddingInlinePx: 0 });
+    const touching = (lines = 1, intrusionPx = 5) => ({ lines, intrusionPx, paddingInlinePx: 0 });
+
+    it("keeps the nominal 10vw when it is already clean — no needless reduction", () => {
+      const probe = vi.fn(() => clean());
+      expect(fitMobileDarkName(375, probe)).toEqual({ fontSizePx: 37.5, lines: 1, paddingInlinePx: 0, clean: true });
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(probe).toHaveBeenCalledWith(37.5, false);
+    });
+
+    it("reduces in 0.5px steps only until the first clean size: the largest clean one", () => {
+      const sizes: number[] = [];
+      const result = fitMobileDarkName(375, (px, balanced) => {
+        if (!balanced) sizes.push(px);
+        return px > 29.5 ? touching() : clean();
+      });
+      expect(sizes).toEqual([37.5, 37, 36.5, 36, 35.5, 35, 34.5, 34, 33.5, 33, 32.5, 32, 31.5, 31, 30.5, 30, 29.5]);
+      expect(result).toEqual({ fontSizePx: 29.5, lines: 1, paddingInlinePx: 0, clean: true });
+    });
+
+    it("the size follows the content: a name that needs less room stays larger", () => {
+      const shortName = fitMobileDarkName(390, (px) => (px > 30 ? touching() : clean()));
+      const longName = fitMobileDarkName(390, (px) => (px > 22.5 ? touching() : clean()));
+      expect(shortName.fontSizePx).toBe(30);
+      expect(longName.fontSizePx).toBe(22.5);
+    });
+
+    it("at one size, prefers 1 line over the balanced 2-line layout", () => {
+      const result = fitMobileDarkName(320, (_px, balanced) => (balanced ? clean(2) : clean(1)));
+      expect(result.lines).toBe(1);
+    });
+
+    it("takes the balanced 2-line layout when it is the largest clean candidate", () => {
+      const result = fitMobileDarkName(320, (px, balanced) =>
+        balanced ? { lines: 2, intrusionPx: px > 28 ? 3 : 0, paddingInlinePx: 40 } : touching(1),
+      );
+      expect(result).toEqual({ fontSizePx: 28, lines: 2, paddingInlinePx: 40, clean: true });
+    });
+
+    it("never accepts 3 lines and never truncates; nothing clean → least intrusion", () => {
+      const result = fitMobileDarkName(320, (px) => (px > 20 ? touching(3, 1) : touching(2, px - 10)));
+      expect(result.clean).toBe(false);
+      expect(result.lines).toBe(2);
+      // least intrusion = the smallest size searched, the 3.25vw search bound
+      expect(result.fontSizePx).toBeCloseTo(10.4, 10);
+    });
+
+    it("skips candidates the caller rejects (null)", () => {
+      const result = fitMobileDarkName(320, (px, balanced) => (balanced ? null : px > 25 ? touching() : clean()));
+      expect(result).toMatchObject({ fontSizePx: 25, lines: 1, clean: true });
+    });
+  });
+
+  it("the Mobile Dark NAME territory is the measured profile of the frozen overlay", () => {
+    const t = HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY;
+    expect(t.canvasPx).toEqual(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.dark.canvasPx);
+    expect(t.xStart).toBe(100);
+    expect(t.xStep).toBe(2);
+    expect(t.artLowestY).toHaveLength((882 - 100) / 2);
+    expect(Math.min(...t.artLowestY)).toBeGreaterThanOrEqual(600);
+    // never below the NAME's bottom anchor
+    expect(Math.max(...t.artLowestY)).toBeLessThanOrEqual(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.dark.nameBox[3]);
+  });
+
+  it("balances a 2-line NAME on Mobile Dark only — Mobile Light keeps its wrapping", () => {
+    expect(MOBILE_BLOCKS).toMatch(
+      /\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="dark"\] \.displayedName\s*\{\s*text-wrap:\s*balance;\s*\}/,
+    );
+    expect(CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0]).not.toMatch(/text-wrap/);
+    expect(CSS_SOURCE.match(/text-wrap/g)).toHaveLength(1);
+  });
+
+  it("Desktop 960–1279px only: FAMILY PHRASE at its own 34px floor with a hanging indent", () => {
+    expect(HERO_INTEMPOREL_TYPOGRAPHY.shortPhrase.minPx).toBe(34);
+    const band = CSS_SOURCE.split("@media (min-width: 960px) and (max-width: 1279.98px)");
+    expect(band).toHaveLength(2);
+    expect(band[1]).toMatch(
+      /^\s*\{\s*\.shortPhrase\s*\{\s*box-sizing:\s*border-box;\s*font-size:\s*34px;\s*padding-left:\s*50px;\s*text-indent:\s*-50px;\s*\}\s*\}/,
+    );
+    // ≥1280px keeps the untouched phrase rule (clamp up to 42px), and nothing else in the band moves
+    expect(CSS_SOURCE).toMatch(/\.shortPhrase\s*\{[^}]*font-size:\s*clamp\(34px, 6vw, 42px\);/);
+    expect(band[1].split("}")[0]).not.toMatch(/displayedName|dates|textZone/);
+  });
+
+  it("Light renders no runtime separator — the plate's baked traits+cœur is the only one", () => {
+    const { container } = renderHero({ skinVariant: "light" });
+    expect(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.light.separator.mode).toBe("baked");
+    expect(container.querySelector('[data-hero-mobile-text-contract="runtime-separator"]')).toBeNull();
+  });
+
+  it("Dark renders exactly one decorative runtime separator, between dates and phrase", () => {
+    const { container } = renderHero({ skinVariant: "dark" });
+    const separators = container.querySelectorAll('[data-hero-mobile-text-contract="runtime-separator"]');
+    expect(separators).toHaveLength(1);
+    const separator = separators[0];
+    expect(separator.getAttribute("aria-hidden")).toBe("true");
+    expect(separator.getAttribute("viewBox")).toBe(HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY.viewBox);
+    expect(separator.previousElementSibling?.textContent).toBe("1948 – 2023");
+    expect(separator.nextElementSibling?.textContent).toBe("Toujours dans nos cœurs");
+  });
+
+  it("phrase absent: only the phrase node goes — the Dark separator stays, nothing is invented", () => {
+    const { container } = renderHero({ skinVariant: "dark", hero: { ...FULL_HERO, shortPhrase: null } });
+    const separator = container.querySelector('[data-hero-mobile-text-contract="runtime-separator"]');
+    expect(separator).toBeTruthy();
+    expect(separator?.nextElementSibling).toBeNull();
+  });
+
+  it.each(["light", "dark"] as const)("maps %s from its own native scene, never from the other variant", (variant) => {
+    const m = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT[variant];
+    const [canvasW, canvasH] = m.canvasPx;
+    const { container } = renderHero({ skinVariant: variant });
+    const zone = container.querySelector('[class*="textZone"]') as HTMLElement;
+    expect(zone.style.getPropertyValue("--mt-name-x")).toBe(`${(m.nameBox[0] / canvasW) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-name-y1")).toBe(`${(m.nameBox[3] / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-dates-cy")).toBe(`${((m.datesBox[1] + m.datesBox[3]) / 2 / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-phrase-cy")).toBe(`${((m.phraseBox[1] + m.phraseBox[3]) / 2 / canvasH) * 100}%`);
+    expect(zone.style.getPropertyValue("--mt-axis")).toBe(`${(m.axisX / canvasW) * 100}%`);
+  });
+
+  it("carries REV1's exact boxes and corrected typography", () => {
+    const c = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT;
+    expect(c.light.canvasPx).toEqual([941, 1672]);
+    expect(c.light.nameBox).toEqual([150, 1008, 791, 1104]);
+    expect(c.light.datesBox).toEqual([260, 1107, 681, 1131]);
+    expect(c.light.separator.bbox).toEqual([346, 1134, 594, 1159]);
+    expect(c.light.phraseBox).toEqual([145, 1174, 796, 1296]);
+    expect(c.dark.canvasPx).toEqual([982, 1602]);
+    expect(c.dark.nameBox).toEqual([155, 884, 827, 978]);
+    expect(c.dark.datesBox).toEqual([270, 991, 712, 1017]);
+    expect(c.dark.separator.bbox).toEqual([350, 1032, 632, 1062]);
+    expect(c.dark.phraseBox).toEqual([150, 1082, 832, 1206]);
+    expect(c.typography.name).toMatchObject({ vw: 10, normalMinVw: 7.6, extremeMinVw: 6.8, lineHeight: 0.95 });
+    expect(c.typography.dates).toMatchObject({ vw: 3.25, lineHeight: 1.1 });
+    expect(c.typography.phrase).toMatchObject({ vw: 5.15, lineHeight: 1.15, maxWidthVw: 72 });
+  });
+
+  it("applies the corrected sizes only inside the 320–430px band", () => {
+    expect(MOBILE_BLOCKS).toContain("font-size: 10cqw;");
+    expect(MOBILE_BLOCKS).toContain("font-size: 3.25cqw;");
+    expect(MOBILE_BLOCKS).toContain("font-size: 5.15cqw;");
+    expect(MOBILE_BLOCKS).toContain("width: 72%;");
+    expect(MOBILE_BLOCKS).toContain("container-type: inline-size;");
+    const outside = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0];
+    expect(outside).not.toMatch(/cqw/);
+  });
+
+  it("hides the context label in the Mobile band and on Desktop only — 431–959px keeps it", () => {
+    expect(MOBILE_BLOCKS).toMatch(/\.contextLabel\s*\{\s*display:\s*none;\s*\}/);
+    const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1);
+    expect(desktopBlocks.some((block) => /^\s*\{\s*\.contextLabel\s*\{\s*display:\s*none;/.test(block))).toBe(true);
+    expect(CSS_SOURCE).not.toMatch(/max-width:\s*959px/);
+  });
+
+  it("Desktop keeps the label's structural space (18px line box + existing 0.5em gap) without its text", () => {
+    const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1).join("\n");
+    // HERO_INTEMPOREL_TYPOGRAPHY.contextLabel: 15px × 1.2 line-height = the historical label line box.
+    expect(HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.desktopPx * HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.lineHeight).toBe(18);
+    expect(desktopBlocks).toMatch(/\.textZone::before\s*\{\s*content:\s*"";\s*display:\s*block;\s*flex:\s*none;\s*height:\s*calc\(15px \* 1\.2\);\s*\}/);
+    expect(CSS_SOURCE.split("@media (min-width: 960px)")[0]).not.toMatch(/::before/);
+  });
+
+  it("the runtime separator is laid out nowhere outside the 320–430px band", () => {
+    expect(CSS_SOURCE).toMatch(/^\.mobileSeparator\s*\{\s*display:\s*none;\s*\}/m);
   });
 });

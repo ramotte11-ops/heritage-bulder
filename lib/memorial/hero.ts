@@ -416,6 +416,23 @@ export function setHeroDisplayName(hero: HeroContent, value: string | null): Her
   return { ...hero, displayName: value === null ? null : normalizeOptionalText(value) };
 }
 
+/**
+ * HERO INTEMPOREL MOBILE TEXT CONTRACT V1 REV1 (`PHRASE_40_QA.md`) — the
+ * Builder authority for `shortPhrase`: at most 40 characters, spaces and
+ * punctuation included, counted AFTER the existing peripheral-whitespace
+ * normalization. Counted in Unicode code points (`Array.from`), so an
+ * accented letter or an emoji is one character, never two.
+ *
+ * Enforced where the family WRITES the phrase (T05,
+ * `writeShortPhrase`), never on read: a phrase stored before this limit
+ * existed still parses, and is still rendered whole — never truncated.
+ */
+export const HERO_SHORT_PHRASE_MAX_CHARS = 40;
+
+export function isHeroShortPhraseWithinLimit(shortPhrase: string | null): boolean {
+  return shortPhrase === null || Array.from(shortPhrase).length <= HERO_SHORT_PHRASE_MAX_CHARS;
+}
+
 /** T05 — sets `shortPhrase`. A blanks-only value normalizes to `null`
  * (incomplete), never rejected. No generation, no translation — exactly
  * the text passed in (mission brief, section 5). */

@@ -8,6 +8,7 @@ import {
   isHeroComplete,
   isHeroContentComplete,
   isHeroPhotoMediaUsable,
+  isHeroShortPhraseWithinLimit,
   setHeroBirth,
   setHeroCrop,
   setHeroDeath,
@@ -346,12 +347,17 @@ export function writeDeath(content: MemorialContent, date: HeroDate | null): Her
   return { ok: true, content: updateHero(content, result.hero) };
 }
 
-/** T05 — sets `shortPhrase`. Never rejects on its own, same reasoning
- * as `writeDisplayName`. */
+/** T05 — sets `shortPhrase`. A blanks-only value still normalizes to
+ * absent (same reasoning as `writeDisplayName`); the one rejection is a
+ * phrase longer than `HERO_SHORT_PHRASE_MAX_CHARS` once normalized
+ * (Hero Intemporel Mobile Text Contract REV1) — refused whole, never
+ * silently shortened. */
 export function writeShortPhrase(content: MemorialContent, value: string | null): HeroFieldWriteResult {
   const inspected = inspectHero(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
-  return { ok: true, content: updateHero(content, setHeroShortPhrase(inspected.hero, value)) };
+  const hero = setHeroShortPhrase(inspected.hero, value);
+  if (!isHeroShortPhraseWithinLimit(hero.shortPhrase)) return { ok: false, reason: "shortPhrase" };
+  return { ok: true, content: updateHero(content, hero) };
 }
 
 /**
