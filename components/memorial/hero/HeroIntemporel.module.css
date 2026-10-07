@@ -502,6 +502,13 @@
     text-align: center;
   }
 
+  /* Mobile Dark: a 2-line NAME is balanced (never a long first line over
+     a lone short word) — the art-aware engine in `useFitDisplayName`
+     measures this exact layout. Mobile Light is untouched. */
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .displayedName {
+    text-wrap: balance;
+  }
+
   .dates {
     position: absolute;
     left: var(--mt-dates-x);
@@ -552,6 +559,28 @@
     display: block;
     flex: none;
     height: calc(15px * 1.2);
+  }
+}
+
+/* Desktop 960–1279px only — FAMILY PHRASE vs the bottom-left torn sheet
+   (QG final execution order). At these widths the scene is drawn at
+   0.57–0.76× while the text stays in fixed px, so the phrase's 2nd line
+   reaches the band (native y > ~665) where that sheet's edge recedes to
+   x ≈ 930–965, and the column itself starts at x ≈ 903. Measured on the
+   real runtime, phrase-only, minimum change:
+     - size: the phrase's own floor (HERO_INTEMPOREL_TYPOGRAPHY
+       .shortPhrase.minPx, 34px — already the clamp's floor above), which
+       keeps every 1–40-character phrase on 1–2 lines and lifts line 2;
+     - hanging indent: line 1 stays aligned on NAME and DATES, lines 2+
+       start 50px further right, clear of the sheet.
+   Neither alone is enough (34px alone: 9/32 renders still touch at 960).
+   NAME, DATES and the +26px chain do not move; ≥1280px is untouched. */
+@media (min-width: 960px) and (max-width: 1279.98px) {
+  .shortPhrase {
+    box-sizing: border-box;
+    font-size: 34px;
+    padding-left: 50px;
+    text-indent: -50px;
   }
 }
 

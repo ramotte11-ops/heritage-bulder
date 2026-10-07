@@ -8,6 +8,7 @@ import type { Media } from "@/types/media";
 import {
   HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY,
   HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
@@ -35,7 +36,7 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
-const { HeroIntemporel, fitMobileContractName } = await import("./HeroIntemporel");
+const { HeroIntemporel, fitMobileContractName, fitMobileDarkName } = await import("./HeroIntemporel");
 
 afterEach(cleanup);
 
@@ -831,6 +832,91 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
       expect(result.lines).toBe(5);
       expect(result.usedExtremeFallback).toBe(true);
     });
+  });
+
+  describe("fitMobileDarkName — art-aware adaptive engine (Mobile Dark only)", () => {
+    const clean = (lines = 1) => ({ lines, intrusionPx: 0, paddingInlinePx: 0 });
+    const touching = (lines = 1, intrusionPx = 5) => ({ lines, intrusionPx, paddingInlinePx: 0 });
+
+    it("keeps the nominal 10vw when it is already clean — no needless reduction", () => {
+      const probe = vi.fn(() => clean());
+      expect(fitMobileDarkName(375, probe)).toEqual({ fontSizePx: 37.5, lines: 1, paddingInlinePx: 0, clean: true });
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(probe).toHaveBeenCalledWith(37.5, false);
+    });
+
+    it("reduces in 0.5px steps only until the first clean size: the largest clean one", () => {
+      const sizes: number[] = [];
+      const result = fitMobileDarkName(375, (px, balanced) => {
+        if (!balanced) sizes.push(px);
+        return px > 29.5 ? touching() : clean();
+      });
+      expect(sizes).toEqual([37.5, 37, 36.5, 36, 35.5, 35, 34.5, 34, 33.5, 33, 32.5, 32, 31.5, 31, 30.5, 30, 29.5]);
+      expect(result).toEqual({ fontSizePx: 29.5, lines: 1, paddingInlinePx: 0, clean: true });
+    });
+
+    it("the size follows the content: a name that needs less room stays larger", () => {
+      const shortName = fitMobileDarkName(390, (px) => (px > 30 ? touching() : clean()));
+      const longName = fitMobileDarkName(390, (px) => (px > 22.5 ? touching() : clean()));
+      expect(shortName.fontSizePx).toBe(30);
+      expect(longName.fontSizePx).toBe(22.5);
+    });
+
+    it("at one size, prefers 1 line over the balanced 2-line layout", () => {
+      const result = fitMobileDarkName(320, (_px, balanced) => (balanced ? clean(2) : clean(1)));
+      expect(result.lines).toBe(1);
+    });
+
+    it("takes the balanced 2-line layout when it is the largest clean candidate", () => {
+      const result = fitMobileDarkName(320, (px, balanced) =>
+        balanced ? { lines: 2, intrusionPx: px > 28 ? 3 : 0, paddingInlinePx: 40 } : touching(1),
+      );
+      expect(result).toEqual({ fontSizePx: 28, lines: 2, paddingInlinePx: 40, clean: true });
+    });
+
+    it("never accepts 3 lines and never truncates; nothing clean → least intrusion", () => {
+      const result = fitMobileDarkName(320, (px) => (px > 20 ? touching(3, 1) : touching(2, px - 10)));
+      expect(result.clean).toBe(false);
+      expect(result.lines).toBe(2);
+      // least intrusion = the smallest size searched, the 3.25vw search bound
+      expect(result.fontSizePx).toBeCloseTo(10.4, 10);
+    });
+
+    it("skips candidates the caller rejects (null)", () => {
+      const result = fitMobileDarkName(320, (px, balanced) => (balanced ? null : px > 25 ? touching() : clean()));
+      expect(result).toMatchObject({ fontSizePx: 25, lines: 1, clean: true });
+    });
+  });
+
+  it("the Mobile Dark NAME territory is the measured profile of the frozen overlay", () => {
+    const t = HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY;
+    expect(t.canvasPx).toEqual(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.dark.canvasPx);
+    expect(t.xStart).toBe(100);
+    expect(t.xStep).toBe(2);
+    expect(t.artLowestY).toHaveLength((882 - 100) / 2);
+    expect(Math.min(...t.artLowestY)).toBeGreaterThanOrEqual(600);
+    // never below the NAME's bottom anchor
+    expect(Math.max(...t.artLowestY)).toBeLessThanOrEqual(HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.dark.nameBox[3]);
+  });
+
+  it("balances a 2-line NAME on Mobile Dark only — Mobile Light keeps its wrapping", () => {
+    expect(MOBILE_BLOCKS).toMatch(
+      /\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="dark"\] \.displayedName\s*\{\s*text-wrap:\s*balance;\s*\}/,
+    );
+    expect(CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0]).not.toMatch(/text-wrap/);
+    expect(CSS_SOURCE.match(/text-wrap/g)).toHaveLength(1);
+  });
+
+  it("Desktop 960–1279px only: FAMILY PHRASE at its own 34px floor with a hanging indent", () => {
+    expect(HERO_INTEMPOREL_TYPOGRAPHY.shortPhrase.minPx).toBe(34);
+    const band = CSS_SOURCE.split("@media (min-width: 960px) and (max-width: 1279.98px)");
+    expect(band).toHaveLength(2);
+    expect(band[1]).toMatch(
+      /^\s*\{\s*\.shortPhrase\s*\{\s*box-sizing:\s*border-box;\s*font-size:\s*34px;\s*padding-left:\s*50px;\s*text-indent:\s*-50px;\s*\}\s*\}/,
+    );
+    // ≥1280px keeps the untouched phrase rule (clamp up to 42px), and nothing else in the band moves
+    expect(CSS_SOURCE).toMatch(/\.shortPhrase\s*\{[^}]*font-size:\s*clamp\(34px, 6vw, 42px\);/);
+    expect(band[1].split("}")[0]).not.toMatch(/displayedName|dates|textZone/);
   });
 
   it("Light renders no runtime separator — the plate's baked traits+cœur is the only one", () => {

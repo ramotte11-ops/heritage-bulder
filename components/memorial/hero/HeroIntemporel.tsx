@@ -18,6 +18,7 @@ import {
   HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME,
+  HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY,
   HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY,
   HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT,
@@ -229,6 +230,10 @@ export interface FitDisplayNameResult {
   ref: RefObject<HTMLHeadingElement | null>;
   fontSizePx: number | null;
   lines: number | null;
+  /** Mobile Dark adaptive engine only: symmetric inline padding of a
+   * balanced 2-line layout, and whether the chosen layout clears the art. */
+  paddingInlinePx?: number;
+  artClean?: boolean;
   /** True only once the algorithm has gone below the Studio's normal
    * minimum — mission section 6's documented "fallback extrême", never
    * silently indistinguishable from an ordinary tier-2 shrink. */
@@ -339,6 +344,112 @@ export function fitMobileContractName(
   return { fontSizePx: size, lines, usedExtremeFallback: size < normalMinPx };
 }
 
+/**
+ * Mobile Dark only (320–430px, QG final execution order) — the NAME is
+ * sized against the frozen art itself. `HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY`
+ * gives, per native column, the lowest point the art reaches above the
+ * NAME's bottom anchor; a layout is CLEAN when every glyph's real ink top
+ * stays below it (+ its clearance).
+ *
+ * Deterministic search, largest size first:
+ *   - from the REV1 nominal 10vw down, in 0.5px steps;
+ *   - at each size, the natural layout first (1 line when it fits, the
+ *     box's own wrapping otherwise), then — only for a name that fits one
+ *     line and has a break opportunity — the same name balanced on 2 lines;
+ *   - the first CLEAN candidate wins: the largest clean size, and at equal
+ *     size one line before two;
+ *   - nothing clean down to the floor: the candidate with the smallest
+ *     intrusion into the art (ties: larger size, then fewer lines).
+ * The size depends on the actual name and the actual art — never one
+ * fixed size per line count. Never truncates, ellipsizes or splits a word.
+ */
+const MOBILE_DARK_NAME_STEP_PX = 0.5;
+/** Search bound only (never a target): the DATES' own REV1 size. */
+const MOBILE_DARK_NAME_FLOOR_VW = 3.25;
+
+export interface MobileDarkNameCandidate {
+  lines: number;
+  /** Deepest intrusion of any glyph's ink into the art territory, native px
+   * (<= 0 means clean). */
+  intrusionPx: number;
+  paddingInlinePx: number;
+}
+
+export interface MobileDarkNameFit {
+  fontSizePx: number;
+  lines: number;
+  paddingInlinePx: number;
+  clean: boolean;
+}
+
+export function fitMobileDarkName(
+  heroWidthPx: number,
+  evaluate: (fontSizePx: number, balanceOnTwoLines: boolean) => MobileDarkNameCandidate | null,
+): MobileDarkNameFit {
+  const nominalPx = (heroWidthPx * HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.typography.name.vw) / 100;
+  const floorPx = (heroWidthPx * MOBILE_DARK_NAME_FLOOR_VW) / 100;
+  let fallback: MobileDarkNameFit | null = null;
+  let fallbackIntrusion = Infinity;
+
+  for (let size = nominalPx; ; size = Math.max(floorPx, size - MOBILE_DARK_NAME_STEP_PX)) {
+    for (const balanceOnTwoLines of [false, true]) {
+      const c = evaluate(size, balanceOnTwoLines);
+      if (!c || c.lines > 2) continue;
+      if (c.intrusionPx <= 0) {
+        return { fontSizePx: size, lines: c.lines, paddingInlinePx: c.paddingInlinePx, clean: true };
+      }
+      if (c.intrusionPx < fallbackIntrusion) {
+        fallbackIntrusion = c.intrusionPx;
+        fallback = { fontSizePx: size, lines: c.lines, paddingInlinePx: c.paddingInlinePx, clean: false };
+      }
+    }
+    if (size <= floorPx) break;
+  }
+  return fallback ?? { fontSizePx: nominalPx, lines: 1, paddingInlinePx: 0, clean: false };
+}
+
+/** Deepest intrusion (native px; <= 0 = clean) of the element's glyph ink
+ * into the Mobile Dark art territory. `null` where no real text metrics
+ * exist (jsdom): the caller then keeps the REV1 engine. */
+function mobileDarkNameIntrusion(el: HTMLElement, heroRect: DOMRect): number | null {
+  const ctx = document.createElement("canvas").getContext?.("2d");
+  if (!ctx || typeof document.createRange !== "function") return null;
+  const cs = getComputedStyle(el);
+  const sizePx = parseFloat(cs.fontSize);
+  ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const probe = ctx.measureText("H");
+  // Ascent of the font's content area: a glyph's client rect starts there.
+  const fontAscent = Number.isFinite(probe.fontBoundingBoxAscent) ? probe.fontBoundingBoxAscent : 0.924 * sizePx;
+  const t = HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY;
+  const k = t.canvasPx[0] / heroRect.width;
+  let worst = -Infinity;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent ?? "";
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (/\s/.test(ch)) continue;
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const rect = range.getClientRects()[0];
+      if (!rect) continue;
+      const m = ctx.measureText(ch);
+      const inkTop = (rect.top + fontAscent - m.actualBoundingBoxAscent - heroRect.top) * k;
+      const x0 = (rect.left - m.actualBoundingBoxLeft - heroRect.left) * k;
+      const x1 = (rect.left + m.actualBoundingBoxRight - heroRect.left) * k;
+      const c0 = Math.max(0, Math.floor((x0 - t.xStart) / t.xStep));
+      const c1 = Math.min(t.artLowestY.length - 1, Math.floor((x1 - t.xStart) / t.xStep));
+      if (c1 < 0 || c0 > t.artLowestY.length - 1) {
+        worst = Math.max(worst, Infinity);
+        continue;
+      }
+      for (let c = c0; c <= c1; c++) worst = Math.max(worst, t.artLowestY[c] + t.clearancePx - inkTop);
+    }
+  }
+  return worst === -Infinity ? 0 : worst;
+}
+
 const NARROW_MOBILE_SAFE_AREA_MAX_WIDTH_PX = 380;
 const NARROW_MOBILE_SAFE_AREA_RATIO = 0.88;
 /** A dedicated floor for Tier 4 on narrow mobile ONLY — deliberately
@@ -348,11 +459,15 @@ const NARROW_MOBILE_SAFE_AREA_RATIO = 0.88;
  * already-rare combination (Tier 4 AND narrower than 380px). */
 const NARROW_MOBILE_SAFE_AREA_MIN_FONT_PX = 32;
 
-export function useFitDisplayName(text: string): FitDisplayNameResult {
+export function useFitDisplayName(text: string, skinVariant: SkinVariant = "light"): FitDisplayNameResult {
   const ref = useRef<HTMLHeadingElement | null>(null);
-  const [result, setResult] = useState<{ fontSizePx: number | null; lines: number | null; usedExtremeFallback: boolean }>(
-    { fontSizePx: null, lines: null, usedExtremeFallback: false },
-  );
+  const [result, setResult] = useState<{
+    fontSizePx: number | null;
+    lines: number | null;
+    usedExtremeFallback: boolean;
+    paddingInlinePx?: number;
+    artClean?: boolean;
+  }>({ fontSizePx: null, lines: null, usedExtremeFallback: false });
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -371,7 +486,43 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       // against the Hero's own width, never the legacy tiers below.
       if (mobileContract?.matches) {
         el.style.maxWidth = "";
-        const heroWidthPx = el.parentElement?.getBoundingClientRect().width || window.innerWidth;
+        el.style.paddingInline = "";
+        const heroRect = el.parentElement?.getBoundingClientRect();
+        const heroWidthPx = heroRect?.width || window.innerWidth;
+
+        // Mobile Dark: the art-aware adaptive engine (see fitMobileDarkName).
+        if (skinVariant === "dark" && heroRect && mobileDarkNameIntrusion(el, heroRect) !== null) {
+          const boxWidth = el.getBoundingClientRect().width;
+          const fitted = fitMobileDarkName(heroWidthPx, (px, balanceOnTwoLines) => {
+            el.style.fontSize = `${px}px`;
+            el.style.paddingInline = "0px";
+            let padding = 0;
+            if (balanceOnTwoLines) {
+              // Only a name that fits one line and can break is offered a
+              // balanced 2-line layout; the box narrows symmetrically so it
+              // stays centred, and `text-wrap: balance` evens the lines.
+              if (countVisualLines(el) !== 1 || !/[\s-]/.test(text.trim())) return null;
+              const r = document.createRange();
+              r.selectNodeContents(el);
+              const lineWidth = r.getBoundingClientRect().width;
+              padding = Math.max(0, (boxWidth - lineWidth * 0.9) / 2);
+              el.style.paddingInline = `${padding}px`;
+            }
+            const lines = countVisualLines(el);
+            const intrusion = mobileDarkNameIntrusion(el, heroRect) ?? 0;
+            return { lines, intrusionPx: intrusion, paddingInlinePx: padding };
+          });
+          el.style.fontSize = `${fitted.fontSizePx}px`;
+          el.style.paddingInline = `${fitted.paddingInlinePx}px`;
+          setResult({
+            fontSizePx: fitted.fontSizePx,
+            lines: fitted.lines,
+            usedExtremeFallback: !fitted.clean,
+            paddingInlinePx: fitted.paddingInlinePx,
+            artClean: fitted.clean,
+          });
+          return;
+        }
         const fitted = fitMobileContractName(heroWidthPx, (px) => {
           el.style.fontSize = `${px}px`;
           return countVisualLines(el);
@@ -393,8 +544,10 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       // same effect left behind (e.g. a resize from a narrow phone to a
       // wider one, or a text change) before measuring anything below —
       // Tiers 1-3 must always measure against the element's normal,
-      // uncapped width.
+      // uncapped width. Same for the Mobile Dark engine's balanced-layout
+      // inset (a resize out of the 320–430px band).
       el.style.maxWidth = "";
+      el.style.paddingInline = "";
 
       // Tier 1/2 — nominal size, then shrink (never below the NORMAL
       // floor) until it wraps into <= maxLinesNormal. A name that
@@ -466,7 +619,7 @@ export function useFitDisplayName(text: string): FitDisplayNameResult {
       disposed = true;
       window.removeEventListener("resize", fit);
     };
-  }, [text]);
+  }, [text, skinVariant]);
 
   return { ref, ...result };
 }
@@ -544,7 +697,12 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
     editorialContext === "announcement" ? "context.announcementTitle" : "context.remembranceTitle",
   );
 
-  const { ref: nameRef, fontSizePx: nameFontSizePx } = useFitDisplayName(hero.displayName ?? "");
+  const {
+    ref: nameRef,
+    fontSizePx: nameFontSizePx,
+    paddingInlinePx: namePaddingInlinePx,
+    artClean: nameArtClean,
+  } = useFitDisplayName(hero.displayName ?? "", skinVariant);
 
   const photoWindowVars = boxStyleVars("win", photoWindowBox(desktop), photoWindowBox(mobile));
   const textZoneVars = {
@@ -830,7 +988,15 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
           <h1
             ref={nameRef}
             className={styles.displayedName}
-            style={nameFontSizePx !== null ? { fontSize: `${nameFontSizePx}px` } : undefined}
+            style={
+              nameFontSizePx !== null
+                ? {
+                    fontSize: `${nameFontSizePx}px`,
+                    ...(namePaddingInlinePx !== undefined ? { paddingInline: `${namePaddingInlinePx}px` } : {}),
+                  }
+                : undefined
+            }
+            data-hero-name-fit={nameArtClean === undefined ? undefined : nameArtClean ? "clean" : "least-intrusion"}
           >
             {hero.displayName}
           </h1>
