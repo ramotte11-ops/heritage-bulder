@@ -57,9 +57,11 @@ npm run start
 ## Sentry Error Monitoring V1
 
 Sentry is wired for browser, Node.js and Edge errors with private source-map
-upload and an explicit privacy boundary. Tracing, Replay, profiling and Sentry
-Logs are not enabled. Configuration, Netlify variable scopes and the controlled
-verification procedure are documented in [`docs/sentry-v1.md`](docs/sentry-v1.md).
+upload and an explicit privacy boundary. Request URLs and transaction names are
+dropped so dynamic memorial identifiers and family slugs cannot be sent.
+Tracing, Replay, profiling and Sentry Logs are not enabled. Configuration,
+Netlify variable scopes and the controlled verification procedure are documented
+in [`docs/sentry-v1.md`](docs/sentry-v1.md).
 
 No environment variables or external service is required for local install,
 tests or builds. Netlify Production and Deploy Preview builds intentionally

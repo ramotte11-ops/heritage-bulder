@@ -412,7 +412,7 @@ describe("architecture guards", () => {
         if (r) todo.push(r);
       }
     }
-    return [...seen].map((f) => path.relative(ROOT, f));
+    return [...seen].map((f) => path.relative(ROOT, f).split(path.sep).join("/"));
   }
 
   it("the Mobile runtime reuses the shared engine and reaches no component, Dark material, legacy builder or Desktop solver entry", () => {

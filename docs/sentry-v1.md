@@ -67,9 +67,10 @@ The shared configuration explicitly disables collection of user identity,
 cookies, HTTP headers, request/response bodies, URL query parameters, GraphQL
 documents/variables, AI inputs/outputs, database values, queue arguments, local
 stack variables, breadcrumbs and client outcome reports. A final `beforeSend`
-processor removes user data, extras, breadcrumbs, headers, cookies, bodies,
-query strings and fragments even if framework or application code attaches
-them later.
+processor removes user data, extras, breadcrumbs, transaction names and every
+request field except the HTTP method. In particular, the full URL is dropped:
+no dynamic route value, memorial identifier, family slug, query string or
+fragment is retained even if framework or application code attaches it later.
 
 Five source-code context lines remain enabled because they contain repository
 code, not family content, and make stack traces actionable. Error messages and
@@ -134,3 +135,89 @@ check above proves Sentry ingestion and remote source-map symbolication.
   `SECRETS_SCAN_OMIT_PATHS` cache exemption were deleted from Netlify. The
   scanner itself was never disabled. A final clean Deploy Preview confirms the
   test gate is absent from the new runtime snapshot.
+
+## Proposed controlled Production Gate
+
+Nothing in this section authorizes a Production change or deploy. Execute it
+only after an explicit Product GO for the named steps.
+
+### 1. Freeze and preflight
+
+1. Freeze one reviewed commit and require every GitHub check to pass.
+2. Confirm the matching Deploy Preview passes the family-critical smoke tests.
+3. Confirm Sentry still has IP-address storage disabled and that Replay,
+   tracing, profiling, Logs and PII collection remain off.
+4. Confirm Netlify secret scanning is enabled with no `SECRETS_SCAN_*`
+   exemption.
+5. Temporarily lock Netlify auto-publishing for the first release only. The
+   merge may then build a Production candidate without switching the live site.
+
+### 2. Configure Production, separately from Preview
+
+Create context-specific **Production** values in Netlify; do not replace or
+broaden the existing Deploy Preview values:
+
+| Variable | Production scope | Requirement |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SENTRY_DSN` | Builds | public DSN; Production context only |
+| `SENTRY_DSN` | Builds + Functions | server/edge DSN; Production context only |
+| `SENTRY_AUTH_TOKEN` | Builds only | dedicated secret token, `org:ci` only |
+| `SENTRY_ORG` | Builds | `heritage-hommage` |
+| `SENTRY_PROJECT` | Builds | `heritage-hommage` |
+| `SENTRY_TEST_TOKEN` | Builds + Functions, temporary | random one-use gate for the first proof only |
+
+Prefer a dedicated Production upload token named
+`heritage-netlify-production-sourcemaps-v1` so Preview and Production can be
+revoked independently. If the Netlify plan cannot restrict
+`SENTRY_AUTH_TOKEN` to Builds only, stop for Product/Security arbitration rather
+than exposing it to Functions or Runtime by default.
+
+Before merging, independently inspect each key and prove that it has distinct
+Deploy Preview and Production rows. Never reveal or copy values into logs,
+issues or the repository.
+
+### 3. Build the candidate while publication is locked
+
+1. Merge only after the separate merge authorization.
+2. Let Git CD build the `main` Production candidate while auto-publication is
+   locked.
+3. Require a green build, successful Sentry source-map upload, no secret-scan
+   warning and the expected commit/release SHA.
+4. If the build fails, do not publish or restore anything: the existing live
+   deploy is unchanged. Fix forward on a new reviewed commit.
+5. Run read-only checks against the candidate permalink where Netlify permits
+   them. Request a separate Product GO immediately before publishing.
+
+### 4. Publish and prove Error Monitoring
+
+1. Publish the reviewed candidate atomically only after that GO.
+2. Smoke-test the live landing, authentication entry, Builder entry and one
+   non-destructive family journey. Do not use real family content for the test.
+3. Trigger exactly one controlled Sentry event with the temporary token and no
+   request body.
+4. In Sentry, require environment `production`, the exact release SHA, readable
+   TypeScript source and the expected application frame.
+5. Inspect the complete event and require no request URL, transaction name,
+   memorial id, family slug, query, headers, cookies, body, user, breadcrumbs,
+   local variables or family content.
+
+### 5. Remove the temporary gate and finish cleanly
+
+1. Delete the Production `SENTRY_TEST_TOKEN` immediately after the proof.
+2. Build a second candidate from the same reviewed `main` HEAD while publication
+   remains locked. Environment changes require a fresh deploy.
+3. After explicit approval, publish that clean candidate.
+4. Verify `/monitoring/sentry-test` and the POST route both return `404`.
+5. Reconfirm that `SENTRY_TEST_TOKEN` and every `SECRETS_SCAN_*` override are
+   absent, while the five persistent Production variables remain correctly
+   scoped.
+6. Unlock auto-publication only after the Product owner accepts the first
+   production evidence and the normal main-branch release policy.
+
+### Stop conditions
+
+Stop without publishing if any required variable is absent, a scope is broader
+than approved, secret scanning reports a real leak, source-map upload fails,
+the candidate SHA differs, the Sentry environment is not `production`, the
+event is not symbolicated, any URL-derived/family data appears, or a smoke test
+fails.

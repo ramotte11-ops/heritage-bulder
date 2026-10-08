@@ -29,23 +29,15 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   delete event.user;
   delete event.extra;
   delete event.breadcrumbs;
+  // A transaction name may be derived from the concrete request URL. Even
+  // without its query string, that path can contain a memorial id or a family
+  // slug, so HERITAGE does not send it.
+  delete event.transaction;
 
   if (event.request) {
-    event.request = {
-      method: event.request.method,
-      url: event.request.url ? withoutQueryOrFragment(event.request.url) : undefined,
-    };
+    const method = event.request.method;
+    event.request = method ? { method } : undefined;
   }
 
   return event;
-}
-
-function withoutQueryOrFragment(value: string): string {
-  try {
-    const url = new URL(value, "https://heritage.invalid");
-    const path = `${url.pathname}`;
-    return url.origin === "https://heritage.invalid" ? path : `${url.origin}${path}`;
-  } catch {
-    return value.split(/[?#]/, 1)[0] ?? "";
-  }
 }
