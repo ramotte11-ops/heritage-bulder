@@ -25,16 +25,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node 22 est IMPOSÉ par la suite de tests, pas un choix de confort :
-          #   jsdom@30.0.1  engines: ^22.22.2 || ^24.15.0 || >=26.0.0
-          #   undici@8.10.2 engines: >=22.19.0
-          # Sur Node 20, les 11 fichiers annotés `@vitest-environment jsdom`
-          # font crasher leur worker vitest sur
-          #   TypeError: webidl.util.markAsUncloneable is not a function
-          # (undici/lib/web/cache/cachestorage.js, chargé par jsdom/lib/api.js).
-          # Le build de production reste validé sur Node 20 par le job
-          # `build-production` ci-dessous.
-          node-version: '22'
+          # Même LTS que le développement et Netlify. Node 24 satisfait aussi
+          # les contraintes jsdom/undici qui excluaient la suite DOM de Node 20.
+          node-version: '24'
           cache: 'npm'
 
       # Installation déterministe : échoue si package-lock.json est désynchronisé.
@@ -58,7 +51,7 @@ jobs:
         run: npx tsc --noEmit
 
   build-production:
-    name: Build (Node 20, parité Netlify)
+    name: Build (Node 24, parité Netlify)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -68,11 +61,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Exactement la version que Netlify utilise en production
-          # (netlify.toml → [build.environment] NODE_VERSION = "20").
-          # `next build` n'importe jamais jsdom, donc la contrainte Node 22 de
-          # la suite de tests ne s'applique pas ici : ce job prouve que le
-          # bundle de production compile bien sur le Node réel de production.
-          node-version: '20'
+          # (netlify.toml → [build.environment] NODE_VERSION = "24").
+          node-version: '24'
           cache: 'npm'
 
       - name: Install

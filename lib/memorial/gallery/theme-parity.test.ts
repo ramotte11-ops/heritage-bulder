@@ -51,7 +51,8 @@ function importGraph(entries: string[]): Set<string> {
   return seen;
 }
 
-const rel = (f: string) => path.relative(ROOT, f);
+const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join("/");
+const readText = (file: string) => readFileSync(file, "utf8").replace(/\r\n/g, "\n");
 
 /** Every module the Light engine and the geometry snapshot are made of. */
 const ENGINE_ENTRIES = [
@@ -78,14 +79,14 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
     const graph = [...importGraph(ENGINE_ENTRIES)].map(rel);
     expect(graph).toContain("lib/memorial/gallery/gallery-v2.ts");
     expect(graph.filter((f) => DARK_MODULES.includes(f) || f.startsWith("components/"))).toEqual([]);
-    for (const f of graph) expect(readFileSync(path.join(ROOT, f), "utf8")).not.toMatch(/A13_DARK_|data-a13-theme|--a13-dark-/);
+    for (const f of graph) expect(readText(path.join(ROOT, f))).not.toMatch(/A13_DARK_|data-a13-theme|--a13-dark-/);
   });
 
   it("Mobile Gallery Dark: no Dark material module and no component is reachable from the Mobile runtime", () => {
     const graph = [...importGraph(MOBILE_ENGINE_ENTRIES)].map(rel);
     expect(graph).toContain("lib/memorial/gallery/gallery-mobile-runtime.ts");
     expect(graph.filter((f) => DARK_MODULES.includes(f) || f.startsWith("components/"))).toEqual([]);
-    for (const f of graph) expect(readFileSync(path.join(ROOT, f), "utf8")).not.toMatch(/A13_DARK_|A13_MOBILE_DARK_|data-a13-theme|--a13-dark-/);
+    for (const f of graph) expect(readText(path.join(ROOT, f))).not.toMatch(/A13_DARK_|A13_MOBILE_DARK_|data-a13-theme|--a13-dark-/);
   });
 
   it("Dark tokens are imported only by the rendering layer", () => {
@@ -99,7 +100,7 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
       }
     };
     for (const d of ["app", "components", "config", "lib"]) walk(path.join(ROOT, d));
-    const readers = files.filter((f) => /gallery-a13-dark-material|gallery-a13-mobile-dark-material|theme-material/.test(readFileSync(f, "utf8").match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
+    const readers = files.filter((f) => /gallery-a13-dark-material|gallery-a13-mobile-dark-material|theme-material/.test(readText(f).match(/from\s+["'][^"']+["']/g)?.join(" ") ?? "")).map(rel).sort();
     expect(readers).toEqual([
       "components/memorial/gallery/A13GalleryScene.tsx",
       "components/memorial/gallery/A13MobileGallery.tsx",
@@ -114,7 +115,7 @@ describe("Dark V1.1 — the solver never reads a Dark token", () => {
 // ── Material-only CSS (materialOnlyGuard) ──────────────────────────────
 
 function darkRules(file: string) {
-  const css = readFileSync(path.join(ROOT, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const css = readText(path.join(ROOT, file)).replace(/\/\*[\s\S]*?\*\//g, "");
   return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .map(([, sel, body]) => ({ selector: sel.trim(), props: body.split(";").map((d) => d.split(":")[0].trim()).filter(Boolean) }))
     .filter((r) => r.selector.includes("data-a13-theme"));
@@ -142,8 +143,8 @@ describe("Dark V1.1 — stylesheets are material only", () => {
   it("keeps the Light rules byte-for-byte (Dark rules are appended, never edits)", () => {
     // Every non-Dark rule still exists exactly once, and the Light values
     // this pilot depends on are unchanged.
-    const scene = readFileSync(path.join(ROOT, files[0]), "utf8");
-    const polaroid = readFileSync(path.join(ROOT, files[1]), "utf8");
+    const scene = readText(path.join(ROOT, files[0]));
+    const polaroid = readText(path.join(ROOT, files[1]));
     expect(scene).toContain("border: calc(1.5 * var(--k)) solid rgb(92 74 41);");
     expect(scene).toContain("outline: 2px solid currentColor;\n  outline-offset: 4px;");
     expect(polaroid).toContain("background-color: #f4ebdf;");
@@ -151,7 +152,7 @@ describe("Dark V1.1 — stylesheets are material only", () => {
     expect(polaroid).toContain("fill: #5a4a3e;");
     expect(polaroid).toContain("outline: calc(3 * var(--k)) solid #2f5d8a;");
     // Mobile Gallery Light (V1.7) values the Dark rules sit on.
-    const mobile = readFileSync(path.join(ROOT, files[2]), "utf8");
+    const mobile = readText(path.join(ROOT, files[2]));
     expect(mobile).toContain("  color: #3d3024;");
     expect(mobile).toContain("  color: #5a4633;");
     expect(mobile).toContain("border: calc(1.5 * var(--k)) solid rgb(92 74 41);\n  border-radius: calc(8 * var(--k));\n  background: transparent;\n  color: rgb(54 50 25);");
@@ -166,7 +167,7 @@ describe("Dark V1.1 — stylesheets are material only", () => {
   it("Mobile Gallery Dark: recolours the title block, subtitle, CTA states, focus and continuation — and nothing else", () => {
     const mobile = darkRules(files[2]).map((r) => r.selector.replace(/\.stage\[data-a13-theme="dark"\]\s*/, "")).sort();
     expect(mobile).toEqual([".cta", ".cta:active", ".cta:disabled", ".cta:focus-visible", ".cta:hover", ".extension", ".extension::after", ".extension::before", ".subtitle", ".titleBlock"]);
-    const css = readFileSync(path.join(ROOT, files[2]), "utf8");
+    const css = readText(path.join(ROOT, files[2]));
     expect(css).toContain(`background-color: ${A13_MOBILE_DARK_BOTTOM_CONTINUATION.baseColor.toLowerCase()};`);
     expect(css).toContain(`color: ${A13_DARK_MATERIAL.runtimeText.titleInk.toLowerCase()};`);
     expect(css).toContain(`color: ${A13_DARK_MATERIAL.runtimeText.microcopyInk.toLowerCase()};`);

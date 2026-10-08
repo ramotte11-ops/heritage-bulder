@@ -12,5 +12,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // The Gallery QA matrices are deliberately CPU-heavy. Running one file per
+    // logical core makes them contend badly on Windows and turns their existing
+    // per-test limits into load-dependent failures. A single Windows worker
+    // keeps each solver matrix inside its unchanged contractual timeout. Linux
+    // CI keeps Vitest's default worker count.
+    maxWorkers: process.platform === "win32" ? 1 : undefined,
   },
 });
