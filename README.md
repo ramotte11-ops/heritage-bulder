@@ -34,7 +34,8 @@ see [What is NOT built](#what-is-not-built-yet) below.
 
 ## Getting started
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 24 LTS and npm. The repository, CI and Netlify all pin
+the Node 24 major line.
 
 ```bash
 # install dependencies

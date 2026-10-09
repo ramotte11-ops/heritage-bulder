@@ -149,6 +149,7 @@ const SERVER_ONLY_MODULES = [
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx"];
+const repoRelative = (file: string): string => path.relative(REPO_ROOT, file).split(path.sep).join("/");
 
 function listSourceFiles(): string[] {
   const files: string[] = [];
@@ -161,7 +162,7 @@ function listSourceFiles(): string[] {
         continue;
       }
       if (SOURCE_EXTENSIONS.includes(path.extname(full)) && !full.includes(".test.")) {
-        files.push(path.relative(REPO_ROOT, full));
+        files.push(repoRelative(full));
       }
     }
   }
@@ -192,7 +193,7 @@ function resolveSpecifier(fromFile: string, specifier: string): string | null {
     ...SOURCE_EXTENSIONS.map((extension) => path.join(base, `index${extension}`)),
   ]) {
     if (existsSync(candidate) && statSync(candidate).isFile()) {
-      return path.relative(REPO_ROOT, candidate);
+      return repoRelative(candidate);
     }
   }
 
@@ -203,20 +204,32 @@ function resolveSpecifier(fromFile: string, specifier: string): string | null {
  * and dynamic import() — including type-only imports, deliberately: a
  * `import type` is erased at build time, but treating it as an edge
  * keeps this check conservative rather than clever. */
+const importsCache = new Map<string, string[]>();
+
 function importsOf(file: string): string[] {
+  const cached = importsCache.get(file);
+  if (cached) return cached;
   const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
   const specifiers = [
     ...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g),
   ].map((match) => match[1]);
 
-  return specifiers
+  const imports = specifiers
     .map((specifier) => resolveSpecifier(file, specifier))
     .filter((resolved): resolved is string => resolved !== null);
+  importsCache.set(file, imports);
+  return imports;
 }
 
+const serverActionCache = new Map<string, boolean>();
+
 function isServerActionModule(file: string): boolean {
+  const cached = serverActionCache.get(file);
+  if (cached !== undefined) return cached;
   const head = readFileSync(path.join(REPO_ROOT, file), "utf8").slice(0, 200);
-  return /^\s*["']use server["']/.test(head);
+  const isServerAction = /^\s*["']use server["']/.test(head);
+  serverActionCache.set(file, isServerAction);
+  return isServerAction;
 }
 
 /**
@@ -230,6 +243,8 @@ function isServerActionModule(file: string): boolean {
  * could see it, which it cannot.
  */
 function transitiveImports(entry: string): Set<string> {
+  const cached = transitiveImportsCache.get(entry);
+  if (cached) return cached;
   const seen = new Set<string>();
   const queue = [entry];
 
@@ -243,14 +258,21 @@ function transitiveImports(entry: string): Set<string> {
     }
   }
 
+  transitiveImportsCache.set(entry, seen);
   return seen;
 }
 
+const transitiveImportsCache = new Map<string, Set<string>>();
+
+let clientEntrypointsCache: string[] | undefined;
+
 function clientEntrypoints(): string[] {
-  return listSourceFiles().filter((file) => {
+  if (clientEntrypointsCache) return clientEntrypointsCache;
+  clientEntrypointsCache = listSourceFiles().filter((file) => {
     const head = readFileSync(path.join(REPO_ROOT, file), "utf8").slice(0, 200);
     return /^\s*["']use client["']/.test(head);
   });
+  return clientEntrypointsCache;
 }
 
 describe("server-only boundary", () => {

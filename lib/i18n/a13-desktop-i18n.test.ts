@@ -78,6 +78,7 @@ describe("D5 — translateWith (placeholders)", () => {
  */
 describe("D5 — guard: no A13 product text hardcoded outside lib/i18n", () => {
   const ROOT = path.resolve(import.meta.dirname, "../..");
+  const relativePath = (file: string) => path.relative(ROOT, file).split(path.sep).join("/");
   const DIRS = ["app", "components", "lib", "config"];
   const files: string[] = [];
   const walk = (dir: string) => {
@@ -100,7 +101,7 @@ describe("D5 — guard: no A13 product text hardcoded outside lib/i18n", () => {
 
   it("scans a real source tree", () => {
     expect(sources.length).toBeGreaterThan(50);
-    expect(sources.some((f) => f.endsWith("components/memorial/viewer/MemoryViewer.tsx"))).toBe(true);
+    expect(sources.some((f) => relativePath(f) === "components/memorial/viewer/MemoryViewer.tsx")).toBe(true);
     expect(WORDINGS).toEqual(expect.arrayContaining(["Voir plus de souvenirs", "See more memories", "Ver más recuerdos", "Fermer le souvenir", "Album de souvenirs", "Close memory", "Álbum de recuerdos"]));
   });
 
@@ -108,8 +109,8 @@ describe("D5 — guard: no A13 product text hardcoded outside lib/i18n", () => {
     const hits: string[] = [];
     for (const f of sources) {
       const text = readFileSync(f, "utf8");
-      for (const w of WORDINGS) if (text.includes(w)) hits.push(`${path.relative(ROOT, f)}: "${w}"`);
-      for (const p of PATTERNS) if (p.test(text)) hits.push(`${path.relative(ROOT, f)}: ${p}`);
+      for (const w of WORDINGS) if (text.includes(w)) hits.push(`${relativePath(f)}: "${w}"`);
+      for (const p of PATTERNS) if (p.test(text)) hits.push(`${relativePath(f)}: ${p}`);
     }
     expect(hits).toEqual([]);
   });
