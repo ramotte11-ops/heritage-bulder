@@ -60,10 +60,46 @@ export function readGuidedFlowState(content: MemorialContent): HumanFlowState {
   return result;
 }
 
-/** Writes the flow-state bag back, preserving every other content key
+/**
+ * Every entry of the STORED `content.guidedFlow` bag whose key is not a
+ * `StepId` this build knows, kept verbatim — whatever its value. `[]`
+ * when the bag itself is missing or not a plain object (there is then
+ * nothing addressable to keep).
+ */
+function unknownStepEntries(content: MemorialContent): [string, unknown][] {
+  const raw = (content as GuidedFlowContent).guidedFlow;
+  if (!isPlainObject(raw)) return [];
+  return Object.entries(raw).filter(([key]) => !isStepId(key));
+}
+
+/**
+ * Writes the flow-state bag back, preserving every other content key
  * untouched — a plain shallow merge, same discipline as
  * `lib/memorial/hero.ts`'s `updateHero` and `lib/memorial/death-notice.ts`'s
- * `writeDeathNotice`. */
+ * `writeDeathNotice`.
+ *
+ * ## Mission B02-L1 — a save never deletes a key this build doesn't know
+ *
+ * Every per-step write is `writeGuidedFlowState(content,
+ * { ...readGuidedFlowState(content), X })`, and `readGuidedFlowState`
+ * drops unknown ids on purpose. Writing that filtered state back as the
+ * WHOLE bag used to erase every unknown key on the next Continue/Skip/
+ * reopen click — e.g. a step record written by a newer release, read
+ * back after a rollback to this one (B01 report, risk R4).
+ *
+ * So the bag written is: every unknown-id entry of the stored bag,
+ * verbatim, then `flow`. For a KNOWN id, `flow` stays the sole
+ * authority, exactly as before — present means written, absent means
+ * removed (which is how `reopenPageC`/`reopenA01`/`reopenA02` un-mark a
+ * step), and a malformed known-id record is still dropped. Business
+ * reads are unchanged: `readGuidedFlowState` still never returns an
+ * unknown id.
+ *
+ * `Object.fromEntries` (rather than assigning keys one by one) keeps a
+ * stored key such as `"__proto__"` an ordinary own property instead of
+ * a prototype change.
+ */
 export function writeGuidedFlowState(content: MemorialContent, flow: HumanFlowState): MemorialContent {
-  return { ...content, guidedFlow: flow } as MemorialContent;
+  const guidedFlow = Object.fromEntries([...unknownStepEntries(content), ...Object.entries(flow)]);
+  return { ...content, guidedFlow } as MemorialContent;
 }
