@@ -285,7 +285,10 @@ function SectionItem({
                   <span className={styles.mark} aria-hidden="true">
                     {STATUS_MARK[screen.status]}
                   </span>
-                  <span className={styles.screenLabel}>{label}</span>
+                  <span className={styles.screenLabel}>
+                    {label}
+                    <ScreenDetail screen={screen} journey={journey} />
+                  </span>
                   <ScreenStatusAndAction screen={screen} label={label} journey={journey} actions={actions} />
                 </li>
               );
@@ -294,6 +297,55 @@ function SectionItem({
         )
       )}
     </li>
+  );
+}
+
+/** T08's row, once T08 is done: the ambiance actually saved
+ * (`memorials.skin_variant`), so the family sees which one they chose. */
+function ScreenDetail({ screen, journey }: { screen: JourneyScreenState; journey: JourneyNavigation }) {
+  if (screen.id !== "reveal" || screen.status !== "done" || journey.skinVariant === null) return null;
+  return (
+    <span className={styles.screenDetail} data-ambiance={journey.skinVariant}>
+      {translate(journey.language, journey.skinVariant === "dark" ? "journey.ambiance.dark" : "journey.ambiance.light")}
+    </span>
+  );
+}
+
+/**
+ * « Changer l'ambiance » — the Preview's discreet way back to T08, opened
+ * for revision exactly like « Revoir » in « Mon parcours » (same guard
+ * against unsaved input, same drained autosave, same `?etape=`).
+ * Renders nothing outside a journey, or while T08 is not reopenable.
+ */
+export function ChangeAmbianceLink({ className }: { className?: string }) {
+  const journey = useJourney();
+  if (journey === null) return null;
+  const reveal = journey.snapshot.sections.flatMap((section) => section.screens).find((screen) => screen.id === "reveal");
+  if (reveal === undefined || !reveal.accessible || reveal.status === "current" || journey.snapshot.revising === "reveal") {
+    return null;
+  }
+  return <ChangeAmbianceAction journey={journey} className={className} />;
+}
+
+function ChangeAmbianceAction({ journey, className }: { journey: JourneyNavigation; className?: string }) {
+  const guard = useGuardedNavigation(journey);
+  return (
+    <div className={styles.revising}>
+      <button
+        type="button"
+        className={className ?? styles.linkButton}
+        onClick={() => guard.run(() => journey.openScreen("reveal"))}
+        disabled={guard.busy}
+      >
+        {translate(journey.language, "preview.changeAmbiance")}
+      </button>
+      {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
+      {guard.failed && (
+        <p role="alert" className={styles.error}>
+          {translate(journey.language, "journey.saveFailed")}
+        </p>
+      )}
+    </div>
   );
 }
 

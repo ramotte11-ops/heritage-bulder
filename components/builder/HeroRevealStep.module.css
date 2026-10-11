@@ -85,27 +85,108 @@
   width: 100%;
 }
 
-.toggle {
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: var(--heritage-font-family-sans);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--heritage-accent-primary);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+/* Correction Light / Dark — « Mon parcours » and the ambiance selector,
+ * in the Builder strip ABOVE the Hero (never under it, out of sight).
+ * Builder chrome only: the Studio look stays light whatever the choice. */
+.builderTools {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-sm);
+  padding-bottom: var(--heritage-space-sm);
 }
 
-.toggle:disabled {
-  color: var(--heritage-state-disabled-text);
+.ambiance {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ambianceLegend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--heritage-text-primary);
+}
+
+/* Two equal options, side by side, the chosen one clearly marked. */
+.ambianceOptions {
+  display: inline-flex;
+  padding: 0.25rem;
+  gap: 0.25rem;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-pill);
+  background: var(--heritage-surface-card);
+}
+
+.ambianceOption {
+  position: relative;
+  cursor: pointer;
+}
+
+/* The native radio stays in the accessibility tree and keyboard order
+ * (arrows switch the option); only its visual box is hidden. */
+.ambianceInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ambianceText {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6.5rem;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border-radius: var(--heritage-radius-pill);
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+  transition: background-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.ambianceInput:checked + .ambianceText {
+  background: var(--heritage-accent-primary);
+  color: var(--heritage-surface-card);
+}
+
+.ambianceOption:hover .ambianceInput:not(:checked) + .ambianceText {
+  background: var(--heritage-surface-selected);
+}
+
+.ambianceInput:focus-visible + .ambianceText {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.ambiance:disabled .ambianceOption {
   cursor: not-allowed;
 }
 
-.toggle:focus-visible {
-  outline: 2px solid var(--heritage-focus-ring);
-  outline-offset: 2px;
+.ambiance:disabled .ambianceText {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambianceText {
+    transition: none;
+  }
 }
 
 .error {

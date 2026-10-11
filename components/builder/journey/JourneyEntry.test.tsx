@@ -28,6 +28,7 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { BuilderScreenNav } = await import("./BuilderScreenNav");
+const { ChangeAmbianceLink } = await import("./JourneyEntry");
 const { JourneyContext, RouteJourneyProvider, useStepDone } = await import("./journey-context");
 
 afterEach(() => {
@@ -204,6 +205,7 @@ describe("useStepDone — what a step does once its Continue is saved", () => {
         value={{
           language: "fr",
           snapshot: resolveJourney(PARTIAL),
+          skinVariant: null,
           openScreen: async () => true,
           resume: async () => true,
           finishStep,
@@ -337,5 +339,73 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: language === "en" ? /My journey/ : /Mi recorrido/ }));
     expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("correction Light / Dark — the saved ambiance, and « Changer l'ambiance »", () => {
+  const AFTER_IDENTITY = {
+    hero: { displayName: "Jeanne Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+    guidedFlow: { T04: { status: "skipped" } },
+  } as unknown as MemorialContent;
+
+  function renderJourney(content: MemorialContent, skinVariant: "light" | "dark" | null, children = <BuilderScreenNav />) {
+    render(
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(content)} skinVariant={skinVariant} builderPath="/builder/m-1">
+          {children}
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+  }
+  const revealRow = () => document.querySelector('[data-screen="reveal"]') as HTMLElement;
+
+  it.each([
+    ["light", "Ambiance : Claire"],
+    ["dark", "Ambiance : Sombre"],
+  ] as const)("T08 done: its row shows the saved ambiance (%s)", (variant, text) => {
+    renderJourney(PARTIAL, variant);
+    openPanel();
+    expect(revealRow().textContent).toContain("L'ambiance de l'hommage");
+    expect(revealRow().textContent).toContain(text);
+    expect(screen.getByRole("button", { name: "Revoir — L'ambiance de l'hommage" })).toBeTruthy();
+  });
+
+  it("T08 not reached yet: no ambiance shown (the default is not a family choice)", () => {
+    renderJourney(AFTER_IDENTITY, "light");
+    openPanel();
+    expect(revealRow().textContent).not.toContain("Ambiance :");
+  });
+
+  it("« Changer l'ambiance » opens T08 for revision, after draining the autosave", async () => {
+    renderJourney(PARTIAL, "light", <ChangeAmbianceLink />);
+    fireEvent.click(screen.getByRole("button", { name: "Changer l'ambiance" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal"));
+  });
+
+  it("« Changer l'ambiance » asks first when the screen holds incomplete input", async () => {
+    const { usePendingInput } = await import("./pending-input");
+    function Unfinished() {
+      usePendingInput(true);
+      return null;
+    }
+    renderJourney(
+      PARTIAL,
+      "light",
+      <>
+        <ChangeAmbianceLink />
+        <Unfinished />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Changer l'ambiance" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/n'est pas terminée/);
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("is absent while T08 is not reopenable, and outside any journey", () => {
+    renderJourney(AFTER_IDENTITY, "light", <ChangeAmbianceLink />);
+    expect(screen.queryByRole("button", { name: "Changer l'ambiance" })).toBeNull();
+    cleanup();
+    render(<ChangeAmbianceLink />);
+    expect(screen.queryByRole("button", { name: "Changer l'ambiance" })).toBeNull();
   });
 });

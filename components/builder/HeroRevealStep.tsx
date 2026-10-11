@@ -10,6 +10,8 @@ import { translate } from "@/lib/i18n/translate";
 import { commitPageE, heroStepProgress, readHeroForEditing } from "@/lib/builder/guided-flow/hero-step";
 import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
 import { BuilderScreen } from "./BuilderScreen";
+import { BuilderScreenNav } from "./journey/BuilderScreenNav";
+import { inter, playfairDisplay } from "./fonts";
 import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
 import styles from "./HeroRevealStep.module.css";
@@ -29,14 +31,14 @@ interface HeroRevealStepProps {
   /** `memorials.skin_variant` as currently persisted (Mission 029B: set
    * once, unconditionally, at redemption — `"light"` today for every
    * real memorial). This is only ever the STARTING point for the
-   * family's local preview toggle below, never re-read while this
+   * family's local ambiance selector below, never re-read while this
    * screen is mounted. */
   initialSkinVariant: SkinVariant;
   /** A bound Server Action — same seam every Guided Flow screen uses. */
   persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
   /** A bound Server Action (app/builder/[memorialId]/hero-reveal-actions.ts)
    * — the ONLY write onto `memorials.skin_variant` this screen ever
-   * makes, and only at the Continue click (never on every toggle press —
+   * makes, and only at the Continue click (never on every selector change —
    * see this component's own docstring, "Preview vs. confirmation"). */
   saveSkinVariant: (skinVariant: string) => Promise<void>;
 }
@@ -70,7 +72,7 @@ interface HeroRevealStepProps {
  * PO's "card inside a card" rejection of wrapping `DeathNoticeIntemporel`
  * in `BuilderScreen`. This screen now follows that SAME principle, one
  * level down: a plain `<main>` with its own slim `.builderBar` (progress
- * + title) and `.builderControls` (toggle + CTA) — each independently
+ * + title) and `.builderControls` (CTA) — each independently
  * capped at a modest reading width (28rem, A03's own convention for a
  * Builder-only strip) — bracketing the Hero, which sits in `.stage` at
  * its own `max-width: 1536px` (the desktop master's own native width,
@@ -87,14 +89,26 @@ interface HeroRevealStepProps {
  * uses for its own corrupted/unavailable states.
  *
 
+ * ## Correction Light / Dark — the choice above the Hero, and the way back
+ *
+ * Production showed the family could not find the ambiance: a small
+ * underlined link UNDER the Hero (itself close to full-viewport, taller
+ * than the screen on mobile), and no « Mon parcours » on this screen. The
+ * choice is now a labelled two-option selector (« Ambiance de votre
+ * hommage » — Claire / Sombre) in the Builder strip ABOVE the Hero, and
+ * the strip carries `BuilderScreenNav` like every other screen: « Mon
+ * parcours » and, when T08 is reopened for revision, the way back to
+ * where the family stopped. Builder chrome only — the Hero, its Masters
+ * and its composition are untouched; the semantics below are unchanged.
+ *
  * ## Preview vs. confirmation (mission brief section 16-17)
  *
  * `previewVariant` is local React state ONLY — it starts at
- * `initialSkinVariant` and toggling it never calls `saveSkinVariant` or
+ * `initialSkinVariant` and changing it never calls `saveSkinVariant` or
  * `persist`; it is gone the moment this component unmounts (a refresh,
- * a navigation away). The family can flip between "Voir en version
- * sombre"/"Voir en version claire" freely, as many times as they like,
- * with nothing durable happening at all. Only the explicit "Continuer
+ * a navigation away). The family can switch between « Claire » and
+ * « Sombre » freely, as many times as they like, and the Hero follows at
+ * once, with nothing durable happening at all. Only the explicit "Continuer
  * avec cette ambiance" click writes anything.
  *
  * ## The durable ordering (mission brief section 17 — QG-locked)
@@ -150,10 +164,6 @@ export function HeroRevealStep({
 
   const progress = heroStepProgress(content, read.hero);
 
-  function togglePreview() {
-    setPreviewVariant((current) => (current === "light" ? "dark" : "light"));
-  }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(false);
@@ -195,6 +205,29 @@ export function HeroRevealStep({
       <div className={styles.builderBar}>
         <ProgressBar value={progress} />
         <h1 className={styles.title}>{translate(language, "hero.revealTitle")}</h1>
+        <div className={`${styles.builderTools} ${playfairDisplay.variable} ${inter.variable}`}>
+          <BuilderScreenNav />
+          <fieldset className={styles.ambiance} disabled={isSubmitting}>
+            <legend className={styles.ambianceLegend}>{translate(language, "hero.ambianceLabel")}</legend>
+            <div className={styles.ambianceOptions}>
+              {(["light", "dark"] as const).map((variant) => (
+                <label key={variant} className={styles.ambianceOption}>
+                  <input
+                    type="radio"
+                    name="hero-ambiance"
+                    value={variant}
+                    className={styles.ambianceInput}
+                    checked={previewVariant === variant}
+                    onChange={() => setPreviewVariant(variant)}
+                  />
+                  <span className={styles.ambianceText}>
+                    {translate(language, variant === "light" ? "hero.ambianceLight" : "hero.ambianceDark")}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
       </div>
 
       <div className={styles.stage} data-hero-skin-variant={previewVariant}>
@@ -207,18 +240,6 @@ export function HeroRevealStep({
       </div>
 
       <form className={styles.builderControls} onSubmit={handleSubmit}>
-        <button
-          type="button"
-          className={styles.toggle}
-          disabled={isSubmitting}
-          onClick={togglePreview}
-        >
-          {translate(
-            language,
-            previewVariant === "light" ? "hero.revealToggleToDark" : "hero.revealToggleToLight",
-          )}
-        </button>
-
         <div className={styles.ctaWrap}>
           <PrimaryButton type="submit" disabled={isSubmitting}>
             {translate(language, "hero.revealConfirm")}

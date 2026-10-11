@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
+import type { SkinVariant } from "@/config/skins";
 import type { JourneyScreenId, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { applyBeforeUnloadGuard } from "@/lib/builder/use-autosave";
@@ -23,6 +24,9 @@ import {
 export interface JourneyNavigation {
   language: Language;
   snapshot: JourneySnapshot;
+  /** `memorials.skin_variant` as persisted — shown on T08's row once
+   * T08 is done (« Ambiance : Claire / Sombre »). `null` when unknown. */
+  skinVariant: SkinVariant | null;
   /** Saves the current screen's pending autosave, then opens `id` for
    * revision. Resolves `false` (and navigates nowhere) if that save
    * fails — the screen's own AutosaveIndicator already shows why. */
@@ -67,11 +71,13 @@ export function useStepDone(): () => void {
 export function RouteJourneyProvider({
   language,
   snapshot,
+  skinVariant = null,
   builderPath,
   children,
 }: {
   language: Language;
   snapshot: JourneySnapshot;
+  skinVariant?: SkinVariant | null;
   builderPath: string;
   children: ReactNode;
 }) {
@@ -102,6 +108,7 @@ export function RouteJourneyProvider({
     return {
       language,
       snapshot,
+      skinVariant,
       async openScreen(id) {
         if (!(await drained())) return false;
         router.push(`${builderPath}?etape=${id}`);
@@ -118,7 +125,7 @@ export function RouteJourneyProvider({
       },
       hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
     };
-  }, [language, snapshot, builderPath, router, registry, pendingInputs]);
+  }, [language, snapshot, skinVariant, builderPath, router, registry, pendingInputs]);
 
   return (
     <PendingInputRegistryContext.Provider value={pendingInputs}>

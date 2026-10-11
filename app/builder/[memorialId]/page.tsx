@@ -384,6 +384,7 @@ export default async function BuilderMemorialPage({
   // `loadMemorialPreviewAction` re-reads the saved draft server-side;
   // nothing here is handed to it but the authorized id.
   const memorialLanguage = resumed.memorial.language;
+  const memorialSkinVariant = resumed.memorial.skinVariant;
   const memorialSkin = resolveSkinRuntime(resumed.memorial.skin);
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
@@ -412,7 +413,15 @@ export default async function BuilderMemorialPage({
         available={available}
         language={memorialLanguage}
         loadPreview={loadPreview}
-        journey={journeyContent === null ? null : { snapshot: resolveJourney(journeyContent, revising), builderPath }}
+        journey={
+          journeyContent === null
+            ? null
+            : {
+                snapshot: resolveJourney(journeyContent, revising),
+                builderPath,
+                skinVariant: memorialSkinVariant,
+              }
+        }
       >
         {screen}
       </BuilderPreviewHost>

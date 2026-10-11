@@ -34,6 +34,8 @@ class StubResizeObserver {
 vi.stubGlobal("ResizeObserver", StubResizeObserver);
 
 const { DeathNoticePreviewStep } = await import("./DeathNoticePreviewStep");
+const { JourneyContext } = await import("./journey/journey-context");
+const { resolveJourney } = await import("@/lib/builder/guided-flow/journey");
 
 afterEach(cleanup);
 beforeEach(() => routerRefresh.mockClear());
@@ -213,5 +215,46 @@ describe("DeathNoticePreviewStep — 'Continuer' commits A03 with its fingerprin
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(routerRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("DeathNoticePreviewStep — « Mon parcours » and the way back (correction Light / Dark, navigation)", () => {
+  function journey(revising: "announcementPreview" | null) {
+    return {
+      language: "fr" as const,
+      snapshot: resolveJourney(READY_CONTENT as MemorialContent, revising),
+      skinVariant: "light" as const,
+      openScreen: vi.fn().mockResolvedValue(true),
+      resume: vi.fn().mockResolvedValue(true),
+      finishStep: vi.fn(),
+      hasPendingInput: () => false,
+    };
+  }
+
+  it("shows « Mon parcours » above the Avis, the Avis itself unchanged", () => {
+    render(
+      <JourneyContext.Provider value={journey(null)}>
+        <DeathNoticePreviewStep {...baseProps()} />
+      </JourneyContext.Provider>,
+    );
+    expect(screen.getByRole("button", { name: "Mon parcours" })).toBeTruthy();
+  });
+
+  it("reopened for revision: « Reprendre où j'en étais » goes back without writing anything", async () => {
+    const persist = vi.fn();
+    const value = journey("announcementPreview");
+    render(
+      <JourneyContext.Provider value={value}>
+        <DeathNoticePreviewStep {...baseProps({ persist })} />
+      </JourneyContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reprendre où j'en étais" }));
+    await vi.waitFor(() => expect(value.resume).toHaveBeenCalled());
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("renders no navigation outside a journey", () => {
+    render(<DeathNoticePreviewStep {...baseProps()} />);
+    expect(screen.queryByRole("button", { name: "Mon parcours" })).toBeNull();
   });
 });

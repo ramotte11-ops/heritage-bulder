@@ -3087,6 +3087,13 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(raw.props.journey.snapshot.revising).toBeNull();
     });
 
+    it("hands the host the persisted ambiance (« Ambiance : Claire / Sombre » in « Mon parcours »)", async () => {
+      resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, skinVariant: "dark" });
+      expect((await callPageRaw()).props.journey.skinVariant).toBe("dark");
+      resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, skinVariant: "light" });
+      expect((await callPageRaw()).props.journey.skinVariant).toBe("light");
+    });
+
     it("T01 and the Welcome carry no journey (nothing to show yet)", async () => {
       resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, language: null });
       expect((await callPageRaw()).props.journey ?? null).toBeNull();

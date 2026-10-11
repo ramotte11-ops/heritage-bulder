@@ -17,6 +17,8 @@ import {
 } from "@/lib/builder/guided-flow/death-notice-step";
 import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import { BuilderScreen } from "./BuilderScreen";
+import { BuilderScreenNav } from "./journey/BuilderScreenNav";
+import { inter, playfairDisplay } from "./fonts";
 import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
 import styles from "./DeathNoticePreviewStep.module.css";
@@ -214,6 +216,12 @@ export function DeathNoticePreviewStep({
     <main className={styles.page}>
       <div className={styles.builderBar}>
         <ProgressBar value={progress} />
+        {/* « Mon parcours » and, when A03 is reopened for revision, the way
+            back to where the family stopped — like every other screen.
+            Builder strip only: the Avis itself is unchanged. */}
+        <div className={`${styles.builderNav} ${playfairDisplay.variable} ${inter.variable}`}>
+          <BuilderScreenNav />
+        </div>
       </div>
 
       <DeathNoticeIntemporel

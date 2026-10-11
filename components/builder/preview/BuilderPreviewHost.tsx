@@ -11,12 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import type { Language } from "@/config/languages";
+import type { SkinVariant } from "@/config/skins";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
 import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
+import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
 import styles from "./BuilderPreviewHost.module.css";
 
 /**
@@ -36,7 +38,11 @@ import styles from "./BuilderPreviewHost.module.css";
  * never unmounted by the Preview, so its local state, its autosave and
  * the values in its fields are exactly as the family left them. The
  * Preview itself triggers no navigation and no `router.refresh()`: its
- * server action only reads, so the route is never re-rendered.
+ * server action only reads, so the route is never re-rendered. The one
+ * exception is explicit and not the host's own: « Changer l'ambiance »
+ * (correction Light / Dark), which opens T08 for revision through the
+ * journey (`ChangeAmbianceLink`, same guard and drained autosave as
+ * « Revoir ») — the Preview then closes on the screen the route brings.
  *
  * ## Opening — in this order, nothing skipped
  *
@@ -78,8 +84,9 @@ export interface BuilderPreviewHostProps {
    * the content it renders (`resolveJourney`), and the route's own path
    * built from the authorized memorial id. `null`/absent → no journey
    * (T01, the Welcome): the entry renders nothing and steps keep their
-   * plain `router.refresh()`. */
-  journey?: { snapshot: JourneySnapshot; builderPath: string } | null;
+   * plain `router.refresh()`. `skinVariant` is the persisted ambiance
+   * « Mon parcours » shows on T08's row. */
+  journey?: { snapshot: JourneySnapshot; builderPath: string; skinVariant?: SkinVariant | null } | null;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -175,6 +182,19 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
     }
   }, [phase]);
 
+  // « Changer l'ambiance » (in the Preview's bar) navigates to T08 opened
+  // for revision: once the route brings that other screen, the Preview
+  // closes on it, at the top of the page — never left covering it, and
+  // never closed early on the screen the family is leaving.
+  const shownScreen = useRef(screen);
+  useEffect(() => {
+    if (shownScreen.current === screen) return;
+    shownScreen.current = screen;
+    builderScrollY.current = 0;
+    setAssembled(null);
+    setPhase("closed");
+  }, [screen]);
+
   useEffect(() => {
     if (phase !== "open") return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -200,28 +220,40 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
 
   const isOpen = phase === "open" && assembled !== null && language !== null;
 
+  const content = (
+    <>
+      {/* Always this same wrapper — the Builder is hidden, never unmounted. */}
+      <div hidden={isOpen} data-builder-screen="">
+        {children}
+      </div>
+      {isOpen && (
+        <main className={styles.preview} data-memorial-preview="">
+          <div className={styles.bar}>
+            <button ref={backButtonRef} type="button" className={styles.back} onClick={close}>
+              {translate(language, "preview.backToCreation")}
+            </button>
+            <ChangeAmbianceLink className={styles.back} />
+          </div>
+          <MemorialAssembly assembled={assembled} />
+        </main>
+      )}
+    </>
+  );
+
   return (
     <PreviewFlushRegistryContext.Provider value={registry}>
       <PreviewEntryContext.Provider value={entry}>
-        {/* Always this same wrapper — the Builder is hidden, never unmounted. */}
-        <div hidden={isOpen} data-builder-screen="">
-          {journey !== null && language !== null ? (
-            <RouteJourneyProvider language={language} snapshot={journey.snapshot} builderPath={journey.builderPath}>
-              {children}
-            </RouteJourneyProvider>
-          ) : (
-            children
-          )}
-        </div>
-        {isOpen && (
-          <main className={styles.preview} data-memorial-preview="">
-            <div className={styles.bar}>
-              <button ref={backButtonRef} type="button" className={styles.back} onClick={close}>
-                {translate(language, "preview.backToCreation")}
-              </button>
-            </div>
-            <MemorialAssembly assembled={assembled} />
-          </main>
+        {journey !== null && language !== null ? (
+          <RouteJourneyProvider
+            language={language}
+            snapshot={journey.snapshot}
+            skinVariant={journey.skinVariant ?? null}
+            builderPath={journey.builderPath}
+          >
+            {content}
+          </RouteJourneyProvider>
+        ) : (
+          content
         )}
       </PreviewEntryContext.Provider>
     </PreviewFlushRegistryContext.Provider>
