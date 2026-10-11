@@ -36,14 +36,6 @@ export const en: Record<TranslationKey, string> = {
   "announcementChoice.laterTitle": "Later",
   "announcementChoice.laterDescription": "I would rather decide later.",
   "announcementChoice.changeLater": "You can change your choice later.",
-  "context.title": "What would you like to create today?",
-  "context.subtitle": "Choose the path that best reflects what you need right now.",
-  "context.announcementTitle": "Announcement & Tribute",
-  "context.announcementDescription":
-    "For a recent loss — share the essential information first, then add memories over time.",
-  "context.remembranceTitle": "Memory & Tribute",
-  "context.remembranceDescription":
-    "Create a lasting space of remembrance centered on the person's life, story, and memory.",
   "preview.view": "View preview",
   "preview.hide": "Hide preview",
   "preview.backToCreation": "Back to creation",

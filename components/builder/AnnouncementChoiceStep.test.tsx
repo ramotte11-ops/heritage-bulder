@@ -35,7 +35,7 @@ const AFTER_IDENTITY = {
 const ok = () => vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
 
 function renderStep(content: MemorialContent = AFTER_IDENTITY, persist = ok(), language: "fr" | "en" | "es" = "fr") {
-  render(<AnnouncementChoiceStep language={language} editorialContext="announcement" content={content} persist={persist} />);
+  render(<AnnouncementChoiceStep language={language} content={content} persist={persist} />);
   return persist;
 }
 

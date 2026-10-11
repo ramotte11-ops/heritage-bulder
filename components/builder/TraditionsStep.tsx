@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { Skin } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -26,7 +25,6 @@ import styles from "./TraditionsStep.module.css";
 
 interface TraditionsStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — the Ceremony block is
    * already guaranteed resolved by the time this renders (see
    * app/builder/[memorialId]/page.tsx's `needsA09` gate). */
@@ -91,7 +89,7 @@ function newSuggestionComposer(suggestion: TraditionSuggestion, language: Langua
  * one edit is open at once — never a big form. Already-confirmed
  * entries render as their own small cards with "Modifier"/"Supprimer".
  */
-export function TraditionsStep({ language, editorialContext, content: initialContent, skin, persist }: TraditionsStepProps) {
+export function TraditionsStep({ language, content: initialContent, skin, persist }: TraditionsStepProps) {
   const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<Composer | null>(null);
@@ -208,7 +206,7 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
     );
   }
 
-  const progress = traditionsStepProgress(editorialContext, content);
+  const progress = traditionsStepProgress(content);
   const hasEntry = read.traditions.entries.length > 0;
 
   return (

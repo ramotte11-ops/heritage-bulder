@@ -25,7 +25,6 @@ import {
 
 function input(content: MemorialContent, overrides: Partial<AssembleMemorialInput> = {}): AssembleMemorialInput {
   return {
-    editorialContext: "announcement",
     skin: "intemporel",
     skinVariant: "light",
     language: "fr",
@@ -69,7 +68,7 @@ describe("consumes composeMemorial", () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
     expect(assembled.composition).toEqual(
-      composeMemorial({ editorialContext: "announcement", skin: "intemporel", skinVariant: "light", content }),
+      composeMemorial({ skin: "intemporel", skinVariant: "light", content }),
     );
   });
 
@@ -93,14 +92,20 @@ describe("consumes composeMemorial", () => {
     expect(ids(assembled.sections)).toEqual(["ceremony", "story", "deathNotice", "hero"]);
   });
 
-  it("remembrance: never the Avis or the Cérémonie, even with stray announcement data", async () => {
-    const assembled = await assembleMemorial(input(fullAnnouncement(), { editorialContext: "remembrance" }), {
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ] as const)("A00 = %s: never the Avis, even with notice data already written; the Cérémonie stays independent", async (_answer, record) => {
+    const withA00 = (content: MemorialContent) =>
+      ({ ...content, guidedFlow: { ...(content as { guidedFlow: object }).guidedFlow, A00: { ...record } } }) as MemorialContent;
+
+    const assembled = await assembleMemorial(input(withA00(fullAnnouncement())), {
       resolveMedia: recordingResolver().resolve,
     });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "story", "ceremony"]);
 
-    const heroOnly = await assembleMemorial(input(throughA02(), { editorialContext: "remembrance" }), {
+    const heroOnly = await assembleMemorial(input(withA00(throughA02())), {
       resolveMedia: recordingResolver().resolve,
     });
     expect(ids(heroOnly.sections)).toEqual(["hero"]);
@@ -119,7 +124,7 @@ describe("consumes composeMemorial", () => {
 // ---------------------------------------------------------------------
 
 describe("renderer props", () => {
-  it("Hero: the stored Hero, only the resolved URL as photo, and the memorial's own context", async () => {
+  it("Hero: the stored Hero, only the resolved URL as photo — no editorial context any more (B02-L2)", async () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content, { skinVariant: "dark", language: "en" }), {
       resolveMedia: recordingResolver().resolve,
@@ -129,7 +134,6 @@ describe("renderer props", () => {
       hero: readHero(content),
       photo: { readUrl: FIXTURE_READ_URL },
       skinVariant: "dark",
-      editorialContext: "announcement",
       language: "en",
     });
   });
@@ -141,7 +145,6 @@ describe("renderer props", () => {
     expect(notice?.props).toEqual({
       hero: readHero(content),
       deathNotice: readDeathNotice(content),
-      editorialContext: "announcement",
       language: "fr",
       skinVariant: "light",
       headingLevel: "section",

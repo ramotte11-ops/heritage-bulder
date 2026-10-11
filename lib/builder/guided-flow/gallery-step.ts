@@ -1,5 +1,4 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { EditorialContext } from "@/config/memorial";
 import type { GalleryContent } from "@/types/gallery";
 import { inspectGallery } from "@/lib/memorial/gallery-content";
 import { readHero } from "@/lib/memorial/hero";
@@ -59,8 +58,8 @@ export function needsA13(content: MemorialContent): boolean {
 }
 
 /** The real engine's progress — never a hand-picked constant. */
-export function galleryStepProgress(editorialContext: EditorialContext, content: MemorialContent): number {
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, readHero(content)));
+export function galleryStepProgress(content: MemorialContent): number {
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, readHero(content)));
 }
 
 export type GalleryStepWriteResult = { ok: true; content: MemorialContent } | { ok: false; reason: "corrupted" };

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
@@ -24,7 +23,6 @@ import styles from "./HeroPhraseStep.module.css";
 
 interface HeroPhraseStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — PAGE A (T03/T04) is already
    * guaranteed done by the time this renders (see
    * app/builder/[memorialId]/page.tsx). */
@@ -40,11 +38,12 @@ interface HeroPhraseStepProps {
  * section 6): identity is a fact, this is an intention, and the two
  * deserve their own moment rather than being crammed onto one screen.
  *
- * ## Wording depends on context, never the model
+ * ## Wording depends on A00, never the model
  *
  * The title/subtitle read from `hero.phraseTitle{Announcement,
  * Remembrance}` / `hero.phraseSubtitle{Announcement,Remembrance}` —
- * `editorialContext` only ever selects WHICH translation key to read,
+ * A00's answer (B02-L2: "yes" → the announcement wording, "no"/"later"
+ * → the remembrance wording) only ever selects WHICH translation key to read,
  * never changes what gets written (`shortPhrase`, always — mission
  * brief section 7). No `AnnouncementHero`/`RemembranceHero` type exists
  * anywhere in this codebase.
@@ -60,7 +59,6 @@ interface HeroPhraseStepProps {
  */
 export function HeroPhraseStep({
   language,
-  editorialContext,
   content: initialContent,
   persist,
 }: HeroPhraseStepProps) {
@@ -110,16 +108,15 @@ export function HeroPhraseStep({
   }
 
   // A00: the announcement wording ("partager avec l'annonce") only when a
-  // notice is actually planned — "Non"/"Plus tard" read the tribute
-  // wording. No answer yet keeps the context's own wording, as before.
-  const choice = readAnnouncementChoice(content);
-  const announcementWording = editorialContext === "announcement" && choice !== "no" && choice !== "later";
+  // notice is actually planned — "Non"/"Plus tard" read the remembrance
+  // wording (validated by the QG). A00 always precedes this page.
+  const announcementWording = readAnnouncementChoice(content) === "yes";
   const titleKey: TranslationKey = announcementWording ? "hero.phraseTitleAnnouncement" : "hero.phraseTitleRemembrance";
   const subtitleKey: TranslationKey = announcementWording
     ? "hero.phraseSubtitleAnnouncement"
     : "hero.phraseSubtitleRemembrance";
 
-  const progress = heroStepProgress(editorialContext, content, read.hero);
+  const progress = heroStepProgress(content, read.hero);
 
   return (
     <BuilderScreen

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -22,7 +21,6 @@ import styles from "./CeremonyNoteStep.module.css";
 
 interface CeremonyNoteStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A07 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
@@ -37,7 +35,7 @@ interface CeremonyNoteStepProps {
  * étape" lets the family move on without one, and once a note is
  * entered "Continuer" becomes available and commits A08 as completed.
  */
-export function CeremonyNoteStep({ language, editorialContext, content: initialContent, persist }: CeremonyNoteStepProps) {
+export function CeremonyNoteStep({ language, content: initialContent, persist }: CeremonyNoteStepProps) {
   const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
@@ -123,7 +121,7 @@ export function CeremonyNoteStep({ language, editorialContext, content: initialC
     );
   }
 
-  const progress = ceremonyStepProgress(editorialContext, content);
+  const progress = ceremonyStepProgress(content);
 
   return (
     <BuilderScreen

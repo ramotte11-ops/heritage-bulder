@@ -371,9 +371,11 @@ describe("no Auth/Owner dependency", () => {
 // Context cases (mission brief, section 10)
 // ---------------------------------------------------------------------
 
-describe("context: announcement can read/use the model", () => {
-  it("resolveSectionSelectionStatus classifies deathNotice for announcement", () => {
-    const status = resolveSectionSelectionStatus("deathNotice", { editorialContext: "announcement" });
+describe("A00 = yes: the death notice is part of the memorial", () => {
+  it("resolveSectionSelectionStatus classifies deathNotice as relevant once A00 = yes", () => {
+    const status = resolveSectionSelectionStatus("deathNotice", {
+      flowState: { A00: { status: "completed", answer: "yes" } },
+    });
     expect(status === "notRelevant").toBe(false);
   });
 
@@ -390,15 +392,17 @@ describe("context: announcement can read/use the model", () => {
   });
 });
 
-describe("context: remembrance does not activate the Death Notice", () => {
-  it("resolveSectionSelectionStatus resolves deathNotice to notRelevant in remembrance", () => {
-    const status = resolveSectionSelectionStatus("deathNotice", { editorialContext: "remembrance" });
+describe("A00 = no / later does not activate the Death Notice", () => {
+  it("resolveSectionSelectionStatus resolves deathNotice to notRelevant for A00 = no", () => {
+    const status = resolveSectionSelectionStatus("deathNotice", {
+      flowState: { A00: { status: "completed", answer: "no" } },
+    });
     expect(status).toBe("notRelevant");
   });
 
-  it("remembrance stays notRelevant even when explicit content signals are (incorrectly) passed for it", () => {
+  it("A00 = later stays notRelevant even when a content signal (a notice already written) is passed", () => {
     const status = resolveSectionSelectionStatus("deathNotice", {
-      editorialContext: "remembrance",
+      flowState: { A00: { status: "skipped", answer: "later" } },
       explicitContentSectionIds: ["deathNotice"],
     });
     expect(status).toBe("notRelevant");

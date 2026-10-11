@@ -60,12 +60,7 @@ const { saveDraftAction } = vi.hoisted(() => ({
 const { saveLanguageAction } = vi.hoisted(() => ({
   saveLanguageAction: vi.fn(async () => undefined),
 }));
-// Mission 024: `saveEditorialContextAction` is bound the same way again
-// — see the "wires ContextStep's persist" test below.
-const { saveEditorialContextAction } = vi.hoisted(() => ({
-  saveEditorialContextAction: vi.fn(async () => undefined),
-}));
-vi.mock("./actions", () => ({ saveDraftAction, saveLanguageAction, saveEditorialContextAction }));
+vi.mock("./actions", () => ({ saveDraftAction, saveLanguageAction }));
 
 const { SupabaseDraftRepository, draftRepositoryInstance } = vi.hoisted(() => {
   const instance = { getDraftContent: vi.fn(), saveDraftContent: vi.fn() };
@@ -100,11 +95,8 @@ vi.mock("@/components/builder/WelcomeStep", () => ({ WelcomeStep }));
 const { AnnouncementChoiceStep } = vi.hoisted(() => ({ AnnouncementChoiceStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/AnnouncementChoiceStep", () => ({ AnnouncementChoiceStep }));
 
-const { ContextStep } = vi.hoisted(() => ({ ContextStep: vi.fn(() => null) }));
-vi.mock("@/components/builder/ContextStep", () => ({ ContextStep }));
-
-// Mission 032 — PAGE A / PAGE B, mocked the same way as LanguageStep/
-// ContextStep above: this file only proves the ROUTE wires them
+// Mission 032 — PAGE A / PAGE B, mocked the same way as LanguageStep
+// above: this file only proves the ROUTE wires them
 // correctly (gate condition, props, persist binding), never their own
 // rendering — that is hero-step.test.ts's and each component's own
 // concern. Mocking them also keeps this suite out of next/font
@@ -310,8 +302,8 @@ const UNCONFIGURED_MEMORIAL: StoredMemorialConfig = {
   slug: null,
 };
 
-/** Mission 023 — T01 is done (language chosen), but Mission 024's T02
- * (editorial context) has not been completed yet. */
+/** Mission 023 — T01 is done (language chosen); no editorial context —
+ * every new draft since B02-L2 removed T02 (the column stays NULL). */
 const LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
   ...CONFIGURED_MEMORIAL,
   editorialContext: null,
@@ -319,8 +311,9 @@ const LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
   slug: null,
 };
 
-/** Mission 024 — T01 AND T02 are both done (language + editorial context
- * chosen), but no later mission has built slug generation yet. */
+/** A pre-B02-L2 memorial: language and a historical editorial context
+ * (T02 then existed) recorded, but no later mission has built slug
+ * generation yet. The context is never read for routing any more. */
 const LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED: StoredMemorialConfig = {
   ...CONFIGURED_MEMORIAL,
   editorialContext: "remembrance",
@@ -408,6 +401,18 @@ const REAL_DRAFT: MemorialVersion = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+/** B02-L2 — A00 is asked of every family right after identity: the
+ * PAGE B-E fixtures below carry an explicit "no" so they reach the Hero
+ * steps they exercise (the Hero never depends on the answer). */
+const A00_NO = { status: "completed", answer: "no" } as const;
+
+/** The same draft with A00 overwritten — every other record and content
+ * key (the notice already written included) kept untouched. */
+function withA00(version: MemorialVersion, record: { status: "completed" | "skipped"; answer: string }): MemorialVersion {
+  const guidedFlow = (version.content as { guidedFlow?: Record<string, unknown> }).guidedFlow ?? {};
+  return { ...version, content: { ...version.content, guidedFlow: { ...guidedFlow, A00: { ...record } } } as MemorialVersion["content"] };
+}
+
 function paramsFor(memorialId: string) {
   return Promise.resolve({ memorialId });
 }
@@ -488,7 +493,6 @@ describe("BuilderMemorialPage — granted access", () => {
     BuilderShell.mockClear();
     LanguageStep.mockClear();
     WelcomeStep.mockClear();
-    ContextStep.mockClear();
     AnnouncementChoiceStep.mockClear();
     HeroIdentityStep.mockClear();
     HeroPhraseStep.mockClear();
@@ -514,7 +518,6 @@ describe("BuilderMemorialPage — granted access", () => {
     SupabaseMemorialConfigRepository.mockClear();
     saveDraftAction.mockClear();
     saveLanguageAction.mockClear();
-    saveEditorialContextAction.mockClear();
     draftRepositoryInstance.saveDraftContent.mockReset();
   });
 
@@ -687,12 +690,10 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).not.toBe(LanguageStep);
     });
 
-    it("resumes straight past T01 (to Mission 024's T02) when only the language has been chosen so far", async () => {
-      // Mission 024 update: this used to fall through all the way to the
-      // generic "not configured" notice (there was no T02 yet). Now that
-      // T02 exists, a memorial with language set but no editorialContext
-      // renders ContextStep instead — see the "Mission 024 — T02" block
-      // below for that gate's own dedicated tests.
+    it("resumes straight past T01 when only the language has been chosen so far — no T02 any more (B02-L2)", async () => {
+      // B02-L2: a memorial with a language but no editorial context (every
+      // new draft from now on) goes on through the single route — here,
+      // with a draft past every gate, to the Guided Flow pause.
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -709,7 +710,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(LanguageStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
-      expect(result.type).toBe(ContextStep);
+      expect(result.type).toBe(GuidedFlowPause);
     });
   });
 
@@ -734,7 +735,6 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(WelcomeStep);
       expect(result.props.language).toBe("es");
       expect(result.props.content).toEqual({});
-      expect(ContextStep).not.toHaveBeenCalled();
     });
 
     it("wires WelcomeStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId, with the Preview off", async () => {
@@ -757,7 +757,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(WelcomeStep).not.toHaveBeenCalled();
     });
 
-    it("moves on to T02 once the Welcome marker is saved — it is never shown twice", async () => {
+    it("moves on to identity (PAGE A) once the Welcome marker is saved — never shown twice, no T02 (B02-L2)", async () => {
       resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, {
         content: { welcome: { status: "completed" } } as MemorialVersion["content"],
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -765,7 +765,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(ContextStep);
+      expect(result.type).toBe(HeroIdentityStep);
       expect(WelcomeStep).not.toHaveBeenCalled();
     });
 
@@ -782,104 +782,44 @@ describe("BuilderMemorialPage — granted access", () => {
     });
   });
 
-  describe("Mission 024 — T02 (language chosen, editorial context not yet chosen)", () => {
-    it("renders ContextStep instead of BuilderShell when language is set but editorialContext is NULL", async () => {
+  describe("B02-L2 — T02 (« Annonce & Hommage » / « Mémoire & Hommage ») is gone", () => {
+    function resumeWith(memorial: StoredMemorialConfig, draft: MemorialVersion) {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
         ownerId: "owner-a",
         memorialId: MEMORIAL_ID,
       });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: REAL_DRAFT,
-      });
+      resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
+    }
+
+    const AFTER_WELCOME: MemorialVersion = {
+      content: { welcome: { status: "completed" } } as MemorialVersion["content"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    it("Langue → Bienvenue → Identité: a memorial with no editorial context goes straight to PAGE A", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, AFTER_WELCOME);
 
       const result = await callPage();
 
-      expect(result.type).toBe(ContextStep);
-      expect(BuilderShell).not.toHaveBeenCalled();
-      expect(LanguageStep).not.toHaveBeenCalled();
-    });
-
-    it("passes the memorial's already-persisted language to ContextStep", async () => {
-      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-      authorizeMemorialForRequest.mockResolvedValue({
-        status: "granted",
-        ownerId: "owner-a",
-        memorialId: MEMORIAL_ID,
-      });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // language: "es"
-        draft: REAL_DRAFT,
-      });
-
-      const result = await callPage();
-
+      expect(result.type).toBe(HeroIdentityStep);
       expect(result.props.language).toBe("es");
     });
 
-    it("wires ContextStep's persist to saveEditorialContextAction, bound to the AUTHORIZED memorialId", async () => {
-      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-      // Deliberately a different id from the URL — the bound action must
-      // follow the verified id, never the raw one.
-      authorizeMemorialForRequest.mockResolvedValue({
-        status: "granted",
-        ownerId: "owner-a",
-        memorialId: "authorized-id",
-      });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: REAL_DRAFT,
-      });
-
-      const result = await callPage();
-      await result.props.persist("announcement");
-
-      expect(saveEditorialContextAction).toHaveBeenCalledExactlyOnceWith(
-        "authorized-id",
-        "announcement",
-      );
+    it("a historical editorial context (announcement or remembrance) changes nothing about the route", async () => {
+      for (const editorialContext of ["announcement", "remembrance", null] as const) {
+        resumeWith({ ...LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, editorialContext }, REAL_DRAFT);
+        const result = await callPage();
+        expect(result.type).toBe(GuidedFlowPause);
+      }
     });
 
-    it("never renders ContextStep once an editorial context has already been recorded — T02 is never re-posed", async () => {
-      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-      authorizeMemorialForRequest.mockResolvedValue({
-        status: "granted",
-        ownerId: "owner-a",
-        memorialId: MEMORIAL_ID,
-      });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: CONFIGURED_MEMORIAL, // language: "fr", editorialContext: "announcement"
-        draft: REAL_DRAFT,
-      });
+    it("resumes past every gate (to the Guided Flow pause) when language is chosen but slug is not, whatever the context", async () => {
+      resumeWith(LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, REAL_DRAFT);
 
       const result = await callPage();
 
-      expect(ContextStep).not.toHaveBeenCalled();
-      expect(result.type).not.toBe(ContextStep);
-    });
-
-    it("resumes straight past T02 (to the Guided Flow pause) when language and editorial context are both chosen but slug is not", async () => {
-      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-      authorizeMemorialForRequest.mockResolvedValue({
-        status: "granted",
-        ownerId: "owner-a",
-        memorialId: MEMORIAL_ID,
-      });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: REAL_DRAFT,
-      });
-
-      const result = await callPage();
-
-      expect(ContextStep).not.toHaveBeenCalled();
       expect(LanguageStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
       // Localized in the family's own already-chosen language (Spanish
@@ -888,26 +828,10 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.language).toBe("es");
     });
 
-    it("never deduces the editorial context from a death date, an offer, a skin, or a culture — resumeBuilderSession's memorial carries no such signal to ContextStep", async () => {
-      // Mission 024 section 3's absolute rule, checked at the boundary
-      // this route controls: ContextStep receives only `language` and
-      // `persist` — never the memorial's skin, offer, or any date field,
-      // so there is nothing for it to deduce from even if it wanted to.
-      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
-      authorizeMemorialForRequest.mockResolvedValue({
-        status: "granted",
-        ownerId: "owner-a",
-        memorialId: MEMORIAL_ID,
-      });
-      resumeBuilderSession.mockResolvedValue({
-        status: "resumable",
-        memorial: LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
-        draft: REAL_DRAFT,
-      });
-
+    it("no step receives an editorial context any more", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, AFTER_WELCOME);
       const result = await callPage();
-
-      expect(Object.keys(result.props)).toEqual(["language", "persist"]);
+      expect(result.props).not.toHaveProperty("editorialContext");
     });
   });
 
@@ -955,7 +879,7 @@ describe("BuilderMemorialPage — granted access", () => {
     const DRAFT_WITH_NAME_AND_T04_SKIPPED: MemorialVersion = {
       content: {
         hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
-        guidedFlow: { T04: { status: "skipped" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -972,7 +896,7 @@ describe("BuilderMemorialPage — granted access", () => {
           shortPhrase: null,
           photo: null,
         },
-        guidedFlow: { T04: { status: "completed" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "completed" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -989,7 +913,7 @@ describe("BuilderMemorialPage — granted access", () => {
           shortPhrase: null,
           photo: null,
         },
-        guidedFlow: { T04: { status: "skipped" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -1055,7 +979,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
       expect(result.props.language).toBe("es");
-      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props).not.toHaveProperty("editorialContext");
       expect(result.props.content).toEqual(DRAFT_WITHOUT_HERO.content);
 
       const newContent = { hero: { displayName: "Edited" } };
@@ -1200,7 +1124,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
       expect(result.props.language).toBe("es");
-      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props).not.toHaveProperty("editorialContext");
       expect(result.props.content).toEqual(DRAFT_WITH_NAME_AND_T04_SKIPPED.content);
 
       const newContent = { hero: { displayName: "Jean Dupont", shortPhrase: "Un homme bon" } };
@@ -1242,7 +1166,7 @@ describe("BuilderMemorialPage — granted access", () => {
     const DRAFT_WITH_PAGE_B_DONE_NO_PHOTO: MemorialVersion = {
       content: {
         hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
-        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" }, T05: { status: "skipped" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -1344,7 +1268,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.content).toBe(reconciledData.content);
       expect(result.props.initialPhoto).toBe(reconciledData.initialPhoto);
       expect(result.props.language).toBe("es");
-      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props).not.toHaveProperty("editorialContext");
     });
 
     it("wires persist/reserveUpload/finalizeUpload/retireUpload to the AUTHORIZED memorialId, never the raw URL segment", async () => {
@@ -1495,6 +1419,7 @@ describe("BuilderMemorialPage — granted access", () => {
         // falling through to BuilderShell, exactly like every other gate
         // this specific test does not care about.
         guidedFlow: {
+          A00: A00_NO,
           A01: { status: "completed" },
           A02: { status: "skipped" },
           A04: { status: "completed", answer: "no" },
@@ -1539,7 +1464,7 @@ describe("BuilderMemorialPage — granted access", () => {
           shortPhrase: null,
           photo: { mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001", crop: null },
         },
-        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -1635,7 +1560,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.content).toBe(DRAFT_WITH_PAGE_C_DONE_NO_CROP.content);
       expect(result.props.photo).toBe(RESOLVED_CROP_DATA);
       expect(result.props.language).toBe("es");
-      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props).not.toHaveProperty("editorialContext");
     });
 
     it("wires HeroCropStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId", async () => {
@@ -1676,7 +1601,9 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(HeroCropStep).not.toHaveBeenCalled();
-      expect(result.type).toBe(GuidedFlowPause);
+      // B02-L2 — one single route: it falls through to the next gate
+      // (A00 = no here, so the ceremony question), never a crash.
+      expect(result.type).toBe(CeremonyMomentStep);
     });
 
     it("never renders HeroCropStep once T07 has already been explicitly completed — resumes straight to the next gate", async () => {
@@ -1734,7 +1661,7 @@ describe("BuilderMemorialPage — granted access", () => {
       });
       const reconciledContent = {
         hero: { ...DRAFT_WITH_PAGE_C_DONE_NO_CROP.content.hero, photo: { mediaId: "adopted-later", crop: null } },
-        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
       };
       reconcileHeroMediaOnResume.mockResolvedValue(reconciledContent);
       resolveHeroCropStepData.mockResolvedValue(RESOLVED_CROP_DATA);
@@ -1769,6 +1696,7 @@ describe("BuilderMemorialPage — granted access", () => {
           },
         },
         guidedFlow: {
+          A00: A00_NO,
           T04: { status: "skipped" },
           T05: { status: "skipped" },
           T06: { status: "completed" },
@@ -1794,7 +1722,7 @@ describe("BuilderMemorialPage — granted access", () => {
           shortPhrase: null,
           photo: { mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001", crop: null },
         },
-        guidedFlow: { T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
+        guidedFlow: { A00: A00_NO, T04: { status: "skipped" }, T05: { status: "skipped" }, T06: { status: "completed" } },
       } as MemorialVersion["content"],
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -1885,7 +1813,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.props.photo).toBe(RESOLVED_REVEAL_DATA);
       expect(result.props.initialSkinVariant).toBe("light");
       expect(result.props.language).toBe("es");
-      expect(result.props.editorialContext).toBe("remembrance");
+      expect(result.props).not.toHaveProperty("editorialContext");
 
       const newContent = { hero: { displayName: "Jean Dupont" } };
       await result.props.persist(newContent);
@@ -1912,7 +1840,9 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
 
       expect(HeroRevealStep).not.toHaveBeenCalled();
-      expect(result.type).toBe(GuidedFlowPause);
+      // B02-L2 — one single route: it falls through to the next gate
+      // (A00 = no here, so the ceremony question), never a crash.
+      expect(result.type).toBe(CeremonyMomentStep);
     });
 
     it("never renders HeroRevealStep once T08 has already been explicitly completed — resumes straight to the next gate", async () => {
@@ -1994,7 +1924,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(result.type).toBe(AnnouncementChoiceStep);
       expect(result.props.language).toBe("fr");
-      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props).not.toHaveProperty("editorialContext");
       expect(result.props.content).toBe(version.content);
       expect(HeroPhraseStep).not.toHaveBeenCalled();
     });
@@ -2017,14 +1947,20 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(AnnouncementChoiceStep).not.toHaveBeenCalled();
     });
 
-    it("is never offered to a remembrance memorial (T02 still splits the two contexts)", async () => {
-      resumeWith(LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, draft({ T04: { status: "skipped" } }));
+    it.each([["remembrance"], [null]] as const)(
+      "B02-L2 — is asked whatever the historical editorial context (%s)",
+      async (editorialContext) => {
+        resumeWith(
+          { ...LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, editorialContext },
+          draft({ T04: { status: "skipped" } }),
+        );
 
-      const result = await callPage();
+        const result = await callPage();
 
-      expect(result.type).toBe(HeroPhraseStep);
-      expect(AnnouncementChoiceStep).not.toHaveBeenCalled();
-    });
+        expect(result.type).toBe(AnnouncementChoiceStep);
+        expect(HeroPhraseStep).not.toHaveBeenCalled();
+      },
+    );
 
     it("moves on to the Hero once answered (any of the three answers)", async () => {
       for (const record of [
@@ -2166,14 +2102,17 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(result.props.content).toBe(DRAFT_WITH_T08_DONE_NO_DEATH_NOTICE.content);
       expect(result.props.language).toBe("fr");
-      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props).not.toHaveProperty("editorialContext");
 
       const newContent = { deathNotice: { announcementText: "Texte", precisions: {} } };
       await result.props.persist(newContent);
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
 
-    it("A01/A02 never appear for the remembrance context — falls through past T08 to the same notice", async () => {
+    it.each([
+      ["no", { status: "completed", answer: "no" }],
+      ["later", { status: "skipped", answer: "later" }],
+    ] as const)("B02-L2 — A00 = %s: A01/A02 never appear, past T08 the route goes on to the ceremony (A04)", async (_answer, record) => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2182,15 +2121,15 @@ describe("BuilderMemorialPage — granted access", () => {
       });
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
-        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
-        draft: DRAFT_WITH_T08_DONE_NO_DEATH_NOTICE,
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: withA00(DRAFT_WITH_T08_DONE_NO_DEATH_NOTICE, record),
       });
 
       const result = await callPage();
 
       expect(DeathNoticeAnnouncementStep).not.toHaveBeenCalled();
       expect(DeathNoticePrecisionsStep).not.toHaveBeenCalled();
-      expect(result.type).toBe(GuidedFlowPause);
+      expect(result.type).toBe(CeremonyMomentStep);
     });
 
     it("renders DeathNoticePrecisionsStep (A02) once A01 is done, never before", async () => {
@@ -2228,7 +2167,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage("claimed-id");
 
       expect(result.props.content).toBe(DRAFT_WITH_A01_DONE.content);
-      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props).not.toHaveProperty("editorialContext");
 
       const newContent = { deathNotice: { announcementText: "Texte", precisions: {} } };
       await result.props.persist(newContent);
@@ -2285,7 +2224,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(result.type).toBe(DeathNoticePreviewStep);
       expect(result.props.content).toBe(draftWithoutA03.content);
-      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props).not.toHaveProperty("editorialContext");
       expect(result.props.skin).toBe("intemporel");
       expect(result.props.skinVariant).toBe("light");
 
@@ -2434,30 +2373,33 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage("claimed-id");
 
       expect(result.props.content).toBe(DRAFT_WITH_A03_DONE_NO_A04.content);
-      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props).not.toHaveProperty("editorialContext");
 
       const newContent = { guidedFlow: {} };
       await result.props.persist(newContent);
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
 
-    it("A04 never appears for the remembrance context — falls through past T08 to the same notice", async () => {
+    it("B02-L2 — the ceremony is independent: A04 is asked with A00 = no, notice data already written left untouched", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
         ownerId: "owner-a",
         memorialId: MEMORIAL_ID,
       });
+      const draftNo = withA00(DRAFT_WITH_A03_DONE_NO_A04, A00_NO);
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
-        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
-        draft: DRAFT_WITH_A03_DONE_NO_A04,
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // historical "remembrance", slug still null
+        draft: draftNo,
       });
 
       const result = await callPage();
 
-      expect(CeremonyMomentStep).not.toHaveBeenCalled();
-      expect(result.type).toBe(GuidedFlowPause);
+      expect(result.type).toBe(CeremonyMomentStep);
+      expect((result.props.content as { deathNotice: unknown }).deathNotice).toEqual(
+        (DRAFT_WITH_A03_DONE_NO_A04.content as { deathNotice: unknown }).deathNotice,
+      );
     });
 
     it("A04 = no never opens A05-A08 — falls straight through to the not-configured-yet notice", async () => {
@@ -2695,23 +2637,30 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(TraditionsStep);
     });
 
-    it("A09 never appears for the remembrance context", async () => {
+    it("B02-L2 — A09 never appears when A00 = no: after the ceremony, the combined sheet follows", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
         ownerId: "owner-a",
         memorialId: MEMORIAL_ID,
       });
+      const base = withA00(DRAFT_WITH_A03_DONE_NO_A04, A00_NO);
       resumeBuilderSession.mockResolvedValue({
         status: "resumable",
-        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
-        draft: DRAFT_WITH_A03_DONE_NO_A04,
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: {
+          ...base,
+          content: {
+            ...base.content,
+            guidedFlow: { ...(base.content as { guidedFlow: object }).guidedFlow, A04: { status: "completed", answer: "no" } },
+          } as MemorialVersion["content"],
+        },
       });
 
       const result = await callPage();
 
-      expect(result.type).not.toBe(TraditionsStep);
-      expect(result.type).toBe(GuidedFlowPause);
+      expect(TraditionsStep).not.toHaveBeenCalled();
+      expect(result.type).toBe(PersonSheetStep);
     });
 
     it("wires TraditionsStep's persist and skin, bound to the AUTHORIZED memorialId", async () => {
@@ -2827,7 +2776,7 @@ describe("BuilderMemorialPage — granted access", () => {
         expect(result.type).toBe(PersonSheetStep);
       });
 
-      it("the combined sheet never appears for the remembrance context", async () => {
+      it("B02-L2 — the combined sheet is never reached before the ceremony question, whatever A00 answered", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2836,14 +2785,14 @@ describe("BuilderMemorialPage — granted access", () => {
         });
         resumeBuilderSession.mockResolvedValue({
           status: "resumable",
-          memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, // remembrance, slug still null
-          draft: DRAFT_WITH_A03_DONE_NO_A04,
+          memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+          draft: withA00(DRAFT_WITH_A03_DONE_NO_A04, A00_NO),
         });
 
         const result = await callPage();
 
         expect(result.type).not.toBe(PersonSheetStep);
-        expect(result.type).toBe(GuidedFlowPause);
+        expect(result.type).toBe(CeremonyMomentStep);
       });
 
       it("wires PersonSheetStep's persist, bound to the AUTHORIZED memorialId — no skin prop (the sheet narrows nothing)", async () => {
@@ -3017,7 +2966,7 @@ describe("BuilderMemorialPage — granted access", () => {
           expect(result.props.thumbnails).toEqual({ m1: "https://signed/m1" });
           expect(result.props.content).toBe(draft.content);
           expect(result.props.language).toBe("fr");
-          expect(result.props.editorialContext).toBe("announcement");
+          expect(result.props).not.toHaveProperty("editorialContext");
 
           result.props.persist("c");
           expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, "c");
@@ -3057,11 +3006,12 @@ describe("BuilderMemorialPage — granted access", () => {
           }
         });
 
-        it("never renders GalleryStep for a remembrance memorial (A13 belongs to the announcement branch for now)", async () => {
+        it("B02-L2 — renders GalleryStep whatever the historical editorial context, with or without a death notice", async () => {
           granted(withoutA13(REAL_DRAFT), { ...CONFIGURED_MEMORIAL, editorialContext: "remembrance", slug: null });
-          const result = await callPage();
-          expect(result.type).not.toBe(GalleryStep);
-          expect(resolveGalleryStepData).not.toHaveBeenCalled();
+          expect((await callPage()).type).toBe(GalleryStep);
+
+          granted(withA00(withoutA13(REAL_DRAFT), A00_NO), { ...CONFIGURED_MEMORIAL, editorialContext: null, slug: null });
+          expect((await callPage()).type).toBe(GalleryStep);
         });
       });
     });
@@ -3165,9 +3115,12 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
     expect(CODE).not.toMatch(/saveDraftContent/);
   });
 
-  it("hands ContextStep a bound Server Action as `persist` too, never a closure over a repository", () => {
-    expect(CODE).toMatch(/persist=\{saveEditorialContextAction\.bind\(null, access\.memorialId\)\}/);
-    expect(CODE).not.toMatch(/saveEditorialContext\(/);
+  it("B02-L2 — never shows T02 and never writes the editorial context (historical data only)", () => {
+    expect(CODE).not.toMatch(/ContextStep/);
+    expect(CODE).not.toMatch(/saveEditorialContext/);
+    // Read only for the Welcome's "nobody has started" check — never for routing.
+    expect(CODE.match(/resumed\.memorial\.editorialContext/g) ?? []).toHaveLength(1);
+    expect(CODE).toMatch(/needsWelcome\(resumed\.memorial\.editorialContext, resumed\.draft\.content\)/);
   });
 
   it("never deduces the editorial context from a death date, an offer, or a culture — the source has no such signal in scope", () => {
@@ -3293,7 +3246,7 @@ describe("BuilderMemorialPage — Étape 3 Preview host", () => {
     expect(host.props.available).toBe(false);
   });
 
-  it.each(["announcement", "remembrance"] as const)("the %s resting screen (GuidedFlowPause): available", async (ctx) => {
+  it.each(["announcement", "remembrance", null] as const)("the resting screen (GuidedFlowPause), historical context %s: available", async (ctx) => {
     const host = await hostFor({ ...PAST_EVERYTHING_UNCONFIGURED, editorialContext: ctx }, REAL_DRAFT);
     expect(host.props.children.type).toBe(GuidedFlowPause);
     expect(host.props.available).toBe(true);

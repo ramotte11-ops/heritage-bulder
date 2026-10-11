@@ -1,5 +1,4 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { EditorialContext } from "@/config/memorial";
 import type { PersonWordsContent } from "@/types/person-words";
 import type { LovedThingsContent } from "@/types/loved-things";
 import type { LegacyContent } from "@/types/legacy";
@@ -12,6 +11,8 @@ import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
 import { humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
 import { isA09Resolved } from "./traditions-step";
+import { isAnnouncementChosen } from "./announcement-choice-step";
+import { isCeremonyBlockResolved } from "./ceremony-step";
 
 /**
  * Mission 044 — QG Produit/UX decision: A10 ("Quelques mots sur la
@@ -140,7 +141,10 @@ export function isPersonSheetResolved(content: MemorialContent): boolean {
  * until the sheet itself has been treated once, whichever way.
  */
 export function needsPersonSheet(content: MemorialContent): boolean {
-  if (!isA09Resolved(content)) return false;
+  // B02-L2 — when the death notice is not chosen, A09 is not part of the
+  // route, so the sheet follows the ceremony block directly.
+  const previousBehind = isAnnouncementChosen(content) ? isA09Resolved(content) : isCeremonyBlockResolved(content);
+  if (!previousBehind) return false;
   return !isPersonSheetResolved(content);
 }
 
@@ -149,9 +153,9 @@ export function needsPersonSheet(content: MemorialContent): boolean {
 // constant.
 // ---------------------------------------------------------------------
 
-export function personSheetProgress(editorialContext: EditorialContext, content: MemorialContent): number {
+export function personSheetProgress(content: MemorialContent): number {
   const hero = readHero(content);
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, hero));
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, hero));
 }
 
 // ---------------------------------------------------------------------

@@ -35,15 +35,6 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "announcementChoice.laterTitle": "Plus tard",
   "announcementChoice.laterDescription": "Je préfère décider ultérieurement.",
   "announcementChoice.changeLater": "Vous pourrez modifier votre choix ultérieurement.",
-  "context.title": "Que souhaitez-vous créer aujourd'hui ?",
-  "context.subtitle":
-    "Choisissez le parcours qui correspond le mieux à ce dont vous avez besoin aujourd'hui.",
-  "context.announcementTitle": "Annonce & Hommage",
-  "context.announcementDescription":
-    "Pour un décès récent — partagez d'abord les informations essentielles, puis enrichissez l'hommage de souvenirs au fil du temps.",
-  "context.remembranceTitle": "Mémoire & Hommage",
-  "context.remembranceDescription":
-    "Créez un espace de mémoire durable, centré sur la vie, l'histoire et les souvenirs de la personne.",
   "preview.view": "Voir l'aperçu",
   "preview.hide": "Masquer l'aperçu",
   "preview.backToCreation": "Revenir à la création",

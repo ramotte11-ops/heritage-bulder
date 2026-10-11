@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { readHero } from "@/lib/memorial/hero";
 import type { StepRecord } from "./engine";
@@ -9,8 +8,8 @@ import { heroStepProgress, needsPageA } from "./hero-step";
 /**
  * A00 — "Souhaitez-vous également publier une annonce de décès ?"
  *
- * Asked once, right after identity (PAGE A) and before the Hero, for an
- * `announcement` memorial. Three distinct, persisted answers in
+ * Asked once, right after identity (PAGE A) and before the Hero, of
+ * every family (B02-L2: no editorial-context choice any more). Three distinct, persisted answers in
  * `content.guidedFlow.A00` (the same bag every step writes through,
  * protected by B02-L1):
  *
@@ -47,8 +46,7 @@ export function isAnnouncementChosen(content: MemorialContent): boolean {
 }
 
 /** A00 is shown once PAGE A is behind the family (never before) and
- * until A00 has an answer — explicit or derived. Asked of `announcement`
- * memorials only (`app/builder/[memorialId]/page.tsx` checks the context). */
+ * until A00 has an answer — explicit or derived. */
 export function needsA00(content: MemorialContent): boolean {
   if (needsPageA(content)) return false;
   return readAnnouncementChoice(content) === null;
@@ -75,6 +73,6 @@ export function commitA00(content: MemorialContent, answer: string): Announcemen
 
 /** The real engine's progress for this screen — same resolved state
  * every other Guided Flow screen reads. */
-export function announcementChoiceProgress(editorialContext: EditorialContext, content: MemorialContent): number {
-  return heroStepProgress(editorialContext, content, readHero(content));
+export function announcementChoiceProgress(content: MemorialContent): number {
+  return heroStepProgress(content, readHero(content));
 }

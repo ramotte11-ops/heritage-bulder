@@ -66,7 +66,6 @@ const READY_CONTENT: MemorialContent = {
 function defaultProps() {
   return {
     language: "fr" as const,
-    editorialContext: "announcement" as const,
     content: READY_CONTENT,
     skin: "intemporel" as Skin,
     skinVariant: "light" as const,

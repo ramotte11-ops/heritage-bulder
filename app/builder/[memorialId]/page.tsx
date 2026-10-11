@@ -10,7 +10,6 @@ import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
 import { WelcomeStep } from "@/components/builder/WelcomeStep";
 import { AnnouncementChoiceStep } from "@/components/builder/AnnouncementChoiceStep";
-import { ContextStep } from "@/components/builder/ContextStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
@@ -56,7 +55,7 @@ import {
 import { resolveHeroCropStepData } from "@/lib/builder/guided-flow/resolve-hero-crop-step";
 import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { readHero } from "@/lib/memorial/hero";
-import { saveDraftAction, saveLanguageAction, saveEditorialContextAction } from "./actions";
+import { saveDraftAction, saveLanguageAction } from "./actions";
 import {
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
@@ -159,18 +158,16 @@ import styles from "./page.module.css";
  * first choice, gated on nothing but that one column. Once a language
  * IS recorded, this route never shows T01 again for that memorial.
  *
- * ## Mission 024 — T02 sits right after T01
+ * ## B02-L2 — one single route, no editorial-context choice
  *
- * Once `language` is recorded but `editorialContext` is still NULL,
- * this route renders `ContextStep` (T02) instead of the "not
- * configured" notice — gated on nothing but that one column, exactly
- * the same discipline as T01's own gate. Once an editorial context IS
- * recorded, T02 is never shown again either; a memorial with both
- * `language` and `editorialContext` but still not fully configured (a
- * Guided Flow step no later mission has built yet) falls through to the
- * existing notice, shown in the family's own language.
+ * Mission 024's T02 ("Annonce & Hommage" / "Mémoire & Hommage") is gone:
+ * the route is T01 → Welcome (new drafts only) → PAGE A → A00 → Hero →
+ * the following sections, for every family. Whether the death notice is
+ * offered is A00's answer alone (lib/builder/guided-flow/announcement-choice-step.ts).
+ * `memorials.editorial_context` is never written and never read for
+ * routing any more; it stays in the database as historical data only.
  *
- * ## Mission 032 — PAGE A (T03 + T04) and PAGE B (T05) sit right after T02
+ * ## Mission 032 — PAGE A (T03 + T04) and PAGE B (T05) sit right after T01
  *
  * Unlike T01/T02, these two gates read `resumed.draft.content` — the
  * Hero (Mission 031's canonical model) lives at `draft.content.hero`,
@@ -365,15 +362,14 @@ export default async function BuilderMemorialPage({
   // `loadMemorialPreviewAction` re-reads the saved draft server-side;
   // nothing here is handed to it but the authorized id.
   const memorialLanguage = resumed.memorial.language;
-  const memorialEditorialContext = resumed.memorial.editorialContext;
   const memorialSkin = resolveSkinRuntime(resumed.memorial.skin);
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
   const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
 
   function previewAvailable(content: MemorialContent): boolean {
-    if (memorialLanguage === null || memorialEditorialContext === null || !heroRendererExists) return false;
-    return isPreviewUnlocked(memorialEditorialContext, resolveHeroFlowState(content, readHero(content)));
+    if (memorialLanguage === null || !heroRendererExists) return false;
+    return isPreviewUnlocked(resolveHeroFlowState(content, readHero(content)));
   }
 
   function withPreview(screen: ReactElement, available: boolean) {
@@ -403,28 +399,6 @@ export default async function BuilderMemorialPage({
     );
   }
 
-  // Mission 024 — T02. Language is now guaranteed non-null (narrowed by
-  // the `return` above), so T02's own copy can render fully resolved in
-  // it. `editorialContext === null` means this family has completed T01
-  // but never T02 — shown NOW, unconditionally, on nothing but this one
-  // column: never deduced from a death date, an offer, a skin, or a
-  // culture (mission brief section 3 — an absolute rule). Once an
-  // editorial context IS recorded, T02 is never shown again for this
-  // Memorial — reached only through this one condition, on a field only
-  // `saveEditorialContextAction` (through `ContextStep`) ever sets.
-  //
-  // `saveEditorialContextAction.bind(null, access.memorialId)` mirrors
-  // `saveLanguageAction`'s own binding above for the same reasons.
-  if (resumed.memorial.editorialContext === null) {
-    return withPreview(
-      <ContextStep
-        language={resumed.memorial.language}
-        persist={saveEditorialContextAction.bind(null, access.memorialId)}
-      />,
-      false,
-    );
-  }
-
   // Mission 032 — PAGE A: T03 (nom affiché, obligatoire) and T04
   // (dates, facultatives) sharing one visible page, gated on the Hero
   // itself (draft.content.hero) rather than on a memorial column — the
@@ -438,7 +412,6 @@ export default async function BuilderMemorialPage({
     return withPreview(
       <HeroIdentityStep
         language={resumed.memorial.language}
-        editorialContext={resumed.memorial.editorialContext}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
       />,
@@ -447,15 +420,14 @@ export default async function BuilderMemorialPage({
   }
 
   // A00 — "Souhaitez-vous également publier une annonce de décès ?":
-  // right after identity (PAGE A), before the Hero, for an `announcement`
-  // memorial only while T02 still splits the two contexts (B02-L2). A
-  // pre-A00 draft that already validated its announcement reads as "yes"
-  // and is never asked (lib/builder/guided-flow/announcement-choice-step.ts).
-  if (resumed.memorial.editorialContext === "announcement" && needsA00(resumed.draft.content)) {
+  // right after identity (PAGE A), before the Hero, for every family
+  // whatever its historical editorial context (B02-L2). A pre-A00 draft
+  // that already validated its announcement reads as "yes" and is never
+  // asked (lib/builder/guided-flow/announcement-choice-step.ts).
+  if (needsA00(resumed.draft.content)) {
     return withPreview(
       <AnnouncementChoiceStep
         language={resumed.memorial.language}
-        editorialContext={resumed.memorial.editorialContext}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
       />,
@@ -472,7 +444,6 @@ export default async function BuilderMemorialPage({
     return withPreview(
       <HeroPhraseStep
         language={resumed.memorial.language}
-        editorialContext={resumed.memorial.editorialContext}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
       />,
@@ -500,7 +471,6 @@ export default async function BuilderMemorialPage({
     return withPreview(
       <HeroPhotoStep
         language={resumed.memorial.language}
-        editorialContext={resumed.memorial.editorialContext}
         content={photoStepData.content}
         initialPhoto={photoStepData.initialPhoto}
         persist={saveDraftAction.bind(null, access.memorialId)}
@@ -560,7 +530,6 @@ export default async function BuilderMemorialPage({
       return withPreview(
         <HeroCropStep
           language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           photo={cropStepData}
           persist={saveDraftAction.bind(null, access.memorialId)}
@@ -594,7 +563,6 @@ export default async function BuilderMemorialPage({
       return withPreview(
         <HeroRevealStep
           language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
           content={heroReconciledContent}
           photo={revealStepData}
           initialSkinVariant={resumed.memorial.skinVariant}
@@ -607,216 +575,199 @@ export default async function BuilderMemorialPage({
   }
 
   // Mission 039 — A01 (l'annonce) and A02 (précisions facultatives) sit
-  // right after PAGE E, and ONLY for the `announcement` editorial
-  // context (mission brief section 13: A01/A02 must never appear at all
-  // in `remembrance` — never merely skipped, never rendered empty).
-  // Nothing here ever reads or clears `content.deathNotice` for a
-  // `remembrance` memorial: this whole block is unreachable for one, so
-  // a stray Death Notice left over from an earlier context switch is
-  // simply never touched (lib/memorial/death-notice.ts's own "context
-  // safety" doctrine — a context switch alone never destroys data).
-  if (resumed.memorial.editorialContext === "announcement") {
-    // A00 — the death notice (A01-A03) is offered only when the family
-    // answered "yes". "Non"/"Plus tard" go straight on to the ceremony
-    // question (A04), which never depends on this choice; any notice
-    // content already written is kept untouched.
-    const announcementChosen = isAnnouncementChosen(heroReconciledContent);
+  // right after PAGE E. B02-L2 — the death notice (A01-A03) is offered
+  // only when A00 was answered "yes". "Non"/"Plus tard" go straight on to
+  // the ceremony question (A04), which never depends on this choice; any
+  // notice content already written is kept untouched, never read or
+  // cleared here (lib/memorial/death-notice.ts's "context safety"
+  // doctrine — changing a choice never destroys data).
+  const announcementChosen = isAnnouncementChosen(heroReconciledContent);
 
-    if (announcementChosen && needsA01(heroReconciledContent)) {
-      return withPreview(
-        <DeathNoticeAnnouncementStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  if (announcementChosen && needsA01(heroReconciledContent)) {
+    return withPreview(
+      <DeathNoticeAnnouncementStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // A02 is shown only once A01 is genuinely behind the family (never
-    // before — see `needsA02`'s own guard) and only until A02 itself has
-    // been treated once, whichever way (mission brief section 8/9).
-    if (announcementChosen && needsA02(heroReconciledContent)) {
-      return withPreview(
-        <DeathNoticePrecisionsStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  // A02 is shown only once A01 is genuinely behind the family (never
+  // before — see `needsA02`'s own guard) and only until A02 itself has
+  // been treated once, whichever way (mission brief section 8/9).
+  if (announcementChosen && needsA02(heroReconciledContent)) {
+    return withPreview(
+      <DeathNoticePrecisionsStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // Mission 039B — A03: the Death Notice preview. Shown only once A01
-    // AND A02 are both genuinely behind the family (never before — see
-    // `needsA03`'s own guard) and until A03 itself has been verified for
-    // the CURRENT content (its own deterministic fingerprint —
-    // `deathNoticePreviewFingerprint`). `resumed.memorial.skin` is passed
-    // through RE-VALIDATED (never trusted as a bare TS type crossing the
-    // DB boundary) — `DeathNoticePreviewStep`'s own skin guard is what
-    // decides whether the real Intemporel renderer shows or an honest
-    // "not yet available for this style" notice.
-    if (announcementChosen && needsA03(heroReconciledContent)) {
-      return withPreview(
-        <DeathNoticePreviewStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          skin={resumed.memorial.skin}
-          skinVariant={resumed.memorial.skinVariant}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        false /* Reveal */,
-      );
-    }
+  // Mission 039B — A03: the Death Notice preview. Shown only once A01
+  // AND A02 are both genuinely behind the family (never before — see
+  // `needsA03`'s own guard) and until A03 itself has been verified for
+  // the CURRENT content (its own deterministic fingerprint —
+  // `deathNoticePreviewFingerprint`). `resumed.memorial.skin` is passed
+  // through RE-VALIDATED (never trusted as a bare TS type crossing the
+  // DB boundary) — `DeathNoticePreviewStep`'s own skin guard is what
+  // decides whether the real Intemporel renderer shows or an honest
+  // "not yet available for this style" notice.
+  if (announcementChosen && needsA03(heroReconciledContent)) {
+    return withPreview(
+      <DeathNoticePreviewStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        skin={resumed.memorial.skin}
+        skinVariant={resumed.memorial.skinVariant}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      false /* Reveal */,
+    );
+  }
 
-    // Mission 040 — A04: "Un moment est-il prévu ?", obligatoire et
-    // non-passable, shown only once A01/A02/A03 are all genuinely behind
-    // the family (never before — see `needsA04`'s own guard, which also
-    // routes back here on a corrupted stored Ceremony).
-    if (needsA04(heroReconciledContent)) {
-      return withPreview(
-        <CeremonyMomentStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  // Mission 040 — A04: "Un moment est-il prévu ?", obligatoire et
+  // non-passable, shown only once A01/A02/A03 are all genuinely behind
+  // the family (never before — see `needsA04`'s own guard, which also
+  // routes back here on a corrupted stored Ceremony).
+  if (needsA04(heroReconciledContent)) {
+    return withPreview(
+      <CeremonyMomentStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // Mission 040 — A05-A08: the ceremony's own information, shown only
-    // when A04 was answered "yes" (never for "non"/"pas encore décidé" —
-    // `needsA05`..`needsA08` each read that answer themselves) and only
-    // until each one has been treated once, whichever way. Every one of
-    // the four is facultatif and passable (human-steps.ts).
-    if (needsA05(heroReconciledContent)) {
-      return withPreview(
-        <CeremonyDateTimeStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  // Mission 040 — A05-A08: the ceremony's own information, shown only
+  // when A04 was answered "yes" (never for "non"/"pas encore décidé" —
+  // `needsA05`..`needsA08` each read that answer themselves) and only
+  // until each one has been treated once, whichever way. Every one of
+  // the four is facultatif and passable (human-steps.ts).
+  if (needsA05(heroReconciledContent)) {
+    return withPreview(
+      <CeremonyDateTimeStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    if (needsA06(heroReconciledContent)) {
-      return withPreview(
-        <CeremonyVenueStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  if (needsA06(heroReconciledContent)) {
+    return withPreview(
+      <CeremonyVenueStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    if (needsA07(heroReconciledContent)) {
-      return withPreview(
-        <CeremonyAddressStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  if (needsA07(heroReconciledContent)) {
+    return withPreview(
+      <CeremonyAddressStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    if (needsA08(heroReconciledContent)) {
-      return withPreview(
-        <CeremonyNoteStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  if (needsA08(heroReconciledContent)) {
+    return withPreview(
+      <CeremonyNoteStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // Mission 042 — A09: "Traditions & repères". Shown once the whole
-    // Ceremony block is genuinely behind the family — A04 resolved, and
-    // A05-A08 resolved too whenever A04 was answered "yes" (never
-    // before: `needsA09` reuses `needsA04`..`needsA08` verbatim) — and
-    // reached exactly the same way whether A04 was "yes", "no" or
-    // "undecided" (mission brief section 2: A09 stays reachable and
-    // independent of whether a ceremony is actually planned). `skin` is
-    // passed through RE-VALIDATED (never a bare TS type crossing the DB
-    // boundary), used ONLY to narrow which catalog suggestions may be
-    // shown — never to infer or pre-select a practice.
-    if (needsA09(heroReconciledContent)) {
-      return withPreview(
-        <TraditionsStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          skin={resumed.memorial.skin}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  // Mission 042 — A09: "Traditions & repères". Shown once the whole
+  // Ceremony block is genuinely behind the family — A04 resolved, and
+  // A05-A08 resolved too whenever A04 was answered "yes" (never
+  // before: `needsA09` reuses `needsA04`..`needsA08` verbatim) — and
+  // reached exactly the same way whether A04 was "yes", "no" or
+  // "undecided". B02-L2 — A09 belongs with the death notice (PO
+  // doctrine): `needsA09` itself is false unless A00 = "yes"; entries
+  // already written stay in the draft. `skin` is
+  // passed through RE-VALIDATED (never a bare TS type crossing the DB
+  // boundary), used ONLY to narrow which catalog suggestions may be
+  // shown — never to infer or pre-select a practice.
+  if (needsA09(heroReconciledContent)) {
+    return withPreview(
+      <TraditionsStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        skin={resumed.memorial.skin}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // Mission 044 — the combined A10+A11+A12 sheet ("Quelques mots sur
-    // la personne" / "Ce qu'elle aimait" / "Ce qu'elle laisse"). Shown
-    // only once A09 is genuinely behind the family (never before — see
-    // `needsPersonSheet`'s own guard, which gates on `isA09Resolved`,
-    // never on `needsA09` — `needsA09 === false` is ambiguous for a
-    // skippable step) and only until the sheet itself has been treated
-    // once, whichever way. Entirely facultative and passable, three
-    // free-text matières resolved together, no Memorial rendering
-    // decided here (mission brief: no renderer, no "Récit de vie"
-    // composition in this mission).
-    if (needsPersonSheet(heroReconciledContent)) {
-      return withPreview(
-        <PersonSheetStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+  // Mission 044 — the combined A10+A11+A12 sheet ("Quelques mots sur
+  // la personne" / "Ce qu'elle aimait" / "Ce qu'elle laisse"). Shown
+  // only once A09 is genuinely behind the family (never before — see
+  // `needsPersonSheet`'s own guard, which gates on `isA09Resolved`,
+  // never on `needsA09` — `needsA09 === false` is ambiguous for a
+  // skippable step), or once the Ceremony block is when A09 is not part
+  // of the route (A00 not "yes") and only until the sheet itself has been treated
+  // once, whichever way. Entirely facultative and passable, three
+  // free-text matières resolved together, no Memorial rendering
+  // decided here (mission brief: no renderer, no "Récit de vie"
+  // composition in this mission).
+  if (needsPersonSheet(heroReconciledContent)) {
+    return withPreview(
+      <PersonSheetStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
+  }
 
-    // A13 — "Vos souvenirs en images". Shown once the A10–A12 sheet is
-    // genuinely behind the family (never before — `needsA13` gates on
-    // `isPersonSheetResolved`) and only until A13 itself has been treated
-    // once, whichever way. The thumbnails are resolved here, server-side,
-    // through the Preview's own Owner draft resolver (purpose "gallery");
-    // the three Gallery actions are bound to the AUTHORIZED id exactly
-    // like the Hero's — the browser never picks a memorial or a purpose.
-    // A corrupted stored Gallery still renders the step, which shows its
-    // own calm notice instead of an editor (same as every other step).
-    if (needsA13(heroReconciledContent)) {
-      const galleryStepData = await resolveGalleryStepData(
-        { mediaEngine: createServerMediaEngineDeps() },
-        actor,
-        access.memorialId,
-        heroReconciledContent,
-      );
+  // A13 — "Vos souvenirs en images". Shown once the A10–A12 sheet is
+  // genuinely behind the family (never before — `needsA13` gates on
+  // `isPersonSheetResolved`) and only until A13 itself has been treated
+  // once, whichever way. The thumbnails are resolved here, server-side,
+  // through the Preview's own Owner draft resolver (purpose "gallery");
+  // the three Gallery actions are bound to the AUTHORIZED id exactly
+  // like the Hero's — the browser never picks a memorial or a purpose.
+  // A corrupted stored Gallery still renders the step, which shows its
+  // own calm notice instead of an editor (same as every other step).
+  if (needsA13(heroReconciledContent)) {
+    const galleryStepData = await resolveGalleryStepData(
+      { mediaEngine: createServerMediaEngineDeps() },
+      actor,
+      access.memorialId,
+      heroReconciledContent,
+    );
 
-      return withPreview(
-        <GalleryStep
-          language={resumed.memorial.language}
-          editorialContext={resumed.memorial.editorialContext}
-          content={heroReconciledContent}
-          thumbnails={galleryStepData.status === "ready" ? galleryStepData.thumbnails : {}}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-          reserveUpload={reserveGalleryPhotoUploadAction.bind(null, access.memorialId)}
-          finalizeUpload={finalizeGalleryPhotoUploadAction.bind(null, access.memorialId)}
-          retirePhoto={retireGalleryPhotoAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+    return withPreview(
+      <GalleryStep
+        language={resumed.memorial.language}
+        content={heroReconciledContent}
+        thumbnails={galleryStepData.status === "ready" ? galleryStepData.thumbnails : {}}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+        reserveUpload={reserveGalleryPhotoUploadAction.bind(null, access.memorialId)}
+        finalizeUpload={finalizeGalleryPhotoUploadAction.bind(null, access.memorialId)}
+        retirePhoto={retireGalleryPhotoAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(heroReconciledContent),
+    );
   }
 
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
@@ -827,28 +778,23 @@ export default async function BuilderMemorialPage({
   // NULLs).
   //
   // Builder continuity mission — what a memorial past every BUILT gate
-  // above reaches instead (today: past A13 for `announcement`, past
-  // PAGE E for `remembrance`). This used to be a
+  // above reaches instead (today: past A13). This used to be a
   // bare "your memorial still needs to be configured" notice: a dead end
   // that asked the family for a step no screen offers. It is now the
   // Guided Flow's own resting screen — same chrome, the real engine's
   // progress (never 1 while unbuilt steps remain on the route), a
   // confirmation that the answers are stored, and the way back to the
   // owner space. It decides nothing about publication or `slug`, and
-  // simulates no later step: when M01 (or a later step) is built, its own
+  // simulates no later step: when a later step is built, its own
   // `needsX` gate goes right above this line, exactly like every gate
   // before it, and this screen moves one step further down on its own.
-  // `resumed.memorial.language`/`editorialContext` are narrowed non-null
-  // by the earlier `return`s.
+  // `resumed.memorial.language` is narrowed non-null by the earlier
+  // `return`s.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return withPreview(
       <GuidedFlowPause
         language={resumed.memorial.language}
-        progress={heroStepProgress(
-          resumed.memorial.editorialContext,
-          heroReconciledContent,
-          readHero(heroReconciledContent),
-        )}
+        progress={heroStepProgress(heroReconciledContent, readHero(heroReconciledContent))}
       />,
       previewAvailable(heroReconciledContent),
     );

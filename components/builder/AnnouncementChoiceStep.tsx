@@ -2,7 +2,6 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EditorialContext } from "@/config/memorial";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
@@ -31,7 +30,6 @@ const INITIAL_STATE: AnnouncementChoiceStepState = { status: "idle" };
 
 interface AnnouncementChoiceStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   content: MemorialContent;
   /** The bound `saveDraftAction`, exactly like every Guided Flow screen. */
   persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
@@ -46,7 +44,7 @@ interface AnnouncementChoiceStepProps {
  * language. Nothing is preselected the first time; a choice already
  * recorded is restored when the screen is shown again.
  */
-export function AnnouncementChoiceStep({ language, editorialContext, content, persist }: AnnouncementChoiceStepProps) {
+export function AnnouncementChoiceStep({ language, content, persist }: AnnouncementChoiceStepProps) {
   const [selected, setSelected] = useState<A00Answer | null>(() => readAnnouncementChoice(content));
   const router = useRouter();
 
@@ -70,7 +68,7 @@ export function AnnouncementChoiceStep({ language, editorialContext, content, pe
   const [state, formAction, isPending] = useActionState(submit, INITIAL_STATE);
 
   return (
-    <BuilderScreen progress={announcementChoiceProgress(editorialContext, content)}>
+    <BuilderScreen progress={announcementChoiceProgress(content)}>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "announcementChoice.title")}</h1>
         <p className={styles.subtitle}>{translate(language, "announcementChoice.subtitle")}</p>

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import type { MediaResult } from "@/lib/media/media-errors";
@@ -22,7 +21,6 @@ import styles from "./GalleryStep.module.css";
 
 interface GalleryStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The draft — the A10–A12 sheet is already behind the family. */
   content: MemorialContent;
   /** Resolved server-side (`resolveGalleryStepData`): mediaId -> short-lived read URL, never persisted. */
@@ -52,7 +50,6 @@ interface GalleryStepProps {
  */
 export function GalleryStep({
   language,
-  editorialContext,
   content: initialContent,
   thumbnails,
   persist,
@@ -113,7 +110,7 @@ export function GalleryStep({
 
   return (
     <BuilderScreen
-      progress={galleryStepProgress(editorialContext, content)}
+      progress={galleryStepProgress(content)}
       status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
     >
       <div className={styles.copy}>

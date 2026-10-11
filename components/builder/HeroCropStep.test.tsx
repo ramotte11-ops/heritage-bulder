@@ -68,7 +68,6 @@ const READY_MEDIA = {
 function baseProps(overrides: Partial<Parameters<typeof HeroCropStep>[0]> = {}) {
   return {
     language: "fr" as const,
-    editorialContext: "remembrance" as const,
     content: CONTENT_NO_CROP,
     photo: { media: READY_MEDIA, readUrl: "https://storage.test/signed/x" },
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),

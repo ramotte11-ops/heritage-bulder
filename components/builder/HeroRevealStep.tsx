@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
@@ -17,7 +16,6 @@ import styles from "./HeroRevealStep.module.css";
 
 interface HeroRevealStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — PAGE A through PAGE D are
    * already guaranteed done by the time this renders (see
    * lib/builder/guided-flow/hero-step.ts's `needsPageE` and
@@ -126,7 +124,6 @@ interface HeroRevealStepProps {
  */
 export function HeroRevealStep({
   language,
-  editorialContext,
   content,
   photo,
   initialSkinVariant,
@@ -151,7 +148,7 @@ export function HeroRevealStep({
     );
   }
 
-  const progress = heroStepProgress(editorialContext, content, read.hero);
+  const progress = heroStepProgress(content, read.hero);
 
   function togglePreview() {
     setPreviewVariant((current) => (current === "light" ? "dark" : "light"));
@@ -205,7 +202,6 @@ export function HeroRevealStep({
           hero={read.hero}
           photo={photo}
           skinVariant={previewVariant}
-          editorialContext={editorialContext}
           language={language}
         />
       </div>

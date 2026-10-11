@@ -25,7 +25,6 @@ import {
   QG_RUNTIME_DEMO_BIRTH,
   QG_RUNTIME_DEMO_DEATH,
   QG_RUNTIME_DEMO_DEFAULT_SKIN_VARIANT,
-  QG_RUNTIME_DEMO_EDITORIAL_CONTEXT,
   QG_RUNTIME_DEMO_LANGUAGE,
   QG_RUNTIME_DEMO_NAME_LONG,
   QG_RUNTIME_DEMO_NAME_NORMAL,
@@ -97,7 +96,6 @@ function scenarioHeroInput(scenario: Scenario) {
 }
 
 const LANGUAGE = QG_RUNTIME_DEMO_LANGUAGE;
-const EDITORIAL_CONTEXT = QG_RUNTIME_DEMO_EDITORIAL_CONTEXT;
 
 /**
  * Récit de vie — QG Runtime Demo control panel, Handoff GREEN QG
@@ -233,7 +231,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <HeroIdentityStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         persist={persist}
       />
@@ -243,7 +240,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <AnnouncementChoiceStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         persist={persist}
       />
@@ -253,7 +249,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <HeroPhraseStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         persist={persist}
       />
@@ -278,7 +273,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <HeroRevealStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         photo={QG_RUNTIME_DEMO_PHOTO}
         initialSkinVariant={skinVariant}
@@ -291,7 +285,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <DeathNoticeAnnouncementStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         persist={persist}
       />
@@ -301,7 +294,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <DeathNoticePrecisionsStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         persist={persist}
       />
@@ -311,7 +303,6 @@ export default function QgRuntimeDemoPage() {
     body = (
       <DeathNoticePreviewStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
         skin={QG_RUNTIME_DEMO_SKIN}
         skinVariant={skinVariant}
@@ -319,12 +310,13 @@ export default function QgRuntimeDemoPage() {
       />
     );
   } else {
-    stepLabel = "Parcours QG terminé (A01/A02/A03 validés)";
+    stepLabel = "Parcours QG terminé (Hero, puis A01/A02/A03 si A00 = Oui)";
     body = (
       <div className={styles.notice}>
         <h1>Parcours QG terminé</h1>
         <p>
-          A01, A02 et A03 sont vérifiés pour ce contenu de démonstration. Cette démo
+          Le Hero est révélé et, si A00 = Oui, A01, A02 et A03 sont vérifiés pour ce contenu de
+          démonstration. Cette démo
           s&rsquo;arrête ici — elle n&rsquo;ouvre jamais le Builder final (`BuilderShell`) et ne
           publie jamais rien.
         </p>

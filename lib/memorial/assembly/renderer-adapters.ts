@@ -1,5 +1,4 @@
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { SectionId } from "@/config/sections";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { RendererKey } from "@/config/memorial-section-renderers";
@@ -71,7 +70,6 @@ export type AssemblyFailureReason =
 
 export interface AdapterContext {
   content: MemorialContent;
-  editorialContext: EditorialContext;
   skin: Skin | null;
   skinVariant: SkinVariant;
   language: Language;
@@ -113,7 +111,6 @@ export const adaptHeroIntemporel: RendererAdapter<"HeroIntemporel"> = async (con
       // Only the URL — never whatever else a resolver might have attached.
       photo: { readUrl: resolved.readUrl },
       skinVariant: context.skinVariant,
-      editorialContext: context.editorialContext,
       language: context.language,
     },
   };
@@ -135,7 +132,6 @@ export const adaptDeathNoticeIntemporel: RendererAdapter<"DeathNoticeIntemporel"
     props: {
       hero: hero.hero,
       deathNotice: deathNotice.deathNotice,
-      editorialContext: context.editorialContext,
       language: context.language,
       skinVariant: context.skinVariant,
       // QG D3: the Hero's name is the Memorial's only <h1>.

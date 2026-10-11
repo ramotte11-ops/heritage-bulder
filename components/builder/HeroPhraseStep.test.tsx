@@ -33,7 +33,6 @@ describe("HeroPhraseStep — 40-character Builder limit (Mobile Text Contract RE
     render(
       <HeroPhraseStep
         language="fr"
-        editorialContext="remembrance"
         content={CONTENT}
         persist={vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" })}
       />,
@@ -49,7 +48,7 @@ describe("HeroPhraseStep — wording follows the A00 death-notice choice", () =>
 
   it("yes: the announcement wording", () => {
     render(
-      <HeroPhraseStep language="fr" editorialContext="announcement" content={withChoice({ status: "completed", answer: "yes" })} persist={persist()} />,
+      <HeroPhraseStep language="fr" content={withChoice({ status: "completed", answer: "yes" })} persist={persist()} />,
     );
     expect(screen.getByText(/partager avec l'annonce/)).toBeTruthy();
   });
@@ -58,7 +57,7 @@ describe("HeroPhraseStep — wording follows the A00 death-notice choice", () =>
     ["no", { status: "completed", answer: "no" }],
     ["later", { status: "skipped", answer: "later" }],
   ])("%s: the tribute wording, never a mention of the announcement", (_label, record) => {
-    render(<HeroPhraseStep language="fr" editorialContext="announcement" content={withChoice(record)} persist={persist()} />);
+    render(<HeroPhraseStep language="fr" content={withChoice(record)} persist={persist()} />);
     expect(screen.queryByText(/partager avec l'annonce/)).toBeNull();
     expect(screen.getByText(/comment on se souvient/)).toBeTruthy();
   });

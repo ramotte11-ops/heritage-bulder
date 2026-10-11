@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { HeroDate } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
@@ -25,7 +24,6 @@ import styles from "./HeroIdentityStep.module.css";
 
 interface HeroIdentityStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — T02 is already guaranteed
    * done by the time this renders (see app/builder/[memorialId]/page.tsx),
    * so this is always a real, authorized draft. */
@@ -83,7 +81,6 @@ function dateErrorText(language: Language, kind: DateErrorKind): string | null {
  */
 export function HeroIdentityStep({
   language,
-  editorialContext,
   content: initialContent,
   persist,
 }: HeroIdentityStepProps) {
@@ -171,7 +168,7 @@ export function HeroIdentityStep({
     );
   }
 
-  const progress = heroStepProgress(editorialContext, content, read.hero);
+  const progress = heroStepProgress(content, read.hero);
   const showDisplayNameError = attemptedSubmit && read.hero.displayName === null;
 
   return (

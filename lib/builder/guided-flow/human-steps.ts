@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import type { FlowDefinition, FlowState, StepDefinition, StepRecord } from "./engine";
 
 /**
@@ -16,19 +15,25 @@ import type { FlowDefinition, FlowState, StepDefinition, StepRecord } from "./en
  * deferred by convenience.
  */
 
+/**
+ * B02-L2 — one single HERITAGE route. The editorial-context choice (T02)
+ * and the "Mémoire & Hommage" branch (M01-M06, never built) are gone: the
+ * death notice is decided by A00 alone. A draft that still stores an
+ * M01-M06 record keeps it (flow-state.ts never deletes unknown keys); it
+ * is simply no longer read.
+ */
 export const STEP_IDS = [
-  // Tronc commun (before the branch)
+  // Tronc commun
   "T03",
   "T04",
-  // A00 — "Souhaitez-vous également publier une annonce de décès ?".
-  // Listed here, between identity and the Hero, because that is where it
-  // is asked; its group is still "announcement" (see STEPS below).
+  // A00 — "Souhaitez-vous également publier une annonce de décès ?",
+  // between identity and the Hero.
   "A00",
   "T05",
   "T06",
   "T07",
   "T08",
-  // Branche Announcement
+  // Annonce (A01-A03, only when A00 = yes), cérémonie, repères, fiche, galerie
   "A01",
   "A02",
   "A03",
@@ -42,14 +47,7 @@ export const STEP_IDS = [
   "A11",
   "A12",
   "A13",
-  // Branche Remembrance
-  "M01",
-  "M02",
-  "M03",
-  "M04",
-  "M05",
-  "M06",
-  // Tronc final commun (after the branch)
+  // Tronc final commun
   "P01",
   "P04",
   "V02",
@@ -60,13 +58,13 @@ export const STEP_IDS = [
 export type StepId = (typeof STEP_IDS)[number];
 
 /**
- * `"common"` = tronc commun before the branch (T03-T08); `"final"` =
- * tronc final commun after it (P01-V04); `"announcement"`/
- * `"remembrance"` mirror `config/memorial.ts`'s own `EditorialContext`
- * values exactly — reused, not re-declared, per the mission brief's
- * explicit "ne pas dupliquer editorial_context" rule.
+ * `"common"` = identity, A00 and the Hero (T03-T08); `"announcement"` =
+ * the tribute's own sections (A01-A13 — the historical group name, kept
+ * so the step ids keep their meaning); `"final"` = P01-V04. All three
+ * are always active: there is one route, and per-step `isApplicable`
+ * predicates decide what applies.
  */
-export type StepGroup = "common" | EditorialContext | "final";
+export type StepGroup = "common" | "announcement" | "final";
 
 export type HumanStepDefinition = StepDefinition<StepId, StepGroup>;
 export type HumanFlowState = FlowState<StepId>;
@@ -103,15 +101,15 @@ export function resolveA00Record(state: HumanFlowState): StepRecord | undefined 
   return undefined;
 }
 
-/** Is the death notice part of this memorial right now? Only an A00
- * resolved to "yes". Hidden notice data is never deleted — the
- * announcement steps simply stop being applicable. */
 /** A00 is part of the route unless the draft predates it and already
  * validated its announcement: that family is never asked (their "yes"
  * is derived), so the step is simply not applicable to them. */
 const isA00Applicable = (state: HumanFlowState): boolean =>
   !(state.A00 === undefined && state.A01?.status === "completed");
 
+/** Is the death notice part of this memorial right now? Only an A00
+ * resolved to "yes". Hidden notice data is never deleted — the
+ * announcement steps simply stop being applicable. */
 export const isAnnouncementVisible = (state: HumanFlowState): boolean => {
   const record = resolveA00Record(state);
   return record?.status === "completed" && record.answer === "yes";
@@ -131,11 +129,9 @@ export const STEPS: readonly HumanStepDefinition[] = [
   // --- Tronc commun ---
   { id: "T03", group: "common", required: true, skippable: false },
   { id: "T04", group: "common", required: false, skippable: true },
-  // A00 sits between identity (T03/T04) and the Hero (T05-T08). While
-  // T02 still splits the two editorial contexts, it belongs to the
-  // announcement group only: a "remembrance" memorial is never offered a
-  // death notice (B02-L2 will move it to the common trunk with T02 gone).
-  { id: "A00", group: "announcement", required: false, skippable: true, isApplicable: isA00Applicable },
+  // A00 sits between identity (T03/T04) and the Hero (T05-T08), asked of
+  // every family whatever its historical editorial context.
+  { id: "A00", group: "common", required: false, skippable: true, isApplicable: isA00Applicable },
   { id: "T05", group: "common", required: false, skippable: true },
   { id: "T06", group: "common", required: true, skippable: false },
   // T07 (crop) has no isApplicable of its own tied to T06: both are
@@ -170,23 +166,14 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "A06", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   { id: "A07", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   { id: "A08", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
-  { id: "A09", group: "announcement", required: false, skippable: true },
+  // A09 (Traditions & repères) belongs with the death notice (PO
+  // doctrine): applicable only when A00 = yes. Entries already written
+  // are kept when it is hidden.
+  { id: "A09", group: "announcement", required: false, skippable: true, isApplicable: isAnnouncementVisible },
   { id: "A10", group: "announcement", required: false, skippable: true },
   { id: "A11", group: "announcement", required: false, skippable: true },
   { id: "A12", group: "announcement", required: false, skippable: true },
   { id: "A13", group: "announcement", required: false, skippable: true },
-
-  // --- Branche Remembrance ---
-  // Deliberately no death-notice, no funeral-tradition, no recent-loss
-  // language, no ceremony step here at all (mission brief section 7) —
-  // M06 below is the only, optional, and non-central nod to a possible
-  // commemorative moment.
-  { id: "M01", group: "remembrance", required: true, skippable: false },
-  { id: "M02", group: "remembrance", required: false, skippable: true },
-  { id: "M03", group: "remembrance", required: false, skippable: true },
-  { id: "M04", group: "remembrance", required: false, skippable: true },
-  { id: "M05", group: "remembrance", required: false, skippable: true },
-  { id: "M06", group: "remembrance", required: false, skippable: true },
 
   // --- Tronc final commun ---
   { id: "P01", group: "final", required: false, skippable: true },
@@ -205,19 +192,15 @@ export const STEPS: readonly HumanStepDefinition[] = [
 ];
 
 /**
- * Wires the UX-A `STEPS` + one family's chosen `EditorialContext` into
- * the generic engine's `FlowDefinition` shape — the one place that
- * decides "which groups are in scope for THIS memorial": the common
- * trunk, the final trunk, and exactly one of the two branches, never
- * both (see human-steps.test.ts's "no Announcement step in Remembrance"
- * / "no Remembrance step in Announcement" guards).
+ * The single HERITAGE route as the generic engine's `FlowDefinition`:
+ * every group active, applicability decided step by step (A00, A04).
+ * Takes no editorial context — B02-L2 removed that choice; the column
+ * stays in the database as historical data only.
  */
-export function humanFlowDefinition(
-  editorialContext: EditorialContext,
-): FlowDefinition<StepId, StepGroup> {
+export function humanFlowDefinition(): FlowDefinition<StepId, StepGroup> {
   return {
     steps: STEPS,
-    activeGroups: ["common", "final", editorialContext],
+    activeGroups: ["common", "announcement", "final"],
   };
 }
 

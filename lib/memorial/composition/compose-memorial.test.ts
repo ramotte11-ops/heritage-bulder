@@ -67,9 +67,17 @@ function withCeremonyYesResolved(): MemorialContent {
   return ok(skipA08(content));
 }
 
+/** B02-L2 — overwrite A00 on top of a fixture, keeping every other record
+ * and every content key (the notice, the ceremony…) untouched. */
+const A00_NO = { status: "completed", answer: "no" } as const;
+const A00_LATER = { status: "skipped", answer: "later" } as const;
+function withA00(content: MemorialContent, record: { status: "completed" | "skipped"; answer: string }): MemorialContent {
+  const guidedFlow = (content as { guidedFlow?: Record<string, unknown> }).guidedFlow ?? {};
+  return { ...content, guidedFlow: { ...guidedFlow, A00: { ...record } } } as MemorialContent;
+}
+
 function compose(content: MemorialContent, overrides: Partial<Parameters<typeof composeMemorial>[0]> = {}) {
   return composeMemorial({
-    editorialContext: "announcement",
     skin: "intemporel",
     skinVariant: "light",
     content,
@@ -87,16 +95,14 @@ function stateOf(composition: MemorialComposition, id: SectionId): SectionCompos
 
 describe("canonical order", () => {
   it("follows the order it is given, not the catalog, the Guided Flow or the code", () => {
-    const reversed = [...MEMORIAL_SECTION_ORDER.announcement].reverse();
+    const reversed = [...MEMORIAL_SECTION_ORDER].reverse();
     const composition = compose(throughA09Skipped(), { order: reversed });
     expect(composition.sections.map((s) => s.sectionId)).toEqual(reversed);
   });
 
-  it("defaults to MEMORIAL_SECTION_ORDER for the memorial's context", () => {
-    expect(compose({}).sections.map((s) => s.sectionId)).toEqual(MEMORIAL_SECTION_ORDER.announcement);
-    expect(compose({}, { editorialContext: "remembrance" }).sections.map((s) => s.sectionId)).toEqual(
-      MEMORIAL_SECTION_ORDER.remembrance,
-    );
+  it("defaults to the single MEMORIAL_SECTION_ORDER, whatever A00 answered", () => {
+    expect(compose({}).sections.map((s) => s.sectionId)).toEqual(MEMORIAL_SECTION_ORDER);
+    expect(compose(withA00(throughA03(), A00_NO)).sections.map((s) => s.sectionId)).toEqual(MEMORIAL_SECTION_ORDER);
   });
 
   it("orders `renderable` by the canonical order too", () => {
@@ -127,8 +133,9 @@ describe("hero", () => {
 // ---------------------------------------------------------------------
 
 describe("deathNotice", () => {
-  it("is optional without an announcement text", () => {
-    expect(stateOf(compose({}), "deathNotice")).toBe("optional");
+  it("is not relevant until A00 = yes (B02-L2), optional with A00 = yes but no announcement text", () => {
+    expect(stateOf(compose({}), "deathNotice")).toBe("notRelevant");
+    expect(stateOf(compose(withA00({}, { status: "completed", answer: "yes" })), "deathNotice")).toBe("optional");
   });
 
   it("is pending with a text but before A03, renderable once A03 is verified", () => {
@@ -222,17 +229,36 @@ describe("traditions", () => {
 });
 
 // ---------------------------------------------------------------------
-// 7. Remembrance
+// 7. A00 — the death notice and what depends on it (B02-L2)
 // ---------------------------------------------------------------------
 
-describe("remembrance", () => {
-  it("never renders deathNotice, ceremony or traditions, even with stray announcement data", () => {
-    const composition = compose(withCeremonyYesResolved(), { editorialContext: "remembrance" });
-    const ids = composition.sections.map((s) => s.sectionId);
-    expect(ids).not.toContain("deathNotice");
-    expect(ids).not.toContain("ceremony");
-    expect(ids).not.toContain("traditions");
-    expect(composition.renderable).toEqual(["hero"]);
+describe("A00 = no / later — no death notice", () => {
+  it.each([
+    ["no", A00_NO],
+    ["later", A00_LATER],
+  ] as const)("%s: never renders deathNotice, traditions or condolences, even with notice data already written", (_answer, record) => {
+    const composition = compose(withA00(withCeremonyYesResolved(), record));
+    for (const id of ["deathNotice", "traditions", "condolences"] as const) {
+      expect(stateOf(composition, id)).toBe("notRelevant");
+    }
+    expect(composition.renderable).not.toContain("deathNotice");
+  });
+
+  it("the ceremony stays independent: rendered without a death notice once A04 = yes is resolved", () => {
+    const composition = compose(withA00(withCeremonyYesResolved(), A00_NO));
+    expect(composition.renderable).toEqual(["hero", "ceremony"]);
+  });
+
+  it("the written notice is kept: back to yes, the Avis is renderable again with no new write", () => {
+    const no = withA00(throughA03(), A00_NO);
+    expect(compose(no).renderable).not.toContain("deathNotice");
+    const yes = withA00(no, { status: "completed", answer: "yes" });
+    expect((yes as { deathNotice: unknown }).deathNotice).toEqual((throughA03() as { deathNotice: unknown }).deathNotice);
+    expect(compose(yes).renderable).toContain("deathNotice");
+  });
+
+  it("a pre-A00 draft that validated its notice (A01 completed, no A00 record) still renders it", () => {
+    expect(compose(throughA03()).renderable).toContain("deathNotice");
   });
 });
 
@@ -296,7 +322,7 @@ describe("invariant — nothing renderable before the Preview unlocks (T08)", ()
 
   it.each(fixtures)("%s: renderable non-empty ⇒ isPreviewUnlocked", (_label, content) => {
     const composition = compose(content);
-    const unlocked = isPreviewUnlocked("announcement", resolveHeroFlowState(content, readHero(content)));
+    const unlocked = isPreviewUnlocked(resolveHeroFlowState(content, readHero(content)));
     if (composition.renderable.length > 0) expect(unlocked).toBe(true);
     else expect(composition.renderable).toEqual([]);
   });

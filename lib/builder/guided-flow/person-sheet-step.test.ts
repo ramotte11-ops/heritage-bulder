@@ -3,7 +3,7 @@ import type { MemorialContent } from "@/types/memorial";
 import { commitA04, skipA05, skipA06, skipA07, skipA08 } from "./ceremony-step";
 import { addTraditionsEntry, commitA09, skipA09 } from "./traditions-step";
 import { humanFlowDefinition } from "./human-steps";
-import { firstIncompleteStep } from "./engine";
+import { applicableSteps, firstIncompleteStep } from "./engine";
 import {
   commitPersonSheet,
   isPersonSheetResolved,
@@ -39,10 +39,14 @@ function requireOk(result: { ok: true; content: MemorialContent } | { ok: false;
   return result.content;
 }
 
+/** B02-L2 — A09 belongs with the death notice: the A09 routes below
+ * start from a family that answered A00 = "yes". */
+const A00_YES_CONTENT = { guidedFlow: { A00: { status: "completed", answer: "yes" } } } as unknown as MemorialContent;
+
 /** A04 answered "no", A09 explicitly skipped with no repère — the
  * normal, minimal starting point for reaching the combined sheet. */
 function a09Resolved(): MemorialContent {
-  let content = requireOk(commitA04(EMPTY_CONTENT, "no"));
+  let content = requireOk(commitA04(A00_YES_CONTENT, "no"));
   content = requireOk(skipA09(content));
   return content;
 }
@@ -51,7 +55,7 @@ function a09Resolved(): MemorialContent {
  * skipped — the alternative route into the sheet via the "ceremony
  * planned" branch. */
 function a09ResolvedThroughCeremonyYes(): MemorialContent {
-  let content = requireOk(commitA04(EMPTY_CONTENT, "yes"));
+  let content = requireOk(commitA04(A00_YES_CONTENT, "yes"));
   content = requireOk(skipA05(content));
   content = requireOk(skipA06(content));
   content = requireOk(skipA07(content));
@@ -110,8 +114,36 @@ describe("needsPersonSheet — A09 not yet resolved", () => {
   });
 
   it("the sheet is not reachable while A04 is answered but A09 still pending", () => {
-    const content = requireOk(commitA04(EMPTY_CONTENT, "no"));
+    const content = requireOk(commitA04(A00_YES_CONTENT, "no"));
     expect(needsPersonSheet(content)).toBe(false);
+  });
+});
+
+describe("needsPersonSheet — B02-L2: without a death notice, the sheet follows the ceremony directly", () => {
+  const withA00 = (record: object) =>
+    ({ guidedFlow: { A00: record } }) as unknown as MemorialContent;
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ])("A00 = %s, A04 = no: reachable right after A04, A09 never asked", (_answer, record) => {
+    const content = requireOk(commitA04(withA00(record), "no"));
+    expect(needsPersonSheet(content)).toBe(true);
+  });
+
+  it("A00 = no, A04 = yes: reachable only once A05-A08 are resolved", () => {
+    let content = requireOk(commitA04(withA00({ status: "completed", answer: "no" }), "yes"));
+    expect(needsPersonSheet(content)).toBe(false);
+    content = requireOk(skipA05(content));
+    content = requireOk(skipA06(content));
+    content = requireOk(skipA07(content));
+    expect(needsPersonSheet(content)).toBe(false);
+    content = requireOk(skipA08(content));
+    expect(needsPersonSheet(content)).toBe(true);
+  });
+
+  it("A00 = no: never before A04 itself is answered", () => {
+    expect(needsPersonSheet(withA00({ status: "completed", answer: "no" }))).toBe(false);
   });
 });
 
@@ -165,7 +197,7 @@ describe("needsPersonSheet — once resolved, never re-asked", () => {
 
 describe("Route integration — A10/A11/A12 sit, in order, between A09 and A13", () => {
   it("firstIncompleteStep lands on A10 once A09 is resolved (A04 = no route)", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -183,7 +215,7 @@ describe("Route integration — A10/A11/A12 sit, in order, between A09 and A13",
   });
 
   it("firstIncompleteStep moves on to A13 once the combined sheet is fully resolved", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -203,12 +235,12 @@ describe("Route integration — A10/A11/A12 sit, in order, between A09 and A13",
     expect(firstIncompleteStep(flow, state)?.id).toBe("A13");
   });
 
-  it("the sheet is absent from the remembrance route entirely", () => {
-    const flow = humanFlowDefinition("remembrance");
-    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
-    expect(route.some((s) => s.id === "A10")).toBe(false);
-    expect(route.some((s) => s.id === "A11")).toBe(false);
-    expect(route.some((s) => s.id === "A12")).toBe(false);
+  it("the sheet stays on the route whatever A00 answered (B02-L2)", () => {
+    const flow = humanFlowDefinition();
+    for (const A00 of [{ status: "completed", answer: "no" }, { status: "skipped", answer: "later" }] as const) {
+      const ids = applicableSteps(flow, { A00: { ...A00 } }).map((s) => s.id);
+      expect(ids).toEqual(expect.arrayContaining(["A10", "A11", "A12"]));
+    }
   });
 });
 

@@ -89,7 +89,7 @@ describe("HERITAGE design tokens foundation", () => {
     const builderCssFiles = [
       "BuilderScreen.module.css",
       "ChoiceCard.module.css",
-      "ContextStep.module.css",
+      "AnnouncementChoiceStep.module.css",
       "LanguageStep.module.css",
       "PrimaryButton.module.css",
       "ProgressBar.module.css",

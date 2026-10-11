@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
 import type { HeroContent } from "@/types/hero";
 import type { DeathNoticeContent } from "@/types/death-notice";
@@ -134,7 +133,6 @@ import styles from "./DeathNoticeIntemporel.module.css";
 export interface DeathNoticeIntemporelProps {
   hero: HeroContent;
   deathNotice: DeathNoticeContent;
-  editorialContext: EditorialContext;
   language: Language;
   skinVariant: SkinVariant;
   /**
@@ -321,7 +319,6 @@ function useSceneRuntime(
 export function DeathNoticeIntemporel({
   hero,
   deathNotice,
-  editorialContext,
   language,
   skinVariant,
   headingLevel = "page",
@@ -332,10 +329,6 @@ export function DeathNoticeIntemporel({
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   const dateRangeText = formatHeroDateRange(hero.birth, hero.death, language);
-  const contextLabel = translate(
-    language,
-    editorialContext === "announcement" ? "context.announcementTitle" : "context.remembranceTitle",
-  );
 
   const visibleBlocks = PRECISION_BLOCKS.filter((block) => deathNotice.precisions[block.field] !== null).map(
     (block) => ({ ...block, text: deathNotice.precisions[block.field] as string }),
@@ -379,11 +372,11 @@ export function DeathNoticeIntemporel({
         </div>
 
         <div ref={contentRef} className={styles.content}>
-          <div className={styles.eyebrowRow}>
-            <span className={styles.eyebrowRule} aria-hidden="true" />
-            <p className={styles.eyebrow}>{contextLabel}</p>
-            <span className={styles.eyebrowRule} aria-hidden="true" />
-          </div>
+          {/* B02-L2 — the former context eyebrow ("Annonce & Hommage" /
+              "Mémoire & Hommage") and its two filets are removed; this
+              empty row keeps their exact height so the title, the branch
+              clearance and everything below never move. */}
+          <div className={styles.eyebrowRow} aria-hidden="true" />
           <TitleTag className={styles.title}>{translate(language, "deathNotice.previewTitle")}</TitleTag>
 
           <div className={styles.branchSpace} aria-hidden="true" />

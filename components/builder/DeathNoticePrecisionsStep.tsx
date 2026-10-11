@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
@@ -24,7 +23,6 @@ import styles from "./DeathNoticePrecisionsStep.module.css";
 
 interface DeathNoticePrecisionsStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A01 is already guaranteed
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
@@ -86,7 +84,6 @@ const PRECISION_FIELDS: readonly {
  */
 export function DeathNoticePrecisionsStep({
   language,
-  editorialContext,
   content: initialContent,
   persist,
 }: DeathNoticePrecisionsStepProps) {
@@ -181,7 +178,7 @@ export function DeathNoticePrecisionsStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(editorialContext, content);
+  const progress = deathNoticeStepProgress(content);
   const hasAnyPrecision = PRECISION_FIELDS.some(({ field }) => read.deathNotice.precisions[field] !== null);
 
   return (

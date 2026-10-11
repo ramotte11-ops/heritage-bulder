@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import type { Language } from "@/config/languages";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
@@ -69,7 +68,6 @@ import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
  */
 
 export const QG_RUNTIME_DEMO_LANGUAGE: Language = "fr";
-export const QG_RUNTIME_DEMO_EDITORIAL_CONTEXT: EditorialContext = "announcement";
 export const QG_RUNTIME_DEMO_SKIN: Skin = "intemporel";
 
 /** Fixture-only ids — deliberately not UUID-shaped, so they can never be

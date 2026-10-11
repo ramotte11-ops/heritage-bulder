@@ -218,17 +218,17 @@ describe("Mission 041 — CeremonyIntemporel's data source is content.ceremony a
 describe("Mission 041 — A04 remains the sole activation mechanism for the Ceremony section", () => {
   it("real, filled-in Ceremony data alone (A04 never answered) does NOT activate the section", () => {
     const flowState: HumanFlowState = {};
-    expect(isCeremonySectionActive("announcement", flowState)).toBe(false);
+    expect(isCeremonySectionActive(flowState)).toBe(false);
     // Confirmed at the section-selection.ts layer too — content itself
     // (readCeremony's result) never enters this decision at all.
-    expect(resolveSectionSelectionStatus("ceremony", { editorialContext: "announcement", flowState })).not.toBe(
+    expect(resolveSectionSelectionStatus("ceremony", { flowState })).not.toBe(
       "applicable",
     );
   });
 
   it("A04 = yes activates the section even with entirely empty Ceremony data — activation is A04-only, never data-presence-driven", () => {
     const flowState: HumanFlowState = { A04: { status: "completed", answer: "yes" } };
-    expect(isCeremonySectionActive("announcement", flowState)).toBe(true);
+    expect(isCeremonySectionActive(flowState)).toBe(true);
   });
 
   it("isCeremonySectionActive delegates to section-selection.ts rather than re-implementing the A04 rule", () => {
@@ -239,9 +239,9 @@ describe("Mission 041 — A04 remains the sole activation mechanism for the Cere
       { A04: { status: "completed", answer: "yes" } },
     ];
     for (const flowState of scenarios) {
-      const viaComposition = isCeremonySectionActive("announcement", flowState);
+      const viaComposition = isCeremonySectionActive(flowState);
       const viaDirectSectionSelection =
-        resolveSectionSelectionStatus("ceremony", { editorialContext: "announcement", flowState }) === "applicable";
+        resolveSectionSelectionStatus("ceremony", { flowState }) === "applicable";
       expect(viaComposition).toBe(viaDirectSectionSelection);
     }
   });

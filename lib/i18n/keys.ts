@@ -108,9 +108,9 @@
  *
  * Mission 039B adds seven more `deathNotice` keys for A03 (aperçu de
  * l'avis de décès) — the minimum system texts the mission brief itself
- * names, reusing `context.announcementTitle` (the "Annonce & Hommage"
- * eyebrow — already exists) and `common.continue` (A03's own Continue)
- * rather than duplicating either. `previewTitle` is the fixed "Avis de
+ * names, reusing `common.continue` (A03's own Continue) rather than
+ * duplicating it (its former "Annonce & Hommage" eyebrow, read from the
+ * T02 keys, was removed with T02 in B02-L2). `previewTitle` is the fixed "Avis de
  * décès" card title. `blockLocation`/`blockFamilyMessage`/`blockThought`/
  * `blockQuote`/`blockOther` are A03's own DISPLAY labels for the five A02
  * precisions — deliberately separate keys from A02's own
@@ -232,13 +232,6 @@ export const TRANSLATION_KEYS = [
   "announcementChoice.laterTitle",
   "announcementChoice.laterDescription",
   "announcementChoice.changeLater",
-  // Mission 024 — T02 (choix du contexte éditorial).
-  "context.title",
-  "context.subtitle",
-  "context.announcementTitle",
-  "context.announcementDescription",
-  "context.remembranceTitle",
-  "context.remembranceDescription",
   // Mission 026 — Live Preview layout mechanic.
   "preview.view",
   "preview.hide",

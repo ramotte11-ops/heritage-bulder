@@ -133,46 +133,18 @@
   padding-right: 14.2687%;
 }
 
-/* The eyebrow, flanked by two short functional rules — a "filet
-   fonctionnel" (mission brief section 10's own content list), never a
-   reconstruction of the botanical branch (that stays baked in SCENE
-   TOP). */
+/* B02-L2 — the former eyebrow (the editorial context label, flanked by
+   two short functional rules) is removed without replacement (QG/PO
+   decision). Its row stays, empty, exactly as tall as the label's
+   one-line box was (11px × 1.15, 13px × 1.15 from 960px), so the title and
+   the branch clearance below keep their validated positions. */
 .eyebrowRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.9em;
-}
-
-.eyebrowRule {
-  height: 1px;
-  width: 1.6em;
-  background: var(--dn-rule);
-  flex: none;
+  height: calc(11px * 1.15);
 }
 
 @media (min-width: 960px) {
-  .eyebrowRule {
-    width: 2.4em;
-  }
-}
-
-.eyebrow {
-  margin: 0;
-  font-family: var(--font-heritage-hero-serif, "Cormorant Garamond", Georgia, serif);
-  font-weight: 500;
-  font-size: 11px;
-  line-height: 1.15;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--dn-text-secondary);
-  white-space: nowrap;
-}
-
-@media (min-width: 960px) {
-  .eyebrow {
-    font-size: 13px;
-    letter-spacing: 0.24em;
+  .eyebrowRow {
+    height: calc(13px * 1.15);
   }
 }
 

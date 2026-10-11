@@ -1,5 +1,4 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { EditorialContext } from "@/config/memorial";
 import type { CeremonyContent } from "@/types/ceremony";
 import {
   inspectCeremony,
@@ -164,14 +163,20 @@ export function needsA08(content: MemorialContent): boolean {
   return !isStepResolved(content, "A08");
 }
 
+/** The whole ceremony block (A04, and A05-A08 when A04 = yes) is behind
+ * the family — what A09 and the A10-A12 sheet wait for. */
+export function isCeremonyBlockResolved(content: MemorialContent): boolean {
+  return !needsA04(content) && !needsA05(content) && !needsA06(content) && !needsA07(content) && !needsA08(content);
+}
+
 // ---------------------------------------------------------------------
 // Progress — reuses the real Mission 025 engine, never a hand-picked
 // constant.
 // ---------------------------------------------------------------------
 
-export function ceremonyStepProgress(editorialContext: EditorialContext, content: MemorialContent): number {
+export function ceremonyStepProgress(content: MemorialContent): number {
   const hero = readHero(content);
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, hero));
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, hero));
 }
 
 // ---------------------------------------------------------------------

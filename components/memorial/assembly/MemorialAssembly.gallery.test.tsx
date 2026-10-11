@@ -81,7 +81,7 @@ async function renderPreviewAssembly(n: number, skinVariant: "light" | "dark" = 
     if (r.mediaId === heroId) return r.purpose === "hero" ? { mediaId: r.mediaId, readUrl: FIXTURE_READ_URL } : null;
     return r.purpose === "gallery" ? { mediaId: r.mediaId, readUrl: `${FIXTURE_READ_URL}/${r.mediaId}`, width: 1200, height: 1600 } : null;
   });
-  const assembled = await assembleMemorial({ editorialContext: "announcement", skin: "intemporel", skinVariant, language: "fr", content: written.content as MemorialContent }, { resolveMedia: resolver.resolve });
+  const assembled = await assembleMemorial({ skin: "intemporel", skinVariant, language: "fr", content: written.content as MemorialContent }, { resolveMedia: resolver.resolve });
   const view = render(<MemorialAssembly assembled={assembled} />);
   return { assembled, resolver, container: view.container };
 }

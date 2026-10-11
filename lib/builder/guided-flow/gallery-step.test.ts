@@ -53,7 +53,7 @@ describe("needsA13 — the gate", () => {
     const done = { status: "completed" as const };
     const skipped = { status: "skipped" as const };
     const state = { T03: done, T04: skipped, T05: skipped, T06: done, T07: done, T08: done, A01: done, A02: skipped, A03: done, A04: { status: "completed" as const, answer: "no" }, A09: skipped, A10: skipped, A11: skipped, A12: skipped };
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     expect(firstIncompleteStep(flow, state)?.id).toBe("A13");
     expect(firstIncompleteStep(flow, { ...state, ...readGuidedFlowState(requireOk(commitA13(atA13()))) })?.id).not.toBe("A13");
   });
@@ -108,8 +108,8 @@ describe("commitA13 / skipA13", () => {
 
 describe("progress", () => {
   it("comes from the real engine and moves forward when A13 is resolved", () => {
-    const before = galleryStepProgress("announcement", atA13());
-    const after = galleryStepProgress("announcement", requireOk(commitA13(atA13())));
+    const before = galleryStepProgress(atA13());
+    const after = galleryStepProgress(requireOk(commitA13(atA13())));
     expect(before).toBeGreaterThan(0);
     expect(before).toBeLessThan(1);
     expect(after).toBeGreaterThan(before);

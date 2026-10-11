@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -24,7 +23,6 @@ import styles from "./PersonSheetStep.module.css";
 
 interface PersonSheetStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A09 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
@@ -51,7 +49,7 @@ interface PersonSheetStepProps {
  * étape" is always available and resolves the whole sheet as `"skipped"`
  * for all three without discarding any already-typed draft.
  */
-export function PersonSheetStep({ language, editorialContext, content: initialContent, persist }: PersonSheetStepProps) {
+export function PersonSheetStep({ language, content: initialContent, persist }: PersonSheetStepProps) {
   const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
@@ -147,7 +145,7 @@ export function PersonSheetStep({ language, editorialContext, content: initialCo
     );
   }
 
-  const progress = personSheetProgress(editorialContext, content);
+  const progress = personSheetProgress(content);
   const nothingEntered = read.personWords.text === null && read.lovedThings.text === null && read.legacy.text === null;
 
   return (

@@ -102,7 +102,6 @@ function jpegFile(name = "photo.jpg", size = 1024) {
 function baseProps(overrides: Partial<Parameters<typeof HeroPhotoStep>[0]> = {}) {
   return {
     language: "fr" as const,
-    editorialContext: "remembrance" as const,
     content: CONTENT,
     initialPhoto: null,
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),

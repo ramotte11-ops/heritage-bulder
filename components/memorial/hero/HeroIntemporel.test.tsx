@@ -75,7 +75,6 @@ function renderHero(overrides: Partial<React.ComponentProps<typeof HeroIntempore
       hero={FULL_HERO}
       photo={PHOTO}
       skinVariant="light"
-      editorialContext="remembrance"
       language="fr"
       {...overrides}
     />,
@@ -179,7 +178,6 @@ describe("HeroIntemporel — Handoff V1.2 Mobile Light photo runtime", () => {
         hero={FULL_HERO}
         photo={PHOTO}
         skinVariant="dark"
-        editorialContext="remembrance"
         language="fr"
       />,
     );
@@ -397,31 +395,33 @@ describe("HeroIntemporel — Desktop Dark Handoff Runtime V1", () => {
   });
 });
 
-describe("HeroIntemporel — restored context label (mission 035, section 1/10)", () => {
-  it("renders the remembrance context label in French", () => {
-    renderHero({ editorialContext: "remembrance", language: "fr" });
-    expect(screen.getByText("Mémoire & Hommage")).toBeTruthy();
+describe("HeroIntemporel — B02-L2: the context label is gone for good, without replacement", () => {
+  const FORMER_LABELS = [
+    "Mémoire & Hommage",
+    "Annonce & Hommage",
+    "Memory & Tribute",
+    "Announcement & Tribute",
+    "Memoria y homenaje",
+    "Anuncio y homenaje",
+  ];
+
+  it.each(["fr", "en", "es"] as const)("renders no context label in %s, and no « HERITAGE Hommage » substitute", (language) => {
+    const { container } = renderHero({ language });
+    for (const label of FORMER_LABELS) expect(screen.queryByText(label)).toBeNull();
+    expect(container.textContent).not.toMatch(/Hommage|Tribute|homenaje/i);
+    expect(container.querySelector('[class*="contextLabel"]')).toBeNull();
   });
 
-  it("renders the announcement context label in French", () => {
-    renderHero({ editorialContext: "announcement", language: "fr" });
-    expect(screen.getByText("Annonce & Hommage")).toBeTruthy();
+  it("takes no editorial context at all — the prop no longer exists", () => {
+    // @ts-expect-error — HeroIntemporelProps has no editorialContext any more.
+    renderHero({ editorialContext: "announcement" });
+    expect(screen.queryByText("Annonce & Hommage")).toBeNull();
   });
 
-  it("renders the context label in English via the existing i18n system, never hardcoded French", () => {
-    renderHero({ editorialContext: "remembrance", language: "en" });
-    expect(screen.getByText("Memory & Tribute")).toBeTruthy();
-  });
-
-  it("renders the context label in Spanish via the existing i18n system", () => {
-    renderHero({ editorialContext: "announcement", language: "es" });
-    expect(screen.getByText("Anuncio y homenaje")).toBeTruthy();
-  });
-
-  it("derives the label purely from editorial_context — not a new family field", () => {
-    // Same hero content, only editorialContext differs, label changes —
-    // proof the label is derived, never stored on HeroContent itself.
-    expect("editorialContext" in FULL_HERO).toBe(false);
+  it("still renders the name as the Hero's only heading, with dates and phrase", () => {
+    renderHero({ language: "fr" });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Jean Dupont");
+    expect(screen.getByText("Toujours dans nos cœurs")).toBeTruthy();
   });
 });
 
@@ -743,7 +743,6 @@ describe("HeroIntemporel — displayedName fitting (mission 035 v4, section 6)",
           hero={{ ...FULL_HERO, displayName: "Ana Vives" }}
           photo={PHOTO}
           skinVariant="light"
-          editorialContext="remembrance"
           language="fr"
         />,
       );
@@ -982,19 +981,25 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     expect(outside).not.toMatch(/cqw/);
   });
 
-  it("hides the context label in the Mobile band and on Desktop only — 431–959px keeps it", () => {
-    expect(MOBILE_BLOCKS).toMatch(/\.contextLabel\s*\{\s*display:\s*none;\s*\}/);
-    const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1);
-    expect(desktopBlocks.some((block) => /^\s*\{\s*\.contextLabel\s*\{\s*display:\s*none;/.test(block))).toBe(true);
+  it("B02-L2 — no .contextLabel rule is left anywhere in the stylesheet", () => {
+    expect(CSS_SOURCE).not.toMatch(/\.contextLabel/);
     expect(CSS_SOURCE).not.toMatch(/max-width:\s*959px/);
+  });
+
+  it("B02-L2 — <320px and 431–959px keep the label's former one-line box (13px × 1.2) as an empty spacer", () => {
+    // A top-level rule (unindented — never inside a media block).
+    expect(CSS_SOURCE).toMatch(/^\.textZone::before\s*\{\s*content:\s*"";\s*display:\s*block;\s*flex:\s*none;\s*height:\s*calc\(13px \* 1\.2\);\s*\}/m);
+  });
+
+  it("B02-L2 — the 320–430px band reserves nothing (it never showed the label)", () => {
+    expect(MOBILE_BLOCKS).toMatch(/\.textZone::before\s*\{\s*display:\s*none;\s*\}/);
   });
 
   it("Desktop keeps the label's structural space (18px line box + existing 0.5em gap) without its text", () => {
     const desktopBlocks = CSS_SOURCE.split("@media (min-width: 960px)").slice(1).join("\n");
     // HERO_INTEMPOREL_TYPOGRAPHY.contextLabel: 15px × 1.2 line-height = the historical label line box.
     expect(HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.desktopPx * HERO_INTEMPOREL_TYPOGRAPHY.contextLabel.lineHeight).toBe(18);
-    expect(desktopBlocks).toMatch(/\.textZone::before\s*\{\s*content:\s*"";\s*display:\s*block;\s*flex:\s*none;\s*height:\s*calc\(15px \* 1\.2\);\s*\}/);
-    expect(CSS_SOURCE.split("@media (min-width: 960px)")[0]).not.toMatch(/::before/);
+    expect(desktopBlocks).toMatch(/\.textZone::before\s*\{\s*height:\s*calc\(15px \* 1\.2\);\s*\}/);
   });
 
   it("the runtime separator is laid out nowhere outside the 320–430px band", () => {

@@ -1,5 +1,4 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { EditorialContext } from "@/config/memorial";
 import type { DeathNoticeContent, DeathNoticePrecisions } from "@/types/death-notice";
 import {
   inspectDeathNotice,
@@ -154,9 +153,9 @@ export function needsA02(content: MemorialContent): boolean {
  * every other Guided Flow screen's progress bar reads, never a second,
  * A01/A02-only calculation.
  */
-export function deathNoticeStepProgress(editorialContext: EditorialContext, content: MemorialContent): number {
+export function deathNoticeStepProgress(content: MemorialContent): number {
   const hero = readHero(content);
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, hero));
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, hero));
 }
 
 // ---------------------------------------------------------------------

@@ -28,7 +28,6 @@ import {
 function context(content: MemorialContent, overrides: Partial<AdapterContext> = {}): AdapterContext {
   return {
     content,
-    editorialContext: "announcement",
     skin: "intemporel",
     skinVariant: "light",
     language: "fr",
