@@ -236,6 +236,7 @@ export const TRANSLATION_KEYS = [
   "preview.view",
   "preview.hide",
   "preview.backToCreation",
+  "preview.changeAmbiance",
   "preview.unavailable",
   // B03 — « Mon parcours » (sommaire permanent et révision des réponses).
   "journey.open",
@@ -260,6 +261,8 @@ export const TRANSLATION_KEYS = [
   "journey.screen.photo",
   "journey.screen.crop",
   "journey.screen.reveal",
+  "journey.ambiance.light",
+  "journey.ambiance.dark",
   "journey.screen.announcementText",
   "journey.screen.announcementDetails",
   "journey.screen.announcementPreview",
@@ -326,8 +329,10 @@ export const TRANSLATION_KEYS = [
   "hero.cropChangePhoto",
   // Mission 035 — PAGE E (T08, Hero reveal).
   "hero.revealTitle",
-  "hero.revealToggleToDark",
-  "hero.revealToggleToLight",
+  // Correction Light / Dark — the ambiance selector above the Hero.
+  "hero.ambianceLabel",
+  "hero.ambianceLight",
+  "hero.ambianceDark",
   "hero.revealConfirm",
   // Mission 039 — A01 (l'annonce) and A02 (précisions facultatives).
   "deathNotice.announcementTitle",

@@ -272,6 +272,13 @@
   line-height: 1.35;
 }
 
+/* T08's row: the saved ambiance, under the screen's name. */
+.screenDetail {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
 .statusAndAction {
   display: inline-flex;
   align-items: center;

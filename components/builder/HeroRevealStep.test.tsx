@@ -27,6 +27,8 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { HeroRevealStep } = await import("./HeroRevealStep");
+const { JourneyContext } = await import("./journey/journey-context");
+const { resolveJourney } = await import("@/lib/builder/guided-flow/journey");
 
 afterEach(cleanup);
 beforeEach(() => routerRefresh.mockClear());
@@ -83,17 +85,97 @@ describe("HeroRevealStep — the real Hero, rendered", () => {
   });
 });
 
-describe("HeroRevealStep — Light/Dark preview toggle stays local (mission brief section 16)", () => {
-  it("toggles the ambiance visually without ever calling saveSkinVariant or persist", () => {
-    const props = baseProps();
-    render(<HeroRevealStep {...props} />);
+describe("HeroRevealStep — the ambiance selector, above the Hero (correction Light / Dark)", () => {
+  function selector() {
+    return screen.getByRole("group", { name: "Ambiance de votre hommage" });
+  }
 
-    fireEvent.click(screen.getByRole("button", { name: /sombre/i }));
+  it("offers « Claire » / « Sombre » under a clear label, the persisted one checked", () => {
+    render(<HeroRevealStep {...baseProps()} />);
+
+    expect(selector()).toBeTruthy();
+    expect((screen.getByRole("radio", { name: "Claire" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: "Sombre" }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("starts on « Sombre » for a memorial already saved in dark", () => {
+    render(<HeroRevealStep {...baseProps({ initialSkinVariant: "dark" as never })} />);
+
+    expect((screen.getByRole("radio", { name: "Sombre" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("sits ABOVE the Hero, never under it", () => {
+    render(<HeroRevealStep {...baseProps()} />);
+
+    const position = selector().compareDocumentPosition(screen.getByText("Jean Dupont"));
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("the Hero follows the choice at once, without ever calling saveSkinVariant or persist", () => {
+    const props = baseProps();
+    const { container } = render(<HeroRevealStep {...props} />);
+    const stage = container.querySelector("[data-hero-skin-variant]");
+    expect(stage?.getAttribute("data-hero-skin-variant")).toBe("light");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sombre" }));
+    expect(stage?.getAttribute("data-hero-skin-variant")).toBe("dark");
+    fireEvent.click(screen.getByRole("radio", { name: "Claire" }));
+    expect(stage?.getAttribute("data-hero-skin-variant")).toBe("light");
 
     expect(props.saveSkinVariant).not.toHaveBeenCalled();
     expect(props.persist).not.toHaveBeenCalled();
-    // The toggle's own label flips to offer switching back.
-    expect(screen.getByRole("button", { name: /claire/i })).toBeTruthy();
+  });
+
+  it("keeps the final « Continuer avec cette ambiance »", () => {
+    render(<HeroRevealStep {...baseProps()} />);
+
+    expect(screen.getByRole("button", { name: "Continuer avec cette ambiance" })).toBeTruthy();
+  });
+});
+
+describe("HeroRevealStep — « Mon parcours » and the way back (correction Light / Dark)", () => {
+  function journey(revising: "reveal" | null) {
+    return {
+      language: "fr" as const,
+      snapshot: resolveJourney(CONTENT as never, revising),
+      skinVariant: "light" as const,
+      openScreen: vi.fn().mockResolvedValue(true),
+      resume: vi.fn().mockResolvedValue(true),
+      finishStep: vi.fn(),
+      hasPendingInput: () => false,
+    };
+  }
+
+  it("shows « Mon parcours » on T08, like every other screen", () => {
+    render(
+      <JourneyContext.Provider value={journey(null)}>
+        <HeroRevealStep {...baseProps()} />
+      </JourneyContext.Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Mon parcours" })).toBeTruthy();
+  });
+
+  it("reopened for revision: the way back to where the family stopped, without saving anything", async () => {
+    const props = baseProps();
+    const value = journey("reveal");
+    render(
+      <JourneyContext.Provider value={value}>
+        <HeroRevealStep {...props} />
+      </JourneyContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reprendre où j'en étais" }));
+
+    await vi.waitFor(() => expect(value.resume).toHaveBeenCalled());
+    expect(props.saveSkinVariant).not.toHaveBeenCalled();
+    expect(props.persist).not.toHaveBeenCalled();
+  });
+
+  it("renders no navigation outside a journey (unit use, the QG demo without provider)", () => {
+    render(<HeroRevealStep {...baseProps()} />);
+
+    expect(screen.queryByRole("button", { name: "Mon parcours" })).toBeNull();
   });
 });
 
@@ -122,11 +204,11 @@ describe("HeroRevealStep — the durable confirmation order (mission brief secti
     expect(props.saveSkinVariant).toHaveBeenCalledWith("light"); // the previewed (unchanged) variant
   });
 
-  it("persists the CURRENTLY PREVIEWED variant, not the initial one, once toggled", async () => {
+  it("persists the CURRENTLY PREVIEWED variant, not the initial one, once changed", async () => {
     const props = baseProps();
     render(<HeroRevealStep {...props} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /sombre/i }));
+    fireEvent.click(screen.getByRole("radio", { name: "Sombre" }));
     fireEvent.click(screen.getByRole("button", { name: /continuer avec cette ambiance/i }));
 
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());

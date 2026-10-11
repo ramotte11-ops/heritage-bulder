@@ -28,6 +28,14 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
+// « Changer l'ambiance » (correction Light / Dark) navigates through the
+// journey provider, never through the host itself.
+const { routerPush, useRouter } = vi.hoisted(() => {
+  const push = vi.fn();
+  return { routerPush: push, useRouter: vi.fn(() => ({ push, replace: vi.fn(), refresh: vi.fn() })) };
+});
+vi.mock("next/navigation", () => ({ useRouter }));
+
 class StubResizeObserver {
   observe() {}
   unobserve() {}
@@ -39,6 +47,7 @@ const { BuilderPreviewHost } = await import("./BuilderPreviewHost");
 type HostResult = Awaited<ReturnType<React.ComponentProps<typeof BuilderPreviewHost>["loadPreview"]>>;
 const { BuilderScreen } = await import("@/components/builder/BuilderScreen");
 const { useAutosave } = await import("@/lib/builder/use-autosave");
+const { resolveJourney } = await import("@/lib/builder/guided-flow/journey");
 
 const OPEN = "Voir l'aperçu";
 const BACK = "Revenir à la création";
@@ -272,6 +281,55 @@ describe("return — same screen, same state, same place", () => {
     expect(events.filter((e) => e === "load")).toHaveLength(2);
     expect(events[events.length - 2]).toBe(`persist:${JSON.stringify({ hero: { displayName: "modifié" } })}`);
     await waitFor(() => expect(screen.getByRole("button", { name: BACK })).toBeTruthy());
+  });
+});
+
+describe("correction Light / Dark — « Changer l'ambiance » in the Preview", () => {
+  const CHANGE = "Changer l'ambiance";
+  const journey = { snapshot: resolveJourney(fullAnnouncement()), builderPath: "/builder/m-1", skinVariant: "light" as const };
+
+  function RevealScreen() {
+    return <h1>Écran T08</h1>;
+  }
+
+  beforeEach(() => routerPush.mockClear());
+
+  it("a discreet link in the Preview's bar opens T08 for revision", async () => {
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={readyResult} journey={journey}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: CHANGE }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal"));
+  });
+
+  it("the Preview closes once the route brings T08 — never left covering it", async () => {
+    const view = render(
+      <BuilderPreviewHost available language="fr" loadPreview={readyResult} journey={journey}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await openPreview();
+    expect(builderWrapper(view.container).hidden).toBe(true);
+
+    view.rerender(
+      <BuilderPreviewHost available={false} language="fr" loadPreview={readyResult} journey={journey}>
+        <RevealScreen />
+      </BuilderPreviewHost>,
+    );
+    expect(builderWrapper(view.container).hidden).toBe(false);
+    expect(screen.getByRole("heading", { name: "Écran T08" })).toBeTruthy();
+    expect(view.container.querySelector("[data-memorial-preview]")).toBeNull();
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it("without a journey there is no link (and no navigation)", async () => {
+    renderHost({});
+    await openPreview();
+    expect(screen.getByRole("button", { name: BACK })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: CHANGE })).toBeNull();
   });
 });
 

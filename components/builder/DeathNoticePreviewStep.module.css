@@ -28,6 +28,15 @@
   box-sizing: border-box;
 }
 
+/* « Mon parcours » under the progress bar (empty outside a journey). */
+.builderNav {
+  margin-top: var(--heritage-space-sm);
+}
+
+.builderNav:empty {
+  display: none;
+}
+
 .builderControls {
   width: 100%;
   max-width: 28rem;

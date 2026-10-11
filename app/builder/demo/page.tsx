@@ -244,6 +244,7 @@ export default function QgRuntimeDemoPage() {
   const journey: JourneyNavigation = {
     language: LANGUAGE,
     snapshot: resolveJourney(content, revisionTarget),
+    skinVariant,
     async openScreen(id) {
       setRevising(id);
       setGeneration((n) => n + 1);
