@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -36,7 +36,7 @@ interface CeremonyNoteStepProps {
  * entered "Continuer" becomes available and commits A08 as completed.
  */
 export function CeremonyNoteStep({ language, content: initialContent, persist }: CeremonyNoteStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,7 +84,7 @@ export function CeremonyNoteStep({ language, content: initialContent, persist }:
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -108,7 +108,7 @@ export function CeremonyNoteStep({ language, content: initialContent, persist }:
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
@@ -46,7 +46,7 @@ interface AnnouncementChoiceStepProps {
  */
 export function AnnouncementChoiceStep({ language, content, persist }: AnnouncementChoiceStepProps) {
   const [selected, setSelected] = useState<A00Answer | null>(() => readAnnouncementChoice(content));
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   async function submit(
     _previous: AnnouncementChoiceStepState,
@@ -61,7 +61,7 @@ export function AnnouncementChoiceStep({ language, content, persist }: Announcem
       return { status: "error" };
     }
 
-    router.refresh();
+    stepDone();
     return { status: "idle" };
   }
 

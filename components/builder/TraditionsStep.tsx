@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { Skin } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
@@ -90,7 +90,7 @@ function newSuggestionComposer(suggestion: TraditionSuggestion, language: Langua
  * entries render as their own small cards with "Modifier"/"Supprimer".
  */
 export function TraditionsStep({ language, content: initialContent, skin, persist }: TraditionsStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<Composer | null>(null);
   const [editing, setEditing] = useState<EntryEdit | null>(null);
@@ -169,7 +169,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -193,7 +193,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

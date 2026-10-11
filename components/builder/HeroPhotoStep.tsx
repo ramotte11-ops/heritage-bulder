@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET } from "@/config/media";
 import type { MemorialContent } from "@/types/memorial";
@@ -167,7 +167,7 @@ export function HeroPhotoStep({
   finalizeUpload,
   retireUpload,
 }: HeroPhotoStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
   const [photo, setPhoto] = useState<PhotoState>(() => initialState(initialPhoto));
@@ -277,7 +277,7 @@ export function HeroPhotoStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

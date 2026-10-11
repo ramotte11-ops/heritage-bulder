@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ProgressBar } from "./ProgressBar";
-import { PreviewEntry } from "./preview/PreviewEntry";
+import { BuilderScreenNav } from "./journey/BuilderScreenNav";
 import { playfairDisplay, inter } from "./fonts";
 import styles from "./BuilderScreen.module.css";
 
@@ -60,9 +60,9 @@ export function BuilderScreen({ progress, status, children }: BuilderScreenProps
 
         {status}
 
-        {/* Étape 3 — "Voir l'aperçu": renders nothing unless this screen
-            sits in a BuilderPreviewHost that makes the Preview available. */}
-        <PreviewEntry />
+        {/* B03 — « Mon parcours » and Étape 3's "Voir l'aperçu": render
+            nothing unless this screen sits in a host that provides them. */}
+        <BuilderScreenNav />
 
         {children}
       </div>

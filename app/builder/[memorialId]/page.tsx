@@ -47,6 +47,11 @@ import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
+import {
+  resolveJourney,
+  resolveRevisionTarget,
+  type JourneyScreenId,
+} from "@/lib/builder/guided-flow/journey";
 import { resolveGalleryStepData } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import {
   resolveHeroPhotoStepData,
@@ -270,13 +275,30 @@ import styles from "./page.module.css";
  * (purpose `"gallery"`), and the three Gallery actions
  * (./gallery-media-actions.ts) are bound to `access.memorialId` — the
  * purpose is fixed server-side, never chosen by the browser.
+ *
+ * ## B03 — « Mon parcours » and revision
+ *
+ * Every Guided Flow screen is built by one `renderScreen(id, content)`,
+ * used both by the gates (unchanged, same order) and by a revision
+ * opened from « Mon parcours » through `?etape=<screen>`. That query is
+ * a client claim: `resolveRevisionTarget` (lib/builder/guided-flow/journey.ts)
+ * honors it only for a screen already reached and still applicable,
+ * never a future one. Opening a revision writes nothing; the screen's
+ * own Continue commits through the same functions and the same bound
+ * `saveDraftAction`, then returns to this route without `?etape=`
+ * (`useStepDone`), where the gates recompute every conditional step
+ * and resume where the family stopped. Authorization, publication and
+ * the draft's storage are untouched.
  */
 export const dynamic = "force-dynamic";
 
 export default async function BuilderMemorialPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ memorialId: string }>;
+  /** B03 — only `etape` is read (a revision target, validated below). */
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { memorialId } = await params;
 
@@ -366,15 +388,32 @@ export default async function BuilderMemorialPage({
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
   const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
+  // B03 — the route's own path, built from the AUTHORIZED id only: where
+  // « Mon parcours » sends the family back to resume (and, with
+  // `?etape=`, to revise one screen).
+  const builderPath = `/builder/${access.memorialId}`;
 
   function previewAvailable(content: MemorialContent): boolean {
     if (memorialLanguage === null || !heroRendererExists) return false;
     return isPreviewUnlocked(resolveHeroFlowState(content, readHero(content)));
   }
 
-  function withPreview(screen: ReactElement, available: boolean) {
+  /** `journeyContent` — the content the screen renders, from which
+   * « Mon parcours » is computed (B03); `null` before identity (T01, the
+   * Welcome), where there is no journey to show yet. */
+  function withPreview(
+    screen: ReactElement,
+    available: boolean,
+    journeyContent: MemorialContent | null = null,
+    revising: JourneyScreenId | null = null,
+  ) {
     return (
-      <BuilderPreviewHost available={available} language={memorialLanguage} loadPreview={loadPreview}>
+      <BuilderPreviewHost
+        available={available}
+        language={memorialLanguage}
+        loadPreview={loadPreview}
+        journey={journeyContent === null ? null : { snapshot: resolveJourney(journeyContent, revising), builderPath }}
+      >
         {screen}
       </BuilderPreviewHost>
     );
@@ -383,6 +422,251 @@ export default async function BuilderMemorialPage({
   if (resumed.memorial.language === null) {
     return withPreview(<LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />, false);
   }
+  const language = resumed.memorial.language;
+
+  /**
+   * B03 — every Guided Flow screen, built in ONE place for both the
+   * normal route (the gates below, in order) and a revision opened from
+   * « Mon parcours » (`?etape=`). `available` is the Preview's own
+   * availability on that screen (never on a Reveal). `null` only when a
+   * screen's own data cannot be resolved (PAGE D/E without a usable
+   * photo) — the caller then falls through, exactly as before.
+   */
+  const renderScreen = async (
+    id: JourneyScreenId,
+    content: MemorialContent,
+    key?: string,
+  ): Promise<{ element: ReactElement; available: boolean } | null> => {
+    switch (id) {
+      case "identity":
+        return {
+          element: (
+            <HeroIdentityStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "announcementChoice":
+        return {
+          element: (
+            <AnnouncementChoiceStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "phrase":
+        return {
+          element: (
+            <HeroPhraseStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "photo": {
+        // `resolveHeroPhotoStepData` runs the section-14 compensation pass
+        // and resolves the one display URL this page needs before
+        // rendering — see this function's own docstring and this file's
+        // Mission 033 section above.
+        const photoStepData = await resolveHeroPhotoStepData(
+          { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+          actor,
+          access.memorialId,
+          content,
+        );
+        return {
+          element: (
+            <HeroPhotoStep
+              key={key}
+              language={language}
+              content={photoStepData.content}
+              initialPhoto={photoStepData.initialPhoto}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
+              finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
+              retireUpload={retireHeroPhotoUploadAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: previewAvailable(photoStepData.content),
+        };
+      }
+      case "crop": {
+        // `resolveHeroCropStepData` mints the one signed read URL this page
+        // needs, against the ALREADY-RECONCILED content — never the raw,
+        // pre-reconciliation draft.
+        const cropStepData = await resolveHeroCropStepData(
+          { mediaEngine: createServerMediaEngineDeps() },
+          actor,
+          access.memorialId,
+          content,
+        );
+        // Defensive only: a `null` here would mean the photo stopped being
+        // readable between the reconciliation and this read. Rather than
+        // crash or silently skip T07, the caller falls through to the same
+        // fallback every other not-yet-resolvable state already uses.
+        if (cropStepData === null) return null;
+        return {
+          element: (
+            <HeroCropStep
+              key={key}
+              language={language}
+              content={content}
+              photo={cropStepData}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: previewAvailable(content),
+        };
+      }
+      case "reveal": {
+        // Reuses `resolveHeroCropStepData` as-is (the exact same "current
+        // photo + a fresh signed read URL" this screen needs to actually
+        // RENDER the Hero, not merely crop it — no second resolver).
+        const revealStepData = await resolveHeroCropStepData(
+          { mediaEngine: createServerMediaEngineDeps() },
+          actor,
+          access.memorialId,
+          content,
+        );
+        // Defensive only, exactly like PAGE D's own equivalent guard above.
+        if (revealStepData === null) return null;
+        return {
+          element: (
+            <HeroRevealStep
+              key={key}
+              language={language}
+              content={content}
+              photo={revealStepData}
+              initialSkinVariant={resumed.memorial.skinVariant}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              saveSkinVariant={saveSkinVariantAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: false /* Reveal */,
+        };
+      }
+      case "announcementText":
+        return {
+          element: (
+            <DeathNoticeAnnouncementStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "announcementDetails":
+        return {
+          element: (
+            <DeathNoticePrecisionsStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "announcementPreview":
+        // `resumed.memorial.skin` is passed through RE-VALIDATED (never
+        // trusted as a bare TS type crossing the DB boundary) —
+        // `DeathNoticePreviewStep`'s own skin guard is what decides whether
+        // the real Intemporel renderer shows or an honest "not yet
+        // available for this style" notice.
+        return {
+          element: (
+            <DeathNoticePreviewStep
+              key={key}
+              language={language}
+              content={content}
+              skin={resumed.memorial.skin}
+              skinVariant={resumed.memorial.skinVariant}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: false /* Reveal */,
+        };
+      case "ceremonyMoment":
+        return {
+          element: (
+            <CeremonyMomentStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "ceremonyDateTime":
+        return {
+          element: (
+            <CeremonyDateTimeStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "ceremonyVenue":
+        return {
+          element: (
+            <CeremonyVenueStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "ceremonyAddress":
+        return {
+          element: (
+            <CeremonyAddressStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "ceremonyNote":
+        return {
+          element: (
+            <CeremonyNoteStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "traditions":
+        // `skin` is passed through RE-VALIDATED, used ONLY to narrow which
+        // catalog suggestions may be shown — never to infer or pre-select
+        // a practice.
+        return {
+          element: (
+            <TraditionsStep
+              key={key}
+              language={language}
+              content={content}
+              skin={resumed.memorial.skin}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: previewAvailable(content),
+        };
+      case "personSheet":
+        return {
+          element: (
+            <PersonSheetStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
+      case "gallery": {
+        // The thumbnails are resolved here, server-side, through the
+        // Preview's own Owner draft resolver (purpose "gallery"); the three
+        // Gallery actions are bound to the AUTHORIZED id exactly like the
+        // Hero's — the browser never picks a memorial or a purpose.
+        const galleryStepData = await resolveGalleryStepData(
+          { mediaEngine: createServerMediaEngineDeps() },
+          actor,
+          access.memorialId,
+          content,
+        );
+        return {
+          element: (
+            <GalleryStep
+              key={key}
+              language={language}
+              content={content}
+              thumbnails={galleryStepData.status === "ready" ? galleryStepData.thumbnails : {}}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              reserveUpload={reserveGalleryPhotoUploadAction.bind(null, access.memorialId)}
+              finalizeUpload={finalizeGalleryPhotoUploadAction.bind(null, access.memorialId)}
+              retirePhoto={retireGalleryPhotoAction.bind(null, access.memorialId)}
+            />
+          ),
+          available: previewAvailable(content),
+        };
+      }
+    }
+  };
+
+  /** The current screen of the normal route, wrapped. */
+  const showCurrent = async (id: JourneyScreenId, content: MemorialContent) => {
+    const screen = await renderScreen(id, content);
+    return screen === null ? null : withPreview(screen.element, screen.available, content);
+  };
 
   // Builder Welcome — right after T01, before anything else: only for a
   // draft nobody has started (no editorial context, empty content), so a
@@ -399,24 +683,50 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // B03 — revision from « Mon parcours ». `?etape=` is a client claim:
+  // `resolveRevisionTarget` honors it only for a screen the family has
+  // genuinely reached (resolved or current, and applicable), never a
+  // future one, and never the current one (shown below anyway). Opening a
+  // screen writes nothing: it shows what is stored, and only the screen's
+  // own Continue commits, through the same commit functions as the first
+  // time; the step then returns to this route without `?etape=`
+  // (`useStepDone`), where the gates below recompute every conditional
+  // step and resume where the family stopped. The `key` remounts the
+  // screen fresh. PAGE C keeps its own compensation pass on the raw
+  // draft; every other screen renders the reconciled content, exactly
+  // like the route below.
+  const revisionTarget = resolveRevisionTarget(resumed.draft.content, (await searchParams).etape);
+  if (revisionTarget !== null) {
+    const revisionContent =
+      revisionTarget === "photo"
+        ? resumed.draft.content
+        : await reconcileHeroMediaOnResume(
+            { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+            actor,
+            access.memorialId,
+            resumed.draft.content,
+          );
+    const revision = await renderScreen(revisionTarget, revisionContent, `revision-${revisionTarget}`);
+    if (revision !== null) {
+      return withPreview(revision.element, revision.available, revisionContent, revisionTarget);
+    }
+  }
+
   // Mission 032 — PAGE A: T03 (nom affiché, obligatoire) and T04
   // (dates, facultatives) sharing one visible page, gated on the Hero
   // itself (draft.content.hero) rather than on a memorial column — the
-  // same "read the one real fact, nothing else" discipline as T01/T02's
-  // own gates just above, applied to `draft.content` instead of
-  // `memorials`. `needsPageA` is also what a corrupted stored Hero
-  // routes through: HeroIdentityStep detects that itself and shows a
-  // calm notice instead of a form, rather than this route trying to
-  // tell the two cases apart.
+  // same "read the one real fact, nothing else" discipline as T01's own
+  // gate just above, applied to `draft.content` instead of `memorials`.
+  // `needsPageA` is also what a corrupted stored Hero routes through:
+  // HeroIdentityStep detects that itself and shows a calm notice instead
+  // of a form, rather than this route trying to tell the two cases apart.
+  //
+  // B03 — the order of the gates below is mirrored by
+  // `JOURNEY_SCREENS` (lib/builder/guided-flow/journey.ts), which
+  // computes « Mon parcours » from the same predicates; journey.test.ts
+  // guards that both agree.
   if (needsPageA(resumed.draft.content)) {
-    return withPreview(
-      <HeroIdentityStep
-        language={resumed.memorial.language}
-        content={resumed.draft.content}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(resumed.draft.content),
-    );
+    return (await showCurrent("identity", resumed.draft.content))!;
   }
 
   // A00 — "Souhaitez-vous également publier une annonce de décès ?":
@@ -425,14 +735,7 @@ export default async function BuilderMemorialPage({
   // that already validated its announcement reads as "yes" and is never
   // asked (lib/builder/guided-flow/announcement-choice-step.ts).
   if (needsA00(resumed.draft.content)) {
-    return withPreview(
-      <AnnouncementChoiceStep
-        language={resumed.memorial.language}
-        content={resumed.draft.content}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(resumed.draft.content),
-    );
+    return (await showCurrent("announcementChoice", resumed.draft.content))!;
   }
 
   // Mission 032 — PAGE B: T05, a short optional personal line. Shown
@@ -441,14 +744,7 @@ export default async function BuilderMemorialPage({
   // treated once, whichever way (mission brief section 9: absence of a
   // phrase must never re-trigger this page forever).
   if (needsPageB(resumed.draft.content)) {
-    return withPreview(
-      <HeroPhraseStep
-        language={resumed.memorial.language}
-        content={resumed.draft.content}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(resumed.draft.content),
-    );
+    return (await showCurrent("phrase", resumed.draft.content))!;
   }
 
   // Mission 033 — PAGE C: T06, the Hero's photo. Shown only once PAGE A
@@ -456,30 +752,9 @@ export default async function BuilderMemorialPage({
   // `needsPageC`'s own guard) and only until T06 itself has been
   // explicitly completed via a real Continue click (mission brief
   // section 18/19 — a ready, autosaved photo is not by itself proof the
-  // family left this page). `resolveHeroPhotoStepData` runs the
-  // section-14 compensation pass and resolves the one display URL this
-  // page needs before rendering — see this function's own docstring and
-  // this file's Mission 033 section above.
+  // family left this page).
   if (needsPageC(resumed.draft.content)) {
-    const photoStepData = await resolveHeroPhotoStepData(
-      { mediaEngine: createServerMediaEngineDeps(), draftRepository },
-      actor,
-      access.memorialId,
-      resumed.draft.content,
-    );
-
-    return withPreview(
-      <HeroPhotoStep
-        language={resumed.memorial.language}
-        content={photoStepData.content}
-        initialPhoto={photoStepData.initialPhoto}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-        reserveUpload={reserveHeroPhotoUploadAction.bind(null, access.memorialId)}
-        finalizeUpload={finalizeHeroPhotoUploadAction.bind(null, access.memorialId)}
-        retireUpload={retireHeroPhotoUploadAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(photoStepData.content),
-    );
+    return (await showCurrent("photo", resumed.draft.content))!;
   }
 
   // Mission 033 QG follow-up — reachable only once PAGE A, PAGE B and
@@ -509,69 +784,21 @@ export default async function BuilderMemorialPage({
   // has been explicitly completed for the CURRENT photo (mission brief
   // section 14/15/18/19 — an autosaved crop is not by itself proof the
   // family left this page, and a crop tied to a since-replaced photo
-  // never counts). `resolveHeroCropStepData` mints the one signed read
-  // URL this page needs, against the ALREADY-RECONCILED content above —
-  // never the raw, pre-reconciliation draft.
+  // never counts). Without a usable photo (defensive), falls through.
   if (needsPageD(heroReconciledContent)) {
-    const cropStepData = await resolveHeroCropStepData(
-      { mediaEngine: createServerMediaEngineDeps() },
-      actor,
-      access.memorialId,
-      heroReconciledContent,
-    );
-
-    // Defensive only: `needsPageD` being true already implies T06 is
-    // complete, which requires a real, usable hero photo — a `null`
-    // here would mean that photo stopped being readable between the
-    // reconciliation above and this read. Rather than crash or silently
-    // skip T07, fall through to the same notice every other
-    // not-yet-resolvable state below already uses.
-    if (cropStepData !== null) {
-      return withPreview(
-        <HeroCropStep
-          language={resumed.memorial.language}
-          content={heroReconciledContent}
-          photo={cropStepData}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-        />,
-        previewAvailable(heroReconciledContent),
-      );
-    }
+    const crop = await showCurrent("crop", heroReconciledContent);
+    if (crop !== null) return crop;
   }
 
   // Mission 035 — PAGE E: T08, the Hero's first real reveal. Shown only
   // once PAGE A, PAGE B, PAGE C and PAGE D are all genuinely behind the
   // family (never before — see `needsPageE`'s own guard) and only until
   // T08 itself has been explicitly completed for a still-complete Hero
-  // (mission brief section 20). Reuses `resolveHeroCropStepData` as-is
-  // (the exact same "current photo + a fresh signed read URL" this
-  // screen needs to actually RENDER the Hero, not merely crop it — no
-  // second, near-identical resolver) against the already-reconciled
-  // content from the retry above.
+  // (mission brief section 20). Without a usable photo (defensive, like
+  // PAGE D), falls through.
   if (needsPageE(heroReconciledContent)) {
-    const revealStepData = await resolveHeroCropStepData(
-      { mediaEngine: createServerMediaEngineDeps() },
-      actor,
-      access.memorialId,
-      heroReconciledContent,
-    );
-
-    // Defensive only, exactly like PAGE D's own equivalent guard above:
-    // `needsPageE` being true already implies T07 is complete, which
-    // requires a real, usable hero photo.
-    if (revealStepData !== null) {
-      return withPreview(
-        <HeroRevealStep
-          language={resumed.memorial.language}
-          content={heroReconciledContent}
-          photo={revealStepData}
-          initialSkinVariant={resumed.memorial.skinVariant}
-          persist={saveDraftAction.bind(null, access.memorialId)}
-          saveSkinVariant={saveSkinVariantAction.bind(null, access.memorialId)}
-        />,
-        false /* Reveal */,
-      );
-    }
+    const reveal = await showCurrent("reveal", heroReconciledContent);
+    if (reveal !== null) return reveal;
   }
 
   // Mission 039 — A01 (l'annonce) and A02 (précisions facultatives) sit
@@ -584,50 +811,23 @@ export default async function BuilderMemorialPage({
   const announcementChosen = isAnnouncementChosen(heroReconciledContent);
 
   if (announcementChosen && needsA01(heroReconciledContent)) {
-    return withPreview(
-      <DeathNoticeAnnouncementStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("announcementText", heroReconciledContent))!;
   }
 
   // A02 is shown only once A01 is genuinely behind the family (never
   // before — see `needsA02`'s own guard) and only until A02 itself has
   // been treated once, whichever way (mission brief section 8/9).
   if (announcementChosen && needsA02(heroReconciledContent)) {
-    return withPreview(
-      <DeathNoticePrecisionsStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("announcementDetails", heroReconciledContent))!;
   }
 
   // Mission 039B — A03: the Death Notice preview. Shown only once A01
   // AND A02 are both genuinely behind the family (never before — see
   // `needsA03`'s own guard) and until A03 itself has been verified for
   // the CURRENT content (its own deterministic fingerprint —
-  // `deathNoticePreviewFingerprint`). `resumed.memorial.skin` is passed
-  // through RE-VALIDATED (never trusted as a bare TS type crossing the
-  // DB boundary) — `DeathNoticePreviewStep`'s own skin guard is what
-  // decides whether the real Intemporel renderer shows or an honest
-  // "not yet available for this style" notice.
+  // `deathNoticePreviewFingerprint`).
   if (announcementChosen && needsA03(heroReconciledContent)) {
-    return withPreview(
-      <DeathNoticePreviewStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        skin={resumed.memorial.skin}
-        skinVariant={resumed.memorial.skinVariant}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      false /* Reveal */,
-    );
+    return (await showCurrent("announcementPreview", heroReconciledContent))!;
   }
 
   // Mission 040 — A04: "Un moment est-il prévu ?", obligatoire et
@@ -635,14 +835,7 @@ export default async function BuilderMemorialPage({
   // the family (never before — see `needsA04`'s own guard, which also
   // routes back here on a corrupted stored Ceremony).
   if (needsA04(heroReconciledContent)) {
-    return withPreview(
-      <CeremonyMomentStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("ceremonyMoment", heroReconciledContent))!;
   }
 
   // Mission 040 — A05-A08: the ceremony's own information, shown only
@@ -651,47 +844,19 @@ export default async function BuilderMemorialPage({
   // until each one has been treated once, whichever way. Every one of
   // the four is facultatif and passable (human-steps.ts).
   if (needsA05(heroReconciledContent)) {
-    return withPreview(
-      <CeremonyDateTimeStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("ceremonyDateTime", heroReconciledContent))!;
   }
 
   if (needsA06(heroReconciledContent)) {
-    return withPreview(
-      <CeremonyVenueStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("ceremonyVenue", heroReconciledContent))!;
   }
 
   if (needsA07(heroReconciledContent)) {
-    return withPreview(
-      <CeremonyAddressStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("ceremonyAddress", heroReconciledContent))!;
   }
 
   if (needsA08(heroReconciledContent)) {
-    return withPreview(
-      <CeremonyNoteStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("ceremonyNote", heroReconciledContent))!;
   }
 
   // Mission 042 — A09: "Traditions & repères". Shown once the whole
@@ -701,20 +866,9 @@ export default async function BuilderMemorialPage({
   // reached exactly the same way whether A04 was "yes", "no" or
   // "undecided". B02-L2 — A09 belongs with the death notice (PO
   // doctrine): `needsA09` itself is false unless A00 = "yes"; entries
-  // already written stay in the draft. `skin` is
-  // passed through RE-VALIDATED (never a bare TS type crossing the DB
-  // boundary), used ONLY to narrow which catalog suggestions may be
-  // shown — never to infer or pre-select a practice.
+  // already written stay in the draft.
   if (needsA09(heroReconciledContent)) {
-    return withPreview(
-      <TraditionsStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        skin={resumed.memorial.skin}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("traditions", heroReconciledContent))!;
   }
 
   // Mission 044 — the combined A10+A11+A12 sheet ("Quelques mots sur
@@ -725,49 +879,19 @@ export default async function BuilderMemorialPage({
   // skippable step), or once the Ceremony block is when A09 is not part
   // of the route (A00 not "yes") and only until the sheet itself has been treated
   // once, whichever way. Entirely facultative and passable, three
-  // free-text matières resolved together, no Memorial rendering
-  // decided here (mission brief: no renderer, no "Récit de vie"
-  // composition in this mission).
+  // free-text matières resolved together.
   if (needsPersonSheet(heroReconciledContent)) {
-    return withPreview(
-      <PersonSheetStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("personSheet", heroReconciledContent))!;
   }
 
   // A13 — "Vos souvenirs en images". Shown once the A10–A12 sheet is
   // genuinely behind the family (never before — `needsA13` gates on
   // `isPersonSheetResolved`) and only until A13 itself has been treated
-  // once, whichever way. The thumbnails are resolved here, server-side,
-  // through the Preview's own Owner draft resolver (purpose "gallery");
-  // the three Gallery actions are bound to the AUTHORIZED id exactly
-  // like the Hero's — the browser never picks a memorial or a purpose.
-  // A corrupted stored Gallery still renders the step, which shows its
-  // own calm notice instead of an editor (same as every other step).
+  // once, whichever way. A corrupted stored Gallery still renders the
+  // step, which shows its own calm notice instead of an editor (same as
+  // every other step).
   if (needsA13(heroReconciledContent)) {
-    const galleryStepData = await resolveGalleryStepData(
-      { mediaEngine: createServerMediaEngineDeps() },
-      actor,
-      access.memorialId,
-      heroReconciledContent,
-    );
-
-    return withPreview(
-      <GalleryStep
-        language={resumed.memorial.language}
-        content={heroReconciledContent}
-        thumbnails={galleryStepData.status === "ready" ? galleryStepData.thumbnails : {}}
-        persist={saveDraftAction.bind(null, access.memorialId)}
-        reserveUpload={reserveGalleryPhotoUploadAction.bind(null, access.memorialId)}
-        finalizeUpload={finalizeGalleryPhotoUploadAction.bind(null, access.memorialId)}
-        retirePhoto={retireGalleryPhotoAction.bind(null, access.memorialId)}
-      />,
-      previewAvailable(heroReconciledContent),
-    );
+    return (await showCurrent("gallery", heroReconciledContent))!;
   }
 
   // The Builder needs the fully CONFIGURED shape (MemorialConfig, not
@@ -784,12 +908,11 @@ export default async function BuilderMemorialPage({
   // Guided Flow's own resting screen — same chrome, the real engine's
   // progress (never 1 while unbuilt steps remain on the route), a
   // confirmation that the answers are stored, and the way back to the
-  // owner space. It decides nothing about publication or `slug`, and
-  // simulates no later step: when a later step is built, its own
-  // `needsX` gate goes right above this line, exactly like every gate
-  // before it, and this screen moves one step further down on its own.
-  // `resumed.memorial.language` is narrowed non-null by the earlier
-  // `return`s.
+  // owner space — and, since B03, « Mon parcours » to revise any screen.
+  // It decides nothing about publication or `slug`, and simulates no
+  // later step: when a later step is built, its own `needsX` gate goes
+  // right above this line, exactly like every gate before it, and this
+  // screen moves one step further down on its own.
   if (!isConfiguredMemorial(resumed.memorial)) {
     return withPreview(
       <GuidedFlowPause
@@ -797,6 +920,7 @@ export default async function BuilderMemorialPage({
         progress={heroStepProgress(heroReconciledContent, readHero(heroReconciledContent))}
       />,
       previewAvailable(heroReconciledContent),
+      heroReconciledContent,
     );
   }
 

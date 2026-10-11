@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
@@ -109,7 +109,7 @@ export function DeathNoticePreviewStep({
   skinVariant,
   persist,
 }: DeathNoticePreviewStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
 
@@ -161,7 +161,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleEditPrecisions() {
@@ -184,7 +184,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -207,7 +207,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   return (

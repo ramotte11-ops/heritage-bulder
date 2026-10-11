@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -34,7 +34,7 @@ interface CeremonyAddressStepProps {
  * découpage). Facultatif, passable.
  */
 export function CeremonyAddressStep({ language, content: initialContent, persist }: CeremonyAddressStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,7 +87,7 @@ export function CeremonyAddressStep({ language, content: initialContent, persist
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -111,7 +111,7 @@ export function CeremonyAddressStep({ language, content: initialContent, persist
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

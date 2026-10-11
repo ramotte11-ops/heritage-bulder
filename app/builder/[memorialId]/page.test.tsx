@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { MemorialContent, MemorialVersion, StoredMemorialConfig } from "@/types/memorial";
 import { deathNoticePreviewFingerprint } from "@/lib/builder/guided-flow/death-notice-step";
+import { currentJourneyScreen, type JourneyScreenId } from "@/lib/builder/guided-flow/journey";
 
 /**
  * Mission 021 — the real Builder entry point.
@@ -417,15 +418,16 @@ function paramsFor(memorialId: string) {
   return Promise.resolve({ memorialId });
 }
 
-/** The page's raw return — the `BuilderPreviewHost` wrapper included. */
-async function callPageRaw(memorialId = MEMORIAL_ID) {
-  return BuilderMemorialPage({ params: paramsFor(memorialId) });
+/** The page's raw return — the `BuilderPreviewHost` wrapper included.
+ * `search` — the URL's query (B03: `{ etape: "…" }` opens a revision). */
+async function callPageRaw(memorialId = MEMORIAL_ID, search: Record<string, string | string[] | undefined> = {}) {
+  return BuilderMemorialPage({ params: paramsFor(memorialId), searchParams: Promise.resolve(search) });
 }
 
 /** The screen the page shows, unwrapped from its Étape 3 Preview host
  * (every pre-existing assertion below is about the screen itself). */
-async function callPage(memorialId = MEMORIAL_ID) {
-  const result = await callPageRaw(memorialId);
+async function callPage(memorialId = MEMORIAL_ID, search: Record<string, string | string[] | undefined> = {}) {
+  const result = await callPageRaw(memorialId, search);
   return result.type === BuilderPreviewHost ? result.props.children : result;
 }
 
@@ -3016,6 +3018,181 @@ describe("BuilderMemorialPage — granted access", () => {
       });
     });
   });
+  });
+
+  describe("B03 — « Mon parcours » and revision (?etape=)", () => {
+    const PAST_EVERYTHING: StoredMemorialConfig = { ...CONFIGURED_MEMORIAL, slug: null };
+
+    function resumeWith(draft: MemorialVersion, memorial: StoredMemorialConfig = PAST_EVERYTHING, memorialId = MEMORIAL_ID) {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId });
+      resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
+    }
+
+    /** REAL_DRAFT with some Guided Flow records removed (or set). */
+    function variant(patch: Record<string, unknown>): MemorialVersion {
+      const guidedFlow = { ...(REAL_DRAFT.content as { guidedFlow: Record<string, unknown> }).guidedFlow };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) delete guidedFlow[key];
+        else guidedFlow[key] = value;
+      }
+      return { ...REAL_DRAFT, content: { ...REAL_DRAFT.content, guidedFlow } as MemorialVersion["content"] };
+    }
+
+    const COMPONENT_FOR: Record<JourneyScreenId, unknown> = {
+      identity: HeroIdentityStep,
+      announcementChoice: AnnouncementChoiceStep,
+      phrase: HeroPhraseStep,
+      photo: HeroPhotoStep,
+      crop: HeroCropStep,
+      reveal: HeroRevealStep,
+      announcementText: DeathNoticeAnnouncementStep,
+      announcementDetails: DeathNoticePrecisionsStep,
+      announcementPreview: DeathNoticePreviewStep,
+      ceremonyMoment: CeremonyMomentStep,
+      ceremonyDateTime: CeremonyDateTimeStep,
+      ceremonyVenue: CeremonyVenueStep,
+      ceremonyAddress: CeremonyAddressStep,
+      ceremonyNote: CeremonyNoteStep,
+      traditions: TraditionsStep,
+      personSheet: PersonSheetStep,
+      gallery: GalleryStep,
+    };
+
+    it.each([
+      ["complete legacy draft", {}],
+      ["gallery pending", { A13: undefined }],
+      ["sheet pending", { A10: undefined }],
+      ["traditions pending", { A09: undefined }],
+      ["ceremony pending", { A04: undefined, A09: undefined }],
+      ["A00 = no, ceremony pending", { A00: { status: "completed", answer: "no" }, A04: undefined }],
+      ["A00 = later, sheet next (A09 hidden)", { A00: { status: "skipped", answer: "later" }, A09: undefined, A10: undefined }],
+      ["notice text pending", { A01: undefined, A00: { status: "completed", answer: "yes" } }],
+      ["Hero reveal pending", { T08: undefined }],
+      ["phrase pending", { T05: undefined }],
+    ] as const)("the route shows exactly the journey's current screen (%s)", async (_label, patch) => {
+      resolveHeroCropStepData.mockResolvedValue({ media: { id: "m" }, readUrl: "https://signed/x" });
+      const draft = variant(patch as Record<string, unknown>);
+      resumeWith(draft);
+      const result = await callPage();
+      const current = currentJourneyScreen(draft.content);
+      expect(result.type).toBe(current === null ? GuidedFlowPause : COMPONENT_FOR[current]);
+    });
+
+    it("hands the host a journey computed from the screen's content, with the route's own path built from the AUTHORIZED id", async () => {
+      resumeWith(variant({ A04: undefined, A09: undefined }), PAST_EVERYTHING, "authorized-id");
+      const raw = await callPageRaw("claimed-id");
+      expect(raw.props.journey.builderPath).toBe("/builder/authorized-id");
+      expect(raw.props.journey.snapshot.current).toBe("ceremonyMoment");
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+    });
+
+    it("T01 and the Welcome carry no journey (nothing to show yet)", async () => {
+      resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, language: null });
+      expect((await callPageRaw()).props.journey ?? null).toBeNull();
+      resumeWith({ content: {}, updatedAt: "2026-01-01T00:00:00.000Z" }, { ...PAST_EVERYTHING, editorialContext: null });
+      expect((await callPageRaw()).props.journey ?? null).toBeNull();
+    });
+
+    it("the resting screen (all done) carries the journey too", async () => {
+      resumeWith(REAL_DRAFT);
+      const raw = await callPageRaw();
+      expect(raw.props.children.type).toBe(GuidedFlowPause);
+      expect(raw.props.journey.snapshot.current).toBeNull();
+    });
+
+    it("?etape=identity reopens PAGE A on a draft past every gate, freshly keyed, marked as a revision", async () => {
+      resumeWith(REAL_DRAFT);
+      const raw = await callPageRaw(MEMORIAL_ID, { etape: "identity" });
+      const screen = raw.props.children;
+      expect(screen.type).toBe(HeroIdentityStep);
+      expect(screen.key).toBe("revision-identity");
+      expect(screen.props.content).toEqual(REAL_DRAFT.content);
+      expect(raw.props.journey.snapshot.revising).toBe("identity");
+    });
+
+    it("?etape=announcementChoice reopens A00 on an old draft whose yes is derived (no A00 record)", async () => {
+      resumeWith(REAL_DRAFT);
+      const result = await callPage(MEMORIAL_ID, { etape: "announcementChoice" });
+      expect(result.type).toBe(AnnouncementChoiceStep);
+    });
+
+    it.each([
+      ["phrase", HeroPhraseStep],
+      ["announcementText", DeathNoticeAnnouncementStep],
+      ["ceremonyMoment", CeremonyMomentStep],
+      ["traditions", TraditionsStep],
+      ["personSheet", PersonSheetStep],
+      ["gallery", GalleryStep],
+    ] as const)("?etape=%s reopens that already-treated screen", async (etape, component) => {
+      resumeWith(REAL_DRAFT);
+      const result = await callPage(MEMORIAL_ID, { etape });
+      expect(result.type).toBe(component);
+    });
+
+    it("?etape=photo reopens PAGE C through its own data resolution on the raw draft", async () => {
+      resolveHeroPhotoStepData.mockResolvedValue({ content: REAL_DRAFT.content, initialPhoto: null });
+      resumeWith(REAL_DRAFT);
+      const result = await callPage(MEMORIAL_ID, { etape: "photo" });
+      expect(result.type).toBe(HeroPhotoStep);
+      expect(resolveHeroPhotoStepData).toHaveBeenCalledWith(
+        expect.anything(),
+        OWNER_ACTOR,
+        MEMORIAL_ID,
+        REAL_DRAFT.content,
+      );
+    });
+
+    it("never jumps forward: a future screen in ?etape= is ignored and the current screen is shown", async () => {
+      resumeWith(variant({ A04: undefined, A09: undefined, A13: undefined }));
+      const raw = await callPageRaw(MEMORIAL_ID, { etape: "gallery" });
+      expect(raw.props.children.type).toBe(CeremonyMomentStep);
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+    });
+
+    it("never reopens a hidden screen: the notice text with A00 = no is ignored", async () => {
+      resumeWith(variant({ A00: { status: "completed", answer: "no" } }));
+      const result = await callPage(MEMORIAL_ID, { etape: "announcementText" });
+      expect(result.type).toBe(GuidedFlowPause);
+    });
+
+    it.each([["javascript:alert(1)"], ["T03"], [""], [["identity", "phrase"]]] as const)(
+      "ignores a malformed ?etape= (%j)",
+      async (etape) => {
+        resumeWith(REAL_DRAFT);
+        const result = await callPage(MEMORIAL_ID, { etape: etape as string | string[] });
+        expect(result.type).toBe(GuidedFlowPause);
+      },
+    );
+
+    it("a screen treated earlier stays reopenable even when an earlier one became current again", async () => {
+      // e.g. A04 to answer again while the gallery was already treated.
+      resumeWith(variant({ A04: undefined, A09: undefined }));
+      const result = await callPage(MEMORIAL_ID, { etape: "gallery" });
+      expect(result.type).toBe(GalleryStep);
+    });
+
+    it("the current screen in ?etape= is simply the normal route (not a revision)", async () => {
+      resumeWith(variant({ A04: undefined, A09: undefined }));
+      const raw = await callPageRaw(MEMORIAL_ID, { etape: "ceremonyMoment" });
+      expect(raw.props.children.type).toBe(CeremonyMomentStep);
+      expect(raw.props.children.key).toBeNull();
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+    });
+
+    it("opening a revision writes nothing — no draft save, no action call", async () => {
+      resumeWith(REAL_DRAFT);
+      await callPage(MEMORIAL_ID, { etape: "identity" });
+      expect(saveDraftAction).not.toHaveBeenCalled();
+      expect(draftRepositoryInstance.saveDraftContent).not.toHaveBeenCalled();
+    });
+
+    it("a revised screen saves through the same bound saveDraftAction (authorized id)", async () => {
+      resumeWith(REAL_DRAFT, PAST_EVERYTHING, "authorized-id");
+      const result = await callPage("claimed-id", { etape: "phrase" });
+      await result.props.persist({ edited: true });
+      expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", { edited: true });
+    });
   });
 
   it("resolves notFoundOrForbidden from resumeBuilderSession the same way as a denied authorization", async () => {

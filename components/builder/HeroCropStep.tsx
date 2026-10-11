@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
@@ -136,7 +136,7 @@ const UNRESOLVED_IMAGE_SIZE: HeroCropImageSize = { naturalWidth: 0, naturalHeigh
  * blocked anywhere else.
  */
 export function HeroCropStep({ language, content: initialContent, photo, persist }: HeroCropStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
   const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
@@ -233,7 +233,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -296,7 +296,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready" || read.hero.photo === null) {

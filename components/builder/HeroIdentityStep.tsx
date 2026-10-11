@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import type { HeroDate } from "@/types/hero";
@@ -84,7 +84,7 @@ export function HeroIdentityStep({
   content: initialContent,
   persist,
 }: HeroIdentityStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [birthError, setBirthError] = useState<DateErrorKind>(null);
@@ -155,7 +155,7 @@ export function HeroIdentityStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

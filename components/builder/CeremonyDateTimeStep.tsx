@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -46,7 +46,7 @@ interface CeremonyDateTimeStepProps {
  * mirrors `DeathNoticePrecisionsStep`'s own two-outcomes discipline.
  */
 export function CeremonyDateTimeStep({ language, content: initialContent, persist }: CeremonyDateTimeStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,7 +99,7 @@ export function CeremonyDateTimeStep({ language, content: initialContent, persis
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -123,7 +123,7 @@ export function CeremonyDateTimeStep({ language, content: initialContent, persis
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

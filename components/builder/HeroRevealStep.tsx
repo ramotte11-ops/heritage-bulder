@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
@@ -130,7 +130,7 @@ export function HeroRevealStep({
   persist,
   saveSkinVariant,
 }: HeroRevealStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   const [previewVariant, setPreviewVariant] = useState<SkinVariant>(initialSkinVariant);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -187,7 +187,7 @@ export function HeroRevealStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   return (

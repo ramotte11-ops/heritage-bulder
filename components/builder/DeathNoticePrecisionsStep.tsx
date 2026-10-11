@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
@@ -87,7 +87,7 @@ export function DeathNoticePrecisionsStep({
   content: initialContent,
   persist,
 }: DeathNoticePrecisionsStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [openedFields, setOpenedFields] = useState<ReadonlySet<DeathNoticePrecisionField>>(() => new Set());
   const [submitError, setSubmitError] = useState(false);
@@ -141,7 +141,7 @@ export function DeathNoticePrecisionsStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -165,7 +165,7 @@ export function DeathNoticePrecisionsStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -54,7 +54,7 @@ const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momen
  * `AnnouncementChoiceStep` uses for the identical reason.
  */
 export function CeremonyMomentStep({ language, content, persist }: CeremonyMomentStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [selected, setSelected] = useState<A04Answer | null>(() => readCeremonyMomentAnswer(content));
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,7 +83,7 @@ export function CeremonyMomentStep({ language, content, persist }: CeremonyMomen
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
