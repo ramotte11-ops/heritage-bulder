@@ -94,6 +94,9 @@ vi.mock("@/components/builder/BuilderShell", () => ({ BuilderShell }));
 const { LanguageStep } = vi.hoisted(() => ({ LanguageStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/LanguageStep", () => ({ LanguageStep }));
 
+const { WelcomeStep } = vi.hoisted(() => ({ WelcomeStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/WelcomeStep", () => ({ WelcomeStep }));
+
 const { ContextStep } = vi.hoisted(() => ({ ContextStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/ContextStep", () => ({ ContextStep }));
 
@@ -702,6 +705,75 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(LanguageStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
       expect(result.type).toBe(ContextStep);
+    });
+  });
+
+  describe("Builder Welcome — right after T01, only for a draft nobody has started", () => {
+    const EMPTY_DRAFT: MemorialVersion = { content: {}, updatedAt: "2026-01-01T00:00:00.000Z" };
+
+    function resumeWith(memorial: StoredMemorialConfig, draft: MemorialVersion) {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
+    }
+
+    it("renders WelcomeStep once the language is chosen, on an empty draft with no editorial context", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, EMPTY_DRAFT);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(WelcomeStep);
+      expect(result.props.language).toBe("es");
+      expect(result.props.content).toEqual({});
+      expect(ContextStep).not.toHaveBeenCalled();
+    });
+
+    it("wires WelcomeStep's persist to saveDraftAction, bound to the AUTHORIZED memorialId, with the Preview off", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, EMPTY_DRAFT);
+
+      const raw = await callPageRaw();
+      const result = await callPage();
+      await result.props.persist({ welcome: { status: "completed" } });
+
+      expect(raw.props.available).toBe(false);
+      expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, { welcome: { status: "completed" } });
+    });
+
+    it("never shows before T01: a memorial without a language still gets LanguageStep", async () => {
+      resumeWith(UNCONFIGURED_MEMORIAL, EMPTY_DRAFT);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(LanguageStep);
+      expect(WelcomeStep).not.toHaveBeenCalled();
+    });
+
+    it("moves on to T02 once the Welcome marker is saved — it is never shown twice", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, {
+        content: { welcome: { status: "completed" } } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(ContextStep);
+      expect(WelcomeStep).not.toHaveBeenCalled();
+    });
+
+    it("never shows on a resumed draft that already holds content", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, REAL_DRAFT);
+      await callPage();
+      expect(WelcomeStep).not.toHaveBeenCalled();
+    });
+
+    it("never shows once an editorial context is recorded, even on an empty draft", async () => {
+      resumeWith(LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, EMPTY_DRAFT);
+      await callPage();
+      expect(WelcomeStep).not.toHaveBeenCalled();
     });
   });
 

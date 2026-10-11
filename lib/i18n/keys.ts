@@ -217,6 +217,11 @@ export const TRANSLATION_KEYS = [
   // Mission 023 — T01 (Welcome + choix de langue).
   "onboarding.chooseLanguage",
   "builder.notConfiguredYet",
+  // Builder Welcome — between T01 and the Guided Flow.
+  "welcome.title",
+  "welcome.intro",
+  "welcome.reassurance",
+  "welcome.cta",
   // Mission 024 — T02 (choix du contexte éditorial).
   "context.title",
   "context.subtitle",

@@ -20,6 +20,12 @@ export const en: Record<TranslationKey, string> = {
   "errors.notFound": "Page not found.",
   "onboarding.chooseLanguage": "Choose your language",
   "builder.notConfiguredYet": "Your memorial still needs to be configured before it can be edited here.",
+  "welcome.title": "Every life deserves to be told.",
+  "welcome.intro":
+    "HERITAGE guides you step by step in creating a personal tribute that truly reflects the person you love.",
+  "welcome.reassurance":
+    "Take your time. You can come back to your answers and complete your tribute at your own pace.",
+  "welcome.cta": "Begin the tribute",
   "context.title": "What would you like to create today?",
   "context.subtitle": "Choose the path that best reflects what you need right now.",
   "context.announcementTitle": "Announcement & Tribute",

@@ -1,0 +1,136 @@
+/*
+ * Builder Welcome. Sits on BuilderScreen's shared `.page` (paper
+ * background, centering, padding) and reuses its wordmark and
+ * signature; everything below is this screen's own editorial column.
+ * Colors and spacing come from the HERITAGE tokens only.
+ */
+
+.welcome {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 21rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+@media (min-width: 40rem) {
+  .welcome {
+    max-width: 40rem;
+  }
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.brandRule {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: var(--heritage-space-md);
+  background: var(--heritage-text-secondary);
+  opacity: 0.45;
+}
+
+.title {
+  margin: var(--heritage-space-xl) 0 0;
+  font-family: var(--font-heritage-ceremony-serif, "EB Garamond", Georgia, serif);
+  font-weight: 400;
+  font-size: 2.625rem;
+  line-height: 1.1;
+  color: var(--heritage-text-primary);
+  text-wrap: balance;
+}
+
+@media (min-width: 40rem) {
+  .title {
+    margin-top: var(--heritage-space-breathing);
+    font-size: 3.75rem;
+  }
+}
+
+.sprig {
+  display: block;
+  width: 7.5rem;
+  height: auto;
+  margin-top: var(--heritage-space-md);
+}
+
+@media (min-width: 40rem) {
+  .sprig {
+    width: 8.5rem;
+  }
+}
+
+.intro,
+.reassurance {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif, "EB Garamond", Georgia, serif);
+  text-wrap: balance;
+}
+
+.intro {
+  margin-top: var(--heritage-space-md);
+  max-width: 34ch;
+  font-size: 1.1875rem;
+  line-height: 1.5;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .intro {
+    max-width: 44ch;
+    font-size: 1.3125rem;
+  }
+}
+
+.rule {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: var(--heritage-space-xl);
+  background: var(--heritage-text-secondary);
+  opacity: 0.45;
+}
+
+.reassurance {
+  margin-top: var(--heritage-space-xl);
+  max-width: 32ch;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--heritage-text-secondary);
+}
+
+@media (min-width: 40rem) {
+  .reassurance {
+    max-width: 48ch;
+    font-size: 1.125rem;
+  }
+}
+
+.form {
+  width: 100%;
+  margin-top: var(--heritage-space-breathing);
+}
+
+.ctaWrap {
+  width: 100%;
+}
+
+@media (min-width: 40rem) {
+  .ctaWrap {
+    max-width: 22rem;
+    margin-inline: auto;
+  }
+}
+
+.error {
+  margin-top: var(--heritage-space-md);
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { MemorialContent } from "@/types/memorial";
 import type { SkinVariant } from "@/config/skins";
+import { WelcomeStep } from "@/components/builder/WelcomeStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
@@ -171,6 +172,11 @@ export default function QgRuntimeDemoPage() {
   const [showRecit, setShowRecit] = useState(false);
   const [recitScenario, setRecitScenario] = useState<RecitScenario>("FALLBACKS");
 
+  // Builder Welcome — shown first, exactly where the real route shows it
+  // (right after T01, which this page has no screen for). Purely local:
+  // its CTA only flips this flag; `content` is never touched.
+  const [welcomeDone, setWelcomeDone] = useState(false);
+
   function applyRecitScenario(next: RecitScenario) {
     setRecitScenario(next);
     setShowRecit(true);
@@ -208,6 +214,18 @@ export default function QgRuntimeDemoPage() {
     const recitContent = buildRecitScenarioContent(recitScenario);
     stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
     body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
+  } else if (!welcomeDone) {
+    stepLabel = "Bienvenue (après T01)";
+    body = (
+      <WelcomeStep
+        language={LANGUAGE}
+        content={content}
+        persist={async () => {
+          setWelcomeDone(true);
+          return { updatedAt: new Date().toISOString() };
+        }}
+      />
+    );
   } else if (needsPageA(content)) {
     stepLabel = "Hero — PAGE A (nom, dates)";
     body = (

@@ -17,6 +17,12 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "errors.notFound": "Página no encontrada.",
   "onboarding.chooseLanguage": "Elige tu idioma",
   "builder.notConfiguredYet": "Tu memorial todavía debe configurarse antes de poder editarlo aquí.",
+  "welcome.title": "Cada vida merece ser contada.",
+  "welcome.intro":
+    "HERITAGE le acompaña paso a paso para crear un homenaje personal, a imagen de la persona que usted ama.",
+  "welcome.reassurance":
+    "Tómese su tiempo. Podrá volver sobre sus respuestas y completar su homenaje a su propio ritmo.",
+  "welcome.cta": "Comenzar el homenaje",
   "context.title": "¿Qué desea crear hoy?",
   "context.subtitle": "Elija el recorrido que mejor se adapte a lo que necesita en este momento.",
   "context.announcementTitle": "Anuncio y homenaje",

@@ -8,6 +8,7 @@ import type { ReactElement } from "react";
 import { isConfiguredMemorial, type MemorialContent } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
+import { WelcomeStep } from "@/components/builder/WelcomeStep";
 import { ContextStep } from "@/components/builder/ContextStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
@@ -39,6 +40,7 @@ import {
   needsPageE,
   resolveHeroFlowState,
 } from "@/lib/builder/guided-flow/hero-step";
+import { needsWelcome } from "@/lib/builder/guided-flow/welcome-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
@@ -382,6 +384,21 @@ export default async function BuilderMemorialPage({
 
   if (resumed.memorial.language === null) {
     return withPreview(<LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />, false);
+  }
+
+  // Builder Welcome — right after T01, before anything else: only for a
+  // draft nobody has started (no editorial context, empty content), so a
+  // resumed draft never sees it again (lib/builder/guided-flow/welcome-step.ts).
+  // No Preview: there is nothing to preview yet.
+  if (needsWelcome(resumed.memorial.editorialContext, resumed.draft.content)) {
+    return withPreview(
+      <WelcomeStep
+        language={resumed.memorial.language}
+        content={resumed.draft.content}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      false,
+    );
   }
 
   // Mission 024 — T02. Language is now guaranteed non-null (narrowed by

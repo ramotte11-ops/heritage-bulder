@@ -19,6 +19,12 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "errors.notFound": "Page introuvable.",
   "onboarding.chooseLanguage": "Choisissez votre langue",
   "builder.notConfiguredYet": "Votre mémorial doit encore être configuré avant de pouvoir être édité ici.",
+  "welcome.title": "Chaque vie mérite d’être racontée.",
+  "welcome.intro":
+    "HERITAGE vous accompagne pas à pas pour créer un hommage personnel, à l’image de la personne que vous aimez.",
+  "welcome.reassurance":
+    "Prenez votre temps. Vous pourrez revenir sur vos réponses et compléter votre hommage à votre rythme.",
+  "welcome.cta": "Commencer son hommage",
   "context.title": "Que souhaitez-vous créer aujourd'hui ?",
   "context.subtitle":
     "Choisissez le parcours qui correspond le mieux à ce dont vous avez besoin aujourd'hui.",
