@@ -9,6 +9,7 @@ import { isConfiguredMemorial, type MemorialContent } from "@/types/memorial";
 import { BuilderShell } from "@/components/builder/BuilderShell";
 import { LanguageStep } from "@/components/builder/LanguageStep";
 import { WelcomeStep } from "@/components/builder/WelcomeStep";
+import { AnnouncementChoiceStep } from "@/components/builder/AnnouncementChoiceStep";
 import { ContextStep } from "@/components/builder/ContextStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
@@ -41,6 +42,7 @@ import {
   resolveHeroFlowState,
 } from "@/lib/builder/guided-flow/hero-step";
 import { needsWelcome } from "@/lib/builder/guided-flow/welcome-step";
+import { isAnnouncementChosen, needsA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
@@ -444,6 +446,23 @@ export default async function BuilderMemorialPage({
     );
   }
 
+  // A00 — "Souhaitez-vous également publier une annonce de décès ?":
+  // right after identity (PAGE A), before the Hero, for an `announcement`
+  // memorial only while T02 still splits the two contexts (B02-L2). A
+  // pre-A00 draft that already validated its announcement reads as "yes"
+  // and is never asked (lib/builder/guided-flow/announcement-choice-step.ts).
+  if (resumed.memorial.editorialContext === "announcement" && needsA00(resumed.draft.content)) {
+    return withPreview(
+      <AnnouncementChoiceStep
+        language={resumed.memorial.language}
+        editorialContext={resumed.memorial.editorialContext}
+        content={resumed.draft.content}
+        persist={saveDraftAction.bind(null, access.memorialId)}
+      />,
+      previewAvailable(resumed.draft.content),
+    );
+  }
+
   // Mission 032 — PAGE B: T05, a short optional personal line. Shown
   // only once PAGE A is genuinely behind the family (never before —
   // see `needsPageB`'s own guard) and only until T05 itself has been
@@ -597,7 +616,13 @@ export default async function BuilderMemorialPage({
   // simply never touched (lib/memorial/death-notice.ts's own "context
   // safety" doctrine — a context switch alone never destroys data).
   if (resumed.memorial.editorialContext === "announcement") {
-    if (needsA01(heroReconciledContent)) {
+    // A00 — the death notice (A01-A03) is offered only when the family
+    // answered "yes". "Non"/"Plus tard" go straight on to the ceremony
+    // question (A04), which never depends on this choice; any notice
+    // content already written is kept untouched.
+    const announcementChosen = isAnnouncementChosen(heroReconciledContent);
+
+    if (announcementChosen && needsA01(heroReconciledContent)) {
       return withPreview(
         <DeathNoticeAnnouncementStep
           language={resumed.memorial.language}
@@ -612,7 +637,7 @@ export default async function BuilderMemorialPage({
     // A02 is shown only once A01 is genuinely behind the family (never
     // before — see `needsA02`'s own guard) and only until A02 itself has
     // been treated once, whichever way (mission brief section 8/9).
-    if (needsA02(heroReconciledContent)) {
+    if (announcementChosen && needsA02(heroReconciledContent)) {
       return withPreview(
         <DeathNoticePrecisionsStep
           language={resumed.memorial.language}
@@ -633,7 +658,7 @@ export default async function BuilderMemorialPage({
     // DB boundary) — `DeathNoticePreviewStep`'s own skin guard is what
     // decides whether the real Intemporel renderer shows or an honest
     // "not yet available for this style" notice.
-    if (needsA03(heroReconciledContent)) {
+    if (announcementChosen && needsA03(heroReconciledContent)) {
       return withPreview(
         <DeathNoticePreviewStep
           language={resumed.memorial.language}

@@ -15,6 +15,7 @@ import {
   readHeroForEditing,
   writeShortPhrase,
 } from "@/lib/builder/guided-flow/hero-step";
+import { readAnnouncementChoice } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
@@ -108,12 +109,15 @@ export function HeroPhraseStep({
     );
   }
 
-  const titleKey: TranslationKey =
-    editorialContext === "announcement" ? "hero.phraseTitleAnnouncement" : "hero.phraseTitleRemembrance";
-  const subtitleKey: TranslationKey =
-    editorialContext === "announcement"
-      ? "hero.phraseSubtitleAnnouncement"
-      : "hero.phraseSubtitleRemembrance";
+  // A00: the announcement wording ("partager avec l'annonce") only when a
+  // notice is actually planned — "Non"/"Plus tard" read the tribute
+  // wording. No answer yet keeps the context's own wording, as before.
+  const choice = readAnnouncementChoice(content);
+  const announcementWording = editorialContext === "announcement" && choice !== "no" && choice !== "later";
+  const titleKey: TranslationKey = announcementWording ? "hero.phraseTitleAnnouncement" : "hero.phraseTitleRemembrance";
+  const subtitleKey: TranslationKey = announcementWording
+    ? "hero.phraseSubtitleAnnouncement"
+    : "hero.phraseSubtitleRemembrance";
 
   const progress = heroStepProgress(editorialContext, content, read.hero);
 

@@ -222,6 +222,16 @@ export const TRANSLATION_KEYS = [
   "welcome.intro",
   "welcome.reassurance",
   "welcome.cta",
+  // A00 — choix de l'annonce de décès (après l'identité, avant le Hero).
+  "announcementChoice.title",
+  "announcementChoice.subtitle",
+  "announcementChoice.yesTitle",
+  "announcementChoice.yesDescription",
+  "announcementChoice.noTitle",
+  "announcementChoice.noDescription",
+  "announcementChoice.laterTitle",
+  "announcementChoice.laterDescription",
+  "announcementChoice.changeLater",
   // Mission 024 — T02 (choix du contexte éditorial).
   "context.title",
   "context.subtitle",

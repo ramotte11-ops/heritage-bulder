@@ -12,20 +12,25 @@ import {
   STEP_IDS,
   STEPS,
   humanFlowDefinition,
+  isAnnouncementVisible,
+  resolveA00Record,
   type HumanFlowState,
   type StepId,
 } from "./human-steps";
 
+/** A00 answered "yes": the death notice (A01-A03) is part of the route. */
+const A00_YES: HumanFlowState = { A00: { status: "completed", answer: "yes" } };
+
 const REMOVED_STEP_IDS = ["T09", "T10", "P02", "P03", "V01"];
 
 const ANNOUNCEMENT_ORDER_NO_A04: StepId[] = [
-  "T03", "T04", "T05", "T06", "T07", "T08",
+  "T03", "T04", "A00", "T05", "T06", "T07", "T08",
   "A01", "A02", "A03", "A04", "A09", "A10", "A11", "A12", "A13",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
 const ANNOUNCEMENT_ORDER_A04_YES: StepId[] = [
-  "T03", "T04", "T05", "T06", "T07", "T08",
+  "T03", "T04", "A00", "T05", "T06", "T07", "T08",
   "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
   "P01", "P04", "V02", "V03", "V04",
 ];
@@ -48,7 +53,7 @@ describe("STEP_IDS / STEPS — structural guards on the UX-A config itself", () 
 
   it("matches the exact UX-A order: common trunk, Announcement, Remembrance, final trunk", () => {
     expect(STEP_IDS).toEqual([
-      "T03", "T04", "T05", "T06", "T07", "T08",
+      "T03", "T04", "A00", "T05", "T06", "T07", "T08",
       "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
       "M01", "M02", "M03", "M04", "M05", "M06",
       "P01", "P04", "V02", "V03", "V04",
@@ -90,8 +95,8 @@ describe("STEP_IDS / STEPS — structural guards on the UX-A config itself", () 
 describe("Announcement route — exact, before A04 is answered", () => {
   const flow = humanFlowDefinition("announcement");
 
-  it("resolves the exact Announcement route with A05-A08 excluded", () => {
-    expect(applicableSteps(flow, {}).map((s) => s.id)).toEqual(ANNOUNCEMENT_ORDER_NO_A04);
+  it("resolves the exact Announcement route with A05-A08 excluded (A00 = yes)", () => {
+    expect(applicableSteps(flow, A00_YES).map((s) => s.id)).toEqual(ANNOUNCEMENT_ORDER_NO_A04);
   });
 
   it("contains no Remembrance-only step", () => {
@@ -123,7 +128,7 @@ describe("Announcement route — A04 conditional branch (A05-A08)", () => {
   });
 
   it("includes A05-A08, in order, exactly when A04 = yes", () => {
-    const state: HumanFlowState = { A04: { status: "completed", answer: "yes" } };
+    const state: HumanFlowState = { ...A00_YES, A04: { status: "completed", answer: "yes" } };
     expect(applicableSteps(flow, state).map((s) => s.id)).toEqual(ANNOUNCEMENT_ORDER_A04_YES);
   });
 
@@ -136,6 +141,7 @@ describe("Announcement route — A04 conditional branch (A05-A08)", () => {
       // not applicable, so they're skipped over entirely).
       const state2: HumanFlowState = {
         ...state,
+        ...A00_YES,
         T03: { status: "completed" },
         T04: { status: "skipped" },
         T05: { status: "skipped" },
@@ -179,7 +185,7 @@ describe("Remembrance route — exact", () => {
   it("contains no Announcement-only step", () => {
     const ids = applicableSteps(flow, {}).map((s) => s.id);
     for (const announcementOnly of [
-      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
+      "A00", "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
     ]) {
       expect(ids).not.toContain(announcementOnly);
     }
@@ -199,24 +205,26 @@ describe("T03 is the first (future) step once T01/T02 are done — for both rout
 describe("Reprise — first incomplete step, explicit skip, non-applicable", () => {
   const flow = humanFlowDefinition("announcement");
 
-  it("resumes at the first genuinely incomplete required step", () => {
+  it("resumes at the first genuinely incomplete step — A00, right after identity", () => {
     const state: HumanFlowState = {
       T03: { status: "completed" },
       T04: { status: "completed" },
     };
-    expect(firstIncompleteStep(flow, state)?.id).toBe("T05");
+    expect(firstIncompleteStep(flow, state)?.id).toBe("A00");
   });
 
   it("does not re-propose an optional step explicitly skipped", () => {
     const state: HumanFlowState = {
       T03: { status: "completed" },
       T04: { status: "skipped" },
+      A00: { status: "skipped", answer: "later" },
     };
     expect(firstIncompleteStep(flow, state)?.id).toBe("T05");
   });
 
   it("never treats a non-applicable conditional step as incomplete", () => {
     const state: HumanFlowState = {
+      ...A00_YES,
       T03: { status: "completed" },
       T04: { status: "skipped" },
       T05: { status: "skipped" },
@@ -252,7 +260,7 @@ describe("Previous/Next — skip non-applicable steps correctly", () => {
       T03: { status: "completed" },
       T04: { status: "completed" },
     };
-    expect(previousApplicableStep("T05", flow, state)?.id).toBe("T04");
+    expect(previousApplicableStep("A00", flow, state)?.id).toBe("T04");
   });
 
   it("previous() can return to an explicitly skipped earlier step", () => {
@@ -260,8 +268,9 @@ describe("Previous/Next — skip non-applicable steps correctly", () => {
     const state: HumanFlowState = {
       T03: { status: "completed" },
       T04: { status: "skipped" },
+      A00: { status: "skipped", answer: "later" },
     };
-    expect(previousApplicableStep("T05", flow, state)?.id).toBe("T04");
+    expect(previousApplicableStep("T05", flow, state)?.id).toBe("A00");
   });
 
   it("previous() from T03 (first step) is null", () => {
@@ -282,7 +291,7 @@ describe("QG micro-hardening — a skippable:false UX-A step can never resolve a
     "%s: a corrupt 'skipped' record resolves as incomplete, never skipped",
     (id) => {
       const flow = humanFlowDefinition("announcement");
-      const corruptState: HumanFlowState = { [id]: { status: "skipped" } } as HumanFlowState;
+      const corruptState: HumanFlowState = { ...A00_YES, [id]: { status: "skipped" } } as HumanFlowState;
       const step = STEPS.find((s) => s.id === id)!;
       expect(stepRuntimeStatus(step, flow, corruptState)).toBe("incomplete");
     },
@@ -308,6 +317,7 @@ describe("QG micro-hardening — a skippable:false UX-A step can never resolve a
   it("V04 artificially marked 'skipped' still surfaces as the resume target once everything else is done", () => {
     const flow = humanFlowDefinition("announcement");
     const state: HumanFlowState = {
+      ...A00_YES,
       T03: { status: "completed" }, T04: { status: "skipped" }, T05: { status: "skipped" },
       T06: { status: "completed" }, T07: { status: "completed" }, T08: { status: "completed" },
       A01: { status: "completed" }, A02: { status: "skipped" }, A03: { status: "completed" },
@@ -327,5 +337,69 @@ describe("QG micro-hardening — a skippable:false UX-A step can never resolve a
     const state: HumanFlowState = { T04: { status: "skipped" } };
     const t04 = STEPS.find((s) => s.id === "T04")!;
     expect(stepRuntimeStatus(t04, flow, state)).toBe("skipped");
+  });
+});
+
+describe("A00 — the death-notice choice", () => {
+  const flow = humanFlowDefinition("announcement");
+  const step = (id: StepId) => STEPS.find((s) => s.id === id)!;
+
+  it("sits between identity (T04) and the Hero (T05), optional and skippable", () => {
+    const ids = STEPS.map((s) => s.id);
+    expect(ids.indexOf("A00")).toBe(ids.indexOf("T04") + 1);
+    expect(ids.indexOf("T05")).toBe(ids.indexOf("A00") + 1);
+    expect(step("A00")).toMatchObject({ group: "announcement", required: false, skippable: true });
+  });
+
+  it("before any answer: A00 is incomplete and A01-A03 are not part of the route yet", () => {
+    expect(stepRuntimeStatus(step("A00"), flow, {})).toBe("incomplete");
+    const ids = applicableSteps(flow, {}).map((s) => s.id);
+    for (const id of ["A01", "A02", "A03"]) expect(ids).not.toContain(id);
+    expect(ids).toContain("A04");
+  });
+
+  it("yes: A01-A03 are part of the route", () => {
+    const ids = applicableSteps(flow, A00_YES).map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["A01", "A02", "A03"]));
+    expect(stepRuntimeStatus(step("A00"), flow, A00_YES)).toBe("completed");
+  });
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }, "completed"],
+    ["later", { status: "skipped", answer: "later" }, "skipped"],
+  ] as const)("%s: A00 is resolved, A01-A03 non-applicable, the ceremony (A04) still asked", (_answer, record, status) => {
+    const state: HumanFlowState = { A00: { ...record } };
+    expect(stepRuntimeStatus(step("A00"), flow, state)).toBe(status);
+    for (const id of ["A01", "A02", "A03"] as const) {
+      expect(stepRuntimeStatus(step(id), flow, state)).toBe("notApplicable");
+    }
+    expect(stepRuntimeStatus(step("A04"), flow, state)).toBe("incomplete");
+  });
+
+  it("no: notice records already written stay stored, simply not applicable", () => {
+    const state: HumanFlowState = {
+      A00: { status: "completed", answer: "no" },
+      A01: { status: "completed" },
+      A03: { status: "completed", answer: "0f3a9c21" },
+    };
+    expect(isAnnouncementVisible(state)).toBe(false);
+    expect(stepRuntimeStatus(step("A01"), flow, state)).toBe("notApplicable");
+    expect(state.A01).toEqual({ status: "completed" });
+  });
+
+  it("a pre-A00 draft that already validated its announcement (A01 completed) reads as yes", () => {
+    const legacy: HumanFlowState = { A01: { status: "completed" } };
+    expect(resolveA00Record(legacy)).toEqual({ status: "completed", answer: "yes" });
+    expect(isAnnouncementVisible(legacy)).toBe(true);
+    expect(applicableSteps(flow, legacy).map((s) => s.id)).toContain("A01");
+  });
+
+  it("an explicit answer always wins over that derivation", () => {
+    const state: HumanFlowState = { A00: { status: "completed", answer: "no" }, A01: { status: "completed" } };
+    expect(isAnnouncementVisible(state)).toBe(false);
+  });
+
+  it("is never part of the remembrance route", () => {
+    expect(applicableSteps(humanFlowDefinition("remembrance"), A00_YES).map((s) => s.id)).not.toContain("A00");
   });
 });

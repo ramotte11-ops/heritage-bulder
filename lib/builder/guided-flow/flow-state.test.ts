@@ -85,9 +85,10 @@ function heroMedia(id = MEDIA_ID): Media {
 }
 
 /** Keys this build has never heard of — a future step record, an
- * arbitrary object, a bare string. None is a `StepId`. */
+ * arbitrary object, a bare string. None is a `StepId`. (A00 used to be
+ * the example of a future step; it is a real step now.) */
 const UNKNOWN_ENTRIES: Record<string, unknown> = {
-  A00: { status: "completed", answer: "yes" },
+  A99: { status: "completed", answer: "yes" },
   R01: { status: "completed", answer: "0f3a9c21" },
   "future.meta": { nested: { version: 2 }, list: [1, 2, 3] },
   Z99: "free-form value",
@@ -97,6 +98,7 @@ const UNKNOWN_ENTRIES: Record<string, unknown> = {
  * (A02 resolved for `commitA03`; A01/A02/T06 present so the reopens
  * have something to un-mark). */
 const KNOWN_RECORDS: HumanFlowState = {
+  A00: { status: "completed", answer: "yes" },
   T04: { status: "skipped" },
   T05: { status: "skipped" },
   T06: { status: "completed" },

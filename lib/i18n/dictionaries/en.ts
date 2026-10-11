@@ -26,6 +26,16 @@ export const en: Record<TranslationKey, string> = {
   "welcome.reassurance":
     "Take your time. You can come back to your answers and complete your tribute at your own pace.",
   "welcome.cta": "Begin the tribute",
+  "announcementChoice.title": "Would you also like to publish a death notice?",
+  "announcementChoice.subtitle":
+    "A death notice lets your loved ones know of the passing. It is optional and can be added later.",
+  "announcementChoice.yesTitle": "Yes",
+  "announcementChoice.yesDescription": "I would like to prepare a death notice.",
+  "announcementChoice.noTitle": "No",
+  "announcementChoice.noDescription": "I would like to create only the tribute for now.",
+  "announcementChoice.laterTitle": "Later",
+  "announcementChoice.laterDescription": "I would rather decide later.",
+  "announcementChoice.changeLater": "You can change your choice later.",
   "context.title": "What would you like to create today?",
   "context.subtitle": "Choose the path that best reflects what you need right now.",
   "context.announcementTitle": "Announcement & Tribute",

@@ -97,6 +97,9 @@ vi.mock("@/components/builder/LanguageStep", () => ({ LanguageStep }));
 const { WelcomeStep } = vi.hoisted(() => ({ WelcomeStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/WelcomeStep", () => ({ WelcomeStep }));
 
+const { AnnouncementChoiceStep } = vi.hoisted(() => ({ AnnouncementChoiceStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/AnnouncementChoiceStep", () => ({ AnnouncementChoiceStep }));
+
 const { ContextStep } = vi.hoisted(() => ({ ContextStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/ContextStep", () => ({ ContextStep }));
 
@@ -484,7 +487,9 @@ describe("BuilderMemorialPage — granted access", () => {
     redirect.mockClear();
     BuilderShell.mockClear();
     LanguageStep.mockClear();
+    WelcomeStep.mockClear();
     ContextStep.mockClear();
+    AnnouncementChoiceStep.mockClear();
     HeroIdentityStep.mockClear();
     HeroPhraseStep.mockClear();
     HeroPhotoStep.mockClear();
@@ -1950,6 +1955,135 @@ describe("BuilderMemorialPage — granted access", () => {
     });
   });
 
+  describe("A00 — the death-notice choice (after identity, before the Hero)", () => {
+    const HERO_PHOTO = {
+      mediaId: "cccccccc-cccc-4ccc-8ccc-000000000001",
+      crop: { focalX: 0.5, focalY: 0.5, zoom: 1 },
+    };
+
+    function draft(guidedFlow: Record<string, unknown>, extra: Record<string, unknown> = {}): MemorialVersion {
+      return {
+        content: {
+          hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: HERO_PHOTO },
+          guidedFlow,
+          ...extra,
+        } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+    }
+
+    const HERO_DONE = {
+      T04: { status: "skipped" },
+      T05: { status: "skipped" },
+      T06: { status: "completed" },
+      T07: { status: "completed" },
+      T08: { status: "completed" },
+    };
+
+    function resumeWith(memorial: StoredMemorialConfig, version: MemorialVersion) {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: MEMORIAL_ID });
+      resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft: version });
+    }
+
+    it("renders AnnouncementChoiceStep right after identity, before the Hero phrase, for an announcement memorial", async () => {
+      const version = draft({ T04: { status: "skipped" } });
+      resumeWith(CONFIGURED_MEMORIAL, version);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(AnnouncementChoiceStep);
+      expect(result.props.language).toBe("fr");
+      expect(result.props.editorialContext).toBe("announcement");
+      expect(result.props.content).toBe(version.content);
+      expect(HeroPhraseStep).not.toHaveBeenCalled();
+    });
+
+    it("wires its persist to saveDraftAction, bound to the AUTHORIZED memorialId", async () => {
+      resumeWith(CONFIGURED_MEMORIAL, draft({ T04: { status: "skipped" } }));
+
+      const result = await callPage();
+      await result.props.persist({ guidedFlow: { A00: { status: "completed", answer: "no" } } });
+
+      expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, { guidedFlow: { A00: { status: "completed", answer: "no" } } });
+    });
+
+    it("is never shown before identity is done", async () => {
+      resumeWith(CONFIGURED_MEMORIAL, { content: { welcome: { status: "completed" } } as MemorialVersion["content"], updatedAt: "2026-01-01T00:00:00.000Z" });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(AnnouncementChoiceStep).not.toHaveBeenCalled();
+    });
+
+    it("is never offered to a remembrance memorial (T02 still splits the two contexts)", async () => {
+      resumeWith(LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, draft({ T04: { status: "skipped" } }));
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(AnnouncementChoiceStep).not.toHaveBeenCalled();
+    });
+
+    it("moves on to the Hero once answered (any of the three answers)", async () => {
+      for (const record of [
+        { status: "completed", answer: "yes" },
+        { status: "completed", answer: "no" },
+        { status: "skipped", answer: "later" },
+      ]) {
+        HeroPhraseStep.mockClear();
+        resumeWith(CONFIGURED_MEMORIAL, draft({ T04: { status: "skipped" }, A00: record }));
+        const result = await callPage();
+        expect(result.type).toBe(HeroPhraseStep);
+      }
+    });
+
+    it("yes: the death notice (A01) follows the Hero", async () => {
+      resumeWith(CONFIGURED_MEMORIAL, draft({ ...HERO_DONE, A00: { status: "completed", answer: "yes" } }));
+      const result = await callPage();
+      expect(result.type).toBe(DeathNoticeAnnouncementStep);
+    });
+
+    it.each([
+      ["no", { status: "completed", answer: "no" }],
+      ["later", { status: "skipped", answer: "later" }],
+    ])("%s: goes straight from the Hero to the ceremony question, no death-notice step", async (_label, record) => {
+      resumeWith(CONFIGURED_MEMORIAL, draft({ ...HERO_DONE, A00: record }));
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyMomentStep);
+      expect(DeathNoticeAnnouncementStep).not.toHaveBeenCalled();
+      expect(DeathNoticePrecisionsStep).not.toHaveBeenCalled();
+      expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
+    });
+
+    it("no: notice content already written is handed on untouched — never cleared by the route", async () => {
+      const deathNotice = {
+        announcementText: "Elle s'en est allée paisiblement.",
+        precisions: { generalLocation: null, familyMessage: null, thought: null, quote: null, other: null },
+      };
+      const version = draft({ ...HERO_DONE, A00: { status: "completed", answer: "no" } }, { deathNotice });
+      resumeWith(CONFIGURED_MEMORIAL, version);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(CeremonyMomentStep);
+      expect((result.props.content as { deathNotice: unknown }).deathNotice).toEqual(deathNotice);
+      expect(saveDraftAction).not.toHaveBeenCalled();
+    });
+
+    it("a draft that already validated its announcement before A00 existed is never asked", async () => {
+      resumeWith(CONFIGURED_MEMORIAL, draft({ T04: { status: "skipped" }, A01: { status: "completed" } }));
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroPhraseStep);
+      expect(AnnouncementChoiceStep).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Mission 039 — A01 (l'annonce) and A02 (précisions facultatives)", () => {
     /** PAGE A through PAGE E all genuinely done, ANNOUNCEMENT context —
      * A01/A02's own normal starting point. */
@@ -1967,6 +2101,8 @@ describe("BuilderMemorialPage — granted access", () => {
         },
         guidedFlow: {
           T04: { status: "skipped" },
+          // A00: the family chose to prepare a death notice.
+          A00: { status: "completed", answer: "yes" },
           T05: { status: "skipped" },
           T06: { status: "completed" },
           T07: { status: "completed" },
@@ -3099,7 +3235,8 @@ describe("BuilderMemorialPage — Étape 3 Preview host", () => {
   function flowWithout(step: string): Record<string, unknown> {
     return Object.fromEntries(Object.entries(REAL_DRAFT_CONTENT_BASE.guidedFlow).filter(([id]) => id !== step));
   }
-  const FLOW_WITHOUT_A01 = flowWithout("A01");
+  // A00 = yes: without A01's own record, the "yes" is no longer derived.
+  const FLOW_WITHOUT_A01 = { ...flowWithout("A01"), A00: { status: "completed", answer: "yes" } };
   const FLOW_WITHOUT_T08 = flowWithout("T08");
 
   beforeEach(() => {

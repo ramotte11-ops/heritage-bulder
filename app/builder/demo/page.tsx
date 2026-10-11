@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { MemorialContent } from "@/types/memorial";
 import type { SkinVariant } from "@/config/skins";
 import { WelcomeStep } from "@/components/builder/WelcomeStep";
+import { AnnouncementChoiceStep } from "@/components/builder/AnnouncementChoiceStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
@@ -19,6 +20,7 @@ import {
   needsPageE,
 } from "@/lib/builder/guided-flow/hero-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
+import { isAnnouncementChosen, needsA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import {
   QG_RUNTIME_DEMO_BIRTH,
   QG_RUNTIME_DEMO_DEATH,
@@ -236,6 +238,16 @@ export default function QgRuntimeDemoPage() {
         persist={persist}
       />
     );
+  } else if (needsA00(content)) {
+    stepLabel = "A00 — choix de l'annonce de décès";
+    body = (
+      <AnnouncementChoiceStep
+        language={LANGUAGE}
+        editorialContext={EDITORIAL_CONTEXT}
+        content={content}
+        persist={persist}
+      />
+    );
   } else if (needsPageB(content)) {
     stepLabel = "Hero — PAGE B (phrase)";
     body = (
@@ -274,7 +286,7 @@ export default function QgRuntimeDemoPage() {
         saveSkinVariant={saveSkinVariant}
       />
     );
-  } else if (needsA01(content)) {
+  } else if (isAnnouncementChosen(content) && needsA01(content)) {
     stepLabel = "A01 — annonce";
     body = (
       <DeathNoticeAnnouncementStep
@@ -284,7 +296,7 @@ export default function QgRuntimeDemoPage() {
         persist={persist}
       />
     );
-  } else if (needsA02(content)) {
+  } else if (isAnnouncementChosen(content) && needsA02(content)) {
     stepLabel = "A02 — précisions";
     body = (
       <DeathNoticePrecisionsStep
@@ -294,7 +306,7 @@ export default function QgRuntimeDemoPage() {
         persist={persist}
       />
     );
-  } else if (needsA03(content)) {
+  } else if (isAnnouncementChosen(content) && needsA03(content)) {
     stepLabel = "A03 — aperçu de l'avis (DeathNoticeIntemporel)";
     body = (
       <DeathNoticePreviewStep

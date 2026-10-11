@@ -1,5 +1,5 @@
 import type { EditorialContext } from "@/config/memorial";
-import type { FlowDefinition, FlowState, StepDefinition } from "./engine";
+import type { FlowDefinition, FlowState, StepDefinition, StepRecord } from "./engine";
 
 /**
  * Mission 025 — the canonical UX-A step configuration for a human
@@ -20,6 +20,10 @@ export const STEP_IDS = [
   // Tronc commun (before the branch)
   "T03",
   "T04",
+  // A00 — "Souhaitez-vous également publier une annonce de décès ?".
+  // Listed here, between identity and the Hero, because that is where it
+  // is asked; its group is still "announcement" (see STEPS below).
+  "A00",
   "T05",
   "T06",
   "T07",
@@ -79,6 +83,41 @@ export type A04Answer = (typeof A04_ANSWERS)[number];
 const isA04AnsweredYes = (state: HumanFlowState): boolean => state.A04?.answer === "yes";
 
 /**
+ * A00's own answer values: "yes" | "no" | "later". "yes"/"no" are
+ * recorded `completed`, "later" is recorded `skipped` (the family chose
+ * to decide later — never re-proposed automatically, still changeable).
+ */
+export const A00_ANSWERS = ["yes", "no", "later"] as const;
+export type A00Answer = (typeof A00_ANSWERS)[number];
+
+/**
+ * A00's resolved record. An explicit record always wins. A draft that
+ * has none but already validated an announcement (A01 completed — only
+ * ever written inside the announcement steps) is read as "yes": the
+ * family wrote and confirmed one before A00 existed. Read-time only,
+ * never written back by itself.
+ */
+export function resolveA00Record(state: HumanFlowState): StepRecord | undefined {
+  if (state.A00) return state.A00;
+  if (state.A01?.status === "completed") return { status: "completed", answer: "yes" };
+  return undefined;
+}
+
+/** Is the death notice part of this memorial right now? Only an A00
+ * resolved to "yes". Hidden notice data is never deleted — the
+ * announcement steps simply stop being applicable. */
+/** A00 is part of the route unless the draft predates it and already
+ * validated its announcement: that family is never asked (their "yes"
+ * is derived), so the step is simply not applicable to them. */
+const isA00Applicable = (state: HumanFlowState): boolean =>
+  !(state.A00 === undefined && state.A01?.status === "completed");
+
+export const isAnnouncementVisible = (state: HumanFlowState): boolean => {
+  const record = resolveA00Record(state);
+  return record?.status === "completed" && record.answer === "yes";
+};
+
+/**
  * The full UX-A step list, in canonical order — this array's order IS
  * the route order (same convention as `config/sections.ts`'s
  * `EDITORIAL_CONTEXT_SECTIONS`), before any applicability filtering.
@@ -92,6 +131,11 @@ export const STEPS: readonly HumanStepDefinition[] = [
   // --- Tronc commun ---
   { id: "T03", group: "common", required: true, skippable: false },
   { id: "T04", group: "common", required: false, skippable: true },
+  // A00 sits between identity (T03/T04) and the Hero (T05-T08). While
+  // T02 still splits the two editorial contexts, it belongs to the
+  // announcement group only: a "remembrance" memorial is never offered a
+  // death notice (B02-L2 will move it to the common trunk with T02 gone).
+  { id: "A00", group: "announcement", required: false, skippable: true, isApplicable: isA00Applicable },
   { id: "T05", group: "common", required: false, skippable: true },
   { id: "T06", group: "common", required: true, skippable: false },
   // T07 (crop) has no isApplicable of its own tied to T06: both are
@@ -110,9 +154,12 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "T08", group: "common", required: true, skippable: false },
 
   // --- Branche Announcement ---
-  { id: "A01", group: "announcement", required: true, skippable: false },
-  { id: "A02", group: "announcement", required: false, skippable: true },
-  { id: "A03", group: "announcement", required: true, skippable: false },
+  // A01-A03 (the death notice itself): applicable only when A00
+  // resolves to "yes". "no" and "later" leave them out of the route —
+  // their content and records are kept, never cleared.
+  { id: "A01", group: "announcement", required: true, skippable: false, isApplicable: isAnnouncementVisible },
+  { id: "A02", group: "announcement", required: false, skippable: true, isApplicable: isAnnouncementVisible },
+  { id: "A03", group: "announcement", required: true, skippable: false, isApplicable: isAnnouncementVisible },
   { id: "A04", group: "announcement", required: true, skippable: false },
   // A05-A08: applicable only once A04 has actually been answered "yes"
   // (mission brief section 6) — "undecided" and "no" are both complete,

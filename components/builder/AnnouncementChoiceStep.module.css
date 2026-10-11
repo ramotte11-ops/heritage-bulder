@@ -1,0 +1,100 @@
+/*
+ * A00's own body. Chrome (background, logo, signature, progress bar)
+ * lives in BuilderScreen.module.css. Typography, colors and card
+ * treatment follow the other Guided Flow questions (T02's two-card
+ * choice in particular); the three cards stay stacked at every width so
+ * each description keeps a comfortable line length.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  line-height: 1.25;
+  color: var(--heritage-text-primary);
+  text-wrap: balance;
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--heritage-text-secondary);
+  text-wrap: balance;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-breathing);
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-md);
+}
+
+.cardTitle {
+  display: block;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--heritage-text-primary);
+}
+
+.cardDescription {
+  display: block;
+  margin-top: var(--heritage-space-xs);
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--heritage-text-secondary);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-md);
+}
+
+.hint {
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.error {
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

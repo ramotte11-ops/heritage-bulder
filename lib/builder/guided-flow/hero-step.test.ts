@@ -1242,9 +1242,15 @@ describe("resolveHeroFlowState — T08 dynamically re-derived on top of whatever
   });
 });
 
+/** A00 answered "yes" on top of `content` — the announcement steps apply. */
+function withA00Yes(content: MemorialContent): MemorialContent {
+  const flow = { ...readGuidedFlowState(content), A00: { status: "completed" as const, answer: "yes" } };
+  return { ...content, guidedFlow: flow } as MemorialContent;
+}
+
 describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission 035 section 19)", () => {
-  it("resolves the engine's next incomplete step to A01 once T08 is completed, for announcement", () => {
-    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+  it("resolves the engine's next incomplete step to A01 once T08 is completed, for announcement (A00 = yes)", () => {
+    const committed = commitPageE(withA00Yes(pageDDone()), heroMedia({ id: MEDIA_ID_A }));
     expect(committed.ok).toBe(true);
     if (!committed.ok) return;
 
@@ -1255,6 +1261,19 @@ describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission
 
     const next = firstIncompleteStep(humanFlowDefinition("announcement"), state);
     expect(next?.id).toBe("A01");
+  });
+
+  it("resolves the engine's next incomplete step to A00 while the death-notice choice is still unanswered", () => {
+    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const state = resolveHeroFlowState(committed.content, read.hero);
+
+    expect(firstIncompleteStep(humanFlowDefinition("announcement"), state)?.id).toBe("A00");
   });
 
   it("resolves the engine's next incomplete step to M01 once T08 is completed, for remembrance", () => {
@@ -1275,7 +1294,7 @@ describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission
     const read = readHeroForEditing(pageDDone());
     expect(read.status).toBe("ready");
     if (read.status !== "ready") return;
-    const state = resolveHeroFlowState(pageDDone(), read.hero);
+    const state = resolveHeroFlowState(withA00Yes(pageDDone()), read.hero);
 
     expect(firstIncompleteStep(humanFlowDefinition("announcement"), state)?.id).toBe("T08");
     expect(firstIncompleteStep(humanFlowDefinition("remembrance"), state)?.id).toBe("T08");

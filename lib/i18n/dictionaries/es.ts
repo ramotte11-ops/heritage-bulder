@@ -23,6 +23,16 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "welcome.reassurance":
     "Tómese su tiempo. Podrá volver sobre sus respuestas y completar su homenaje a su propio ritmo.",
   "welcome.cta": "Comenzar el homenaje",
+  "announcementChoice.title": "¿Desea publicar también un aviso de defunción?",
+  "announcementChoice.subtitle":
+    "El aviso permite informar del fallecimiento a sus allegados. Es opcional y puede añadirse más adelante.",
+  "announcementChoice.yesTitle": "Sí",
+  "announcementChoice.yesDescription": "Deseo preparar un aviso de defunción.",
+  "announcementChoice.noTitle": "No",
+  "announcementChoice.noDescription": "Deseo crear solo el homenaje por ahora.",
+  "announcementChoice.laterTitle": "Más tarde",
+  "announcementChoice.laterDescription": "Prefiero decidirlo más adelante.",
+  "announcementChoice.changeLater": "Podrá modificar su elección más adelante.",
   "context.title": "¿Qué desea crear hoy?",
   "context.subtitle": "Elija el recorrido que mejor se adapte a lo que necesita en este momento.",
   "context.announcementTitle": "Anuncio y homenaje",
