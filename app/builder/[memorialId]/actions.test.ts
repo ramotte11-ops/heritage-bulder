@@ -24,12 +24,16 @@ const { createServerSupabaseClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server-client", () => ({ createServerSupabaseClient }));
 
-const { SupabaseDraftRepository, saveDraftContent } = vi.hoisted(() => {
+const { SupabaseDraftRepository, saveDraftContent, getDraftContent } = vi.hoisted(() => {
   const save = vi.fn();
+  // The stored draft `saveDraftAction` reads to keep its `presentation`
+  // (« Gérer les rubriques visibles »). `null` by default: no row read.
+  const get = vi.fn().mockResolvedValue(null);
   return {
     saveDraftContent: save,
+    getDraftContent: get,
     SupabaseDraftRepository: vi.fn().mockImplementation(function SupabaseDraftRepository() {
-      return { getDraftContent: vi.fn(), saveDraftContent: save };
+      return { getDraftContent: get, saveDraftContent: save };
     }),
   };
 });
@@ -114,6 +118,36 @@ describe("saveDraftAction — authorization on every single save", () => {
     expect(SupabaseDraftRepository).toHaveBeenCalledExactlyOnceWith({
       fake: "session-scoped-client",
     });
+  });
+});
+
+describe("saveDraftAction — « Gérer les rubriques visibles »: the stored presentation always wins", () => {
+  beforeEach(() => {
+    authorizeMemorialForRequest.mockReset();
+    saveDraftContent.mockReset();
+    getDraftContent.mockReset();
+    authorizeMemorialForRequest.mockResolvedValue(granted());
+    saveDraftContent.mockResolvedValue({ updatedAt: "2026-02-01T00:00:00.000Z" });
+  });
+
+  it("a screen mounted before a visibility change can never revert it", async () => {
+    getDraftContent.mockResolvedValue({
+      content: { presentation: { hiddenSections: ["ceremony"] } },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    // The screen's stale copy: no presentation at all.
+    await saveDraftAction(MEMORIAL_ID, CONTENT);
+    expect(getDraftContent).toHaveBeenCalledWith(MEMORIAL_ID);
+    expect(saveDraftContent).toHaveBeenCalledExactlyOnceWith(MEMORIAL_ID, {
+      ...CONTENT,
+      presentation: { hiddenSections: ["ceremony"] },
+    });
+  });
+
+  it("a client-sent presentation is ignored — the stored one (or none) is kept", async () => {
+    getDraftContent.mockResolvedValue({ content: {}, updatedAt: "2026-01-01T00:00:00.000Z" });
+    await saveDraftAction(MEMORIAL_ID, { ...CONTENT, presentation: { hiddenSections: ["gallery"] } } as never);
+    expect(saveDraftContent).toHaveBeenCalledExactlyOnceWith(MEMORIAL_ID, CONTENT);
   });
 });
 

@@ -6,6 +6,7 @@ import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memori
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isLanguage } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
+import { withStoredPresentation } from "@/lib/memorial/section-visibility";
 
 /**
  * Mission 021B (audit correction) — the one Server Action behind the
@@ -76,8 +77,18 @@ export async function saveDraftAction(
   const supabase = await createServerSupabaseClient();
   const draftRepository = new SupabaseDraftRepository(supabase);
 
+  // « Gérer les rubriques visibles »: `presentation` is owned by
+  // `saveSectionVisibilityAction` alone. A screen autosaves the whole
+  // content it mounted with, which may predate a visibility change —
+  // so the STORED value is always kept, never the client's copy
+  // (lib/memorial/section-visibility.ts).
+  const stored = await draftRepository.getDraftContent(access.memorialId);
+
   // access.memorialId — the authorized id, never the raw argument.
-  return draftRepository.saveDraftContent(access.memorialId, content);
+  return draftRepository.saveDraftContent(
+    access.memorialId,
+    withStoredPresentation(content, stored === null ? null : stored.content),
+  );
 }
 
 /**

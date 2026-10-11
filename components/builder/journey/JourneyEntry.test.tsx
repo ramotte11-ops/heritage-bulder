@@ -57,6 +57,11 @@ function renderWithRoute(
 }
 
 const openPanel = () => fireEvent.click(screen.getByRole("button", { name: /Mon parcours/ }));
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A rubrique's header button — closed by default (PO). */
+const blockToggle = (title: string) => screen.getByRole("button", { name: new RegExp(`^${escapeRe(title)}`) });
+const openBlock = (title: string) => fireEvent.click(blockToggle(title));
+const ALL_BLOCKS = ["Votre proche", "L'annonce de décès", "La cérémonie", "Traditions & repères", "Quelques mots sur la personne", "Vos souvenirs en images"];
 
 describe("« Mon parcours » — the entry", () => {
   it("renders nothing outside a journey (T01, the Welcome)", () => {
@@ -96,8 +101,8 @@ describe("« Mon parcours » — the panel's content", () => {
   it("lists the sections with family-readable titles and statuses", () => {
     renderWithRoute();
     openPanel();
-    for (const title of ["Votre proche", "L'annonce de décès", "La cérémonie", "Traditions & repères", "Quelques mots sur la personne", "Vos souvenirs en images"]) {
-      expect(screen.getByRole("heading", { level: 3, name: title })).toBeTruthy();
+    for (const title of ALL_BLOCKS) {
+      expect(screen.getByRole("heading", { level: 3, name: new RegExp(`^${escapeRe(title)}`) })).toBeTruthy();
     }
     const row = (id: string) => document.querySelector(`[data-screen="${id}"]`) as HTMLElement;
     expect(row("identity").dataset.status).toBe("done");
@@ -111,6 +116,7 @@ describe("« Mon parcours » — the panel's content", () => {
   it("offers « Revoir » only on reached screens — never on a future one, nor on the current one", () => {
     renderWithRoute();
     openPanel();
+    for (const title of ALL_BLOCKS) openBlock(title);
     expect(screen.getByRole("button", { name: "Revoir — Nom et dates" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Revoir — Le texte de l'annonce" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Revoir — L'aperçu de l'avis/ })).toBeNull();
@@ -129,6 +135,7 @@ describe("« Mon parcours » — navigation", () => {
     routerPush.mockImplementation(() => order.push("push"));
     renderWithRoute(null, registry);
     openPanel();
+    openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
     expect(order).toEqual(["flush", "push"]);
@@ -140,6 +147,7 @@ describe("« Mon parcours » — navigation", () => {
     registry.register(() => Promise.reject(new Error("offline")));
     renderWithRoute(null, registry);
     openPanel();
+    openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/pas encore enregistrées/));
     expect(routerPush).not.toHaveBeenCalled();
@@ -155,6 +163,7 @@ describe("« Mon parcours » — navigation", () => {
     routerPush.mockClear();
     openPanel();
     expect((document.querySelector('[data-screen="identity"]') as HTMLElement).textContent).toContain("En cours");
+    openBlock("L'annonce de décès");
     fireEvent.click(screen.getByRole("button", { name: "Continuer ici" }));
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
   });
@@ -266,6 +275,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
   it("« Revoir » asks first; « Rester pour la compléter » goes back to the screen without navigating", async () => {
     await renderWithPending();
     openPanel();
+    openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
     expect(screen.getByRole("alert").textContent).toMatch(/n'est pas terminée/);
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Rester pour la compléter" }));
@@ -277,6 +287,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
   it("« Quitter sans cette réponse » then navigates, exactly as asked", async () => {
     await renderWithPending();
     openPanel();
+    openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
     fireEvent.click(screen.getByRole("button", { name: "Quitter sans cette réponse" }));
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
@@ -316,7 +327,7 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
       </RouteJourneyProvider>,
     );
     openPanel();
-    const section = (title: string) => screen.getByRole("heading", { level: 3, name: title }).closest("li") as HTMLElement;
+    const section = (title: string) => blockToggle(title).closest("li") as HTMLElement;
     for (const title of ["L'annonce de décès", "Traditions & repères"]) {
       expect(section(title).dataset.status).toBe("deferred");
       expect(section(title).textContent).toContain("À décider");
@@ -367,6 +378,7 @@ describe("correction Light / Dark — the saved ambiance, and « Changer l'ambia
     openPanel();
     expect(revealRow().textContent).toContain("L'ambiance de l'hommage");
     expect(revealRow().textContent).toContain(text);
+    openBlock("Votre proche");
     expect(screen.getByRole("button", { name: "Revoir — L'ambiance de l'hommage" })).toBeTruthy();
   });
 
@@ -407,5 +419,158 @@ describe("correction Light / Dark — the saved ambiance, and « Changer l'ambia
     cleanup();
     render(<ChangeAmbianceLink />);
     expect(screen.queryByRole("button", { name: "Changer l'ambiance" })).toBeNull();
+  });
+});
+
+describe("« Mon parcours » simplifié — rubriques repliables", () => {
+  it("every rubrique is a closed block: a title and ONE status, its steps out of reach until opened", () => {
+    renderWithRoute();
+    openPanel();
+    for (const title of ALL_BLOCKS) {
+      expect(blockToggle(title).getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(screen.queryByRole("button", { name: /^Revoir/ })).toBeNull();
+    expect(blockToggle("Votre proche").textContent).toContain("Terminée");
+    expect(blockToggle("La cérémonie").textContent).toContain("À venir");
+  });
+
+  it("opening a block shows its steps with the existing « Revoir »; closing hides them again", () => {
+    renderWithRoute();
+    openPanel();
+    openBlock("Votre proche");
+    expect(blockToggle("Votre proche").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Revoir — Nom et dates" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Revoir — Le texte de l'annonce" })).toBeNull();
+    openBlock("Votre proche");
+    expect(screen.queryByRole("button", { name: "Revoir — Nom et dates" })).toBeNull();
+  });
+
+  it("a finished step no longer repeats « Terminée » on screen — its ✓ says it, screen readers still hear it", () => {
+    renderWithRoute();
+    openPanel();
+    openBlock("Votre proche");
+    const row = document.querySelector('[data-screen="identity"]') as HTMLElement;
+    const status = [...row.querySelectorAll("span")].find((el) => el.textContent === "Terminée") as HTMLElement;
+    expect(status).toBeTruthy();
+    expect(status.className).toMatch(/srOnly/);
+    expect(row.textContent).toContain("✓");
+  });
+});
+
+describe("« Gérer les rubriques visibles »", () => {
+  const ENTRIES = [
+    { sectionId: "deathNotice" as const, hidden: false, ready: true, archivable: true },
+    { sectionId: "ceremony" as const, hidden: true, ready: true, archivable: true },
+    { sectionId: "story" as const, hidden: false, ready: false, archivable: false },
+    { sectionId: "gallery" as const, hidden: true, ready: true, archivable: false },
+  ];
+
+  function renderVisibility(save = vi.fn().mockResolvedValue(undefined), registry = createPreviewFlushRegistry()) {
+    render(
+      <PreviewFlushRegistryContext.Provider value={registry}>
+        <RouteJourneyProvider
+          language="fr"
+          snapshot={resolveJourney(PARTIAL)}
+          visibility={{ sections: ENTRIES, save }}
+          builderPath="/builder/m-1"
+        >
+          <BuilderScreenNav />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+    openPanel();
+    return save;
+  }
+  const manage = () => fireEvent.click(screen.getByRole("button", { name: "Gérer les rubriques visibles" }));
+  const row = (id: string) => document.querySelector(`[data-visibility-section="${id}"]`) as HTMLElement;
+
+  it("is a distinct entry of « Mon parcours », absent when the host does not provide it", () => {
+    renderVisibility();
+    expect(screen.getByRole("button", { name: "Gérer les rubriques visibles" })).toBeTruthy();
+    cleanup();
+    renderWithRoute();
+    openPanel();
+    expect(screen.queryByRole("button", { name: "Gérer les rubriques visibles" })).toBeNull();
+  });
+
+  it("lists the Hero as always visible, then each section with its state and one action", () => {
+    renderVisibility();
+    manage();
+    expect(screen.getByRole("heading", { level: 2, name: "Rubriques visibles" })).toBeTruthy();
+    expect(row("hero").textContent).toContain("Toujours visible");
+    expect(row("hero").querySelector("button")).toBeNull();
+    expect(row("deathNotice").textContent).toContain("Visible");
+    expect(screen.getByRole("button", { name: "Masquer — L'annonce de décès" })).toBeTruthy();
+    expect(row("ceremony").textContent).toContain("Masquée");
+    expect(screen.getByRole("button", { name: "Réafficher — La cérémonie" })).toBeTruthy();
+    expect(row("ceremony").textContent).toMatch(/lien discret/);
+    expect(row("gallery").textContent).toMatch(/contenu est conservé/);
+    expect(row("story").textContent).toMatch(/une fois complétée/);
+  });
+
+  it("« Masquer » drains the screen's autosave, saves (section, false), then refreshes the route", async () => {
+    const registry = createPreviewFlushRegistry();
+    const order: string[] = [];
+    registry.register(async () => {
+      order.push("flush");
+    });
+    const save = vi.fn().mockImplementation(async () => {
+      order.push("save");
+    });
+    routerRefresh.mockImplementation(() => order.push("refresh"));
+    renderVisibility(save, registry);
+    manage();
+    fireEvent.click(screen.getByRole("button", { name: "Masquer — L'annonce de décès" }));
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith("deathNotice", false);
+    expect(order).toEqual(["flush", "save", "refresh"]);
+    expect(routerPush).not.toHaveBeenCalled();
+    routerRefresh.mockReset();
+  });
+
+  it("« Réafficher » saves (section, true)", async () => {
+    const save = renderVisibility();
+    manage();
+    fireEvent.click(screen.getByRole("button", { name: "Réafficher — La cérémonie" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("ceremony", true));
+  });
+
+  it("a failed save changes nothing and says so calmly", async () => {
+    renderVisibility(vi.fn().mockRejectedValue(new Error("offline")));
+    manage();
+    fireEvent.click(screen.getByRole("button", { name: "Masquer — L'annonce de décès" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/n'a pas pu être enregistré/));
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("« Retour à mon parcours » comes back to the blocks; a hidden section's block says « Masquée de l'hommage »", () => {
+    renderVisibility();
+    manage();
+    fireEvent.click(screen.getByRole("button", { name: "Retour à mon parcours" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Mon parcours" })).toBeTruthy();
+    expect(blockToggle("La cérémonie").textContent).toContain("Masquée de l'hommage");
+    expect(blockToggle("Vos souvenirs en images").textContent).toContain("Masquée de l'hommage");
+    expect(blockToggle("L'annonce de décès").textContent).not.toContain("Masquée de l'hommage");
+  });
+
+  it("is translated (en, es)", () => {
+    for (const [language, label] of [
+      ["en", "Manage visible sections"],
+      ["es", "Gestionar las secciones visibles"],
+    ] as const) {
+      render(
+        <RouteJourneyProvider
+          language={language}
+          snapshot={resolveJourney(PARTIAL)}
+          visibility={{ sections: ENTRIES, save: vi.fn() }}
+          builderPath="/builder/m-1"
+        >
+          <BuilderScreenNav />
+        </RouteJourneyProvider>,
+      );
+      fireEvent.click(screen.getAllByRole("button")[0]);
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+      cleanup();
+    }
   });
 });

@@ -19,6 +19,7 @@ import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembl
 import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
+import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
 import styles from "./BuilderPreviewHost.module.css";
 
 /**
@@ -86,7 +87,13 @@ export interface BuilderPreviewHostProps {
    * (T01, the Welcome): the entry renders nothing and steps keep their
    * plain `router.refresh()`. `skinVariant` is the persisted ambiance
    * « Mon parcours » shows on T08's row. */
-  journey?: { snapshot: JourneySnapshot; builderPath: string; skinVariant?: SkinVariant | null } | null;
+  journey?: {
+    snapshot: JourneySnapshot;
+    builderPath: string;
+    skinVariant?: SkinVariant | null;
+    /** « Gérer les rubriques visibles » (rows + bound save action). */
+    visibility?: { sections: SectionVisibilityEntry[]; save: (sectionId: string, visible: boolean) => Promise<void> } | null;
+  } | null;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -248,6 +255,7 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
             language={language}
             snapshot={journey.snapshot}
             skinVariant={journey.skinVariant ?? null}
+            visibility={journey.visibility ?? null}
             builderPath={journey.builderPath}
           >
             {content}

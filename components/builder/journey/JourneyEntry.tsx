@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { translate } from "@/lib/i18n/translate";
 import type { TranslationKey } from "@/lib/i18n/keys";
-import type {
-  JourneyScreenId,
-  JourneyScreenState,
-  JourneySectionState,
+import {
+  JOURNEY_SECTION_MEMORIAL_SECTION,
+  type JourneyScreenId,
+  type JourneyScreenState,
+  type JourneySectionState,
 } from "@/lib/builder/guided-flow/journey";
-import { useJourney, type JourneyNavigation } from "./journey-context";
+import type { SectionId } from "@/config/sections";
+import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
+import { useJourney, type JourneyNavigation, type JourneyVisibility } from "./journey-context";
 import styles from "./JourneyEntry.module.css";
 
 /**
@@ -174,6 +177,10 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const guard = useGuardedNavigation(journey, onClose);
   const { busy, failed } = guard;
+  // « Gérer les rubriques visibles » replaces the steps inside the SAME
+  // dialog (no second overlay); « Retour à mon parcours » comes back.
+  const [view, setView] = useState<"journey" | "visibility">("journey");
+  const visibility = journey.visibility ?? null;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -200,41 +207,58 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={styles.panel} aria-busy={busy}>
         <div className={styles.panelHead}>
           <h2 id={titleId} className={styles.panelTitle}>
-            {translate(language, "journey.title")}
+            {translate(language, view === "visibility" ? "visibility.title" : "journey.title")}
           </h2>
           <button ref={closeRef} type="button" className={styles.linkButton} onClick={onClose}>
             {translate(language, "journey.close")}
           </button>
         </div>
-        <p className={styles.intro}>{translate(language, "journey.intro")}</p>
 
-        {snapshot.revising !== null && (
-          <button type="button" className={styles.resumeButton} onClick={actions.resume} disabled={busy}>
-            {translate(language, "journey.resume")}
-          </button>
-        )}
-        {guard.waiting && (
-          <PendingConfirm
-            journey={journey}
-            onStay={() => {
-              // Back to the screen, to finish the answer.
-              guard.stay();
-              onClose();
-            }}
-            onLeave={guard.leave}
+        {view === "visibility" && visibility !== null ? (
+          <VisibilityManager
+            language={language}
+            visibility={visibility}
+            onBack={() => setView("journey")}
           />
-        )}
-        {failed && (
-          <p role="alert" className={styles.error}>
-            {translate(language, "journey.saveFailed")}
-          </p>
-        )}
+        ) : (
+          <>
+            <p className={styles.intro}>{translate(language, "journey.intro")}</p>
 
-        <ol className={styles.sections}>
-          {snapshot.sections.map((section) => (
-            <SectionItem key={section.id} section={section} journey={journey} actions={actions} />
-          ))}
-        </ol>
+            {snapshot.revising !== null && (
+              <button type="button" className={styles.resumeButton} onClick={actions.resume} disabled={busy}>
+                {translate(language, "journey.resume")}
+              </button>
+            )}
+            {guard.waiting && (
+              <PendingConfirm
+                journey={journey}
+                onStay={() => {
+                  // Back to the screen, to finish the answer.
+                  guard.stay();
+                  onClose();
+                }}
+                onLeave={guard.leave}
+              />
+            )}
+            {failed && (
+              <p role="alert" className={styles.error}>
+                {translate(language, "journey.saveFailed")}
+              </p>
+            )}
+
+            <ol className={styles.sections}>
+              {snapshot.sections.map((section) => (
+                <SectionItem key={section.id} section={section} journey={journey} actions={actions} />
+              ))}
+            </ol>
+
+            {visibility !== null && (
+              <button type="button" className={styles.manageButton} onClick={() => setView("visibility")}>
+                {translate(language, "journey.manageVisibility")}
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -246,6 +270,13 @@ interface RowActions {
   busy: boolean;
 }
 
+/**
+ * One rubrique: a block, CLOSED by default (PO), whose header carries
+ * its title and one status; opening it shows its steps with their
+ * existing « Revoir » / « Continuer ici ». Generic over the catalog: a
+ * rubrique added to `JOURNEY_SECTIONS` appears here with no change.
+ * The steps stay mounted (`hidden`), never rebuilt on opening.
+ */
 function SectionItem({
   section,
   journey,
@@ -256,27 +287,45 @@ function SectionItem({
   actions: RowActions;
 }) {
   const { language } = journey;
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
   const title = translate(language, `journey.section.${section.id}` as TranslationKey);
-  const single = section.screens.length === 1 ? section.screens[0] : null;
+  const memorialSection = JOURNEY_SECTION_MEMORIAL_SECTION[section.id];
+  const hiddenFromMemorial =
+    journey.visibility?.sections.some((entry) => entry.sectionId === memorialSection && entry.hidden) ?? false;
 
   return (
-    <li className={styles.section} data-status={section.status}>
-      <div className={styles.sectionHead}>
-        <h3 className={styles.sectionTitle}>{title}</h3>
-        {single === null ? (
-          <span className={styles.sectionStatus}>
-            {translate(language, `journey.sectionStatus.${section.status}` as TranslationKey)}
+    <li className={styles.section} data-status={section.status} data-section={section.id} data-open={open}>
+      <h3 className={styles.sectionHeading}>
+        <button
+          type="button"
+          className={styles.sectionToggle}
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className={styles.sectionName}>
+            <span className={styles.sectionTitle}>{title}</span>
+            {hiddenFromMemorial && (
+              <span className={styles.hiddenTag}>{translate(language, "journey.hiddenFromMemorial")}</span>
+            )}
           </span>
+          <span className={styles.sectionMeta}>
+            <span className={styles.sectionStatus}>
+              {translate(language, `journey.sectionStatus.${section.status}` as TranslationKey)}
+            </span>
+            <svg className={styles.chevron} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </span>
+        </button>
+      </h3>
+      <div id={contentId} hidden={!open}>
+        {section.status === "hidden" || section.status === "deferred" ? (
+          <p className={styles.hiddenNote}>
+            {translate(language, section.status === "deferred" ? "journey.deferredNote" : "journey.hiddenNote")}
+          </p>
         ) : (
-          <ScreenStatusAndAction screen={single} label={title} journey={journey} actions={actions} />
-        )}
-      </div>
-      {section.status === "hidden" || section.status === "deferred" ? (
-        <p className={styles.hiddenNote}>
-          {translate(language, section.status === "deferred" ? "journey.deferredNote" : "journey.hiddenNote")}
-        </p>
-      ) : (
-        single === null && (
           <ul className={styles.screens}>
             {section.screens.map((screen) => {
               const label = translate(language, `journey.screen.${screen.id}` as TranslationKey);
@@ -294,9 +343,99 @@ function SectionItem({
               );
             })}
           </ul>
-        )
-      )}
+        )}
+      </div>
     </li>
+  );
+}
+
+/**
+ * « Gérer les rubriques visibles »: hide or show each section of the
+ * memorial, never deleting anything. Rows come from the server
+ * (`resolveVisibilityEntries`, the composition the Preview uses); each
+ * change drains the screen's autosave, saves, and refreshes the route.
+ */
+function VisibilityManager({
+  language,
+  visibility,
+  onBack,
+}: {
+  language: JourneyNavigation["language"];
+  visibility: JourneyVisibility;
+  onBack: () => void;
+}) {
+  const backRef = useRef<HTMLButtonElement | null>(null);
+  const [busy, setBusy] = useState<SectionId | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => backRef.current?.focus(), []);
+
+  async function toggle(entry: SectionVisibilityEntry) {
+    if (busy !== null) return;
+    setBusy(entry.sectionId);
+    setFailed(false);
+    const ok = await visibility.setVisible(entry.sectionId, entry.hidden);
+    setBusy(null);
+    if (!ok) setFailed(true);
+  }
+
+  const note = (entry: SectionVisibilityEntry): TranslationKey | null => {
+    if (!entry.ready) return "visibility.pendingNote";
+    if (!entry.hidden) return null;
+    return entry.archivable ? "visibility.archivedNote" : "visibility.hiddenNote";
+  };
+
+  return (
+    <div className={styles.visibility}>
+      <button ref={backRef} type="button" className={styles.linkButton} onClick={onBack}>
+        {translate(language, "visibility.back")}
+      </button>
+      <p className={styles.intro}>{translate(language, "visibility.intro")}</p>
+
+      <ul className={styles.visibilityList} aria-busy={busy !== null}>
+        <li className={styles.visibilityRow} data-visibility-section="hero">
+          <span className={styles.visibilityLabel}>{translate(language, "visibility.hero")}</span>
+          <span className={styles.status}>{translate(language, "visibility.alwaysVisible")}</span>
+        </li>
+        {visibility.sections.map((entry) => {
+          const label = translate(language, `visibility.section.${entry.sectionId}` as TranslationKey);
+          const noteKey = note(entry);
+          const action = translate(language, entry.hidden ? "visibility.show" : "visibility.hide");
+          return (
+            <li
+              key={entry.sectionId}
+              className={styles.visibilityRow}
+              data-visibility-section={entry.sectionId}
+              data-hidden={entry.hidden}
+            >
+              <span className={styles.visibilityLabel}>
+                {label}
+                {noteKey !== null && <span className={styles.screenDetail}>{translate(language, noteKey)}</span>}
+              </span>
+              <span className={styles.statusAndAction}>
+                <span className={styles.status}>
+                  {translate(language, entry.hidden ? "visibility.hidden" : "visibility.visible")}
+                </span>
+                <button
+                  type="button"
+                  className={styles.actionButton}
+                  onClick={() => void toggle(entry)}
+                  disabled={busy !== null}
+                  aria-label={`${action} — ${label}`}
+                >
+                  {action}
+                </button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {visibility.sections.length === 0 && <p className={styles.hiddenNote}>{translate(language, "visibility.empty")}</p>}
+      {failed && (
+        <p role="alert" className={styles.error}>
+          {translate(language, "visibility.saveFailed")}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -385,9 +524,12 @@ function ScreenStatusAndAction({
     );
   }
 
+  // A finished step's ✓ says « Terminée » already: the word stays for
+  // screen readers only, so the open block reads light (PO).
+  const quiet = screen.status === "done" && !beingRevised;
   return (
     <span className={styles.statusAndAction}>
-      <span className={styles.status}>{status}</span>
+      <span className={quiet ? styles.srOnly : styles.status}>{status}</span>
       {action}
     </span>
   );

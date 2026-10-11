@@ -3094,6 +3094,16 @@ describe("BuilderMemorialPage — granted access", () => {
       expect((await callPageRaw()).props.journey.skinVariant).toBe("light");
     });
 
+    it("hands the host « Gérer les rubriques visibles »: rows from the composition and the save bound to the AUTHORIZED id", async () => {
+      resumeWith(REAL_DRAFT, PAST_EVERYTHING, "authorized-id");
+      const raw = await callPageRaw("claimed-id");
+      const visibility = raw.props.journey.visibility;
+      expect(visibility.sections.map((row: { sectionId: string }) => row.sectionId)).not.toContain("hero");
+      expect(visibility.sections.every((row: { hidden: boolean }) => row.hidden === false)).toBe(true);
+      expect(typeof visibility.save).toBe("function");
+      expect(String(visibility.save.name)).toMatch(/saveSectionVisibilityAction/);
+    });
+
     it("T01 and the Welcome carry no journey (nothing to show yet)", async () => {
       resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, language: null });
       expect((await callPageRaw()).props.journey ?? null).toBeNull();
@@ -3329,10 +3339,15 @@ describe("BuilderMemorialPage — durable guards on the real Builder path", () =
    * (`resolveSkinRuntime(resumed.memorial.skin)`) and its result read
    * once, ONLY to ask the renderer registry whether a Hero renderer
    * exists for it — the Preview's availability, never anything else.
+   * Plus « Gérer les rubriques visibles »' one: the raw skin handed,
+   * through `memorialSkinId`, to `composeMemorial` (which re-validates
+   * it) to list the sections the family can hide — never anything else.
    */
   it("the legitimate `memorial.skin` reads (A03's and A09's skin guards, Étape 3's Hero-renderer check) are never used to deduce editorialContext", () => {
     const skinMatches = CODE.match(/\.skin\b/g) ?? [];
-    expect(skinMatches).toHaveLength(4); // exactly these four occurrences
+    expect(skinMatches).toHaveLength(5); // exactly these five occurrences
+    expect(CODE.match(/const memorialSkinId = resumed\.memorial\.skin;/g) ?? []).toHaveLength(1);
+    expect(CODE.match(/memorialSkinId/g) ?? []).toHaveLength(2);
     expect(CODE.match(/skin=\{resumed\.memorial\.skin\}/g) ?? []).toHaveLength(2);
     expect(CODE.match(/resolveSkinRuntime\(resumed\.memorial\.skin\)/g) ?? []).toHaveLength(1);
     expect(

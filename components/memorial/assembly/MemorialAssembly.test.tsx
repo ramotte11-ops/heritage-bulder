@@ -38,6 +38,7 @@ class StubResizeObserver {
 vi.stubGlobal("ResizeObserver", StubResizeObserver);
 
 const { MemorialAssembly } = await import("./MemorialAssembly");
+const { setSectionVisibility } = await import("@/lib/memorial/section-visibility");
 const { RENDERER_COMPONENTS } = await import("./renderer-registry");
 const { HeroIntemporel } = await import("@/components/memorial/hero/HeroIntemporel");
 const { DeathNoticeIntemporel } = await import("@/components/memorial/death-notice/DeathNoticeIntemporel");
@@ -154,5 +155,45 @@ describe("renderer registry", () => {
     expect(RENDERER_COMPONENTS.DeathNoticeIntemporel).toBe(DeathNoticeIntemporel);
     expect(RENDERER_COMPONENTS.CeremonyIntemporel).toBe(CeremonyIntemporel);
     expect(RENDERER_COMPONENTS.RecitDeVieIntemporel).toBe(RecitDeVieIntemporel);
+  });
+});
+
+describe("MemorialAssembly — « Gérer les rubriques visibles »: hidden sections, and the archive links", () => {
+  const hide = (content: MemorialContent, ...ids: ("deathNotice" | "ceremony" | "story")[]) =>
+    ids.reduce((c, id) => {
+      const next = setSectionVisibility(c, id, false, "intemporel");
+      if (!next.ok) throw new Error("fixture");
+      return next.content;
+    }, content);
+
+  it("a hidden section is absent from the flow; an archived one sits behind a closed, discreet link after it", async () => {
+    const { container } = await renderAssembly(hide(fullAnnouncement(), "deathNotice", "ceremony", "story"));
+    expect(sectionIds(container)).toEqual(["hero"]);
+    const archives = container.querySelector("[data-memorial-archives]") as HTMLElement;
+    expect(archives).toBeTruthy();
+    const entries = [...archives.querySelectorAll("details")];
+    expect(entries.map((d) => d.getAttribute("data-memorial-archive"))).toEqual(["deathNotice", "ceremony"]);
+    expect(entries.every((d) => !d.open)).toBe(true);
+    expect(entries.map((d) => d.querySelector("summary")?.textContent)).toEqual([
+      "Consulter l'annonce de décès",
+      "Consulter les informations de la cérémonie",
+    ]);
+    // The secondary presentation is the section's OWN renderer, unchanged.
+    expect(entries[0].querySelector("[data-memorial-archive] > div")).toBeTruthy();
+    expect(entries[0].textContent).toContain(FIXTURE_DISPLAY_NAME);
+  });
+
+  it("no archive strip at all when nothing is archived (story hidden only, or nothing hidden)", async () => {
+    const { container } = await renderAssembly(hide(fullAnnouncement(), "story"));
+    expect(container.querySelector("[data-memorial-archives]")).toBeNull();
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony"]);
+  });
+
+  it("the archive link is translated with the memorial's language", async () => {
+    const assembled = await assembleMemorial(input(hide(fullAnnouncement(), "ceremony"), { language: "en" }), {
+      resolveMedia: recordingResolver().resolve,
+    });
+    const { container } = render(<MemorialAssembly assembled={assembled} />);
+    expect(container.querySelector("summary")?.textContent).toBe("View the ceremony details");
   });
 });
