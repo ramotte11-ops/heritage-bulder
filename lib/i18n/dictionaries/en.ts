@@ -82,6 +82,12 @@ export const en: Record<TranslationKey, string> = {
   "journey.sectionStatus.inProgress": "In progress",
   "journey.sectionStatus.upcoming": "Coming up",
   "journey.sectionStatus.hidden": "Not needed",
+  "journey.status.deferred": "To decide",
+  "journey.sectionStatus.deferred": "To decide",
+  "journey.deferredNote": "Linked to the death announcement, which you chose to decide later. You can change your mind in “Death announcement: your choice”; nothing is deleted.",
+  "journey.pending": "An answer on this screen is not finished: it cannot be saved yet.",
+  "journey.pendingStay": "Stay and finish it",
+  "journey.pendingLeave": "Leave without this answer",
   "hero.identityTitle": "Who are we honoring?",
   "hero.identitySubtitle":
     "Enter the name exactly as it should appear. Birth and death dates are optional.",

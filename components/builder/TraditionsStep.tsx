@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useStepDone } from "./journey/journey-context";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
 import type { Skin } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
@@ -94,6 +95,11 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<Composer | null>(null);
   const [editing, setEditing] = useState<EntryEdit | null>(null);
+  // B03 — a repère being written (not added yet) or an open edit lives
+  // only here until confirmed: « Mon parcours » asks before leaving.
+  usePendingInput(
+    (composer !== null && (composer.title.trim() !== "" || composer.text.trim() !== "")) || editing !== null,
+  );
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -184,7 +184,8 @@
   background: var(--heritage-surface-card);
 }
 
-.section[data-status="hidden"] {
+.section[data-status="hidden"],
+.section[data-status="deferred"] {
   background: transparent;
   border-style: dashed;
 }
@@ -204,6 +205,7 @@
 }
 
 .section[data-status="hidden"] .sectionTitle,
+.section[data-status="deferred"] .sectionTitle,
 .section[data-status="upcoming"] .sectionTitle {
   color: var(--heritage-text-secondary);
 }
@@ -303,4 +305,32 @@
   .entryButton {
     transition: none;
   }
+}
+
+/* Unsaved, incomplete input on the current screen: ask before leaving. */
+.pending {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.625rem;
+  margin-top: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--heritage-border-selected);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-selected);
+  text-align: left;
+}
+
+.pendingText {
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--heritage-text-primary);
+}
+
+.pendingActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
 }

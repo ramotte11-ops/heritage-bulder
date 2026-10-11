@@ -1,10 +1,16 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
 import type { JourneyScreenId, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
+import { applyBeforeUnloadGuard } from "@/lib/builder/use-autosave";
+import {
+  createPendingInputRegistry,
+  hasIncompleteNativeInput,
+  PendingInputRegistryContext,
+} from "./pending-input";
 
 /**
  * B03 — « Mon parcours »: what the entry (`JourneyEntry`, rendered by
@@ -25,6 +31,9 @@ export interface JourneyNavigation {
   resume: () => Promise<boolean>;
   /** Called by a step once its own Continue (or skip) is saved. */
   finishStep: () => void;
+  /** The current screen holds input the autosave cannot save yet
+   * (./pending-input.tsx) — « Mon parcours » asks before leaving. */
+  hasPendingInput: () => boolean;
 }
 
 export const JourneyContext = createContext<JourneyNavigation | null>(null);
@@ -68,6 +77,17 @@ export function RouteJourneyProvider({
 }) {
   const router = useRouter();
   const registry = useContext(PreviewFlushRegistryContext);
+  const [pendingInputs] = useState(createPendingInputRegistry);
+
+  // Closing or reloading the tab with unsaved, incomplete input: the
+  // browser's own warning (same guard as the autosave's).
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (pendingInputs.hasPending() || hasIncompleteNativeInput()) applyBeforeUnloadGuard(event);
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [pendingInputs]);
 
   const value = useMemo<JourneyNavigation>(() => {
     async function drained(): Promise<boolean> {
@@ -96,8 +116,13 @@ export function RouteJourneyProvider({
         if (snapshot.revising !== null) router.replace(builderPath);
         else router.refresh();
       },
+      hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
     };
-  }, [language, snapshot, builderPath, router, registry]);
+  }, [language, snapshot, builderPath, router, registry, pendingInputs]);
 
-  return <JourneyContext.Provider value={value}>{children}</JourneyContext.Provider>;
+  return (
+    <PendingInputRegistryContext.Provider value={pendingInputs}>
+      <JourneyContext.Provider value={value}>{children}</JourneyContext.Provider>
+    </PendingInputRegistryContext.Provider>
+  );
 }

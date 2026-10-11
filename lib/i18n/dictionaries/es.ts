@@ -79,6 +79,12 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "journey.sectionStatus.inProgress": "En curso",
   "journey.sectionStatus.upcoming": "Próximamente",
   "journey.sectionStatus.hidden": "No necesaria",
+  "journey.status.deferred": "Por decidir",
+  "journey.sectionStatus.deferred": "Por decidir",
+  "journey.deferredNote": "Vinculada al anuncio de defunción, que eligió decidir más tarde. Puede cambiar de opinión en «Anuncio de defunción: su elección»; no se borra nada.",
+  "journey.pending": "Una respuesta de esta pantalla no está terminada: aún no se puede guardar.",
+  "journey.pendingStay": "Quedarme para completarla",
+  "journey.pendingLeave": "Salir sin esta respuesta",
   "hero.identityTitle": "¿A quién desea honrar?",
   "hero.identitySubtitle":
     "Escriba el nombre exactamente como debe aparecer. Las fechas de nacimiento y fallecimiento son opcionales.",

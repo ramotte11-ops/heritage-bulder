@@ -207,6 +207,7 @@ describe("useStepDone — what a step does once its Continue is saved", () => {
           openScreen: async () => true,
           resume: async () => true,
           finishStep,
+          hasPendingInput: () => false,
         }}
       >
         <Probe />
@@ -240,5 +241,101 @@ describe("a real step opened for revision (A00: Oui → Non)", () => {
     expect(saved.deathNotice).toEqual((draft as { deathNotice: unknown }).deathNotice);
     expect(saved.guidedFlow.A01).toEqual((draft as { guidedFlow: Record<string, unknown> }).guidedFlow.A01);
     expect(routerRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("B03 — incomplete input: never a silent loss", () => {
+  async function renderWithPending(revising: Parameters<typeof resolveJourney>[1] = null) {
+    const { usePendingInput } = await import("./pending-input");
+    function Unfinished() {
+      usePendingInput(true);
+      return null;
+    }
+    render(
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL, revising)} builderPath="/builder/m-1">
+          <BuilderScreenNav />
+          <Unfinished />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+  }
+
+  it("« Revoir » asks first; « Rester pour la compléter » goes back to the screen without navigating", async () => {
+    await renderWithPending();
+    openPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/n'est pas terminée/);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Rester pour la compléter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rester pour la compléter" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("« Quitter sans cette réponse » then navigates, exactly as asked", async () => {
+    await renderWithPending();
+    openPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitter sans cette réponse" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
+  });
+
+  it("the revision notice's « Reprendre où j'en étais » asks too", async () => {
+    await renderWithPending("identity");
+    fireEvent.click(screen.getByRole("button", { name: "Reprendre où j'en étais" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/n'est pas terminée/);
+    expect(routerPush).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Quitter sans cette réponse" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
+  });
+
+  it("closing the tab with incomplete input triggers the browser's own warning; without, nothing", async () => {
+    await renderWithPending();
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    cleanup();
+
+    renderWithRoute();
+    const quiet = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
+  });
+});
+
+describe("B03 — A00 « Plus tard » reads « À décider »", () => {
+  it("the notice and traditions sections show « À décider » with their note, never « Non concernée »", async () => {
+    const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
+    const later = commitA00(PARTIAL, "later");
+    if (!later.ok) throw new Error("fixture");
+    render(
+      <RouteJourneyProvider language="fr" snapshot={resolveJourney(later.content)} builderPath="/builder/m-1">
+        <BuilderScreenNav />
+      </RouteJourneyProvider>,
+    );
+    openPanel();
+    const section = (title: string) => screen.getByRole("heading", { level: 3, name: title }).closest("li") as HTMLElement;
+    for (const title of ["L'annonce de décès", "Traditions & repères"]) {
+      expect(section(title).dataset.status).toBe("deferred");
+      expect(section(title).textContent).toContain("À décider");
+      expect(section(title).textContent).not.toContain("Non concernée");
+      expect(section(title).textContent).toMatch(/choisi de décider plus tard/);
+    }
+  });
+
+  it.each([
+    ["en", "To decide"],
+    ["es", "Por decidir"],
+  ] as const)("is translated (%s)", async (language, label) => {
+    const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
+    const later = commitA00(PARTIAL, "later");
+    if (!later.ok) throw new Error("fixture");
+    render(
+      <RouteJourneyProvider language={language} snapshot={resolveJourney(later.content)} builderPath="/builder/m-1">
+        <BuilderScreenNav />
+      </RouteJourneyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: language === "en" ? /My journey/ : /Mi recorrido/ }));
+    expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(2);
   });
 });

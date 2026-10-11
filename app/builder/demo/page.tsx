@@ -21,6 +21,11 @@ import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { JourneyContext, type JourneyNavigation } from "@/components/builder/journey/journey-context";
+import {
+  createPendingInputRegistry,
+  hasIncompleteNativeInput,
+  PendingInputRegistryContext,
+} from "@/components/builder/journey/pending-input";
 import { heroStepProgress } from "@/lib/builder/guided-flow/hero-step";
 import { readHero } from "@/lib/memorial/hero";
 import {
@@ -194,6 +199,7 @@ export default function QgRuntimeDemoPage() {
 
   // B03 — the screen opened from « Mon parcours » (the demo's `?etape=`).
   const [revising, setRevising] = useState<JourneyScreenId | null>(null);
+  const [pendingInputs] = useState(createPendingInputRegistry);
 
   function applyRecitScenario(next: RecitScenario) {
     setRecitScenario(next);
@@ -253,6 +259,7 @@ export default function QgRuntimeDemoPage() {
       setRevising(null);
       setGeneration((n) => n + 1);
     },
+    hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
   };
 
   function unavailableNotice(what: string) {
@@ -355,7 +362,11 @@ export default function QgRuntimeDemoPage() {
   } else {
     const { label, screen } = demoScreen(revisionTarget ?? currentJourneyScreen(content));
     stepLabel = revisionTarget !== null ? `Révision — ${label}` : label;
-    body = <JourneyContext.Provider value={journey}>{screen}</JourneyContext.Provider>;
+    body = (
+      <PendingInputRegistryContext.Provider value={pendingInputs}>
+        <JourneyContext.Provider value={journey}>{screen}</JourneyContext.Provider>
+      </PendingInputRegistryContext.Provider>
+    );
   }
 
   return (

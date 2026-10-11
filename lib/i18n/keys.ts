@@ -280,6 +280,12 @@ export const TRANSLATION_KEYS = [
   "journey.sectionStatus.inProgress",
   "journey.sectionStatus.upcoming",
   "journey.sectionStatus.hidden",
+  "journey.status.deferred",
+  "journey.sectionStatus.deferred",
+  "journey.deferredNote",
+  "journey.pending",
+  "journey.pendingStay",
+  "journey.pendingLeave",
   // Mission 032 — PAGE A (T03 + T04) and PAGE B (T05).
   "hero.identityTitle",
   "hero.identitySubtitle",

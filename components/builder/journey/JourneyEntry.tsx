@@ -29,8 +29,79 @@ const STATUS_MARK: Record<JourneyScreenState["status"], string> = {
   current: "●",
   toComplete: "◐",
   upcoming: "○",
+  deferred: "?",
   hidden: "–",
 };
+
+/**
+ * Every navigation out of the current screen goes through here: if the
+ * screen holds input the autosave cannot save yet (./pending-input.tsx),
+ * the family is asked first — stay and finish it, or leave without it —
+ * never a silent loss. Otherwise the screen's autosave is drained and
+ * the navigation runs (`JourneyNavigation.openScreen` / `resume`).
+ */
+function useGuardedNavigation(journey: JourneyNavigation, onDone?: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [waiting, setWaiting] = useState<null | (() => Promise<boolean>)>(null);
+
+  async function execute(action: () => Promise<boolean>) {
+    setBusy(true);
+    setFailed(false);
+    const ok = await action();
+    setBusy(false);
+    if (ok) onDone?.();
+    else setFailed(true);
+  }
+
+  return {
+    busy,
+    failed,
+    waiting: waiting !== null,
+    run(action: () => Promise<boolean>) {
+      if (busy) return;
+      if (journey.hasPendingInput()) {
+        setWaiting(() => action);
+        return;
+      }
+      void execute(action);
+    },
+    leave() {
+      const action = waiting;
+      setWaiting(null);
+      if (action !== null) void execute(action);
+    },
+    stay() {
+      setWaiting(null);
+    },
+  };
+}
+
+function PendingConfirm({
+  journey,
+  onStay,
+  onLeave,
+}: {
+  journey: JourneyNavigation;
+  onStay: () => void;
+  onLeave: () => void;
+}) {
+  const stayRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => stayRef.current?.focus(), []);
+  return (
+    <div role="alert" className={styles.pending}>
+      <p className={styles.pendingText}>{translate(journey.language, "journey.pending")}</p>
+      <div className={styles.pendingActions}>
+        <button ref={stayRef} type="button" className={styles.actionButton} onClick={onStay}>
+          {translate(journey.language, "journey.pendingStay")}
+        </button>
+        <button type="button" className={styles.linkButton} onClick={onLeave}>
+          {translate(journey.language, "journey.pendingLeave")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function JourneyEntry() {
   const journey = useJourney();
@@ -70,19 +141,25 @@ export function JourneyEntry() {
  * changing anything. */
 export function JourneyRevisingNotice() {
   const journey = useJourney();
-  const [failed, setFailed] = useState(false);
   if (journey === null || journey.snapshot.revising === null) return null;
+  return <RevisingNotice journey={journey} />;
+}
+
+function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
+  const guard = useGuardedNavigation(journey);
   return (
     <div className={styles.revising}>
       <p className={styles.revisingText}>{translate(journey.language, "journey.revising")}</p>
       <button
         type="button"
         className={styles.linkButton}
-        onClick={async () => setFailed(!(await journey.resume()))}
+        onClick={() => guard.run(journey.resume)}
+        disabled={guard.busy}
       >
         {translate(journey.language, "journey.resume")}
       </button>
-      {failed && (
+      {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
+      {guard.failed && (
         <p role="alert" className={styles.error}>
           {translate(journey.language, "journey.saveFailed")}
         </p>
@@ -95,8 +172,8 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
   const { language, snapshot } = journey;
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const guard = useGuardedNavigation(journey, onClose);
+  const { busy, failed } = guard;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -112,19 +189,9 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
     };
   }, [onClose]);
 
-  async function navigate(action: () => Promise<boolean>) {
-    if (busy) return;
-    setBusy(true);
-    setFailed(false);
-    const ok = await action();
-    setBusy(false);
-    if (ok) onClose();
-    else setFailed(true);
-  }
-
   const actions: RowActions = {
-    review: (id) => void navigate(() => journey.openScreen(id)),
-    resume: () => void navigate(journey.resume),
+    review: (id) => guard.run(() => journey.openScreen(id)),
+    resume: () => guard.run(journey.resume),
     busy,
   };
 
@@ -145,6 +212,17 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
           <button type="button" className={styles.resumeButton} onClick={actions.resume} disabled={busy}>
             {translate(language, "journey.resume")}
           </button>
+        )}
+        {guard.waiting && (
+          <PendingConfirm
+            journey={journey}
+            onStay={() => {
+              // Back to the screen, to finish the answer.
+              guard.stay();
+              onClose();
+            }}
+            onLeave={guard.leave}
+          />
         )}
         {failed && (
           <p role="alert" className={styles.error}>
@@ -193,8 +271,10 @@ function SectionItem({
           <ScreenStatusAndAction screen={single} label={title} journey={journey} actions={actions} />
         )}
       </div>
-      {section.status === "hidden" ? (
-        <p className={styles.hiddenNote}>{translate(language, "journey.hiddenNote")}</p>
+      {section.status === "hidden" || section.status === "deferred" ? (
+        <p className={styles.hiddenNote}>
+          {translate(language, section.status === "deferred" ? "journey.deferredNote" : "journey.hiddenNote")}
+        </p>
       ) : (
         single === null && (
           <ul className={styles.screens}>

@@ -100,13 +100,19 @@ interface JourneyScreenDefinition {
   resolved: (content: MemorialContent) => boolean;
   /** Part of the route given the family's current answers —
    * `"undecided"` while the question it depends on (A00, A04) has not
-   * been answered yet: neither hidden nor offered, simply upcoming. */
-  applicable: (content: MemorialContent) => boolean | "undecided";
+   * been answered yet: neither hidden nor offered, simply upcoming;
+   * `"deferred"` when the family answered A00 « Plus tard »: still to be
+   * decided, never presented as required nor as not concerned. */
+  applicable: (content: MemorialContent) => boolean | "undecided" | "deferred";
 }
 
 const always = () => true;
-const announcement = (content: MemorialContent) =>
-  readAnnouncementChoice(content) === null ? "undecided" : isAnnouncementChosen(content);
+const announcement = (content: MemorialContent) => {
+  const choice = readAnnouncementChoice(content);
+  if (choice === null) return "undecided";
+  if (choice === "later") return "deferred";
+  return isAnnouncementChosen(content);
+};
 const ceremonyPlanned = (content: MemorialContent) => {
   const answer = readCeremonyMomentAnswer(content);
   return answer === null ? "undecided" : answer === "yes";
@@ -178,10 +184,12 @@ export function currentJourneyScreen(content: MemorialContent): JourneyScreenId 
  * - `toComplete`: reached but not (or no longer) done — e.g. the
  *   announcement preview after the text was edited;
  * - `upcoming`: not reached yet — never reopenable;
+ * - `deferred`: depends on A00 answered « Plus tard » — « À décider »,
+ *   never reopenable from here (the family changes A00 instead);
  * - `hidden`: not part of the route given the current answers — its
  *   content is kept, never presented as a required step.
  */
-export type JourneyScreenStatus = "done" | "current" | "toComplete" | "upcoming" | "hidden";
+export type JourneyScreenStatus = "done" | "current" | "toComplete" | "upcoming" | "deferred" | "hidden";
 
 export interface JourneyScreenState {
   id: JourneyScreenId;
@@ -191,7 +199,7 @@ export interface JourneyScreenState {
   accessible: boolean;
 }
 
-export type JourneySectionStatus = "done" | "inProgress" | "upcoming" | "hidden";
+export type JourneySectionStatus = "done" | "inProgress" | "upcoming" | "deferred" | "hidden";
 
 export interface JourneySectionState {
   id: JourneySection;
@@ -216,6 +224,7 @@ export function resolveJourneyScreens(content: MemorialContent): JourneyScreenSt
     let status: JourneyScreenStatus;
     if (applicable === false) status = "hidden";
     else if (applicable === "undecided") status = "upcoming";
+    else if (applicable === "deferred") status = "deferred";
     else if (screen.id === current) status = "current";
     else if (screen.resolved(content)) status = "done";
     else status = index < currentIndex ? "toComplete" : "upcoming";
@@ -225,8 +234,8 @@ export function resolveJourneyScreens(content: MemorialContent): JourneyScreenSt
 }
 
 function sectionStatus(screens: JourneyScreenState[]): JourneySectionStatus {
-  const visible = screens.filter((s) => s.status !== "hidden");
-  if (visible.length === 0) return "hidden";
+  const visible = screens.filter((s) => s.status !== "hidden" && s.status !== "deferred");
+  if (visible.length === 0) return screens.some((s) => s.status === "deferred") ? "deferred" : "hidden";
   if (visible.every((s) => s.status === "done")) return "done";
   if (visible.every((s) => s.status === "upcoming")) return "upcoming";
   return "inProgress";

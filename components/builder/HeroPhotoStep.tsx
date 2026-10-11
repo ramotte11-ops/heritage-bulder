@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useStepDone } from "./journey/journey-context";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
 import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET } from "@/config/media";
 import type { MemorialContent } from "@/types/memorial";
@@ -171,6 +172,8 @@ export function HeroPhotoStep({
 
   const [content, setContent] = useState(initialContent);
   const [photo, setPhoto] = useState<PhotoState>(() => initialState(initialPhoto));
+  // B03 — a photo still uploading is not in the draft yet.
+  usePendingInput(photo.status === "uploading" || photo.status === "finalizing");
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

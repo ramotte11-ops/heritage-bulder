@@ -258,3 +258,30 @@ describe("TraditionsStep — continue avec un repère → completed", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
+
+describe("TraditionsStep — B03: a repère being written is reported, never silently dropped", () => {
+  it("reports pending input while the composer holds text, and stops once it is added or cancelled", async () => {
+    const { createPendingInputRegistry, PendingInputRegistryContext } = await import("./journey/pending-input");
+    const registry = createPendingInputRegistry();
+    render(
+      <PendingInputRegistryContext.Provider value={registry}>
+        <TraditionsStep {...baseProps()} />
+      </PendingInputRegistryContext.Provider>,
+    );
+
+    expect(registry.hasPending()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un repère personnalisé/ }));
+    expect(registry.hasPending()).toBe(false); // an empty composer holds nothing
+    fireEvent.change(screen.getByLabelText("Votre texte"), { target: { value: "Un repère pas encore ajouté." } });
+    expect(registry.hasPending()).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ajouter" }));
+    expect(registry.hasPending()).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un repère personnalisé/ }));
+    fireEvent.change(screen.getByLabelText("Votre texte"), { target: { value: "Un autre." } });
+    expect(registry.hasPending()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(registry.hasPending()).toBe(false);
+  });
+});

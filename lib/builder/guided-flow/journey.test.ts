@@ -76,15 +76,28 @@ describe("a partially filled draft", () => {
   });
 
   it.each([
-    ["no", { status: "completed", answer: "no" }],
-    ["later", { status: "skipped", answer: "later" }],
-  ] as const)("A00 = %s: the death notice and traditions read hidden, the ceremony stays", (_answer, record) => {
+    ["no", { status: "completed", answer: "no" }, "hidden"],
+    ["later", { status: "skipped", answer: "later" }, "deferred"],
+  ] as const)("A00 = %s: the death notice and traditions read %s, the ceremony stays", (_answer, record, expected) => {
     const content = { ...AFTER_IDENTITY, guidedFlow: { T04: { status: "skipped" }, A00: record } } as unknown as MemorialContent;
     const journey = resolveJourney(content);
-    expect(journey.sections.find((x) => x.id === "deathNotice")?.status).toBe("hidden");
-    expect(journey.sections.find((x) => x.id === "traditions")?.status).toBe("hidden");
+    expect(journey.sections.find((x) => x.id === "deathNotice")?.status).toBe(expected);
+    expect(journey.sections.find((x) => x.id === "traditions")?.status).toBe(expected);
     expect(journey.sections.find((x) => x.id === "ceremony")?.status).toBe("upcoming");
     expect(statuses(content).phrase).toBe("current");
+  });
+
+  it("A00 = later: « À décider » screens are never reopenable — the family changes A00 instead", () => {
+    const later = ok(commitA00(throughA03(), "later"));
+    for (const id of ["announcementText", "announcementDetails", "announcementPreview", "traditions"] as const) {
+      const state = resolveJourneyScreens(later).find((s) => s.id === id);
+      expect(state).toMatchObject({ status: "deferred", accessible: false });
+      expect(resolveRevisionTarget(later, id)).toBeNull();
+    }
+    expect(resolveRevisionTarget(later, "announcementChoice")).toBe("announcementChoice");
+    // Nothing deleted: the notice is still there, and yes brings it back.
+    expect((later as { deathNotice: unknown }).deathNotice).toEqual((throughA03() as { deathNotice: unknown }).deathNotice);
+    expect(statuses(ok(commitA00(later, "yes"))).announcementText).toBe("done");
   });
 
   it("A04 = no hides A05-A08 (never presented as required); undecided A04 keeps them upcoming", () => {

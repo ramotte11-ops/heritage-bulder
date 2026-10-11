@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
 import type { HeroDate } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
@@ -74,6 +75,19 @@ export function HeroDateField({
   const [precision, setPrecision] = useState<Precision>(() => initialPrecision(value));
   const [yearText, setYearText] = useState(() => initialYearText(value));
   const [dateText, setDateText] = useState(() => initialDateText(value));
+
+  // B03 — what the family typed but the Hero does not hold (not valid,
+  // or rejected, e.g. a death before the birth): reported so « Mon
+  // parcours » asks before leaving instead of dropping it silently. A
+  // native date left half-typed is detected generically (badInput).
+  const typedYear = yearText.trim();
+  const pending =
+    precision === "year"
+      ? typedYear === ""
+        ? value !== null && value.precision === "year"
+        : !(value !== null && value.precision === "year" && value.year === Number(typedYear))
+      : dateText !== "" && !(value !== null && value.precision === "date" && value.date === dateText);
+  usePendingInput(pending);
 
   function commitYear() {
     const trimmed = yearText.trim();
