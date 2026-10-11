@@ -5,7 +5,7 @@ import path from "node:path";
 /**
  * Mission 035 — `saveSkinVariantAction`, T08's one write onto
  * `memorials`. Same authorization discipline as `actions.ts`'s own
- * `saveLanguageAction`/`saveEditorialContextAction`, mirrored here
+ * `saveLanguageAction`, mirrored here
  * exactly — see this action's own docstring for why it lives in a
  * separate file rather than `actions.ts`.
  */

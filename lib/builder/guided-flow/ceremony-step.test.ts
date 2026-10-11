@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_CEREMONY_CONTENT } from "@/types/ceremony";
 import { humanFlowDefinition } from "./human-steps";
-import { firstIncompleteStep } from "./engine";
+import { applicableSteps, firstIncompleteStep } from "./engine";
 import {
   commitA04,
   commitA05,
@@ -329,7 +329,7 @@ describe("A08 — note + CTA → completed; sans note → refusé (QG review, m�
 
 describe("Progression — full ceremony branch, A04=yes through A08, human-steps.ts wiring", () => {
   it("firstIncompleteStep moves onto A09 once A04-A08 are all resolved", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -350,7 +350,7 @@ describe("Progression — full ceremony branch, A04=yes through A08, human-steps
   });
 
   it("A04 = no skips straight past A05-A08 onto A09", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -366,11 +366,11 @@ describe("Progression — full ceremony branch, A04=yes through A08, human-steps
     expect(firstIncompleteStep(flow, state)?.id).toBe("A09");
   });
 
-  it("remembrance never includes A04-A08 in its route at all", () => {
-    const flow = humanFlowDefinition("remembrance");
-    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
-    for (const id of ["A04", "A05", "A06", "A07", "A08"]) {
-      expect(route.some((s) => s.id === id)).toBe(false);
+  it("the ceremony (A04, then A05-A08 on yes) stays on the route without a death notice (B02-L2)", () => {
+    const flow = humanFlowDefinition();
+    for (const A00 of [{ status: "completed", answer: "no" }, { status: "skipped", answer: "later" }] as const) {
+      const ids = applicableSteps(flow, { A00: { ...A00 }, A04: { status: "completed", answer: "yes" } }).map((s) => s.id);
+      expect(ids).toEqual(expect.arrayContaining(["A04", "A05", "A06", "A07", "A08"]));
     }
   });
 });

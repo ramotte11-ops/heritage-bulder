@@ -4,25 +4,40 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { MemorialContent } from "@/types/memorial";
 import type { SkinVariant } from "@/config/skins";
+import { WelcomeStep } from "@/components/builder/WelcomeStep";
+import { AnnouncementChoiceStep } from "@/components/builder/AnnouncementChoiceStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
 import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
 import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
 import { DeathNoticePreviewStep } from "@/components/builder/DeathNoticePreviewStep";
+import { CeremonyMomentStep } from "@/components/builder/CeremonyMomentStep";
+import { CeremonyDateTimeStep } from "@/components/builder/CeremonyDateTimeStep";
+import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
+import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
+import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
+import { TraditionsStep } from "@/components/builder/TraditionsStep";
+import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
+import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
+import { JourneyContext, type JourneyNavigation } from "@/components/builder/journey/journey-context";
 import {
-  needsPageA,
-  needsPageB,
-  needsPageC,
-  needsPageD,
-  needsPageE,
-} from "@/lib/builder/guided-flow/hero-step";
-import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
+  createPendingInputRegistry,
+  hasIncompleteNativeInput,
+  PendingInputRegistryContext,
+} from "@/components/builder/journey/pending-input";
+import { heroStepProgress } from "@/lib/builder/guided-flow/hero-step";
+import { readHero } from "@/lib/memorial/hero";
+import {
+  currentJourneyScreen,
+  resolveJourney,
+  resolveRevisionTarget,
+  type JourneyScreenId,
+} from "@/lib/builder/guided-flow/journey";
 import {
   QG_RUNTIME_DEMO_BIRTH,
   QG_RUNTIME_DEMO_DEATH,
   QG_RUNTIME_DEMO_DEFAULT_SKIN_VARIANT,
-  QG_RUNTIME_DEMO_EDITORIAL_CONTEXT,
   QG_RUNTIME_DEMO_LANGUAGE,
   QG_RUNTIME_DEMO_NAME_LONG,
   QG_RUNTIME_DEMO_NAME_NORMAL,
@@ -81,6 +96,13 @@ import styles from "./page.module.css";
  * `needsPageD` are always false in practice — the branch below exists
  * only as an honest fallback if that invariant is ever broken, never a
  * screen a reviewer should actually see.
+ *
+ * B03 — the screen sequence now comes from `currentJourneyScreen`
+ * (lib/builder/guided-flow/journey.ts — the same gates as the real
+ * route, in the same order), and « Mon parcours » works here too, with a
+ * local revision target standing in for the route's `?etape=`. The
+ * ceremony, traditions and person sheet are shown; the Gallery (real
+ * uploads) gets the same honest notice as PAGE C/D.
  */
 
 type Scenario = "normal" | "long";
@@ -94,7 +116,6 @@ function scenarioHeroInput(scenario: Scenario) {
 }
 
 const LANGUAGE = QG_RUNTIME_DEMO_LANGUAGE;
-const EDITORIAL_CONTEXT = QG_RUNTIME_DEMO_EDITORIAL_CONTEXT;
 
 /**
  * Récit de vie — QG Runtime Demo control panel, Handoff GREEN QG
@@ -171,6 +192,15 @@ export default function QgRuntimeDemoPage() {
   const [showRecit, setShowRecit] = useState(false);
   const [recitScenario, setRecitScenario] = useState<RecitScenario>("FALLBACKS");
 
+  // Builder Welcome — shown first, exactly where the real route shows it
+  // (right after T01, which this page has no screen for). Purely local:
+  // its CTA only flips this flag; `content` is never touched.
+  const [welcomeDone, setWelcomeDone] = useState(false);
+
+  // B03 — the screen opened from « Mon parcours » (the demo's `?etape=`).
+  const [revising, setRevising] = useState<JourneyScreenId | null>(null);
+  const [pendingInputs] = useState(createPendingInputRegistry);
+
   function applyRecitScenario(next: RecitScenario) {
     setRecitScenario(next);
     setShowRecit(true);
@@ -187,12 +217,14 @@ export default function QgRuntimeDemoPage() {
 
   function applyScenario(next: Scenario) {
     setScenario(next);
+    setRevising(null);
     setContent(buildQgRuntimeDemoContent(scenarioHeroInput(next)));
     setSkinVariant(QG_RUNTIME_DEMO_DEFAULT_SKIN_VARIANT);
     setGeneration((n) => n + 1);
   }
 
   function jumpToA03() {
+    setRevising(null);
     setContent(buildQgRuntimeDemoContentThroughA03(scenarioHeroInput(scenario)));
     setGeneration((n) => n + 1);
   }
@@ -204,104 +236,136 @@ export default function QgRuntimeDemoPage() {
   let stepLabel: string;
   let body: ReactNode;
 
-  if (showRecit) {
-    const recitContent = buildRecitScenarioContent(recitScenario);
-    stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
-    body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
-  } else if (needsPageA(content)) {
-    stepLabel = "Hero — PAGE A (nom, dates)";
-    body = (
-      <HeroIdentityStep
-        language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
-        content={content}
-        persist={persist}
-      />
-    );
-  } else if (needsPageB(content)) {
-    stepLabel = "Hero — PAGE B (phrase)";
-    body = (
-      <HeroPhraseStep
-        language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
-        content={content}
-        persist={persist}
-      />
-    );
-  } else if (needsPageC(content) || needsPageD(content)) {
-    // See this file's top docstring — structurally unreachable in this
-    // demo, kept only as an honest fallback rather than a crash.
-    stepLabel = "Hero — photo (indisponible dans ce banc d'essai)";
-    body = (
+  // B03 — « Mon parcours » in the demo: the same pure journey the real
+  // route computes (`resolveJourney`), with a local revision target in
+  // place of the route's `?etape=` (validated by the same
+  // `resolveRevisionTarget`). Nothing is persisted anywhere.
+  const revisionTarget = resolveRevisionTarget(content, revising);
+  const journey: JourneyNavigation = {
+    language: LANGUAGE,
+    snapshot: resolveJourney(content, revisionTarget),
+    async openScreen(id) {
+      setRevising(id);
+      setGeneration((n) => n + 1);
+      return true;
+    },
+    async resume() {
+      setRevising(null);
+      setGeneration((n) => n + 1);
+      return true;
+    },
+    finishStep() {
+      if (revisionTarget === null) return;
+      setRevising(null);
+      setGeneration((n) => n + 1);
+    },
+    hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
+  };
+
+  function unavailableNotice(what: string) {
+    return (
       <div className={styles.notice}>
         <p>
-          L&rsquo;étape photo (upload Storage réel) n&rsquo;est pas disponible dans ce banc
-          d&rsquo;essai local. Réinitialisez la démonstration.
+          {what} (upload Storage réel) n&rsquo;est pas disponible dans ce banc d&rsquo;essai local.
+          Utilisez « Mon parcours » ou réinitialisez la démonstration.
         </p>
         <button type="button" className={styles.panelButton} onClick={resetDemo}>
           Réinitialiser
         </button>
       </div>
     );
-  } else if (needsPageE(content)) {
-    stepLabel = "Hero — PAGE E (révélation, Light/Dark)";
+  }
+
+  /** The same screens the real route renders, keyed by journey id. */
+  function demoScreen(id: JourneyScreenId | null): { label: string; screen: ReactNode } {
+    switch (id) {
+      case "identity":
+        return { label: "Hero — PAGE A (nom, dates)", screen: <HeroIdentityStep language={LANGUAGE} content={content} persist={persist} />};
+      case "announcementChoice":
+        return { label: "A00 — choix de l'annonce de décès", screen: <AnnouncementChoiceStep language={LANGUAGE} content={content} persist={persist} />};
+      case "phrase":
+        return { label: "Hero — PAGE B (phrase)", screen: <HeroPhraseStep language={LANGUAGE} content={content} persist={persist} />};
+      case "photo":
+      case "crop":
+        // See this file's top docstring — PAGE C/D need real Storage.
+        return { label: "Hero — photo (indisponible dans ce banc d'essai)", screen: unavailableNotice("L'étape photo")};
+      case "reveal":
+        return {
+          label: "Hero — PAGE E (révélation, Light/Dark)",
+          screen: <HeroRevealStep
+            language={LANGUAGE}
+            content={content}
+            photo={QG_RUNTIME_DEMO_PHOTO}
+            initialSkinVariant={skinVariant}
+            persist={persist}
+            saveSkinVariant={saveSkinVariant}
+          />,
+        };
+      case "announcementText":
+        return { label: "A01 — annonce", screen: <DeathNoticeAnnouncementStep language={LANGUAGE} content={content} persist={persist} />};
+      case "announcementDetails":
+        return { label: "A02 — précisions", screen: <DeathNoticePrecisionsStep language={LANGUAGE} content={content} persist={persist} />};
+      case "announcementPreview":
+        return {
+          label: "A03 — aperçu de l'avis (DeathNoticeIntemporel)",
+          screen: <DeathNoticePreviewStep
+            language={LANGUAGE}
+            content={content}
+            skin={QG_RUNTIME_DEMO_SKIN}
+            skinVariant={skinVariant}
+            persist={persist}
+          />,
+        };
+      case "ceremonyMoment":
+        return { label: "A04 — un moment est-il prévu ?", screen: <CeremonyMomentStep language={LANGUAGE} content={content} persist={persist} />};
+      case "ceremonyDateTime":
+        return { label: "A05 — date et heure", screen: <CeremonyDateTimeStep language={LANGUAGE} content={content} persist={persist} />};
+      case "ceremonyVenue":
+        return { label: "A06 — lieu", screen: <CeremonyVenueStep language={LANGUAGE} content={content} persist={persist} />};
+      case "ceremonyAddress":
+        return { label: "A07 — adresse", screen: <CeremonyAddressStep language={LANGUAGE} content={content} persist={persist} />};
+      case "ceremonyNote":
+        return { label: "A08 — informations pratiques", screen: <CeremonyNoteStep language={LANGUAGE} content={content} persist={persist} />};
+      case "traditions":
+        return {
+          label: "A09 — traditions & repères",
+          screen: <TraditionsStep language={LANGUAGE} content={content} skin={QG_RUNTIME_DEMO_SKIN} persist={persist} />,
+        };
+      case "personSheet":
+        return { label: "A10-A12 — quelques mots sur la personne", screen: <PersonSheetStep language={LANGUAGE} content={content} persist={persist} />};
+      case "gallery":
+        return { label: "A13 — galerie (indisponible dans ce banc d'essai)", screen: unavailableNotice("La galerie")};
+      case null:
+        return {
+          label: "Parcours terminé (écran de repos)",
+          screen: <GuidedFlowPause language={LANGUAGE} progress={heroStepProgress(content, readHero(content))} />,
+        };
+    }
+  }
+
+  if (showRecit) {
+    const recitContent = buildRecitScenarioContent(recitScenario);
+    stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
+    body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
+  } else if (!welcomeDone) {
+    stepLabel = "Bienvenue (après T01)";
     body = (
-      <HeroRevealStep
+      <WelcomeStep
         language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
         content={content}
-        photo={QG_RUNTIME_DEMO_PHOTO}
-        initialSkinVariant={skinVariant}
-        persist={persist}
-        saveSkinVariant={saveSkinVariant}
-      />
-    );
-  } else if (needsA01(content)) {
-    stepLabel = "A01 — annonce";
-    body = (
-      <DeathNoticeAnnouncementStep
-        language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
-        content={content}
-        persist={persist}
-      />
-    );
-  } else if (needsA02(content)) {
-    stepLabel = "A02 — précisions";
-    body = (
-      <DeathNoticePrecisionsStep
-        language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
-        content={content}
-        persist={persist}
-      />
-    );
-  } else if (needsA03(content)) {
-    stepLabel = "A03 — aperçu de l'avis (DeathNoticeIntemporel)";
-    body = (
-      <DeathNoticePreviewStep
-        language={LANGUAGE}
-        editorialContext={EDITORIAL_CONTEXT}
-        content={content}
-        skin={QG_RUNTIME_DEMO_SKIN}
-        skinVariant={skinVariant}
-        persist={persist}
+        persist={async () => {
+          setWelcomeDone(true);
+          return { updatedAt: new Date().toISOString() };
+        }}
       />
     );
   } else {
-    stepLabel = "Parcours QG terminé (A01/A02/A03 validés)";
+    const { label, screen } = demoScreen(revisionTarget ?? currentJourneyScreen(content));
+    stepLabel = revisionTarget !== null ? `Révision — ${label}` : label;
     body = (
-      <div className={styles.notice}>
-        <h1>Parcours QG terminé</h1>
-        <p>
-          A01, A02 et A03 sont vérifiés pour ce contenu de démonstration. Cette démo
-          s&rsquo;arrête ici — elle n&rsquo;ouvre jamais le Builder final (`BuilderShell`) et ne
-          publie jamais rien.
-        </p>
-        <button type="button" className={styles.panelButton} onClick={resetDemo}>
-          Recommencer
-        </button>
-      </div>
+      <PendingInputRegistryContext.Provider value={pendingInputs}>
+        <JourneyContext.Provider value={journey}>{screen}</JourneyContext.Provider>
+      </PendingInputRegistryContext.Provider>
     );
   }
 

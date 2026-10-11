@@ -66,3 +66,16 @@ export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinit
     { id: "video", core: false },
   ],
 };
+
+/**
+ * B02-L2 — the single HERITAGE route's section catalog, read by the
+ * composition model (Mission 027's section-selection). It is the former
+ * `announcement` list: there is no editorial-context choice any more, and
+ * whether the death notice, traditions and condolences apply is decided
+ * by A00 inside section-selection. `deathNotice`'s `core` reads "proposed
+ * by HERITAGE once the family chose to publish an announcement".
+ *
+ * `EDITORIAL_CONTEXT_SECTIONS` above stays for the legacy Builder shell
+ * (`lib/builder/builder-state.ts`, `lib/sections.ts`) only.
+ */
+export const MEMORIAL_SECTIONS: readonly SectionDefinition[] = EDITORIAL_CONTEXT_SECTIONS.announcement;

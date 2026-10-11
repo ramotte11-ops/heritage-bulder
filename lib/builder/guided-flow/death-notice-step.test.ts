@@ -3,7 +3,7 @@ import type { MemorialContent } from "@/types/memorial";
 import { EMPTY_DEATH_NOTICE_CONTENT, EMPTY_DEATH_NOTICE_PRECISIONS } from "@/types/death-notice";
 import { EMPTY_HERO_CONTENT } from "@/types/hero";
 import { humanFlowDefinition } from "./human-steps";
-import { firstIncompleteStep } from "./engine";
+import { applicableSteps, firstIncompleteStep } from "./engine";
 import {
   commitA01,
   commitA02,
@@ -391,13 +391,13 @@ describe("A02 — corrupted deathNotice → write refused (needsA02 also refuses
 
 describe("Progression — A01 required+non-skippable, A02 optional+skippable (human-steps.ts)", () => {
   it("A01 stays the first incomplete step in the announcement route until completed", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = { T03: { status: "completed" as const }, T04: { status: "skipped" as const } };
     const step = firstIncompleteStep(flow, state);
     // Whichever earlier common-trunk step is first incomplete, A01 is
     // never skipped over by a malformed/absent record — this is
     // exercised fully in human-steps.test.ts; here we only confirm A01
-    // itself is part of the announcement route and not remembrance's.
+    // itself belongs to the tribute group.
     expect(flow.steps.some((s) => s.id === "A01" && s.group === "announcement")).toBe(true);
     expect(step).not.toBeNull();
   });
@@ -409,7 +409,7 @@ describe("Progression — A01 required+non-skippable, A02 optional+skippable (hu
     const committed = commitA02(withThought.content);
     expect(committed.ok).toBe(true);
 
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -425,7 +425,7 @@ describe("Progression — A01 required+non-skippable, A02 optional+skippable (hu
   });
 
   it("A02 skipped also advances the logical next step to A03", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -440,11 +440,13 @@ describe("Progression — A01 required+non-skippable, A02 optional+skippable (hu
     expect(next?.id).toBe("A03");
   });
 
-  it("remembrance never includes A01/A02 in its route at all", () => {
-    const flow = humanFlowDefinition("remembrance");
-    expect(flow.activeGroups).not.toContain("announcement");
-    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
-    expect(route.some((s) => s.id === "A01" || s.id === "A02")).toBe(false);
+  it("A00 = no / later: A01/A02 are never part of the route (B02-L2)", () => {
+    const flow = humanFlowDefinition();
+    for (const A00 of [{ status: "completed", answer: "no" }, { status: "skipped", answer: "later" }] as const) {
+      const ids = applicableSteps(flow, { A00: { ...A00 } }).map((s) => s.id);
+      expect(ids).not.toContain("A01");
+      expect(ids).not.toContain("A02");
+    }
   });
 });
 
@@ -454,12 +456,12 @@ describe("Progression — A01 required+non-skippable, A02 optional+skippable (hu
 
 describe("deathNoticeStepProgress — reuses the real Mission 025 engine", () => {
   it("is 0 on a completely untouched draft", () => {
-    expect(deathNoticeStepProgress("announcement", EMPTY_CONTENT)).toBe(0);
+    expect(deathNoticeStepProgress(EMPTY_CONTENT)).toBe(0);
   });
 
   it("increases once A01 is completed", () => {
-    const before = deathNoticeStepProgress("announcement", EMPTY_CONTENT);
-    const after = deathNoticeStepProgress("announcement", a01Done());
+    const before = deathNoticeStepProgress(EMPTY_CONTENT);
+    const after = deathNoticeStepProgress(a01Done());
     expect(after).toBeGreaterThan(before);
   });
 });
@@ -687,7 +689,7 @@ describe("reopenA02 — 'Modifier les précisions' (mission brief section 10)", 
 
 describe("Progression — A03 required+non-skippable (human-steps.ts)", () => {
   it("A03 completed advances the logical next step past the announcement branch", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -703,9 +705,8 @@ describe("Progression — A03 required+non-skippable (human-steps.ts)", () => {
     expect(next?.id).toBe("A04");
   });
 
-  it("remembrance never includes A03 in its route at all", () => {
-    const flow = humanFlowDefinition("remembrance");
-    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
-    expect(route.some((s) => s.id === "A03")).toBe(false);
+  it("A00 = no: A03 is never part of the route (B02-L2)", () => {
+    const flow = humanFlowDefinition();
+    expect(applicableSteps(flow, { A00: { status: "completed", answer: "no" } }).map((s) => s.id)).not.toContain("A03");
   });
 });

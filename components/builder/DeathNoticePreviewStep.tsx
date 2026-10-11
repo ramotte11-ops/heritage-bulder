@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -28,7 +27,6 @@ const A03_BUILT_SKINS: readonly Skin[] = ["intemporel"];
 
 interface DeathNoticePreviewStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A01 and A02 are already
    * guaranteed resolved by the time this renders (see
    * app/builder/[memorialId]/page.tsx's own `needsA03` gate). */
@@ -106,13 +104,12 @@ interface DeathNoticePreviewStepProps {
  */
 export function DeathNoticePreviewStep({
   language,
-  editorialContext,
   content,
   skin,
   skinVariant,
   persist,
 }: DeathNoticePreviewStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
 
@@ -129,7 +126,7 @@ export function DeathNoticePreviewStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(editorialContext, content);
+  const progress = deathNoticeStepProgress(content);
 
   const skinResolution = resolveSkinRuntime(skin);
   const canRenderA03 = skinResolution.status === "resolved" && A03_BUILT_SKINS.includes(skinResolution.skin);
@@ -164,7 +161,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleEditPrecisions() {
@@ -187,7 +184,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -210,7 +207,7 @@ export function DeathNoticePreviewStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   return (
@@ -222,7 +219,6 @@ export function DeathNoticePreviewStep({
       <DeathNoticeIntemporel
         hero={heroRead.hero}
         deathNotice={deathNoticeRead.deathNotice}
-        editorialContext={editorialContext}
         language={language}
         skinVariant={skinVariant}
       />

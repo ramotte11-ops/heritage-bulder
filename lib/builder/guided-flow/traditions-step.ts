@@ -1,5 +1,4 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { EditorialContext } from "@/config/memorial";
 import type { TraditionsContent } from "@/types/traditions";
 import {
   addTraditionEntry,
@@ -16,6 +15,7 @@ import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
 import { humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "./ceremony-step";
+import { isAnnouncementChosen } from "./announcement-choice-step";
 
 /**
  * Mission 042 — A09 ("Traditions & repères") as a real, persisted
@@ -115,6 +115,9 @@ export function isA09Resolved(content: MemorialContent): boolean {
  * been treated once, whichever way.
  */
 export function needsA09(content: MemorialContent): boolean {
+  // B02-L2 — A09 belongs with the death notice (PO doctrine): offered
+  // only when A00 = yes. Entries already written stay in the draft.
+  if (!isAnnouncementChosen(content)) return false;
   if (needsA04(content)) return false;
   if (needsA05(content)) return false;
   if (needsA06(content)) return false;
@@ -128,9 +131,9 @@ export function needsA09(content: MemorialContent): boolean {
 // constant.
 // ---------------------------------------------------------------------
 
-export function traditionsStepProgress(editorialContext: EditorialContext, content: MemorialContent): number {
+export function traditionsStepProgress(content: MemorialContent): number {
   const hero = readHero(content);
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, hero));
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, hero));
 }
 
 // ---------------------------------------------------------------------

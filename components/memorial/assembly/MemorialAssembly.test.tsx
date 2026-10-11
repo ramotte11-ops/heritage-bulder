@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 function input(content: MemorialContent, overrides: Partial<AssembleMemorialInput> = {}): AssembleMemorialInput {
-  return { editorialContext: "announcement", skin: "intemporel", skinVariant: "light", language: "fr", content, ...overrides };
+  return { skin: "intemporel", skinVariant: "light", language: "fr", content, ...overrides };
 }
 
 async function renderAssembly(content: MemorialContent, resolver = recordingResolver()) {

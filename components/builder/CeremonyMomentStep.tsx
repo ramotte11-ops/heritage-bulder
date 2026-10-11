@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import {
@@ -24,7 +23,6 @@ import styles from "./CeremonyMomentStep.module.css";
 
 interface CeremonyMomentStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A03 is already guaranteed
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
@@ -45,18 +43,18 @@ const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momen
  * facultative ; aucun écran ne doit culpabiliser la famille").
  *
  * A real, explicit three-way choice — never deduced from a death date,
- * an offer, a skin, or a culture — mirrors T02's own `ContextStep`
- * doctrine exactly, just with three compact cards instead of two roomy
- * ones (the three answers are single words/short phrases, not a
+ * an offer, a skin, or a culture — mirrors the former T02 choice
+ * screen's doctrine exactly, just with three compact cards instead of two
+ * roomy ones (the three answers are single words/short phrases, not a
  * title+description pair).
  *
  * No `useAutosave` here: A04 has no field of its own to autosave, only
  * a single choice that is either fully committed (`commitA04`) or not
- * yet made — the same "no intermediate autosave" shape T02's own
- * `ContextStep` already uses for the identical reason.
+ * yet made — the same "no intermediate autosave" shape A00's own
+ * `AnnouncementChoiceStep` uses for the identical reason.
  */
-export function CeremonyMomentStep({ language, editorialContext, content, persist }: CeremonyMomentStepProps) {
-  const router = useRouter();
+export function CeremonyMomentStep({ language, content, persist }: CeremonyMomentStepProps) {
+  const stepDone = useStepDone();
   const [selected, setSelected] = useState<A04Answer | null>(() => readCeremonyMomentAnswer(content));
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,7 +83,7 @@ export function CeremonyMomentStep({ language, editorialContext, content, persis
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -98,7 +96,7 @@ export function CeremonyMomentStep({ language, editorialContext, content, persis
     );
   }
 
-  const progress = ceremonyStepProgress(editorialContext, content);
+  const progress = ceremonyStepProgress(content);
 
   return (
     <BuilderScreen progress={progress}>

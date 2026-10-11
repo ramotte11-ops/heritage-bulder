@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -23,7 +22,6 @@ import styles from "./CeremonyAddressStep.module.css";
 
 interface CeremonyAddressStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A06 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
@@ -35,8 +33,8 @@ interface CeremonyAddressStepProps {
  * pratiques, grouped in one small screen (mission brief's own
  * découpage). Facultatif, passable.
  */
-export function CeremonyAddressStep({ language, editorialContext, content: initialContent, persist }: CeremonyAddressStepProps) {
-  const router = useRouter();
+export function CeremonyAddressStep({ language, content: initialContent, persist }: CeremonyAddressStepProps) {
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,7 +87,7 @@ export function CeremonyAddressStep({ language, editorialContext, content: initi
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -113,7 +111,7 @@ export function CeremonyAddressStep({ language, editorialContext, content: initi
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -126,7 +124,7 @@ export function CeremonyAddressStep({ language, editorialContext, content: initi
     );
   }
 
-  const progress = ceremonyStepProgress(editorialContext, content);
+  const progress = ceremonyStepProgress(content);
   const hasAnyValue = read.ceremony.address !== null || read.ceremony.access !== null;
 
   return (

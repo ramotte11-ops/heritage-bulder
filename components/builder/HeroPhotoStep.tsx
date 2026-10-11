@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET } from "@/config/media";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
@@ -29,7 +29,6 @@ import styles from "./HeroPhotoStep.module.css";
 
 interface HeroPhotoStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — PAGE A/PAGE B are already
    * guaranteed done, and any section-14 reconciliation already applied,
    * by the time this renders (see
@@ -162,7 +161,6 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
  */
 export function HeroPhotoStep({
   language,
-  editorialContext,
   content: initialContent,
   initialPhoto,
   persist,
@@ -170,10 +168,12 @@ export function HeroPhotoStep({
   finalizeUpload,
   retireUpload,
 }: HeroPhotoStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
   const [photo, setPhoto] = useState<PhotoState>(() => initialState(initialPhoto));
+  // B03 — a photo still uploading is not in the draft yet.
+  usePendingInput(photo.status === "uploading" || photo.status === "finalizing");
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -280,7 +280,7 @@ export function HeroPhotoStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -293,7 +293,7 @@ export function HeroPhotoStep({
     );
   }
 
-  const progress = heroStepProgress(editorialContext, content, read.hero);
+  const progress = heroStepProgress(content, read.hero);
   const hasPhoto = photo.status === "ready" || photo.status === "uploading" || photo.status === "finalizing";
   const controlDisabled = isBusy || isSubmitting;
 

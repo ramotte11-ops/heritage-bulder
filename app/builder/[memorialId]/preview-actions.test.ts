@@ -161,6 +161,33 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero"]);
   });
 
+  it("B02-L2 — a memorial with no editorial context (every new draft) gets its Preview too", async () => {
+    resumable(fullAnnouncement(), { editorialContext: null });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual([
+      "hero",
+      "deathNotice",
+      "story",
+      "ceremony",
+    ]);
+  });
+
+  it("B02-L2 — A00 = no: the Preview never shows the Avis, the written notice stays in the draft", async () => {
+    const content = fullAnnouncement();
+    const noNotice = {
+      ...content,
+      guidedFlow: { ...(content as { guidedFlow: object }).guidedFlow, A00: { status: "completed", answer: "no" } },
+    } as MemorialContent;
+    resumable(noNotice);
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual([
+      "hero",
+      "story",
+      "ceremony",
+    ]);
+    expect(saveDraftContent).not.toHaveBeenCalled();
+  });
+
   it("never writes: no draft save", async () => {
     resumable(fullAnnouncement());
     await loadMemorialPreviewAction("claimed-id");
@@ -175,11 +202,8 @@ describe("loadMemorialPreviewAction — fail closed", () => {
     expect(createOwnerDraftMediaResolver).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["no language", { language: null }],
-    ["no editorial context", { editorialContext: null }],
-  ])("%s → locked", async (_label, memorial) => {
-    resumable(fullAnnouncement(), memorial as Partial<StoredMemorialConfig>);
+  it("no language → locked", async () => {
+    resumable(fullAnnouncement(), { language: null });
     expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "locked" });
   });
 

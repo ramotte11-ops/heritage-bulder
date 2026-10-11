@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -21,7 +20,6 @@ import styles from "./DeathNoticeAnnouncementStep.module.css";
 
 interface DeathNoticeAnnouncementStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — T08 is already guaranteed
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
@@ -75,11 +73,10 @@ interface DeathNoticeAnnouncementStepProps {
  */
 export function DeathNoticeAnnouncementStep({
   language,
-  editorialContext,
   content: initialContent,
   persist,
 }: DeathNoticeAnnouncementStepProps) {
-  const router = useRouter();
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(false);
@@ -130,7 +127,7 @@ export function DeathNoticeAnnouncementStep({
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -143,7 +140,7 @@ export function DeathNoticeAnnouncementStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(editorialContext, content);
+  const progress = deathNoticeStepProgress(content);
   const showRequiredError = attemptedSubmit && read.deathNotice.announcementText === null;
 
   return (

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { Skin } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -26,7 +26,6 @@ import styles from "./TraditionsStep.module.css";
 
 interface TraditionsStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — the Ceremony block is
    * already guaranteed resolved by the time this renders (see
    * app/builder/[memorialId]/page.tsx's `needsA09` gate). */
@@ -91,11 +90,16 @@ function newSuggestionComposer(suggestion: TraditionSuggestion, language: Langua
  * one edit is open at once — never a big form. Already-confirmed
  * entries render as their own small cards with "Modifier"/"Supprimer".
  */
-export function TraditionsStep({ language, editorialContext, content: initialContent, skin, persist }: TraditionsStepProps) {
-  const router = useRouter();
+export function TraditionsStep({ language, content: initialContent, skin, persist }: TraditionsStepProps) {
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<Composer | null>(null);
   const [editing, setEditing] = useState<EntryEdit | null>(null);
+  // B03 — a repère being written (not added yet) or an open edit lives
+  // only here until confirmed: « Mon parcours » asks before leaving.
+  usePendingInput(
+    (composer !== null && (composer.title.trim() !== "" || composer.text.trim() !== "")) || editing !== null,
+  );
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -171,7 +175,7 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -195,7 +199,7 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -208,7 +212,7 @@ export function TraditionsStep({ language, editorialContext, content: initialCon
     );
   }
 
-  const progress = traditionsStepProgress(editorialContext, content);
+  const progress = traditionsStepProgress(content);
   const hasEntry = read.traditions.entries.length > 0;
 
   return (

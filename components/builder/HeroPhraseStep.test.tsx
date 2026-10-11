@@ -33,12 +33,32 @@ describe("HeroPhraseStep — 40-character Builder limit (Mobile Text Contract RE
     render(
       <HeroPhraseStep
         language="fr"
-        editorialContext="remembrance"
         content={CONTENT}
         persist={vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" })}
       />,
     );
     expect(HERO_SHORT_PHRASE_MAX_CHARS).toBe(40);
     expect(screen.getByRole("textbox").getAttribute("maxlength")).toBe("40");
+  });
+});
+
+describe("HeroPhraseStep — wording follows the A00 death-notice choice", () => {
+  const persist = () => vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+  const withChoice = (record: object) => ({ ...CONTENT, guidedFlow: { T04: { status: "skipped" }, A00: record } });
+
+  it("yes: the announcement wording", () => {
+    render(
+      <HeroPhraseStep language="fr" content={withChoice({ status: "completed", answer: "yes" })} persist={persist()} />,
+    );
+    expect(screen.getByText(/partager avec l'annonce/)).toBeTruthy();
+  });
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ])("%s: the tribute wording, never a mention of the announcement", (_label, record) => {
+    render(<HeroPhraseStep language="fr" content={withChoice(record)} persist={persist()} />);
+    expect(screen.queryByText(/partager avec l'annonce/)).toBeNull();
+    expect(screen.getByText(/comment on se souvient/)).toBeTruthy();
   });
 });

@@ -52,13 +52,13 @@ const items = (n: number) => ids(n).map((mediaId) => ({ mediaId }));
 
 function context(content: MemorialContent, rows: Record<string, FakeMedia>, overrides: Partial<AdapterContext> = {}) {
   const resolver = mediaResolver(rows);
-  const ctx: AdapterContext = { content, editorialContext: "announcement", skin: "intemporel", skinVariant: "light", language: "fr", resolveMedia: resolver.resolve, ...overrides };
+  const ctx: AdapterContext = { content, skin: "intemporel", skinVariant: "light", language: "fr", resolveMedia: resolver.resolve, ...overrides };
   return { ctx, resolver };
 }
 
 describe("composition — presence from content only (never enabled_sections)", () => {
   const base = fullAnnouncement();
-  const stateOf = (content: MemorialContent) => composeMemorial({ editorialContext: "announcement", skin: "intemporel", skinVariant: "light", content }).sections.find((s) => s.sectionId === "gallery")!;
+  const stateOf = (content: MemorialContent) => composeMemorial({ skin: "intemporel", skinVariant: "light", content }).sections.find((s) => s.sectionId === "gallery")!;
 
   it("no gallery / 0 / 1 photograph → not renderable (optional)", () => {
     for (const content of [base, withGallery(base, []), withGallery(base, items(1))]) expect(stateOf(content).state).toBe("optional");
@@ -76,8 +76,9 @@ describe("composition — presence from content only (never enabled_sections)", 
     for (let n = 0; n <= 8; n += 1) expect(stateOf(withGallery(base, items(n))).state === "renderable").toBe(selectGalleryState(n) !== null);
   });
 
-  it("remembrance too: the Gallery is a section of both contexts", () => {
-    const composition = composeMemorial({ editorialContext: "remembrance", skin: "intemporel", skinVariant: "dark", content: withGallery(base, items(3)) });
+  it("without a death notice too (A00 = no): the Gallery never depends on the announcement", () => {
+    const noNotice = { ...base, guidedFlow: { ...(base as { guidedFlow?: object }).guidedFlow, A00: { status: "completed", answer: "no" } } } as MemorialContent;
+    const composition = composeMemorial({ skin: "intemporel", skinVariant: "dark", content: withGallery(noNotice, items(3)) });
     expect(composition.sections.find((s) => s.sectionId === "gallery")?.state).toBe("renderable");
   });
 
@@ -212,7 +213,7 @@ describe("assembleMemorial — the Gallery is one more section of the one pipeli
 
   async function assemble(content: MemorialContent, rows: Record<string, FakeMedia>) {
     const resolver = mediaResolver({ ...heroRow(content), ...rows });
-    return assembleMemorial({ editorialContext: "announcement", skin: "intemporel", skinVariant: "light", language: "fr", content }, { resolveMedia: resolver.resolve });
+    return assembleMemorial({ skin: "intemporel", skinVariant: "light", language: "fr", content }, { resolveMedia: resolver.resolve });
   }
 
   it("a draft with 7 photographs: Gallery assembled in canonical order, other sections byte-identical", async () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { EditorialContext } from "@/config/memorial";
 import { isPreviewUnlocked } from "./preview-lock";
 import type { HumanFlowState } from "./human-steps";
 
@@ -13,13 +12,9 @@ import type { HumanFlowState } from "./human-steps";
  * hand, exactly the way a future T08 screen's own persistence would.
  */
 
-const CONTEXTS: EditorialContext[] = ["announcement", "remembrance"];
-
 describe("isPreviewUnlocked — before T08", () => {
   it("is locked when no step has been touched at all", () => {
-    for (const editorialContext of CONTEXTS) {
-      expect(isPreviewUnlocked(editorialContext, {})).toBe(false);
-    }
+    expect(isPreviewUnlocked({})).toBe(false);
   });
 
   it("is locked while T08 itself is simply untouched, even if later steps have data", () => {
@@ -27,7 +22,7 @@ describe("isPreviewUnlocked — before T08", () => {
     // of malformed/partial state the engine's own docstring says must
     // never be trusted at face value.
     const state: HumanFlowState = { A01: { status: "completed" } };
-    expect(isPreviewUnlocked("announcement", state)).toBe(false);
+    expect(isPreviewUnlocked(state)).toBe(false);
   });
 
   it("is locked while every common-trunk step up to (but excluding) T08 is completed", () => {
@@ -38,9 +33,7 @@ describe("isPreviewUnlocked — before T08", () => {
       T06: { status: "completed" },
       T07: { status: "completed" },
     };
-    for (const editorialContext of CONTEXTS) {
-      expect(isPreviewUnlocked(editorialContext, state)).toBe(false);
-    }
+    expect(isPreviewUnlocked(state)).toBe(false);
   });
 
   it("is locked when T08 is corrupted into a 'skipped' record — T08 is not skippable", () => {
@@ -49,18 +42,14 @@ describe("isPreviewUnlocked — before T08", () => {
     // Reading state.T08?.status directly here would have unlocked the
     // Preview on bad data; going through the engine must not.
     const state: HumanFlowState = { T08: { status: "skipped" } };
-    for (const editorialContext of CONTEXTS) {
-      expect(isPreviewUnlocked(editorialContext, state)).toBe(false);
-    }
+    expect(isPreviewUnlocked(state)).toBe(false);
   });
 });
 
 describe("isPreviewUnlocked — at and after T08", () => {
   it("is unlocked the moment T08 itself is recorded completed, regardless of anything else", () => {
     const state: HumanFlowState = { T08: { status: "completed" } };
-    for (const editorialContext of CONTEXTS) {
-      expect(isPreviewUnlocked(editorialContext, state)).toBe(true);
-    }
+    expect(isPreviewUnlocked(state)).toBe(true);
   });
 
   it("stays unlocked once T08 is completed even while later steps are still incomplete", () => {
@@ -69,23 +58,26 @@ describe("isPreviewUnlocked — at and after T08", () => {
       T06: { status: "completed" },
       T07: { status: "completed" },
       T08: { status: "completed" },
-      // A01+ / M01+ deliberately untouched — the family has only just
+      // A00 / A01+ deliberately untouched — the family has only just
       // crossed the unlock point.
     };
-    expect(isPreviewUnlocked("announcement", state)).toBe(true);
-    expect(isPreviewUnlocked("remembrance", state)).toBe(true);
+    expect(isPreviewUnlocked(state)).toBe(true);
   });
 
-  it("is identical for both editorial contexts — the rule is agnostic to which branch is active", () => {
+  it("is identical whatever A00 answered — the death-notice choice never locks the Preview", () => {
     const state: HumanFlowState = { T08: { status: "completed" } };
-    expect(isPreviewUnlocked("announcement", state)).toBe(
-      isPreviewUnlocked("remembrance", state),
-    );
+    for (const A00 of [
+      { status: "completed", answer: "yes" },
+      { status: "completed", answer: "no" },
+      { status: "skipped", answer: "later" },
+    ] as const) {
+      expect(isPreviewUnlocked({ ...state, A00: { ...A00 } })).toBe(true);
+    }
   });
 });
 
 describe("isPreviewUnlocked — never touches Skin/Offer/Etsy", () => {
-  it("has exactly the (editorialContext, state) signature — nothing else to read a Skin or OfferId from", () => {
-    expect(isPreviewUnlocked.length).toBe(2);
+  it("has exactly the (state) signature — nothing else to read a Skin, OfferId or editorial context from", () => {
+    expect(isPreviewUnlocked.length).toBe(1);
   });
 });

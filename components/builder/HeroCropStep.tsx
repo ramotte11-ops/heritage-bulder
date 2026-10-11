@@ -1,9 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import type { HeroCrop } from "@/types/hero";
@@ -34,7 +33,6 @@ import styles from "./HeroCropStep.module.css";
 
 interface HeroCropStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — PAGE A/PAGE B/PAGE C are
    * already guaranteed done by the time this renders (see
    * lib/builder/guided-flow/hero-step.ts's `needsPageD` and
@@ -137,8 +135,8 @@ const UNRESOLVED_IMAGE_SIZE: HeroCropImageSize = { naturalWidth: 0, naturalHeigh
  * starting inside that one box — the page's own scroll is never
  * blocked anywhere else.
  */
-export function HeroCropStep({ language, editorialContext, content: initialContent, photo, persist }: HeroCropStepProps) {
-  const router = useRouter();
+export function HeroCropStep({ language, content: initialContent, photo, persist }: HeroCropStepProps) {
+  const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
   const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
@@ -235,7 +233,7 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -298,7 +296,7 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready" || read.hero.photo === null) {
@@ -313,7 +311,7 @@ export function HeroCropStep({ language, editorialContext, content: initialConte
 
   const crop = read.hero.photo.crop ?? NEUTRAL_HERO_CROP;
   const geometry = resolveHeroCropGeometry(imageSize, crop);
-  const progress = heroStepProgress(editorialContext, content, read.hero);
+  const progress = heroStepProgress(content, read.hero);
 
   return (
     <BuilderScreen

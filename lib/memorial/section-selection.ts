@@ -1,14 +1,13 @@
-import { EDITORIAL_CONTEXT_SECTIONS, SECTION_IDS, type SectionId } from "@/config/sections";
-import type { EditorialContext } from "@/config/memorial";
-import type { HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
+import { MEMORIAL_SECTIONS, SECTION_IDS, type SectionId } from "@/config/sections";
+import { isAnnouncementVisible, type HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
 
 /**
  * Mission 027 — the section selection / recommendation foundation.
  *
  * Pure, framework-free, no I/O, no React: exactly the same contract as
  * `lib/memorial/status-transitions.ts` and `lib/builder/guided-flow/engine.ts`.
- * This module answers one question — "for this editorial context and
- * these explicit family answers/content, what is section X's status?" —
+ * This module answers one question — "for these explicit family
+ * answers/content, what is section X's status?" —
  * so it can be reused unchanged by the Guided Flow, the Builder, the
  * Preview, and publication (mission brief section 6), none of which
  * exist as a dependency here.
@@ -18,9 +17,10 @@ import type { HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
  * HERITAGE never presents the family an administrative checklist of
  * modules (mission brief section 5), and never lets a skin/offer/assumed
  * religion silently turn a section on (sections 1, 8, 12). The only
- * inputs that may ever make a section MORE relevant than its context's
- * baseline are the editorial context itself, an explicit answer the
- * family already gave through the Guided Flow (today: only A04), and the
+ * inputs that may ever make a section MORE relevant than its catalog
+ * baseline are an explicit answer the family already gave through the
+ * Guided Flow (A00 for the death-notice sections, A04 for the ceremony —
+ * B02-L2 removed the editorial-context choice), and the
  * generic "this section now has real matter" signal described below.
  * There is deliberately no `skin`, `offerId`, or `Skin`/`OfferId` import
  * anywhere in this file — see section-selection.test.ts's compile-time
@@ -51,8 +51,8 @@ import type { HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
  *
  * ## Where this reuses existing configuration rather than inventing one
  *
- * `config/sections.ts`'s `EDITORIAL_CONTEXT_SECTIONS` already encodes,
- * per context, which sections exist, in which order, and which are
+ * `config/sections.ts`'s `MEMORIAL_SECTIONS` already encodes which
+ * sections exist, in which order, and which are
  * mandatory (`core`) — Mission 001's still-live model. This module does
  * not duplicate that table; it reads it. The only genuinely new logic
  * here is: (a) Hero is never part of the selectable domain at all
@@ -69,7 +69,7 @@ import type { HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
  */
 
 /**
- * A section's classification for one editorial context + one set of
+ * A section's classification for one set of
  * explicit family answers/content. The exact vocabulary is this
  * implementation's own choice (mission brief section 6 says as much);
  * this is how the five product concepts map onto it:
@@ -101,7 +101,6 @@ export type SectionSelectionStatus =
  * docstring.
  */
 export interface SectionSelectionInput {
-  editorialContext: EditorialContext;
   /** The family's Guided Flow answers so far (Mission 025's
    * `HumanFlowState`, keyed by `StepId`). Reused as-is rather than a
    * parallel "answers" shape invented for this mission (mission brief
@@ -138,6 +137,15 @@ function isA04AnsweredYes(flowState: HumanFlowState): boolean {
 }
 
 /**
+ * B02-L2 — the sections that belong with the death notice (PO doctrine,
+ * B01 decision 9: « A09 et condoléances conditionnées par la visibilité
+ * de l'annonce »). They apply only when A00 resolves to "yes"; "no",
+ * "later" or no answer leave them `notRelevant` — their content is kept,
+ * never cleared, and shows again if the answer becomes "yes".
+ */
+const ANNOUNCEMENT_SECTIONS: readonly SectionId[] = ["deathNotice", "traditions", "condolences"];
+
+/**
  * The single-section classification. Every other export in this module
  * is defined in terms of this function, so there is exactly one place
  * that decides a section's status. Nothing below is cached or persisted
@@ -147,12 +155,11 @@ function isA04AnsweredYes(flowState: HumanFlowState): boolean {
  * Rules, in order:
  *  1. `hero` is always `"structural"` — never evaluated against context
  *     configuration at all (mission brief section 2).
- *  2. A section this editorial context's `EDITORIAL_CONTEXT_SECTIONS`
- *     entry doesn't list at all is `"notRelevant"` — this is how
- *     `deathNotice` in `remembrance` and `traditions` in `remembrance`
- *     both fail closed, for free, with no context-specific code here,
- *     and it is checked before anything else so the context always wins
- *     over any signal a caller might pass in (mission brief section 8).
+ *  2. A section `MEMORIAL_SECTIONS` doesn't list at all
+ *     (`memoryMessage`) is `"notRelevant"`; so are the death-notice
+ *     sections (`ANNOUNCEMENT_SECTIONS`) while A00 is not "yes" (B02-L2).
+ *     Both are checked before anything else, so A00 always wins over any
+ *     content signal a caller might pass in (mission brief section 8).
  *  3. `ceremony` (the only section whose relevance this module ties to
  *     a specific Guided Flow answer rather than the generic content
  *     signal) is `"applicable"` when A04 is answered `"yes"` — the
@@ -181,10 +188,12 @@ export function resolveSectionSelectionStatus(
 ): SectionSelectionStatus {
   if (sectionId === "hero") return "structural";
 
-  const definition = EDITORIAL_CONTEXT_SECTIONS[input.editorialContext].find(
-    (section) => section.id === sectionId,
-  );
+  const definition = MEMORIAL_SECTIONS.find((section) => section.id === sectionId);
   if (!definition) return "notRelevant";
+
+  if (ANNOUNCEMENT_SECTIONS.includes(sectionId) && !isAnnouncementVisible(input.flowState ?? {})) {
+    return "notRelevant";
+  }
 
   if (sectionId === "ceremony") {
     return isA04AnsweredYes(input.flowState ?? {}) ? "applicable" : "notRelevant";
@@ -212,7 +221,7 @@ export function isSectionApplicable(status: SectionSelectionStatus): boolean {
 
 /**
  * Every `SectionId` this HERITAGE configuration has ever heard of,
- * classified for one editorial context + one set of explicit answers —
+ * classified for one set of explicit answers —
  * the bulk form of `resolveSectionSelectionStatus`, in `SECTION_IDS`'s
  * canonical order. A caller (a future Guided Flow screen, the Builder's
  * section manager, a Preview) reads this once per render instead of

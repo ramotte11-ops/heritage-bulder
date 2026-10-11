@@ -51,10 +51,10 @@ export async function loadMemorialPreviewAction(memorialId: string): Promise<Mem
   if (resumed.status !== "resumable") return { status: "unavailable" };
 
   const { memorial, draft } = resumed;
-  if (memorial.language === null || memorial.editorialContext === null) return { status: "locked" };
+  if (memorial.language === null) return { status: "locked" };
 
   const content = draft.content;
-  if (!isPreviewUnlocked(memorial.editorialContext, resolveHeroFlowState(content, readHero(content)))) {
+  if (!isPreviewUnlocked(resolveHeroFlowState(content, readHero(content)))) {
     return { status: "locked" };
   }
 
@@ -64,7 +64,6 @@ export async function loadMemorialPreviewAction(memorialId: string): Promise<Mem
 
   const assembled = await assembleMemorial(
     {
-      editorialContext: memorial.editorialContext,
       skin: memorial.skin,
       skinVariant: variant.variant,
       language: memorial.language,

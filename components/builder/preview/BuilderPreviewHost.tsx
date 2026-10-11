@@ -15,6 +15,8 @@ import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memoria
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
+import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
+import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import styles from "./BuilderPreviewHost.module.css";
 
 /**
@@ -72,6 +74,12 @@ export interface BuilderPreviewHostProps {
   language: Language | null;
   /** The bound `loadMemorialPreviewAction` for the authorized memorial. */
   loadPreview: () => Promise<MemorialPreviewResult>;
+  /** B03 — « Mon parcours » for this screen, computed server-side from
+   * the content it renders (`resolveJourney`), and the route's own path
+   * built from the authorized memorial id. `null`/absent → no journey
+   * (T01, the Welcome): the entry renders nothing and steps keep their
+   * plain `router.refresh()`. */
+  journey?: { snapshot: JourneySnapshot; builderPath: string } | null;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -92,7 +100,7 @@ export const PreviewEntryContext = createContext<PreviewEntryState | null>(null)
 
 type Phase = "closed" | "loading" | "open";
 
-export function BuilderPreviewHost({ available, language, loadPreview, children }: BuilderPreviewHostProps) {
+export function BuilderPreviewHost({ available, language, loadPreview, journey = null, children }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
   const [phase, setPhase] = useState<Phase>("closed");
   const [assembled, setAssembled] = useState<AssembledMemorial | null>(null);
@@ -197,7 +205,13 @@ export function BuilderPreviewHost({ available, language, loadPreview, children 
       <PreviewEntryContext.Provider value={entry}>
         {/* Always this same wrapper — the Builder is hidden, never unmounted. */}
         <div hidden={isOpen} data-builder-screen="">
-          {children}
+          {journey !== null && language !== null ? (
+            <RouteJourneyProvider language={language} snapshot={journey.snapshot} builderPath={journey.builderPath}>
+              {children}
+            </RouteJourneyProvider>
+          ) : (
+            children
+          )}
         </div>
         {isOpen && (
           <main className={styles.preview} data-memorial-preview="">

@@ -1,5 +1,4 @@
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { SectionId } from "@/config/sections";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { RendererKey } from "@/config/memorial-section-renderers";
@@ -75,7 +74,6 @@ export interface AssembledMemorial {
   status: "assembled" | "unavailable";
   /** The composition this assembly was built from, as is. */
   composition: MemorialComposition;
-  editorialContext: EditorialContext;
   skin: Skin | null;
   skinVariant: SkinVariant;
   language: Language;
@@ -109,7 +107,6 @@ export async function assembleMemorial(
 
   const context: AdapterContext = {
     content: input.content,
-    editorialContext: composition.editorialContext,
     skin: composition.skin,
     skinVariant: composition.skinVariant,
     language,
@@ -142,7 +139,6 @@ export async function assembleMemorial(
   return {
     status: heroAssembled ? "assembled" : "unavailable",
     composition,
-    editorialContext: composition.editorialContext,
     skin: composition.skin,
     skinVariant: composition.skinVariant,
     language,

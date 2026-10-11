@@ -58,7 +58,6 @@ function renderNotice(overrides: Partial<React.ComponentProps<typeof DeathNotice
     <DeathNoticeIntemporel
       hero={FULL_HERO}
       deathNotice={FULL_DEATH_NOTICE}
-      editorialContext="announcement"
       language="fr"
       skinVariant="light"
       {...overrides}
@@ -182,22 +181,42 @@ describe("DeathNoticeIntemporel — content is HTML/CSS, never duplicated into a
     expect(screen.getByText("Elle s'en est allée paisiblement, entourée des siens.")).toBeTruthy();
   });
 
-  it("renders the fixed eyebrow + title via i18n, not hardcoded", () => {
-    renderNotice({ editorialContext: "announcement", language: "en" });
-    expect(screen.getByText("Announcement & Tribute")).toBeTruthy();
+  it("renders the fixed title via i18n, not hardcoded", () => {
+    renderNotice({ language: "en" });
     expect(screen.getByText("Death Notice")).toBeTruthy();
   });
 
   it("renders French copy", () => {
     renderNotice({ language: "fr" });
-    expect(screen.getByText("Annonce & Hommage")).toBeTruthy();
     expect(screen.getByText("Avis de décès")).toBeTruthy();
   });
 
   it("renders Spanish copy", () => {
     renderNotice({ language: "es" });
-    expect(screen.getByText("Anuncio y homenaje")).toBeTruthy();
     expect(screen.getByText("Aviso de defunción")).toBeTruthy();
+  });
+
+  it.each(["fr", "en", "es"] as const)(
+    "B02-L2 — no editorial context eyebrow in %s, no filets, the real title kept",
+    (language) => {
+      const { container } = renderNotice({ language });
+      expect(container.textContent).not.toMatch(/Hommage|Tribute|homenaje/i);
+      expect(container.querySelector('[class*="eyebrowRule"]')).toBeNull();
+      const row = container.querySelector('[class*="eyebrowRow"]');
+      expect(row).toBeTruthy();
+      expect(row?.textContent).toBe("");
+      expect(row?.getAttribute("aria-hidden")).toBe("true");
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+        { fr: "Avis de décès", en: "Death Notice", es: "Aviso de defunción" }[language],
+      );
+    },
+  );
+
+  it("B02-L2 — the empty row keeps the eyebrow's former one-line height (11px × 1.15, 13px × 1.15 from 960px)", () => {
+    const css = readFileSync(path.resolve(import.meta.dirname, "DeathNoticeIntemporel.module.css"), "utf8");
+    expect(css).toMatch(/\.eyebrowRow\s*\{\s*height:\s*calc\(11px \* 1\.15\);\s*\}/);
+    expect(css).toMatch(/@media \(min-width: 960px\)\s*\{\s*\.eyebrowRow\s*\{\s*height:\s*calc\(13px \* 1\.15\);\s*\}/);
+    expect(css).not.toMatch(/\.eyebrow\s*\{|\.eyebrowRule/);
   });
 });
 

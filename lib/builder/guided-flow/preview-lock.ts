@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import { stepRuntimeStatus } from "./engine";
 import { humanFlowDefinition, type HumanFlowState } from "./human-steps";
 
@@ -37,11 +36,8 @@ import { humanFlowDefinition, type HumanFlowState } from "./human-steps";
  * future correction flow, say) simply re-locks the Preview on the very
  * next call, exactly like every other engine.ts resolution.
  */
-export function isPreviewUnlocked(
-  editorialContext: EditorialContext,
-  state: HumanFlowState,
-): boolean {
-  const flow = humanFlowDefinition(editorialContext);
+export function isPreviewUnlocked(state: HumanFlowState): boolean {
+  const flow = humanFlowDefinition();
   const unlockStep = flow.steps.find((step) => step.id === "T08");
   // Defensive only: human-steps.test.ts's own structural guards already
   // ensure STEPS always contains exactly one "T08" entry. If that were

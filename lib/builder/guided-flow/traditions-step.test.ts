@@ -3,7 +3,7 @@ import type { MemorialContent } from "@/types/memorial";
 import { commitA04, skipA05, skipA06, skipA07, skipA08 } from "./ceremony-step";
 import { commitA01 } from "./death-notice-step";
 import { humanFlowDefinition } from "./human-steps";
-import { firstIncompleteStep } from "./engine";
+import { applicableSteps, firstIncompleteStep } from "./engine";
 import {
   addTraditionsEntry,
   commitA09,
@@ -32,7 +32,11 @@ const CORRUPTED_WRONG_TYPE: MemorialContent = {
   traditions: "not an object" as unknown as MemorialContent["traditions"],
 };
 
-function a04Answered(answer: "yes" | "undecided" | "no", content: MemorialContent = EMPTY_CONTENT): MemorialContent {
+/** B02-L2 — A09 belongs with the death notice: these fixtures start from
+ * a family that answered A00 = "yes". */
+const A00_YES_CONTENT = { guidedFlow: { A00: { status: "completed", answer: "yes" } } } as unknown as MemorialContent;
+
+function a04Answered(answer: "yes" | "undecided" | "no", content: MemorialContent = A00_YES_CONTENT): MemorialContent {
   const committed = commitA04(content, answer);
   if (!committed.ok) throw new Error("test fixture: commitA04 unexpectedly failed");
   return committed.content;
@@ -135,7 +139,7 @@ describe("needsA09 — once resolved, never re-asked", () => {
 
 describe("Route integration — A09 sits exactly between the Ceremony block and A10", () => {
   it("firstIncompleteStep lands on A09 once A04-A08 are all resolved (A04 = yes)", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -156,7 +160,7 @@ describe("Route integration — A09 sits exactly between the Ceremony block and 
   });
 
   it("firstIncompleteStep lands on A09 immediately after A04 = no (A05-A08 non-applicable)", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -173,7 +177,7 @@ describe("Route integration — A09 sits exactly between the Ceremony block and 
   });
 
   it("firstIncompleteStep lands on A09 immediately after A04 = undecided", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -190,7 +194,7 @@ describe("Route integration — A09 sits exactly between the Ceremony block and 
   });
 
   it("firstIncompleteStep moves on to A10 once A09 is resolved too", () => {
-    const flow = humanFlowDefinition("announcement");
+    const flow = humanFlowDefinition();
     const state = {
       T03: { status: "completed" as const },
       T04: { status: "skipped" as const },
@@ -207,10 +211,42 @@ describe("Route integration — A09 sits exactly between the Ceremony block and 
     expect(firstIncompleteStep(flow, state)?.id).toBe("A10");
   });
 
-  it("A09 is absent from the remembrance route entirely", () => {
-    const flow = humanFlowDefinition("remembrance");
-    const route = flow.steps.filter((s) => flow.activeGroups.includes(s.group));
-    expect(route.some((s) => s.id === "A09")).toBe(false);
+  it("A09 is absent from the route when A00 is not yes (B02-L2, PO doctrine)", () => {
+    const flow = humanFlowDefinition();
+    for (const A00 of [{ status: "completed", answer: "no" }, { status: "skipped", answer: "later" }] as const) {
+      expect(applicableSteps(flow, { A00: { ...A00 } }).map((s) => s.id)).not.toContain("A09");
+    }
+  });
+});
+
+describe("needsA09 — B02-L2: conditioned by the death notice (PO doctrine)", () => {
+  const withA00 = (record: object) => ({ guidedFlow: { A00: record } }) as unknown as MemorialContent;
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ])("A00 = %s: never offered, even once the ceremony block is behind the family", (_answer, record) => {
+    expect(needsA09(a04Answered("no", withA00(record)))).toBe(false);
+  });
+
+  it("A00 never answered: never offered either", () => {
+    expect(needsA09(a04Answered("no", EMPTY_CONTENT))).toBe(false);
+  });
+
+  it("entries already written are kept when the answer becomes no, and A09 is offered again on yes", () => {
+    const withEntry = requireOk(
+      addTraditionsEntry(a04Answered("no"), {
+        id: "fixture-entry-kept",
+        origin: "custom",
+        suggestionId: null,
+        title: null,
+        text: "Un repère fictif.",
+      }),
+    );
+    const no = { ...withEntry, guidedFlow: { ...(withEntry as { guidedFlow: object }).guidedFlow, A00: { status: "completed", answer: "no" } } } as MemorialContent;
+    expect(needsA09(no)).toBe(false);
+    expect((no as { traditions: unknown }).traditions).toEqual((withEntry as { traditions: unknown }).traditions);
+    expect(needsA09(withEntry)).toBe(true);
   });
 });
 

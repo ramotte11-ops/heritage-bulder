@@ -83,7 +83,7 @@ const okPersist = (content: MemorialContent) => {
 
 async function readyResult(): Promise<HostResult> {
   const assembled = await assembleMemorial(
-    { editorialContext: "announcement", skin: "intemporel", skinVariant: "light", language: "fr", content: fullAnnouncement() },
+    { skin: "intemporel", skinVariant: "light", language: "fr", content: fullAnnouncement() },
     { resolveMedia: recordingResolver().resolve },
   );
   return { status: "ready", assembled };

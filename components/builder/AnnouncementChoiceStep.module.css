@@ -1,8 +1,9 @@
 /*
- * Mission 024 — T02's own body. Chrome (background, logo, signature,
- * progress bar) lives in BuilderScreen.module.css and is not repeated
- * here. Colors/typography reuse the exact T01 palette (mission brief
- * section 8) — nothing new introduced.
+ * A00's own body. Chrome (background, logo, signature, progress bar)
+ * lives in BuilderScreen.module.css. Typography, colors and card
+ * treatment follow the other Guided Flow questions (T02's two-card
+ * choice in particular); the three cards stay stacked at every width so
+ * each description keeps a comfortable line length.
  */
 
 .copy {
@@ -16,7 +17,9 @@
   font-family: var(--heritage-font-family-serif);
   font-weight: 600;
   font-size: 1.625rem;
+  line-height: 1.25;
   color: var(--heritage-text-primary);
+  text-wrap: balance;
 }
 
 @media (min-width: 40rem) {
@@ -27,13 +30,15 @@
 
 .subtitle {
   font-size: 0.9375rem;
+  line-height: 1.5;
   color: var(--heritage-text-secondary);
+  text-wrap: balance;
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--heritage-space-breathing); /* "espace avant CTA", same as T01 */
+  gap: var(--heritage-space-breathing);
 }
 
 .fieldset {
@@ -45,29 +50,7 @@
 .options {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem; /* T02 is allowed its own spacing — "respiration généreuse" */
-}
-
-/*
- * Desktop: two big cards side by side (Announcement & Tribute on the
- * left, Memory & Tribute on the right — DOM order, not a positioning
- * trick), balanced width. Same generic pattern as T01's `.options`
- * (mission brief section 9) but never forced onto T01's row — T02 has
- * exactly two cards, so this rule is declared independently rather
- * than importing T01's CSS module for a coincidentally-identical
- * selector.
- */
-@media (min-width: 40rem) {
-  .options {
-    flex-direction: row;
-    gap: 1.5rem;
-    align-items: stretch;
-  }
-
-  .options > * {
-    flex: 1 1 0;
-    min-width: 0;
-  }
+  gap: var(--heritage-space-md);
 }
 
 .cardTitle {
@@ -84,6 +67,18 @@
   font-family: var(--heritage-font-family-sans);
   font-size: 0.875rem;
   line-height: 1.45;
+  color: var(--heritage-text-secondary);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-md);
+}
+
+.hint {
+  text-align: center;
+  font-size: 0.8125rem;
   color: var(--heritage-text-secondary);
 }
 

@@ -10,9 +10,8 @@ import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
  * `memorials`: the family's confirmed Light/Dark ambiance.
  *
  * Kept in its OWN file rather than folded into `./actions.ts` for one
- * concrete reason, not just tidiness: `actions.ts`'s own
- * `saveEditorialContextAction` guard (actions.test.ts — "never deduces
- * the context from anything else") asserts that file's source contains
+ * concrete reason, not just tidiness: `actions.ts`'s former
+ * `saveEditorialContextAction` guard (removed with T02 in B02-L2) asserted that file's source contains
  * no mention of a skin at all, so that a context/skin coupling could
  * never sneak back in unnoticed. Adding this action there would trip
  * that guard on the word "skin" alone, for a reason that has nothing to
@@ -21,7 +20,7 @@ import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
  * concern is normal in this route — this is that same pattern, once
  * more, for T08.
  *
- * ## Same shape, same rules as `saveLanguageAction`/`saveEditorialContextAction`
+ * ## Same shape, same rules as `saveLanguageAction`
  *
  * Re-authorized on EVERY call (never once at render time, never trusting
  * a decision an earlier render made), the id used is `access.memorialId`

@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import type { SectionId } from "@/config/sections";
 import type { Skin, SkinVariant } from "@/config/skins";
 import { MEMORIAL_SECTION_ORDER } from "@/config/memorial-section-order";
@@ -44,7 +43,7 @@ import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-st
  *
  * Whether a section is relevant/applicable is decided ONLY by
  * `resolveSectionSelectionStatus` (lib/memorial/section-selection.ts) —
- * Hero structural, context filtering, Ceremony through A04 are never
+ * Hero structural, the death notice through A00, Ceremony through A04 are never
  * re-implemented here. This module's only contribution to that decision
  * is finally computing the generic `explicitContentSectionIds` signal
  * Mission 027 left for "a future caller that holds the content"
@@ -82,7 +81,7 @@ import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-st
 export type SectionCompositionState =
   /** Section-selection says the section has no place here. */
   | "notRelevant"
-  /** Exists for this context (`recommended`/`optionalAvailable`) but has
+  /** Exists in the catalog (`recommended`/`optionalAvailable`) but has
    * no real matter yet. */
   | "optional"
   /** Applicable, but its block is not finished yet. */
@@ -102,8 +101,6 @@ export interface ComposedSection {
 }
 
 export interface MemorialCompositionInput {
-  /** Non-null: the caller narrows it (a memorial past T02). */
-  editorialContext: EditorialContext;
   /** `memorials.skin_id` as read from the database — re-validated here,
    * never trusted as a bare TS type crossing that boundary. */
   skin: unknown;
@@ -115,7 +112,6 @@ export interface MemorialCompositionInput {
 }
 
 export interface MemorialComposition {
-  editorialContext: EditorialContext;
   /** `null` when the stored skin is not a known skin — every section is
    * then `noRenderer` at best (fail closed). */
   skin: Skin | null;
@@ -222,8 +218,8 @@ function compositionState(selection: SectionSelectionStatus, ready: boolean, ren
 /** The composition of one memorial. Total: never throws on any
  * `content`, and never mutates its input. */
 export function composeMemorial(input: MemorialCompositionInput): MemorialComposition {
-  const { editorialContext, skinVariant, content } = input;
-  const order = input.order ?? MEMORIAL_SECTION_ORDER[editorialContext];
+  const { skinVariant, content } = input;
+  const order = input.order ?? MEMORIAL_SECTION_ORDER;
 
   const skinResolution = resolveSkinRuntime(input.skin);
   const skin = skinResolution.status === "resolved" ? skinResolution.skin : null;
@@ -233,7 +229,6 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
 
   const sections = order.map((sectionId): ComposedSection => {
     const selection = resolveSectionSelectionStatus(sectionId, {
-      editorialContext,
       flowState,
       explicitContentSectionIds,
     });
@@ -244,7 +239,6 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
   });
 
   return {
-    editorialContext,
     skin,
     skinVariant,
     sections,

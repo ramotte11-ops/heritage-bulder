@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { EDITORIAL_CONTEXTS } from "@/config/memorial";
 import { OFFERS } from "@/config/offers";
 import { SECTION_IDS } from "@/config/sections";
 import { SKINS } from "@/config/skins";
@@ -12,27 +11,32 @@ import {
   type SectionSelectionInput,
 } from "./section-selection";
 
+/** B02-L2 — one single route: the death-notice sections follow A00. */
+const A00_YES: HumanFlowState = { A00: { status: "completed", answer: "yes" } };
+const A00_NO: HumanFlowState = { A00: { status: "completed", answer: "no" } };
+const A00_LATER: HumanFlowState = { A00: { status: "skipped", answer: "later" } };
+
+/** A family that chose to publish a death notice (A00 = yes). */
 const announcement = (
   flowState?: HumanFlowState,
   explicitContentSectionIds?: SectionSelectionInput["explicitContentSectionIds"],
 ): SectionSelectionInput => ({
-  editorialContext: "announcement",
-  flowState,
+  flowState: { ...A00_YES, ...flowState },
   explicitContentSectionIds,
 });
+/** A family that publishes no death notice (A00 = no). */
 const remembrance = (
   flowState?: HumanFlowState,
   explicitContentSectionIds?: SectionSelectionInput["explicitContentSectionIds"],
 ): SectionSelectionInput => ({
-  editorialContext: "remembrance",
-  flowState,
+  flowState: { ...A00_NO, ...flowState },
   explicitContentSectionIds,
 });
 
 describe("Hero/Footer — always structural, never selectable (mission brief section 2)", () => {
-  it("hero is structural in every editorial context, with or without answers", () => {
-    for (const editorialContext of EDITORIAL_CONTEXTS) {
-      expect(resolveSectionSelectionStatus("hero", { editorialContext })).toBe("structural");
+  it("hero is structural whatever A00 answered, with or without answers", () => {
+    for (const flowState of [undefined, {}, A00_YES, A00_NO, A00_LATER]) {
+      expect(resolveSectionSelectionStatus("hero", { flowState })).toBe("structural");
     }
   });
 
@@ -52,7 +56,7 @@ describe("Hero/Footer — always structural, never selectable (mission brief sec
   });
 });
 
-describe("announcement — death notice", () => {
+describe("A00 = yes — death notice", () => {
   it("is possible: recommended (mandatory, no content signal yet)", () => {
     expect(resolveSectionSelectionStatus("deathNotice", announcement())).toBe("recommended");
   });
@@ -63,17 +67,25 @@ describe("announcement — death notice", () => {
   });
 });
 
-describe("remembrance — death notice", () => {
-  it("is impossible (not relevant) in remembrance", () => {
+describe("A00 = no / later / unanswered — death notice", () => {
+  it("is not relevant", () => {
     expect(resolveSectionSelectionStatus("deathNotice", remembrance())).toBe("notRelevant");
+    expect(resolveSectionSelectionStatus("deathNotice", { flowState: A00_LATER })).toBe("notRelevant");
+    expect(resolveSectionSelectionStatus("deathNotice", {})).toBe("notRelevant");
   });
 
-  it("stays not relevant even if a content signal tries to force it — context always wins", () => {
+  it("stays not relevant even if a content signal (a notice already written) tries to force it — A00 always wins", () => {
     const input = remembrance(undefined, ["deathNotice"]);
     expect(resolveSectionSelectionStatus("deathNotice", input)).toBe("notRelevant");
   });
 
-  it("never appears in remembrance's bulk resolution as recommended, applicable, or available", () => {
+  it("returns as soon as A00 becomes yes again — the written notice was never deleted", () => {
+    const signal = ["deathNotice"] as const;
+    expect(resolveSectionSelectionStatus("deathNotice", remembrance(undefined, signal))).toBe("notRelevant");
+    expect(resolveSectionSelectionStatus("deathNotice", announcement(undefined, signal))).toBe("applicable");
+  });
+
+  it("never appears in the bulk resolution as recommended, applicable, or available", () => {
     const result = resolveSectionSelection(remembrance());
     expect(result.deathNotice).toBe("notRelevant");
   });
@@ -143,19 +155,18 @@ describe("A04 yes/no/undecided — ceremony applicability", () => {
   });
 });
 
-describe("remembrance — funeral traditions never automatically applicable", () => {
-  it("traditions is not relevant in remembrance at all", () => {
+describe("no death notice — traditions conditioned by the notice (PO doctrine, B01 decision 9)", () => {
+  it("traditions is not relevant without a death notice", () => {
     expect(resolveSectionSelectionStatus("traditions", remembrance())).toBe("notRelevant");
+    expect(resolveSectionSelectionStatus("traditions", { flowState: A00_LATER })).toBe("notRelevant");
   });
 
-  it("traditions stays not relevant in remembrance no matter what A04-shaped state is handed in", () => {
-    // Remembrance has no A04 concept, but nothing here should let a
-    // stray flowState turn traditions on regardless.
+  it("traditions stays not relevant no matter what A04 answered", () => {
     const input = remembrance({ A04: { status: "completed", answer: "yes" } });
     expect(resolveSectionSelectionStatus("traditions", input)).toBe("notRelevant");
   });
 
-  it("stays not relevant even if a content signal tries to force it — context always wins", () => {
+  it("stays not relevant even if a content signal (entries already written) tries to force it — A00 always wins", () => {
     const input = remembrance(undefined, ["traditions"]);
     expect(resolveSectionSelectionStatus("traditions", input)).toBe("notRelevant");
   });
@@ -198,11 +209,20 @@ describe("traditions — choix explicite uniquement (mission brief section 6/8)"
 describe("any offer/skin — never auto-enables religion/traditions (mission brief section 6/8)", () => {
   it("SectionSelectionInput structurally cannot carry a skin or offer", () => {
     const input: SectionSelectionInput = {
-      editorialContext: "announcement",
+      flowState: A00_YES,
       // @ts-expect-error — skin/offer must never be a valid input to this module.
       skin: "musulman",
     };
     expect(resolveSectionSelectionStatus("traditions", input)).toBe("optionalAvailable");
+  });
+
+  it("B02-L2 — SectionSelectionInput no longer carries an editorial context", () => {
+    const input: SectionSelectionInput = {
+      flowState: A00_NO,
+      // @ts-expect-error — the editorial context is historical data only, never read here.
+      editorialContext: "announcement",
+    };
+    expect(resolveSectionSelectionStatus("deathNotice", input)).toBe("notRelevant");
   });
 
   it("traditions' status is identical no matter which V1 skin/offer is in play, because none of them are ever read", () => {
@@ -223,7 +243,7 @@ describe("any offer/skin — never auto-enables religion/traditions (mission bri
 });
 
 describe("optional sections: optionalAvailable without matter, applicable with matter (mission brief section 9)", () => {
-  it("gallery has no default matter in either context", () => {
+  it("gallery has no default matter, with or without a death notice", () => {
     expect(resolveSectionSelectionStatus("gallery", announcement())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("gallery", remembrance())).toBe("optionalAvailable");
   });
@@ -250,37 +270,56 @@ describe("optional sections: optionalAvailable without matter, applicable with m
     expect(resolveSectionSelectionStatus("condolences", announcement())).toBe("optionalAvailable");
   });
 
-  it("story, testimonials, memoryMessage and video stay optional in remembrance without a signal", () => {
+  it("story, testimonials and video stay optional without a death notice and without a signal", () => {
     expect(resolveSectionSelectionStatus("story", remembrance())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("testimonials", remembrance())).toBe("optionalAvailable");
-    expect(resolveSectionSelectionStatus("memoryMessage", remembrance())).toBe("optionalAvailable");
     expect(resolveSectionSelectionStatus("video", remembrance())).toBe("optionalAvailable");
   });
 
-  it("story becomes applicable in remembrance once the signal names it", () => {
+  it("story becomes applicable without a death notice once the signal names it", () => {
     expect(resolveSectionSelectionStatus("story", remembrance(undefined, ["story"]))).toBe("applicable");
   });
 });
 
-describe("sections that don't belong to a context at all are hidden, not incomplete", () => {
-  it("condolences/deathNotice/ceremony/traditions are not relevant in remembrance", () => {
-    for (const id of ["condolences", "deathNotice", "ceremony", "traditions"] as const) {
-      expect(resolveSectionSelectionStatus(id, remembrance())).toBe("notRelevant");
+describe("sections hidden by the route are hidden, not incomplete", () => {
+  it("condolences/deathNotice/traditions are not relevant without a death notice (PO doctrine)", () => {
+    for (const flowState of [A00_NO, A00_LATER, {}]) {
+      for (const id of ["condolences", "deathNotice", "traditions"] as const) {
+        expect(resolveSectionSelectionStatus(id, { flowState })).toBe("notRelevant");
+      }
     }
   });
 
-  it("memoryMessage is not relevant in announcement", () => {
-    expect(resolveSectionSelectionStatus("memoryMessage", announcement())).toBe("notRelevant");
+  it("condolences stays merely available with a death notice", () => {
+    expect(resolveSectionSelectionStatus("condolences", announcement())).toBe("optionalAvailable");
+  });
+
+  it("the ceremony is independent of the death notice: A04 = yes makes it applicable either way", () => {
+    const a04Yes: HumanFlowState = { A04: { status: "completed", answer: "yes" } };
+    for (const flowState of [A00_YES, A00_NO, A00_LATER, {}]) {
+      expect(resolveSectionSelectionStatus("ceremony", { flowState: { ...flowState, ...a04Yes } })).toBe("applicable");
+    }
+  });
+
+  it("memoryMessage (the former Mémoire & Hommage section) is not part of the single route", () => {
+    for (const flowState of [A00_YES, A00_NO, A00_LATER]) {
+      expect(resolveSectionSelectionStatus("memoryMessage", { flowState })).toBe("notRelevant");
+    }
   });
 });
 
 describe("unknown/invalid state — fail-safe (mission brief section 12)", () => {
-  it("never throws for any SectionId / editorial context combination", () => {
-    for (const editorialContext of EDITORIAL_CONTEXTS) {
+  it("never throws for any SectionId / A00 combination", () => {
+    for (const flowState of [undefined, {}, A00_YES, A00_NO, A00_LATER]) {
       for (const id of SECTION_IDS) {
-        expect(() => resolveSectionSelectionStatus(id, { editorialContext })).not.toThrow();
+        expect(() => resolveSectionSelectionStatus(id, { flowState })).not.toThrow();
       }
     }
+  });
+
+  it("a malformed A00 answer fails closed: no death notice", () => {
+    const flowState = { A00: { status: "completed", answer: "maybe" } } as HumanFlowState;
+    expect(resolveSectionSelectionStatus("deathNotice", { flowState })).toBe("notRelevant");
   });
 
   it("an empty flowState never makes a sensitive section applicable (ceremony)", () => {

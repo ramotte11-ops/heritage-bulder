@@ -79,7 +79,6 @@ describe("AutosaveIndicator — wired into a real Guided Flow screen", () => {
     render(
       <PersonSheetStep
         language="fr"
-        editorialContext="announcement"
         content={{
           hero: { displayName: "Jean Dupont", birth: null, death: null, shortPhrase: null, photo: null },
           guidedFlow: { A01: { status: "completed" }, A04: { status: "completed", answer: "no" }, A09: { status: "skipped" } },

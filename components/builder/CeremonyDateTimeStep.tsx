@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -23,7 +22,6 @@ import styles from "./CeremonyDateTimeStep.module.css";
 
 interface CeremonyDateTimeStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A04 (answered "yes") is
    * already guaranteed done by the time this renders. */
   content: MemorialContent;
@@ -47,8 +45,8 @@ interface CeremonyDateTimeStepProps {
  * available regardless, and never touches `content.ceremony` itself —
  * mirrors `DeathNoticePrecisionsStep`'s own two-outcomes discipline.
  */
-export function CeremonyDateTimeStep({ language, editorialContext, content: initialContent, persist }: CeremonyDateTimeStepProps) {
-  const router = useRouter();
+export function CeremonyDateTimeStep({ language, content: initialContent, persist }: CeremonyDateTimeStepProps) {
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,7 +99,7 @@ export function CeremonyDateTimeStep({ language, editorialContext, content: init
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -125,7 +123,7 @@ export function CeremonyDateTimeStep({ language, editorialContext, content: init
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -138,7 +136,7 @@ export function CeremonyDateTimeStep({ language, editorialContext, content: init
     );
   }
 
-  const progress = ceremonyStepProgress(editorialContext, content);
+  const progress = ceremonyStepProgress(content);
   const hasAnyValue = read.ceremony.date !== null || read.ceremony.time !== null;
 
   return (

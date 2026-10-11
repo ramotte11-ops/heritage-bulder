@@ -108,9 +108,9 @@
  *
  * Mission 039B adds seven more `deathNotice` keys for A03 (aperçu de
  * l'avis de décès) — the minimum system texts the mission brief itself
- * names, reusing `context.announcementTitle` (the "Annonce & Hommage"
- * eyebrow — already exists) and `common.continue` (A03's own Continue)
- * rather than duplicating either. `previewTitle` is the fixed "Avis de
+ * names, reusing `common.continue` (A03's own Continue) rather than
+ * duplicating it (its former "Annonce & Hommage" eyebrow, read from the
+ * T02 keys, was removed with T02 in B02-L2). `previewTitle` is the fixed "Avis de
  * décès" card title. `blockLocation`/`blockFamilyMessage`/`blockThought`/
  * `blockQuote`/`blockOther` are A03's own DISPLAY labels for the five A02
  * precisions — deliberately separate keys from A02's own
@@ -217,18 +217,75 @@ export const TRANSLATION_KEYS = [
   // Mission 023 — T01 (Welcome + choix de langue).
   "onboarding.chooseLanguage",
   "builder.notConfiguredYet",
-  // Mission 024 — T02 (choix du contexte éditorial).
-  "context.title",
-  "context.subtitle",
-  "context.announcementTitle",
-  "context.announcementDescription",
-  "context.remembranceTitle",
-  "context.remembranceDescription",
+  // Builder Welcome — between T01 and the Guided Flow.
+  "welcome.title",
+  "welcome.intro",
+  "welcome.reassurance",
+  "welcome.cta",
+  // A00 — choix de l'annonce de décès (après l'identité, avant le Hero).
+  "announcementChoice.title",
+  "announcementChoice.subtitle",
+  "announcementChoice.yesTitle",
+  "announcementChoice.yesDescription",
+  "announcementChoice.noTitle",
+  "announcementChoice.noDescription",
+  "announcementChoice.laterTitle",
+  "announcementChoice.laterDescription",
+  "announcementChoice.changeLater",
   // Mission 026 — Live Preview layout mechanic.
   "preview.view",
   "preview.hide",
   "preview.backToCreation",
   "preview.unavailable",
+  // B03 — « Mon parcours » (sommaire permanent et révision des réponses).
+  "journey.open",
+  "journey.title",
+  "journey.intro",
+  "journey.close",
+  "journey.resume",
+  "journey.revising",
+  "journey.review",
+  "journey.continueHere",
+  "journey.saveFailed",
+  "journey.hiddenNote",
+  "journey.section.person",
+  "journey.section.deathNotice",
+  "journey.section.ceremony",
+  "journey.section.traditions",
+  "journey.section.personSheet",
+  "journey.section.gallery",
+  "journey.screen.identity",
+  "journey.screen.announcementChoice",
+  "journey.screen.phrase",
+  "journey.screen.photo",
+  "journey.screen.crop",
+  "journey.screen.reveal",
+  "journey.screen.announcementText",
+  "journey.screen.announcementDetails",
+  "journey.screen.announcementPreview",
+  "journey.screen.ceremonyMoment",
+  "journey.screen.ceremonyDateTime",
+  "journey.screen.ceremonyVenue",
+  "journey.screen.ceremonyAddress",
+  "journey.screen.ceremonyNote",
+  "journey.screen.traditions",
+  "journey.screen.personSheet",
+  "journey.screen.gallery",
+  "journey.status.done",
+  "journey.status.current",
+  "journey.status.toComplete",
+  "journey.status.upcoming",
+  "journey.status.hidden",
+  "journey.sectionStatus.done",
+  "journey.sectionStatus.inProgress",
+  "journey.sectionStatus.upcoming",
+  "journey.sectionStatus.hidden",
+  "journey.status.deferred",
+  "journey.sectionStatus.deferred",
+  "journey.deferredNote",
+  "journey.pending",
+  "journey.pendingStay",
+  "journey.pendingLeave",
   // Mission 032 — PAGE A (T03 + T04) and PAGE B (T05).
   "hero.identityTitle",
   "hero.identitySubtitle",

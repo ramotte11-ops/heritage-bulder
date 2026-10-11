@@ -55,7 +55,6 @@ const PHOTO = { media: MEDIA, readUrl: "https://storage.test/signed/reveal" };
 function defaultProps() {
   return {
     language: "fr" as const,
-    editorialContext: "remembrance" as const,
     content: CONTENT as never,
     photo: PHOTO as never,
     initialSkinVariant: "light" as const,

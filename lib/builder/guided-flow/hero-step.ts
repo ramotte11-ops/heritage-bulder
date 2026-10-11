@@ -1,4 +1,3 @@
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import type { HeroContent, HeroCrop, HeroDate } from "@/types/hero";
@@ -238,12 +237,8 @@ export function resolveHeroFlowState(content: MemorialContent, hero: HeroContent
  * Reuses `guidedFlowProgress`/`humanFlowDefinition` unmodified (mission
  * brief section 8: audit, don't bricoler, the engine).
  */
-export function heroStepProgress(
-  editorialContext: EditorialContext,
-  content: MemorialContent,
-  hero: HeroContent,
-): number {
-  return guidedFlowProgress(humanFlowDefinition(editorialContext), resolveHeroFlowState(content, hero));
+export function heroStepProgress(content: MemorialContent, hero: HeroContent): number {
+  return guidedFlowProgress(humanFlowDefinition(), resolveHeroFlowState(content, hero));
 }
 
 // ---------------------------------------------------------------------

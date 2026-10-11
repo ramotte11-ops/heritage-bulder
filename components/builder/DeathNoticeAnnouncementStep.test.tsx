@@ -38,7 +38,6 @@ const CONTENT = {
 function baseProps(overrides: Partial<Parameters<typeof DeathNoticeAnnouncementStep>[0]> = {}) {
   return {
     language: "fr" as const,
-    editorialContext: "announcement" as const,
     content: CONTENT,
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),
     ...overrides,

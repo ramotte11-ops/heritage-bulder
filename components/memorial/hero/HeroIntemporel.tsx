@@ -2,7 +2,6 @@
 
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { SkinVariant } from "@/config/skins";
 import type { HeroContent } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
@@ -64,8 +63,8 @@ import styles from "./HeroIntemporel.module.css";
  * The doctrine otherwise carries forward unchanged: this component
  * renders exactly the Studio's own master PNG (one per skin_variant ×
  * breakpoint), the family photo (positioned into the master's own
- * transparent photo window), and the family's text (context label,
- * name, dates, shortPhrase — positioned into the master's own text
+ * transparent photo window), and the family's text (name, dates,
+ * shortPhrase — positioned into the master's own text
  * zone). No paper, botanical, postcard, seal, paperclip, frame, texture
  * or shadow is drawn by this component — all of it is pixels inside the
  * master.
@@ -96,19 +95,21 @@ import styles from "./HeroIntemporel.module.css";
  * units, no context label. Light uses the separator baked into its frozen
  * plate (never a second one); Dark draws the runtime separator
  * reproduced from that same ornament. Below 320px, 431–959px and Desktop
- * keep the legacy flow; the context label is additionally hidden on
- * Desktop (HeroIntemporel.module.css).
+ * keep the legacy flow.
  *
- * ## Text zone + context label (mission sections 1, 5, 10)
+ * ## Text zone (mission sections 1, 5, 10)
  *
  * `text_zone_normalized` lays out a plain conditional vertical flow —
- * context label ("Mémoire & Hommage" / "Annonce & Hommage", Mission
- * 024's own approved copy in `context.announcementTitle`/
- * `context.remembranceTitle`, EN/FR/ES via the existing i18n system,
- * never hardcoded), name, dates (if any, joined by an en dash — never
+ * name, dates (if any, joined by an en dash — never
  * an orphaned separator when only one is present), shortPhrase (if
  * any) — nothing rendered, and no space reserved, for a field that has
  * no content.
+ *
+ * B02-L2 — the former context label ("Annonce & Hommage" / "Mémoire &
+ * Hommage") is removed for good, without replacement text (QG/PO
+ * decision). The legacy flow keeps the empty line it occupied (a
+ * `::before` spacer in HeroIntemporel.module.css), so name, dates and
+ * phrase never move to compensate.
  *
  * ## Name fitting (mission section 6, QG-locked three-tier rule)
  *
@@ -163,7 +164,6 @@ export interface HeroIntemporelProps {
    */
   photo: { readUrl: string } | null;
   skinVariant: SkinVariant;
-  editorialContext: EditorialContext;
   language: Language;
 }
 
@@ -679,7 +679,7 @@ function MobileRuntimeSeparator() {
   );
 }
 
-export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, language }: HeroIntemporelProps) {
+export function HeroIntemporel({ hero, photo, skinVariant, language }: HeroIntemporelProps) {
   const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
   const mobileLightMaskId = `hero-mobile-light-photo-mask-${useId().replace(/:/g, "")}`;
   const desktopLightClipId = `hero-desktop-light-photo-clip-${useId().replace(/:/g, "")}`;
@@ -692,10 +692,6 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
   const geometry = resolveHeroCropGeometry(imageSize, crop);
 
   const dateRangeText = formatHeroDateRange(hero.birth, hero.death, language);
-  const contextLabel = translate(
-    language,
-    editorialContext === "announcement" ? "context.announcementTitle" : "context.remembranceTitle",
-  );
 
   const {
     ref: nameRef,
@@ -984,7 +980,6 @@ export function HeroIntemporel({ hero, photo, skinVariant, editorialContext, lan
           data-hero-desktop-light-layer={skinVariant === "light" ? "dynamic-content" : undefined}
           data-hero-desktop-dark-layer={skinVariant === "dark" ? "dynamic-content" : undefined}
         >
-          <p className={styles.contextLabel}>{contextLabel}</p>
           <h1
             ref={nameRef}
             className={styles.displayedName}

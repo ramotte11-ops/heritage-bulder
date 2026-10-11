@@ -506,20 +506,20 @@ describe("readGuidedFlowState — defensive parsing, fail-safe", () => {
 
 describe("heroStepProgress — real Mission 025 engine reuse", () => {
   it("progress is 0 before anything is touched and grows as T03/T04/T05 resolve", () => {
-    const before = heroStepProgress("remembrance", EMPTY_CONTENT, EMPTY_HERO_CONTENT);
+    const before = heroStepProgress(EMPTY_CONTENT, EMPTY_HERO_CONTENT);
 
     const afterPageA = pageADoneWithDate();
     const heroA = readHeroForEditing(afterPageA);
     expect(heroA.status).toBe("ready");
     const midProgress =
-      heroA.status === "ready" ? heroStepProgress("remembrance", afterPageA, heroA.hero) : 0;
+      heroA.status === "ready" ? heroStepProgress(afterPageA, heroA.hero) : 0;
 
     const committed = commitPageB(afterPageA);
     expect(committed.ok).toBe(true);
     const afterPageB = committed.ok ? committed.content : afterPageA;
     const heroB = readHeroForEditing(afterPageB);
     expect(heroB.status).toBe("ready");
-    const endProgress = heroB.status === "ready" ? heroStepProgress("remembrance", afterPageB, heroB.hero) : 0;
+    const endProgress = heroB.status === "ready" ? heroStepProgress(afterPageB, heroB.hero) : 0;
 
     expect(before).toBe(0);
     expect(midProgress).toBeGreaterThan(before);
@@ -533,20 +533,23 @@ describe("heroStepProgress — real Mission 025 engine reuse", () => {
       displayName: "Jean Dupont",
       birth: { precision: "year", year: 1950 },
     };
-    const autosaved = heroStepProgress("remembrance", autosavedNameAndDate(), hero);
-    const committed = heroStepProgress("remembrance", pageADoneWithDate(), hero);
+    const autosaved = heroStepProgress(autosavedNameAndDate(), hero);
+    const committed = heroStepProgress(pageADoneWithDate(), hero);
     expect(committed).toBeGreaterThan(autosaved);
   });
 
-  it("never assumes announcement and remembrance share the same route length", () => {
+  it("B02-L2 — the route length follows A00: a death notice (yes) adds steps, no/later do not", () => {
     const hero: HeroContent = {
       ...EMPTY_HERO_CONTENT,
       displayName: "Jean Dupont",
       birth: { precision: "year", year: 1950 },
     };
-    const announcementProgress = heroStepProgress("announcement", pageADoneWithDate(), hero);
-    const remembranceProgress = heroStepProgress("remembrance", pageADoneWithDate(), hero);
-    expect(announcementProgress).not.toBe(remembranceProgress);
+    const withNotice = heroStepProgress(withA00Yes(pageADoneWithDate()), hero);
+    const withoutNotice = heroStepProgress(
+      { ...pageADoneWithDate(), guidedFlow: { ...readGuidedFlowState(pageADoneWithDate()), A00: { status: "completed", answer: "no" } } } as MemorialContent,
+      hero,
+    );
+    expect(withNotice).not.toBe(withoutNotice);
   });
 });
 
@@ -1242,9 +1245,15 @@ describe("resolveHeroFlowState — T08 dynamically re-derived on top of whatever
   });
 });
 
-describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission 035 section 19)", () => {
-  it("resolves the engine's next incomplete step to A01 once T08 is completed, for announcement", () => {
-    const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
+/** A00 answered "yes" on top of `content` — the announcement steps apply. */
+function withA00Yes(content: MemorialContent): MemorialContent {
+  const flow = { ...readGuidedFlowState(content), A00: { status: "completed" as const, answer: "yes" } };
+  return { ...content, guidedFlow: flow } as MemorialContent;
+}
+
+describe("routing after T08 — A01 with a death notice, A04 without (Mission 035 section 19, B02-L2)", () => {
+  it("resolves the engine's next incomplete step to A01 once T08 is completed, for announcement (A00 = yes)", () => {
+    const committed = commitPageE(withA00Yes(pageDDone()), heroMedia({ id: MEDIA_ID_A }));
     expect(committed.ok).toBe(true);
     if (!committed.ok) return;
 
@@ -1253,11 +1262,11 @@ describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission
     if (read.status !== "ready") return;
     const state = resolveHeroFlowState(committed.content, read.hero);
 
-    const next = firstIncompleteStep(humanFlowDefinition("announcement"), state);
+    const next = firstIncompleteStep(humanFlowDefinition(), state);
     expect(next?.id).toBe("A01");
   });
 
-  it("resolves the engine's next incomplete step to M01 once T08 is completed, for remembrance", () => {
+  it("resolves the engine's next incomplete step to A00 while the death-notice choice is still unanswered", () => {
     const committed = commitPageE(pageDDone(), heroMedia({ id: MEDIA_ID_A }));
     expect(committed.ok).toBe(true);
     if (!committed.ok) return;
@@ -1267,17 +1276,33 @@ describe("routing after T08 — announcement -> A01, remembrance -> M01 (Mission
     if (read.status !== "ready") return;
     const state = resolveHeroFlowState(committed.content, read.hero);
 
-    const next = firstIncompleteStep(humanFlowDefinition("remembrance"), state);
-    expect(next?.id).toBe("M01");
+    expect(firstIncompleteStep(humanFlowDefinition(), state)?.id).toBe("A00");
+  });
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ] as const)("resolves the engine's next incomplete step to A04 once T08 is completed, for A00 = %s", (_answer, record) => {
+    const base = pageDDone();
+    const withChoice = { ...base, guidedFlow: { ...readGuidedFlowState(base), A00: { ...record } } } as MemorialContent;
+    const committed = commitPageE(withChoice, heroMedia({ id: MEDIA_ID_A }));
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const read = readHeroForEditing(committed.content);
+    expect(read.status).toBe("ready");
+    if (read.status !== "ready") return;
+    const state = resolveHeroFlowState(committed.content, read.hero);
+
+    expect(firstIncompleteStep(humanFlowDefinition(), state)?.id).toBe("A04");
   });
 
   it("never resolves past T08 while it is still incomplete", () => {
     const read = readHeroForEditing(pageDDone());
     expect(read.status).toBe("ready");
     if (read.status !== "ready") return;
-    const state = resolveHeroFlowState(pageDDone(), read.hero);
+    const state = resolveHeroFlowState(withA00Yes(pageDDone()), read.hero);
 
-    expect(firstIncompleteStep(humanFlowDefinition("announcement"), state)?.id).toBe("T08");
-    expect(firstIncompleteStep(humanFlowDefinition("remembrance"), state)?.id).toBe("T08");
+    expect(firstIncompleteStep(humanFlowDefinition(), state)?.id).toBe("T08");
   });
 });

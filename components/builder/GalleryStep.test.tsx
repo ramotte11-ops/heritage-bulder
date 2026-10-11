@@ -67,7 +67,6 @@ const finalized = (mediaId: string) => ({ ok: true, value: { id: mediaId, purpos
 function props(overrides: Partial<Parameters<typeof GalleryStep>[0]> = {}) {
   return {
     language: "fr" as const,
-    editorialContext: "announcement" as const,
     content: contentWith(0),
     thumbnails: {},
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),

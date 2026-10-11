@@ -12,6 +12,7 @@ import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
 import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import { translate, translateWith } from "@/lib/i18n/translate";
+import { usePendingInput } from "./journey/pending-input";
 import { precheckPhotoFile } from "@/lib/media/precheck-upload";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
@@ -147,6 +148,9 @@ export function GalleryWorkshop({
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  // B03 — photos still uploading (or failed) are not in the draft yet:
+  // « Mon parcours » asks before leaving.
+  usePendingInput(pending.length > 0 || committing);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");

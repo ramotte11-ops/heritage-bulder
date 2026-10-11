@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
-import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
@@ -22,7 +21,6 @@ import styles from "./CeremonyVenueStep.module.css";
 
 interface CeremonyVenueStepProps {
   language: Language;
-  editorialContext: EditorialContext;
   /** The memorial's current draft content — A05 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
@@ -34,8 +32,8 @@ interface CeremonyVenueStepProps {
  * own découpage) — never a full address (that is A07's own field).
  * Facultatif, passable.
  */
-export function CeremonyVenueStep({ language, editorialContext, content: initialContent, persist }: CeremonyVenueStepProps) {
-  const router = useRouter();
+export function CeremonyVenueStep({ language, content: initialContent, persist }: CeremonyVenueStepProps) {
+  const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,7 +81,7 @@ export function CeremonyVenueStep({ language, editorialContext, content: initial
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   async function handleSkip() {
@@ -107,7 +105,7 @@ export function CeremonyVenueStep({ language, editorialContext, content: initial
       return;
     }
 
-    router.refresh();
+    stepDone();
   }
 
   if (read.status !== "ready") {
@@ -120,7 +118,7 @@ export function CeremonyVenueStep({ language, editorialContext, content: initial
     );
   }
 
-  const progress = ceremonyStepProgress(editorialContext, content);
+  const progress = ceremonyStepProgress(content);
 
   return (
     <BuilderScreen
