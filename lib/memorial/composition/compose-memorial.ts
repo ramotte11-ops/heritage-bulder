@@ -28,6 +28,7 @@ import {
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { isA09Resolved } from "@/lib/builder/guided-flow/traditions-step";
 import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-step";
+import { ARCHIVABLE_SECTIONS, isHideableSection, readHiddenSections } from "@/lib/memorial/section-visibility";
 
 /**
  * Fondation Memorial assemblé — the pure composition model.
@@ -89,7 +90,11 @@ export type SectionCompositionState =
   /** Applicable and ready, but no validated renderer for this skin. */
   | "noRenderer"
   /** Applicable, ready, and a renderer exists. */
-  | "renderable";
+  | "renderable"
+  /** Would be `renderable`, but the family hid it from the main flow
+   * (« Gérer les rubriques visibles », lib/memorial/section-visibility.ts).
+   * Its content is untouched; it is never rendered in the flow. */
+  | "hidden";
 
 export interface ComposedSection {
   sectionId: SectionId;
@@ -98,6 +103,10 @@ export interface ComposedSection {
   ready: boolean;
   rendererKey: RendererKey | null;
   state: SectionCompositionState;
+  /** The family chose to hide this section — whatever its state (a
+   * hidden section that is not ready yet stays `pending`, and will be
+   * `hidden`, not shown, once ready). */
+  hiddenByFamily: boolean;
 }
 
 export interface MemorialCompositionInput {
@@ -120,6 +129,11 @@ export interface MemorialComposition {
   sections: ComposedSection[];
   /** The ordered subset whose state is `renderable`. */
   renderable: SectionId[];
+  /** Hidden by the family, would otherwise be shown, and archivable
+   * (death notice, ceremony): consultable through a discreet link, in a
+   * secondary presentation — never in the main flow. Never lists a
+   * section that was never filled in or does not apply. */
+  archived: SectionId[];
 }
 
 type ReadinessRule = (content: MemorialContent) => boolean;
@@ -208,11 +222,17 @@ export function resolveExplicitContentSectionIds(content: MemorialContent): Sect
   return ids;
 }
 
-function compositionState(selection: SectionSelectionStatus, ready: boolean, rendererKey: RendererKey | null): SectionCompositionState {
+function compositionState(
+  selection: SectionSelectionStatus,
+  ready: boolean,
+  rendererKey: RendererKey | null,
+  hiddenByFamily: boolean,
+): SectionCompositionState {
   if (selection === "notRelevant") return "notRelevant";
   if (!isSectionApplicable(selection)) return "optional";
   if (!ready) return "pending";
-  return rendererKey === null ? "noRenderer" : "renderable";
+  if (rendererKey === null) return "noRenderer";
+  return hiddenByFamily ? "hidden" : "renderable";
 }
 
 /** The composition of one memorial. Total: never throws on any
@@ -226,6 +246,7 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
 
   const flowState = resolveHeroFlowState(content, readHero(content));
   const explicitContentSectionIds = resolveExplicitContentSectionIds(content);
+  const hidden = readHiddenSections(content);
 
   const sections = order.map((sectionId): ComposedSection => {
     const selection = resolveSectionSelectionStatus(sectionId, {
@@ -235,7 +256,15 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
     const rule = SECTION_READINESS[sectionId];
     const ready = rule !== undefined && rule(content);
     const rendererKey = resolveSectionRenderer(sectionId, skin);
-    return { sectionId, selection, ready, rendererKey, state: compositionState(selection, ready, rendererKey) };
+    const hiddenByFamily = hidden.includes(sectionId) && isHideableSection(sectionId, skin);
+    return {
+      sectionId,
+      selection,
+      ready,
+      rendererKey,
+      hiddenByFamily,
+      state: compositionState(selection, ready, rendererKey, hiddenByFamily),
+    };
   });
 
   return {
@@ -243,5 +272,8 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
     skinVariant,
     sections,
     renderable: sections.filter((section) => section.state === "renderable").map((section) => section.sectionId),
+    archived: sections
+      .filter((section) => section.state === "hidden" && ARCHIVABLE_SECTIONS.includes(section.sectionId))
+      .map((section) => section.sectionId),
   };
 }

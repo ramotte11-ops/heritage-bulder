@@ -1,3 +1,4 @@
+import type { SectionId } from "@/config/sections";
 import type { MemorialContent } from "@/types/memorial";
 import { readGuidedFlowState } from "./flow-state";
 import {
@@ -69,6 +70,25 @@ import { isA13Resolved, needsA13 } from "./gallery-step";
 
 export const JOURNEY_SECTIONS = ["person", "deathNotice", "ceremony", "traditions", "personSheet", "gallery"] as const;
 export type JourneySection = (typeof JOURNEY_SECTIONS)[number];
+
+/**
+ * The memorial section each « Mon parcours » block builds — what
+ * « Gérer les rubriques visibles » hides or shows. `person` builds the
+ * Hero, which is never hidden.
+ *
+ * Adding a rubrique to « Mon parcours » = one id here, its screens in
+ * `JOURNEY_SCREENS`, one label per language (`journey.section.<id>`).
+ * The panel renders whatever this catalog holds, and never a block
+ * without a screen — an announced but unbuilt rubrique stays invisible.
+ */
+export const JOURNEY_SECTION_MEMORIAL_SECTION: Readonly<Record<JourneySection, SectionId>> = {
+  person: "hero",
+  deathNotice: "deathNotice",
+  ceremony: "ceremony",
+  traditions: "traditions",
+  personSheet: "story",
+  gallery: "gallery",
+};
 
 export const JOURNEY_SCREEN_IDS = [
   "identity",
@@ -246,7 +266,7 @@ export function resolveJourney(content: MemorialContent, revising: JourneyScreen
   const sections = JOURNEY_SECTIONS.map((id): JourneySectionState => {
     const own = screens.filter((s) => s.section === id);
     return { id, status: sectionStatus(own), screens: own };
-  });
+  }).filter((section) => section.screens.length > 0);
   return { sections, current: currentJourneyScreen(content), revising };
 }
 

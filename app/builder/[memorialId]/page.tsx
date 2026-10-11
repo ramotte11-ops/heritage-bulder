@@ -72,6 +72,9 @@ import {
   retireGalleryPhotoAction,
 } from "./gallery-media-actions";
 import { saveSkinVariantAction } from "./hero-reveal-actions";
+import { saveSectionVisibilityAction } from "./visibility-actions";
+import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
+import { resolveVisibilityEntries } from "@/lib/memorial/visibility-entries";
 import { loadMemorialPreviewAction } from "./preview-actions";
 import styles from "./page.module.css";
 
@@ -385,6 +388,8 @@ export default async function BuilderMemorialPage({
   // nothing here is handed to it but the authorized id.
   const memorialLanguage = resumed.memorial.language;
   const memorialSkinVariant = resumed.memorial.skinVariant;
+  const memorialSkinId = resumed.memorial.skin;
+  const saveVisibility = saveSectionVisibilityAction.bind(null, access.memorialId);
   const memorialSkin = resolveSkinRuntime(resumed.memorial.skin);
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
@@ -420,6 +425,14 @@ export default async function BuilderMemorialPage({
                 snapshot: resolveJourney(journeyContent, revising),
                 builderPath,
                 skinVariant: memorialSkinVariant,
+                // « Gérer les rubriques visibles »: the rows come from the
+                // same composition the Preview assembles.
+                visibility: {
+                  sections: resolveVisibilityEntries(
+                    composeMemorial({ skin: memorialSkinId, skinVariant: memorialSkinVariant, content: journeyContent }),
+                  ),
+                  save: saveVisibility,
+                },
               }
         }
       >

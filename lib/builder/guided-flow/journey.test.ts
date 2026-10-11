@@ -7,6 +7,8 @@ import { readGuidedFlowState } from "./flow-state";
 import {
   JOURNEY_SCREEN_IDS,
   JOURNEY_SCREENS,
+  JOURNEY_SECTIONS,
+  JOURNEY_SECTION_MEMORIAL_SECTION,
   currentJourneyScreen,
   isJourneyScreenId,
   resolveJourney,
@@ -49,6 +51,19 @@ describe("catalog", () => {
     for (const value of ["", "IDENTITY", "T03", "javascript:alert(1)", ["identity"], 3, undefined, null]) {
       expect(isJourneyScreenId(value)).toBe(false);
     }
+  });
+});
+
+describe("« Mon parcours » is generic over its catalog (évolutivité)", () => {
+  it("every rubrique has screens, a memorial section, and is listed — an unbuilt one never shows", () => {
+    for (const id of JOURNEY_SECTIONS) {
+      expect(JOURNEY_SCREENS.some((s) => s.section === id), id).toBe(true);
+      expect(JOURNEY_SECTION_MEMORIAL_SECTION[id]).toBeTruthy();
+    }
+    expect(resolveJourney(AFTER_WELCOME).sections.map((s) => s.id)).toEqual([...JOURNEY_SECTIONS]);
+    expect(resolveJourney(AFTER_WELCOME).sections.every((s) => s.screens.length > 0)).toBe(true);
+    expect(JOURNEY_SECTION_MEMORIAL_SECTION.person).toBe("hero");
+    expect(JOURNEY_SECTION_MEMORIAL_SECTION.personSheet).toBe("story");
   });
 });
 

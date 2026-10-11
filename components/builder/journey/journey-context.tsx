@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { JourneyScreenId, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
+import type { SectionId } from "@/config/sections";
+import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { applyBeforeUnloadGuard } from "@/lib/builder/use-autosave";
 import {
@@ -38,6 +40,18 @@ export interface JourneyNavigation {
   /** The current screen holds input the autosave cannot save yet
    * (./pending-input.tsx) — « Mon parcours » asks before leaving. */
   hasPendingInput: () => boolean;
+  /** « Gérer les rubriques visibles ». `null` → the entry is absent (a
+   * host that does not provide it: the QG demo, unit tests). */
+  visibility?: JourneyVisibility | null;
+}
+
+export interface JourneyVisibility {
+  /** Computed server-side from the composition (`resolveVisibilityEntries`). */
+  sections: SectionVisibilityEntry[];
+  /** Drains the current screen's autosave, saves the choice, refreshes
+   * the route (the screen stays mounted, its fields untouched). Resolves
+   * `false` — nothing changed — if either save fails. */
+  setVisible: (sectionId: SectionId, visible: boolean) => Promise<boolean>;
 }
 
 export const JourneyContext = createContext<JourneyNavigation | null>(null);
@@ -72,12 +86,19 @@ export function RouteJourneyProvider({
   language,
   snapshot,
   skinVariant = null,
+  visibility = null,
   builderPath,
   children,
 }: {
   language: Language;
   snapshot: JourneySnapshot;
   skinVariant?: SkinVariant | null;
+  /** « Gérer les rubriques visibles »: the rows, and the bound
+   * `saveSectionVisibilityAction` for the AUTHORIZED memorial. */
+  visibility?: {
+    sections: SectionVisibilityEntry[];
+    save: (sectionId: string, visible: boolean) => Promise<void>;
+  } | null;
   builderPath: string;
   children: ReactNode;
 }) {
@@ -124,8 +145,24 @@ export function RouteJourneyProvider({
         else router.refresh();
       },
       hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
+      visibility:
+        visibility === null
+          ? null
+          : {
+              sections: visibility.sections,
+              async setVisible(sectionId, visible) {
+                if (!(await drained())) return false;
+                try {
+                  await visibility.save(sectionId, visible);
+                } catch {
+                  return false;
+                }
+                router.refresh();
+                return true;
+              },
+            },
     };
-  }, [language, snapshot, skinVariant, builderPath, router, registry, pendingInputs]);
+  }, [language, snapshot, skinVariant, visibility, builderPath, router, registry, pendingInputs]);
 
   return (
     <PendingInputRegistryContext.Provider value={pendingInputs}>

@@ -1,0 +1,47 @@
+/*
+ * The secondary presentation of hidden-but-archived sections: a quiet
+ * strip after the memorial's flow, in the Builder's semantic tokens.
+ * Closed: one underlined line per section. Open: the section's own
+ * renderer, full width, exactly as validated.
+ */
+
+.archives {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 1.5rem 0 2.5rem;
+  background: var(--heritage-surface-page);
+  border-top: 1px solid var(--heritage-border-soft);
+}
+
+.entry {
+  width: 100%;
+}
+
+.summary {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 0.625rem 1rem;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.content {
+  margin-top: 1rem;
+}

@@ -79,6 +79,11 @@ export interface AssembledMemorial {
   language: Language;
   /** In composition order. Always empty when `unavailable`. */
   sections: AssembledSection[];
+  /** Hidden by the family but archivable (`composition.archived`):
+   * assembled exactly like a flow section, rendered only behind a
+   * discreet link in a secondary presentation — never in the flow.
+   * Always empty when `unavailable`. */
+  archivedSections: AssembledSection[];
   /** Renderable sections that could not be assembled, in order. */
   failures: AssemblyFailure[];
 }
@@ -114,10 +119,13 @@ export async function assembleMemorial(
   };
 
   const sections: AssembledSection[] = [];
+  const archivedSections: AssembledSection[] = [];
   const failures: AssemblyFailure[] = [];
 
   for (const composed of composition.sections) {
-    if (composed.state !== "renderable") continue;
+    const archived = composition.archived.includes(composed.sectionId);
+    if (composed.state !== "renderable" && !archived) continue;
+    const target = archived ? archivedSections : sections;
 
     const rendererKey = composed.rendererKey;
     if (rendererKey === null) {
@@ -128,7 +136,7 @@ export async function assembleMemorial(
     const adapter = RENDERER_ADAPTERS[rendererKey] as RendererAdapter<typeof rendererKey> | undefined;
     const result = await runAdapter(adapter, context);
     if (result.ok) {
-      sections.push({ sectionId: composed.sectionId, rendererKey, props: result.props } as AssembledSection);
+      target.push({ sectionId: composed.sectionId, rendererKey, props: result.props } as AssembledSection);
     } else {
       failures.push({ sectionId: composed.sectionId, rendererKey, reason: result.reason });
     }
@@ -143,6 +151,7 @@ export async function assembleMemorial(
     skinVariant: composition.skinVariant,
     language,
     sections: heroAssembled ? sections : [],
+    archivedSections: heroAssembled ? archivedSections : [],
     failures,
   };
 }

@@ -3,6 +3,7 @@ import type { RendererKey } from "@/config/memorial-section-renderers";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import type { AssembledSection, RendererPropsMap } from "@/lib/memorial/assembly/renderer-adapters";
 import { RENDERER_COMPONENTS } from "./renderer-registry";
+import { MemorialArchives } from "./MemorialArchives";
 
 /**
  * Étape 2 — Assembleur du Memorial: renders an `AssembledMemorial`
@@ -22,6 +23,11 @@ import { RENDERER_COMPONENTS } from "./renderer-registry";
  * placeholder here. A failed section is simply absent from `sections`.
  *
  * Assumes, like the four renderers, a full-viewport-width mount.
+ *
+ * « Gérer les rubriques visibles »: a section the family hid is simply
+ * absent from `sections`; when it is archivable (death notice, ceremony)
+ * it comes back, after the flow, behind a discreet link
+ * (`MemorialArchives`) — never in the flow itself.
  */
 export interface MemorialAssemblyProps {
   assembled: AssembledMemorial;
@@ -42,6 +48,7 @@ export function MemorialAssembly({ assembled }: MemorialAssemblyProps) {
           {renderSection(section)}
         </div>
       ))}
+      <MemorialArchives sections={assembled.archivedSections ?? []} language={assembled.language} />
     </div>
   );
 }
