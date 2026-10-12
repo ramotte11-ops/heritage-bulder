@@ -207,3 +207,85 @@
   line-height: 1.42;
   overflow-wrap: break-word;
 }
+
+/*
+ * Desktop (≥ 1024 px, la bascule du Récit V1). Même moteur de décor sur le
+ * Master Desktop de la matière : les variables --d-* posées sur la section
+ * remplacent celles du Mobile, puis --mh et --px sont recalculés sur le
+ * canevas Desktop. Texte : en-tête centré, trois colonnes, numéro à gauche.
+ */
+@media (min-width: 1024px) {
+  .wrap {
+    max-width: 1448px;
+    margin-inline: auto;
+  }
+
+  .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut);
+    --fade: var(--d-fade);
+    --text-top: var(--d-text-top);
+    --foot: var(--d-foot);
+    --text-left: var(--d-text-left);
+    --text-right: var(--d-text-right);
+    --chapter-right: var(--d-text-right);
+    --header-inset-left: var(--d-header-inset-left);
+    --header-inset-right: var(--d-header-inset-right);
+    --number-size: var(--d-number-size);
+    --rule-guard: 0;
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  .surtitle {
+    font-size: 12px;
+    letter-spacing: 0.32em;
+  }
+
+  .title {
+    margin-top: 8px;
+    font-size: 48px;
+  }
+
+  .intro {
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 1.42;
+  }
+
+  .separator {
+    width: 64px;
+    margin: 18px 0 28px;
+  }
+
+  .chapters {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: calc(100cqw * var(--d-column-gap));
+    align-items: start;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .chapter {
+    grid-template-columns: calc(var(--number-size) * 1.22) minmax(0, 1fr);
+    padding: 0;
+  }
+
+  .number {
+    padding-left: 0;
+  }
+
+  .body {
+    font-size: 17px;
+  }
+}

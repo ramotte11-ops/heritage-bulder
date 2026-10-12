@@ -66,18 +66,46 @@ describe("resolveRecitV2MobileArtwork", () => {
   });
 });
 
+describe("Desktop (≥ 1024 px)", () => {
+  it("LIGHT → Master Desktop bleu pétrole (`desktop_dark.png` du handoff)", () => {
+    const { tokens } = resolveRecitV2MobileArtwork("light");
+    expect(tokens.desktop.masterSrc).toBe("/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop.png");
+    expect(tokens.desktop.masterSha256).toBe("71a409ffbd403be08a0c696bae450f9894709be5c08528b87697d4d4671ece3d");
+    expect(tokens.desktop.canvas).toEqual({ width: 1671, height: 941 });
+  });
+
+  it("DARK → Master Desktop ivoire / champagne (`desktop_light.png` du handoff)", () => {
+    const { tokens } = resolveRecitV2MobileArtwork("dark");
+    expect(tokens.desktop.masterSrc).toBe("/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop.png");
+    expect(tokens.desktop.masterSha256).toBe("5a2272c2e8233c785ed8fa489bd4f20151fcff35c5ce0a1a214a6f44da09c7ff");
+    expect(tokens.desktop.canvas).toEqual({ width: 1671, height: 941 });
+  });
+
+  it("arbitrages validés : numéros progressifs 52 → 64 px, coupes au milieu du Master", () => {
+    for (const variant of ["light", "dark"] as const) {
+      const { desktop } = resolveRecitV2MobileArtwork(variant).tokens;
+      expect(desktop.numberSize).toBe("clamp(52px, 4.4cqw, 64px)");
+      expect(desktop.cutY).toBeGreaterThan(desktop.canvas.height * 0.4);
+      expect(desktop.cutY).toBeLessThan(desktop.canvas.height * 0.7);
+      expect(desktop.textLeft).toBeLessThan(desktop.textRight);
+    }
+  });
+});
+
 describe("assets des matières", () => {
   for (const [artwork, tokens] of Object.entries(RECIT_V2_MOBILE_ARTWORKS)) {
-    it(`${artwork} : le Master est la copie exacte du handoff, le grain existe`, () => {
-      const master = publicFile(tokens.masterSrc);
-      expect(createHash("sha256").update(readFileSync(master)).digest("hex")).toBe(tokens.masterSha256);
-      for (const grain of tokens.paperGrains) expect(existsSync(publicFile(grain.src))).toBe(true);
-    });
+    for (const [format, set] of [["Mobile", tokens], ["Desktop", tokens.desktop]] as const) {
+      it(`${artwork} ${format} : le Master est la copie exacte du handoff, les grains existent`, () => {
+        const master = publicFile(set.masterSrc);
+        expect(createHash("sha256").update(readFileSync(master)).digest("hex")).toBe(set.masterSha256);
+        for (const grain of set.paperGrains) expect(existsSync(publicFile(grain.src))).toBe(true);
+      });
 
-    it(`${artwork} : les fichiers portent le nom de leur matière, jamais light/dark`, () => {
-      for (const src of [tokens.masterSrc, ...tokens.paperGrains.map((g) => g.src)]) {
-        expect(path.basename(src)).not.toMatch(/light|dark/i);
-      }
-    });
+      it(`${artwork} ${format} : les fichiers portent le nom de leur matière, jamais light/dark`, () => {
+        for (const src of [set.masterSrc, ...set.paperGrains.map((g) => g.src)]) {
+          expect(path.basename(src)).not.toMatch(/light|dark/i);
+        }
+      });
+    }
   }
 });

@@ -7,9 +7,15 @@ import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { readHero } from "@/lib/memorial/hero";
 import { resolveLifeStoryContent } from "@/lib/memorial/life-story-content";
+import { bindSpaceBeforePunctuation } from "@/lib/memorial/life-story-v2-typography";
 import { ebGaramond, playfairDisplay } from "@/components/builder/fonts";
 import type { SkinVariant } from "@/config/skins";
-import { resolveRecitV2MobileArtwork, type RecitV2Artwork, type RecitV2MobileArtworkTokens } from "@/config/recit-de-vie-v2-tokens";
+import {
+  resolveRecitV2MobileArtwork,
+  type RecitV2Artwork,
+  type RecitV2DesktopArtworkTokens,
+  type RecitV2MobileArtworkTokens,
+} from "@/config/recit-de-vie-v2-tokens";
 import styles from "./RecitDeVieMobileV2.module.css";
 
 /**
@@ -68,6 +74,31 @@ function artworkVars(T: RecitV2MobileArtworkTokens): CSSProperties {
   } as CSSProperties;
 }
 
+/** Réglages Desktop, préfixés `--d-` : la feuille de style ne les active
+ * qu'à partir de 1024 px ; sous ce seuil, ils n'ont aucun effet et le Mobile
+ * reste strictement inchangé. */
+function desktopVars(D: RecitV2DesktopArtworkTokens): CSSProperties {
+  return {
+    "--d-m-src": `url(${D.masterSrc})`,
+    "--d-paper-images": [...D.paperGrains.map((g) => `url(${g.src})`), COARSE_NOISE, D.paperProfile].join(", "),
+    "--d-paper-sizes": [...D.paperGrains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
+    "--d-paper-repeat": [...D.paperGrains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
+    "--d-paper-blend": [...D.paperGrains.map((g) => g.blend), D.noiseBlend, "normal"].join(", "),
+    "--d-canvas-w": D.canvas.width,
+    "--d-canvas-h": D.canvas.height,
+    "--d-cut": D.cutY,
+    "--d-fade": D.fadePx,
+    "--d-text-top": D.textTop,
+    "--d-foot": D.foot,
+    "--d-text-left": D.textLeft,
+    "--d-text-right": D.textRight,
+    "--d-header-inset-left": D.headerInsetLeft,
+    "--d-header-inset-right": D.headerInsetRight,
+    "--d-column-gap": D.columnGap,
+    "--d-number-size": D.numberSize,
+  } as CSSProperties;
+}
+
 export interface RecitDeVieMobileV2Props {
   content: MemorialContent;
   language: Language;
@@ -97,7 +128,12 @@ function RecitDeVieMobileV2Layout({
     if (section === null) return;
     const measure = () => {
       const { width, height } = section.getBoundingClientRect();
-      const masterHeight = (width * T.canvas.height) / T.canvas.width;
+      // Le canevas actif (Mobile ou Desktop) est celui que la feuille de
+      // style a retenu pour cette largeur.
+      const style = getComputedStyle(section);
+      const canvasW = parseFloat(style.getPropertyValue("--canvas-w")) || T.canvas.width;
+      const canvasH = parseFloat(style.getPropertyValue("--canvas-h")) || T.canvas.height;
+      const masterHeight = (width * canvasH) / canvasW;
       setExtension(Math.max(0, Math.round((height - masterHeight) * 10) / 10));
     };
     measure();
@@ -114,7 +150,7 @@ function RecitDeVieMobileV2Layout({
         data-testid="recit-v2-mobile"
         data-artwork={artwork}
         data-extended={extension > 0.5}
-        style={{ "--ext": `${extension}px` } as CSSProperties}
+        style={{ ...desktopVars(T.desktop), "--ext": `${extension}px` } as CSSProperties}
       >
         <div className={styles.master} aria-hidden="true" />
         <div className={styles.bottom} aria-hidden="true" />
@@ -139,7 +175,7 @@ function RecitDeVieMobileV2Layout({
                   <div className={styles.text}>
                     <h3 className={styles.chapterTitle}>{translate(language, CHAPTER_TITLE_KEY[matter.id])}</h3>
                     <span className={styles.rule} aria-hidden="true" />
-                    <p className={styles.body}>{matter.displayText}</p>
+                    <p className={styles.body}>{bindSpaceBeforePunctuation(matter.displayText)}</p>
                   </div>
                 </article>
               </div>

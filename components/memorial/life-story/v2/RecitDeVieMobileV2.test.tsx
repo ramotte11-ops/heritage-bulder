@@ -45,6 +45,7 @@ describe("RecitDeVieMobileV2", () => {
     expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png)");
     expect(wrap.style.getPropertyValue("--ink")).toBe("#39332E");
     expect(wrap.style.getPropertyValue("--rule-guard")).toBe("0");
+    expect(section.style.getPropertyValue("--d-m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop.png)");
   });
 
   it("LIGHT rend la matière bleu pétrole, son Master et son encre claire — jamais l'ivoire", () => {
@@ -56,6 +57,7 @@ describe("RecitDeVieMobileV2", () => {
     expect(wrap.style.getPropertyValue("--ink")).toBe("#F9F2E4");
     expect(wrap.style.getPropertyValue("--number-size")).toBe("40px");
     expect(wrap.style.getPropertyValue("--rule-guard")).toBe("1");
+    expect(section.style.getPropertyValue("--d-m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop.png)");
   });
 
   it("affiche l'en-tête, l'introduction nominative et les trois chapitres dans l'ordre", () => {
@@ -68,5 +70,18 @@ describe("RecitDeVieMobileV2", () => {
       "Son empreinte dans nos vies",
     ]);
     expect(screen.getByText("Un café au soleil.")).toBeTruthy();
+  });
+
+  it("colle la ponctuation française au mot précédent à l'affichage, sans toucher aux données", () => {
+    const withPunctuation = {
+      ...content,
+      legacy: { text: "Elle nous laisse une leçon : prendre le temps !" },
+    } as unknown as MemorialContent;
+    render(<RecitDeVieMobileV2 content={withPunctuation} language="fr" skinVariant="dark" />);
+    const legacyBody = screen.getByTestId("recit-v2-mobile").querySelector('[data-matter="a12"] p:last-child');
+    expect(legacyBody?.textContent).toBe("Elle nous laisse une leçon\u00A0: prendre le temps\u00A0!");
+    expect((withPunctuation as unknown as { legacy: { text: string } }).legacy.text).toBe(
+      "Elle nous laisse une leçon : prendre le temps !",
+    );
   });
 });

@@ -44,6 +44,34 @@ export const RECIT_V2_ARTWORK_FOR_VARIANT: Readonly<Record<SkinVariant, RecitV2A
 /** Tout ce qui distingue une matière ; le moteur de mise en page
  * (`RecitDeVieMobileV2`) est commun. Géométrie en px de canevas ou en
  * fraction du Master ; couleurs en valeurs CSS. */
+
+/** Réglages Desktop (≥ 1024 px) d'une matière : même moteur de décor que le
+ * Mobile, sur le Master Desktop 1671×941 ; texte en trois colonnes. Les
+ * couleurs (encre, filets, numéros) sont celles de la matière. */
+export interface RecitV2DesktopArtworkTokens {
+  masterSrc: string;
+  masterSha256: string;
+  paperGrains: readonly { src: string; tileWidth: number; blend: string }[];
+  noiseBlend: string;
+  paperProfile: string;
+  canvas: { width: number; height: number };
+  cutY: number;
+  fadePx: number;
+  /** Début de l'en-tête et marge de pied, en fraction de la hauteur du Master. */
+  textTop: number;
+  foot: number;
+  /** Bande des trois colonnes, en fraction de la largeur. */
+  textLeft: number;
+  textRight: number;
+  /** Retraits de l'en-tête au-delà de la bande des colonnes. */
+  headerInsetLeft: number;
+  headerInsetRight: number;
+  /** Gouttière entre colonnes, en fraction de la largeur. */
+  columnGap: number;
+  /** Taille des numéros (valeur CSS : peut suivre la largeur). */
+  numberSize: string;
+}
+
 export interface RecitV2MobileArtworkTokens {
   masterSrc: string;
   /** SHA-256 du Master, identique au fichier du handoff. */
@@ -87,6 +115,7 @@ export interface RecitV2MobileArtworkTokens {
   /** Petit filet sous le titre de chapitre. */
   accentRule: string;
   numberGradient: string;
+  desktop: RecitV2DesktopArtworkTokens;
 }
 
 /**
@@ -128,6 +157,33 @@ const IVOIRE_CHAMPAGNE: RecitV2MobileArtworkTokens = {
   rule: "rgb(139 106 69 / 0.7)",
   accentRule: "rgb(148 89 43 / 0.85)",
   numberGradient: "linear-gradient(180deg, #c08850 0%, #94592b 55%, #6e3f1c 100%)",
+  /** Desktop : `desktop_light.png` du handoff. Coupe Y = 500, fondu 30 px :
+   * quasi aucun feuillage net entre les rangées 460 et 520, extinction des
+   * ombres portées à droite. Colonnes dans 0,085–0,875 (bord déchiré droit),
+   * en-tête dans 0,19–0,775. Teinte : moyenne des rangées 470–530 ; grain :
+   * trois tuiles de zones calmes, sans miroir. Validé par la PO. */
+  desktop: {
+    masterSrc: "/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop.png",
+    masterSha256: "5a2272c2e8233c785ed8fa489bd4f20151fcff35c5ce0a1a214a6f44da09c7ff",
+    paperGrains: [
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop-grain-a.png", tileWidth: 560, blend: "overlay" },
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop-grain-b.png", tileWidth: 480, blend: "overlay" },
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop-grain-c.png", tileWidth: 410, blend: "overlay" },
+    ],
+    noiseBlend: "soft-light",
+    paperProfile: "linear-gradient(to right, rgb(230,198,161) 0.0%, rgb(232,204,170) 3.1%, rgb(235,209,179) 6.2%, rgb(235,209,180) 9.4%, rgb(235,210,180) 12.5%, rgb(236,211,181) 15.6%, rgb(237,212,182) 18.7%, rgb(238,214,185) 21.9%, rgb(238,216,188) 25.0%, rgb(239,217,190) 28.1%, rgb(240,219,192) 31.3%, rgb(241,219,192) 34.4%, rgb(241,218,190) 37.5%, rgb(241,219,191) 40.6%, rgb(241,220,192) 43.8%, rgb(242,221,195) 46.9%, rgb(242,223,198) 50.0%, rgb(243,224,199) 53.1%, rgb(243,224,198) 56.2%, rgb(244,223,197) 59.4%, rgb(244,223,197) 62.5%, rgb(244,224,197) 65.6%, rgb(245,224,197) 68.7%, rgb(244,223,196) 71.9%, rgb(245,223,196) 75.0%, rgb(245,223,196) 78.1%, rgb(246,224,196) 81.3%, rgb(246,224,196) 84.4%, rgb(246,225,197) 87.5%, rgb(245,223,194) 90.6%, rgb(239,213,183) 93.8%, rgb(238,209,176) 96.9%, rgb(241,211,175) 100.0%)",
+    canvas: { width: 1671, height: 941 },
+    cutY: 500,
+    fadePx: 30,
+    textTop: 0.15,
+    foot: 0.29,
+    textLeft: 0.085,
+    textRight: 0.875,
+    headerInsetLeft: 0.105,
+    headerInsetRight: 0.1,
+    columnGap: 0.03,
+    numberSize: "clamp(52px, 4.4cqw, 64px)",
+  },
 };
 
 
@@ -182,6 +238,34 @@ const BLEU_PETROLE: RecitV2MobileArtworkTokens = {
   rule: "rgb(201 162 106 / 0.7)",
   accentRule: "rgb(214 178 120 / 0.9)",
   numberGradient: "linear-gradient(180deg, #f6dfb0 0%, #c99a55 55%, #8a5a2b 100%)",
+  /** Desktop : `desktop_dark.png` du handoff. Coupe Y = 550, fondu 36 px :
+   * entre le bas du bouquet de droite et le début du filet doré de gauche.
+   * Colonnes dans 0,105–0,87 (points dorés à gauche, bouquet à droite),
+   * en-tête dans 0,245–0,77. Teinte : bleu pétrole hors feuillage des
+   * rangées 530–570, × 0,875 × 0,92 (éclaircissement des grains compensé) ;
+   * grain : trois tuiles de l'aquarelle, sans miroir. Validé par la PO. */
+  desktop: {
+    masterSrc: "/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop.png",
+    masterSha256: "71a409ffbd403be08a0c696bae450f9894709be5c08528b87697d4d4671ece3d",
+    paperGrains: [
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop-grain-a.png", tileWidth: 560, blend: "overlay" },
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop-grain-b.png", tileWidth: 480, blend: "overlay" },
+      { src: "/assets/recit-de-vie/runtime-v2/desktop/bleu-petrole-desktop-grain-c.png", tileWidth: 410, blend: "overlay" },
+    ],
+    noiseBlend: "overlay",
+    paperProfile: "linear-gradient(to right, rgb(21,16,6) 0.0%, rgb(15,14,8) 3.1%, rgb(6,13,13) 6.2%, rgb(2,16,18) 9.4%, rgb(0,17,21) 12.5%, rgb(0,17,22) 15.6%, rgb(0,18,22) 18.7%, rgb(0,17,21) 21.9%, rgb(0,18,23) 25.0%, rgb(0,22,28) 28.1%, rgb(0,25,31) 31.3%, rgb(0,26,31) 34.4%, rgb(0,23,29) 37.5%, rgb(0,20,25) 40.6%, rgb(0,19,23) 43.8%, rgb(0,20,24) 46.9%, rgb(0,21,26) 50.0%, rgb(0,21,26) 53.1%, rgb(0,20,24) 56.2%, rgb(0,19,24) 59.4%, rgb(0,19,23) 62.5%, rgb(0,18,22) 65.6%, rgb(0,18,23) 68.7%, rgb(0,19,24) 71.9%, rgb(0,20,26) 75.0%, rgb(0,21,27) 78.1%, rgb(0,22,28) 81.3%, rgb(0,25,30) 84.4%, rgb(0,27,33) 87.5%, rgb(1,25,30) 90.6%, rgb(2,18,21) 93.8%, rgb(2,11,12) 96.9%, rgb(2,7,8) 100.0%)",
+    canvas: { width: 1671, height: 941 },
+    cutY: 550,
+    fadePx: 36,
+    textTop: 0.15,
+    foot: 0.3,
+    textLeft: 0.105,
+    textRight: 0.87,
+    headerInsetLeft: 0.14,
+    headerInsetRight: 0.1,
+    columnGap: 0.03,
+    numberSize: "clamp(52px, 4.4cqw, 64px)",
+  },
 };
 
 /** Les deux matières. Chaque variante a la sienne ; aucune ne se rabat sur
