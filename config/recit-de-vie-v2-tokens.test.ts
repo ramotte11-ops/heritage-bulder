@@ -32,16 +32,37 @@ describe("RECIT_V2_ARTWORK_FOR_VARIANT", () => {
 
 describe("resolveRecitV2MobileArtwork", () => {
   it("DARK → ivoire / champagne, le Master validé", () => {
-    const resolution = resolveRecitV2MobileArtwork("dark");
-    expect(resolution.status).toBe("ready");
-    if (resolution.status !== "ready") return;
-    expect(resolution.artwork).toBe("ivoireChampagne");
-    expect(resolution.tokens.masterSrc).toBe("/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png");
-    expect(resolution.tokens.canvas).toEqual({ width: 941, height: 1672 });
+    const { artwork, tokens } = resolveRecitV2MobileArtwork("dark");
+    expect(artwork).toBe("ivoireChampagne");
+    expect(tokens.masterSrc).toBe("/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png");
+    expect(tokens.masterSha256).toBe("7c228a98e628d5074082c0d6d1916ef6804af1dd301620ee5b1634d89198056f");
+    expect(tokens.canvas).toEqual({ width: 941, height: 1672 });
   });
 
-  it("LIGHT → bleu pétrole, pas encore construit : en attente, jamais l'ivoire à sa place", () => {
-    expect(resolveRecitV2MobileArtwork("light")).toEqual({ status: "pending", artwork: "bleuPetrole" });
+  it("LIGHT → bleu pétrole, le Master du handoff `mobile_dark.png`", () => {
+    const { artwork, tokens } = resolveRecitV2MobileArtwork("light");
+    expect(artwork).toBe("bleuPetrole");
+    expect(tokens.masterSrc).toBe("/assets/recit-de-vie/runtime-v2/mobile/bleu-petrole.png");
+    expect(tokens.masterSha256).toBe("4aef3d0f4b947c03953c380d5016835281229f52af1d6e5c7fdd9255336035c5");
+    expect(tokens.canvas).toEqual({ width: 942, height: 1669 });
+  });
+
+  it("arbitrages QG du bleu pétrole (version B) : coupe 1150, numéros 40 px à 0,215, colonne 0,235", () => {
+    const { tokens } = resolveRecitV2MobileArtwork("light");
+    expect(tokens.cutY).toBe(1150);
+    expect(tokens.numberSize).toBe(40);
+    expect(tokens.numberColumn).toBe(0.235);
+    expect(tokens.textLeft + tokens.numberInset).toBeCloseTo(0.215, 10);
+    expect(tokens.ruleMinGap).toBeGreaterThan(0);
+  });
+
+  it("le Mobile Dark validé garde sa géométrie : numéros 46 px, aucune garde de filet", () => {
+    const { tokens } = resolveRecitV2MobileArtwork("dark");
+    expect(tokens.numberSize).toBe(46);
+    expect(tokens.numberColumn).toBe(0.205);
+    expect(tokens.numberInset).toBe(0.035);
+    expect(tokens.ruleMinGap).toBe(0);
+    expect(tokens.paperGrains).toHaveLength(1);
   });
 });
 
@@ -50,11 +71,11 @@ describe("assets des matières", () => {
     it(`${artwork} : le Master est la copie exacte du handoff, le grain existe`, () => {
       const master = publicFile(tokens.masterSrc);
       expect(createHash("sha256").update(readFileSync(master)).digest("hex")).toBe(tokens.masterSha256);
-      expect(existsSync(publicFile(tokens.grainSrc))).toBe(true);
+      for (const grain of tokens.paperGrains) expect(existsSync(publicFile(grain.src))).toBe(true);
     });
 
     it(`${artwork} : les fichiers portent le nom de leur matière, jamais light/dark`, () => {
-      for (const src of [tokens.masterSrc, tokens.grainSrc]) {
+      for (const src of [tokens.masterSrc, ...tokens.paperGrains.map((g) => g.src)]) {
         expect(path.basename(src)).not.toMatch(/light|dark/i);
       }
     });

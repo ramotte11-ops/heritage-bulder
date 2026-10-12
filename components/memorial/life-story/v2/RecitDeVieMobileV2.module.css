@@ -56,9 +56,9 @@
   top: calc(var(--px) * (var(--cut) - var(--fade)));
   height: calc(var(--ext) + var(--px) * var(--fade) * 2);
   z-index: 2;
-  background-image: var(--grain-src), var(--noise-src), var(--profile);
-  background-size: calc(var(--px) * var(--grain-w)) auto, calc(var(--px) * 900) auto, 100% 100%;
-  background-repeat: repeat, repeat, no-repeat;
+  background-image: var(--paper-images);
+  background-size: var(--paper-sizes);
+  background-repeat: var(--paper-repeat);
   background-blend-mode: var(--paper-blend);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
@@ -79,6 +79,7 @@
 }
 
 .header {
+  margin: 0 calc(100cqw * var(--header-inset-right)) 0 calc(100cqw * var(--header-inset-left));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -145,21 +146,21 @@
   border-top: 1px solid var(--rule);
 }
 
-/* Colonne des numéros : le numéro commence à 0,165 de la largeur (maquette :
-   0,19), hors de l'arbuste flou du BOTTOM, qui atteint 0,15 entre les rangées
-   1240 et 1440 du Master — c'est là que tombe le « 03 » d'un chapitre court. */
+/* Colonne des numéros : largeur, retrait et taille propres à chaque matière
+   (--number-column, --number-inset, --number-size), calibrés pour tenir le
+   numéro hors du feuillage de son Master. */
 .chapter {
   display: grid;
-  grid-template-columns: calc(100cqw * 0.205) 1fr;
+  grid-template-columns: calc(100cqw * var(--number-column)) 1fr;
   padding: 14px 0;
 }
 
 .number {
   margin: 0;
-  padding-left: calc(100cqw * 0.035);
+  padding-left: calc(100cqw * var(--number-inset));
   font-family: var(--font-heritage-serif), serif;
   font-weight: 500;
-  font-size: 46px;
+  font-size: var(--number-size);
   line-height: 1;
   font-variant-numeric: lining-nums;
   background: var(--number-gradient);
@@ -168,9 +169,18 @@
   color: transparent;
 }
 
+/* Garde d'écart numéro / filet (--rule-min-gap ; --rule-guard 0 = inactive) : quand
+   l'écart naturel entre le numéro le plus large (« 03 » : 1,165 em en
+   Playfair 500, chiffres alignés) et le filet passe sous la garde, le filet
+   se décale vers la droite dans la marge de 12 px ; le texte ne bouge pas. */
 .text {
+  --rule-shift: calc(
+    var(--rule-guard) *
+      max(0px, calc(var(--rule-min-gap) - (100cqw * (var(--number-column) - var(--number-inset)) - var(--number-size) * 1.17)))
+  );
   border-left: 1px solid var(--rule);
-  padding-left: 12px;
+  margin-left: var(--rule-shift);
+  padding-left: calc(12px - var(--rule-shift));
   min-width: 0;
 }
 

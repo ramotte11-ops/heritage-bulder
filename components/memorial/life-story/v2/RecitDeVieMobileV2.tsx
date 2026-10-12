@@ -18,9 +18,8 @@ import styles from "./RecitDeVieMobileV2.module.css";
  * matières : la variante du mémorial choisit la matière par
  * `RECIT_V2_ARTWORK_FOR_VARIANT` (décision PO : LIGHT = bleu pétrole,
  * DARK = ivoire / champagne), et la matière n'apporte que ses réglages
- * (Master, coupe, papier, zones de texte, couleurs). Une matière pas encore
- * construite ne rend rien — jamais l'autre matière à sa place. Voir
- * config/recit-de-vie-v2-tokens.ts.
+ * (Master, coupe, papier, zones de texte, couleurs) ; aucune variante ne se
+ * rabat sur l'autre matière. Voir config/recit-de-vie-v2-tokens.ts.
  *
  * La hauteur vient du texte : surtitre, titre, introduction, puis les
  * trois chapitres (numéro, titre définitif, filet, paragraphe à taille
@@ -42,20 +41,26 @@ const COARSE_NOISE =
 function artworkVars(T: RecitV2MobileArtworkTokens): CSSProperties {
   return {
     "--m-src": `url(${T.masterSrc})`,
-    "--grain-src": `url(${T.grainSrc})`,
-    "--noise-src": COARSE_NOISE,
-    "--profile": T.paperProfile,
-    "--paper-blend": T.paperBlend,
+    "--paper-images": [...T.paperGrains.map((g) => `url(${g.src})`), COARSE_NOISE, T.paperProfile].join(", "),
+    "--paper-sizes": [...T.paperGrains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
+    "--paper-repeat": [...T.paperGrains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
+    "--paper-blend": [...T.paperGrains.map((g) => g.blend), T.noiseBlend, "normal"].join(", "),
     "--canvas-w": T.canvas.width,
     "--canvas-h": T.canvas.height,
     "--cut": T.cutY,
     "--fade": T.fadePx,
-    "--grain-w": T.grainTile.width,
     "--text-top": T.textTop,
     "--foot": T.foot,
     "--text-left": T.textLeft,
     "--text-right": T.textRight,
     "--chapter-right": T.chapterRight,
+    "--header-inset-left": T.headerInsetLeft,
+    "--header-inset-right": T.headerInsetRight,
+    "--number-column": T.numberColumn,
+    "--number-inset": T.numberInset,
+    "--number-size": `${T.numberSize}px`,
+    "--rule-min-gap": `${T.ruleMinGap}px`,
+    "--rule-guard": T.ruleMinGap > 0 ? 1 : 0,
     "--ink": T.ink,
     "--rule": T.rule,
     "--accent-rule": T.accentRule,
@@ -70,9 +75,8 @@ export interface RecitDeVieMobileV2Props {
 }
 
 export function RecitDeVieMobileV2({ skinVariant, ...props }: RecitDeVieMobileV2Props) {
-  const resolution = resolveRecitV2MobileArtwork(skinVariant);
-  if (resolution.status !== "ready") return null;
-  return <RecitDeVieMobileV2Layout {...props} artwork={resolution.artwork} tokens={resolution.tokens} />;
+  const { artwork, tokens } = resolveRecitV2MobileArtwork(skinVariant);
+  return <RecitDeVieMobileV2Layout {...props} artwork={artwork} tokens={tokens} />;
 }
 
 function RecitDeVieMobileV2Layout({

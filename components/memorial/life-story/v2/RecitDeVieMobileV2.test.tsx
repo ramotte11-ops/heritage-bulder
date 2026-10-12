@@ -44,11 +44,18 @@ describe("RecitDeVieMobileV2", () => {
     const wrap = section.parentElement as HTMLElement;
     expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png)");
     expect(wrap.style.getPropertyValue("--ink")).toBe("#39332E");
+    expect(wrap.style.getPropertyValue("--rule-guard")).toBe("0");
   });
 
-  it("LIGHT (bleu pétrole, pas encore construit) ne rend rien — jamais l'ivoire à sa place", () => {
-    const { container } = render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="light" />);
-    expect(container.innerHTML).toBe("");
+  it("LIGHT rend la matière bleu pétrole, son Master et son encre claire — jamais l'ivoire", () => {
+    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="light" />);
+    const section = screen.getByTestId("recit-v2-mobile");
+    expect(section.dataset.artwork).toBe("bleuPetrole");
+    const wrap = section.parentElement as HTMLElement;
+    expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/bleu-petrole.png)");
+    expect(wrap.style.getPropertyValue("--ink")).toBe("#F9F2E4");
+    expect(wrap.style.getPropertyValue("--number-size")).toBe("40px");
+    expect(wrap.style.getPropertyValue("--rule-guard")).toBe("1");
   });
 
   it("affiche l'en-tête, l'introduction nominative et les trois chapitres dans l'ordre", () => {
