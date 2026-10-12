@@ -443,6 +443,15 @@ export const TRANSLATION_KEYS = [
   // Mission — Récit de vie Intemporel V1.3.1 (the real Memorial renderer
   // for A10/A11/A12, spec/localization.json's own `recit.*` keys).
   "recit.title",
+  // Récit de vie V2 (Mobile, prototype local) — textes communs aux deux
+  // matières, indépendants de la variante.
+  "recit.v2.surtitle",
+  "recit.v2.title",
+  "recit.v2.intro",
+  "recit.v2.introNoName",
+  "recit.v2.a10",
+  "recit.v2.a11",
+  "recit.v2.a12",
   "recit.person",
   "recit.loved",
   "recit.legacy",

@@ -1,0 +1,65 @@
+// @vitest-environment jsdom
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import type { MemorialContent } from "@/types/memorial";
+
+/**
+ * Récit de vie V2 — Mobile. Contrats d'affectation et de rendu ; la mise
+ * en page réelle (hauteurs, raccords, collisions) est vérifiée par les
+ * captures navigateur, pas par jsdom.
+ */
+
+vi.mock("next/font/google", () => ({
+  Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
+  La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
+  Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
+  Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
+  EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
+}));
+
+const { RecitDeVieMobileV2 } = await import("./RecitDeVieMobileV2");
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+afterEach(cleanup);
+
+const content = {
+  hero: { displayName: "Élise" },
+  personWords: { text: "Née à Lyon en 1948, Élise aimait les gens." },
+  lovedThings: { text: "Un café au soleil." },
+  legacy: { text: "Sa générosité." },
+} as unknown as MemorialContent;
+
+describe("RecitDeVieMobileV2", () => {
+  it("DARK rend la matière ivoire / champagne et son Master", () => {
+    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="dark" />);
+    const section = screen.getByTestId("recit-v2-mobile");
+    expect(section.dataset.artwork).toBe("ivoireChampagne");
+    const wrap = section.parentElement as HTMLElement;
+    expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png)");
+    expect(wrap.style.getPropertyValue("--ink")).toBe("#39332E");
+  });
+
+  it("LIGHT (bleu pétrole, pas encore construit) ne rend rien — jamais l'ivoire à sa place", () => {
+    const { container } = render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="light" />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("affiche l'en-tête, l'introduction nominative et les trois chapitres dans l'ordre", () => {
+    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="dark" />);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Récit de vie");
+    expect(screen.getByText(/le parcours de Élise/)).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "Son histoire, sa personnalité",
+      "Ses petits bonheurs",
+      "Son empreinte dans nos vies",
+    ]);
+    expect(screen.getByText("Un café au soleil.")).toBeTruthy();
+  });
+});
