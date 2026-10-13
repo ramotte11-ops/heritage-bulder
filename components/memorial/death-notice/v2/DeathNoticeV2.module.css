@@ -1,0 +1,396 @@
+/*
+ * Avis de décès V2 — phase 1, pilote Mobile Light. Moteur du Récit de vie
+ * V2 (RecitDeVieV2.module.css) : toute géométrie du décor est exprimée en
+ * px de canevas (941 de large) rapportés à la largeur réelle du conteneur
+ * (cqw du .wrap). Les tailles de texte suivent la même échelle avec un
+ * plancher en px CSS lisibles : à 941 px, la composition reproduit la
+ * maquette ; sur un téléphone, les textes gardent une taille de lecture
+ * et la section s'allonge (papier central).
+ *
+ * Les ornements sont des repères TEMPORAIRES ([data-placeholder]) — leur
+ * reconstruction est la phase 2.
+ */
+
+.wrap {
+  container-type: inline-size;
+  width: 100%;
+  margin-inline: auto;
+  /* hauteur du Master à la largeur rendue */
+  --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+  --px: calc(100cqw / var(--canvas-w)); /* 1 px de canevas */
+}
+
+.section {
+  position: relative;
+  isolation: isolate;
+  color: var(--ink);
+}
+
+/* Le Master entier, à son ratio naturel, ancré en haut. */
+.master {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--mh);
+  background: var(--m-src) top / 100% auto no-repeat;
+  z-index: 0;
+}
+
+/* Le bas authentique [cut − fade : H], ancré au bas de la section. */
+.bottom {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--px) * (var(--canvas-h) - var(--cut) + var(--fade)));
+  background: var(--m-src) bottom / 100% auto no-repeat;
+  z-index: 1;
+}
+
+/* Section étendue : le Master ne montre plus que [0 : cut + fade]. */
+.section[data-extended="true"] .master {
+  height: calc(var(--px) * (var(--cut) + var(--fade)));
+}
+
+/* Le papier central, seulement quand le contenu dépasse le Master : de la
+   hauteur exacte de l'excédent, plus un fondu à chaque raccord. */
+.paper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background-image: var(--paper-images);
+  background-size: var(--paper-sizes);
+  background-repeat: var(--paper-repeat);
+  background-blend-mode: var(--paper-blend);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+.content {
+  --foot-active: var(--foot);
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--mh);
+  box-sizing: border-box;
+  padding:
+    calc(var(--px) * var(--text-top))
+    calc(var(--px) * (var(--canvas-w) - var(--text-right)))
+    calc(var(--px) * var(--foot-active))
+    calc(var(--px) * var(--text-left));
+}
+
+/* Dernière rangée en paire : le contenu s'arrête au-dessus du
+   resserrement du bas du papier (rangée 1160). */
+.content[data-last-row="pair"] {
+  --foot-active: var(--foot-pair);
+}
+
+/* --- En-tête : titre, rameau, nom, dates, cœur, annonce --------------- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* Nom et dates : x 160–781, centrés sur l'axe de la maquette (x ≈ 471),
+     hors des feuillets et du feuillage latéraux (rangées 380–520 : papier
+     nu entre x 0,15 et 0,89). */
+  padding-inline: calc(var(--px) * 72) calc(var(--px) * 99);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 22);
+  width: 100%;
+}
+
+.titleRule {
+  flex: 0 1 calc(var(--px) * 92);
+  min-width: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(11px, calc(var(--px) * 27));
+  line-height: 1.2;
+  letter-spacing: 0.24em;
+  /* l'espacement final ne doit pas décentrer le mot */
+  margin-right: -0.24em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Repère temporaire du rameau : x 385–540, y 285–365 de la maquette. */
+.branch {
+  display: block;
+  width: calc(var(--px) * 155);
+  height: calc(var(--px) * 80);
+  margin-top: calc(var(--px) * 18);
+}
+
+.name {
+  margin: calc(var(--px) * 10) 0 0;
+  font-family: var(--font-heritage-avis-name), serif;
+  font-weight: 600;
+  font-size: max(34px, calc(var(--px) * 88));
+  line-height: 1;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+.dates {
+  margin: calc(var(--px) * 8) 0 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: max(15px, calc(var(--px) * 33));
+  line-height: 1.15;
+  letter-spacing: 0.2em;
+  margin-right: -0.2em;
+  font-variant-numeric: lining-nums;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.heartRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 25);
+  margin-top: calc(var(--px) * 24);
+  width: 100%;
+}
+
+.heartRule {
+  flex: 0 1 calc(var(--px) * 140);
+  border-top: 1px solid var(--rule);
+}
+
+/* Repère temporaire du cœur : 30 × 28 px de canevas. */
+.heart {
+  flex: none;
+  width: calc(var(--px) * 30);
+  height: calc(var(--px) * 28);
+}
+
+.announcement {
+  margin: calc(var(--px) * 14) 0 0;
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-size: max(16px, calc(var(--px) * 36));
+  line-height: 1.14;
+  color: var(--ink-soft);
+  /* Bande centrale de la maquette pour l'annonce : x 207–738. */
+  padding-inline: calc(var(--px) * 47) calc(var(--px) * 43);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+/* Chaque date d'un seul tenant tant qu'elle tient sur la ligne ; plus
+   longue que la ligne (ES à 320 px), elle se replie en elle-même plutôt
+   que de déborder. */
+.dateUnit {
+  display: inline-block;
+}
+
+/* --- Précisions : 2 + 2 + 1 ------------------------------------------- */
+
+.detailsRule {
+  display: block;
+  align-self: center;
+  width: calc(var(--px) * 350);
+  margin-top: calc(var(--px) * 28);
+  border-top: 1px solid var(--rule);
+}
+
+.details {
+  display: grid;
+  grid-template-columns: 380fr 402fr;
+  margin-top: calc(var(--px) * 34);
+}
+
+.block {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--px) * 92) minmax(0, 1fr);
+  column-gap: calc(var(--px) * 30);
+  align-items: start;
+  padding-bottom: calc(var(--px) * 28);
+  min-width: 0;
+}
+
+/* Rangées 2 et 3 : filet horizontal au-dessus, sur toute la largeur. */
+.block:nth-child(n + 3) {
+  padding-top: calc(var(--px) * 34);
+  border-top: 1px solid var(--rule);
+}
+
+/* Colonne de droite : filet vertical, en retrait des filets horizontaux. */
+.block:nth-child(even) {
+  padding-left: calc(var(--px) * 32);
+}
+
+.block:nth-child(even)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(var(--px) * 5);
+  bottom: calc(var(--px) * 4);
+  border-left: 1px solid var(--rule);
+}
+
+.block:nth-child(n + 3):nth-child(even)::before {
+  top: calc(var(--px) * 39);
+}
+
+/* Colonne de gauche : la maquette arrête le texte ~60 px avant le filet. */
+.block:nth-child(odd) {
+  padding-right: calc(var(--px) * 72);
+}
+
+/* Dernière rangée en paire : le texte de droite s'arrête avant le
+   bouquet (x 850). */
+.details[data-count="2"] .block:last-child,
+.details[data-count="4"] .block:last-child {
+  padding-right: calc(var(--px) * (var(--text-right) - var(--pair-right)));
+}
+
+/* Dernière précision d'un total impair : seule sur sa rangée, centrée
+   (maquette : médaillon x 210–300, texte x 340–720). */
+.blockFull {
+  grid-column: 1 / -1;
+  grid-template-columns: calc(var(--px) * 92) minmax(0, calc(var(--px) * 420));
+  justify-content: center;
+  padding-right: 0;
+}
+
+/* Repère temporaire du médaillon : disque de 92 px de canevas, pictogramme
+   V1 au centre. */
+.medallion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--px) * 92);
+  height: calc(var(--px) * 92);
+  border-radius: 50%;
+  color: var(--accent);
+}
+
+.medallion svg {
+  width: 44%;
+  height: 44%;
+}
+
+.blockText {
+  min-width: 0;
+  padding-top: calc(var(--px) * 6);
+  text-align: left;
+}
+
+.label {
+  display: block;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: max(10px, calc(var(--px) * 17));
+  line-height: 1.25;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+/* Colonne de droite : les marguerites du bord droit descendent jusqu'à la
+   rangée 860 (x ≥ 870), à hauteur des étiquettes de la première rangée ;
+   l'étiquette s'arrête donc à x 866 (une étiquette longue, ES « UNAS
+   PALABRAS DE LA FAMILIA », passe à la ligne). Le texte, plus bas, garde la
+   largeur de la maquette (x 880). */
+.block:nth-child(even) .label {
+  margin-right: calc(var(--px) * 14);
+}
+
+.labelRule {
+  display: block;
+  width: calc(var(--px) * 40);
+  margin: calc(var(--px) * 8) 0 calc(var(--px) * 12);
+  border-top: 1px solid var(--accent);
+}
+
+.body {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: max(14px, calc(var(--px) * 29));
+  line-height: 1.12;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.bodyItalic {
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-size: max(14px, calc(var(--px) * 27.5));
+}
+
+/* Adaptation autorisée par la PO : sous `singleColumnBelowPx` de largeur
+   réelle, une précision par rangée (médaillon à gauche, texte à droite),
+   dans le même ordre, avec le même filet entre les rangées. */
+@container (max-width: 519.98px) {
+  /* Une colonne : chaque précision est pleine largeur, donc toutes restent
+     dans la bande de papier nu du bas, et le contenu s'arrête au-dessus du
+     resserrement final. */
+  .content[data-last-row="single"],
+  .content[data-last-row="pair"] {
+    --foot-active: var(--foot-single-column);
+  }
+
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* (0,4,0) : l'emporte sur les retraits du mode deux colonnes. */
+  .details[data-count] .block:nth-child(n) {
+    padding-left: calc(var(--px) * (var(--band-left) - var(--text-left)));
+    padding-right: calc(var(--px) * (var(--text-right) - var(--band-right)));
+  }
+
+  .block:nth-child(n + 2) {
+    padding-top: calc(var(--px) * 34);
+    border-top: 1px solid var(--rule);
+  }
+
+  .block:nth-child(even)::before {
+    content: none;
+  }
+
+  .blockFull {
+    justify-content: stretch;
+    grid-template-columns: calc(var(--px) * 92) minmax(0, 1fr);
+  }
+}
+
+/* --- Repères temporaires (phase 1) ------------------------------------ */
+
+.section [data-placeholder] {
+  box-sizing: border-box;
+  border: 1px dashed rgb(138 90 44 / 0.65);
+}
+
+.branch[data-placeholder] {
+  border-radius: 40% 60% 45% 55%;
+}
+
+.heart[data-placeholder] {
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+
+.medallion[data-placeholder] {
+  border-radius: 50%;
+}
