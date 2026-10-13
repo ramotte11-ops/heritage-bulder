@@ -41,6 +41,7 @@ export const en: Record<TranslationKey, string> = {
   "preview.backToCreation": "Back to creation",
   "preview.changeAmbiance": "Change the ambiance",
   "preview.unavailable": "The preview is not available at the moment. Please try again in a moment.",
+  "preview.loading": "We are preparing your tribute…",
   "journey.open": "My journey",
   "journey.title": "My journey",
   "journey.intro": "Find every step of your tribute. You can go back to a step you have already started: your answers are saved.",

@@ -238,6 +238,7 @@ export const TRANSLATION_KEYS = [
   "preview.backToCreation",
   "preview.changeAmbiance",
   "preview.unavailable",
+  "preview.loading",
   // B03 — « Mon parcours » (sommaire permanent et révision des réponses).
   "journey.open",
   "journey.title",
