@@ -238,6 +238,10 @@ export const en: Record<TranslationKey, string> = {
   "personSheet.a12Question": "What do they leave behind?",
   "personSheet.a12Helper":
     "A value, a saying, a gesture, something they taught or passed on to you, or simply what you'll always remember about them…",
+  "personSheet.counter": "{count} / {max} characters",
+  "personSheet.limitReached": "You have reached the {max} characters for this chapter.",
+  "personSheet.limitRefused": "This would go beyond the {max} characters for this chapter, so it was not added.",
+  "personSheet.overLimit": "This text is longer than {max} characters. It is kept exactly as written; you can shorten it whenever you like.",
   "personSheet.skip": "Skip this step",
   "recit.title": "THE STORY OF A LIFE",
   "recit.v2.surtitle": "A LIFE STORY",

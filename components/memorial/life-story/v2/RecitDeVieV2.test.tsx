@@ -17,7 +17,7 @@ vi.mock("next/font/google", () => ({
   EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
 }));
 
-const { RecitDeVieMobileV2 } = await import("./RecitDeVieMobileV2");
+const { RecitDeVieV2 } = await import("./RecitDeVieV2");
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -36,21 +36,21 @@ const content = {
   legacy: { text: "Sa générosité." },
 } as unknown as MemorialContent;
 
-describe("RecitDeVieMobileV2", () => {
+describe("RecitDeVieV2", () => {
   it("DARK rend la matière ivoire / champagne et son Master", () => {
-    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="dark" />);
-    const section = screen.getByTestId("recit-v2-mobile");
+    render(<RecitDeVieV2 content={content} language="fr" skinVariant="dark" />);
+    const section = screen.getByTestId("recit-de-vie-v2");
     expect(section.dataset.artwork).toBe("ivoireChampagne");
     const wrap = section.parentElement as HTMLElement;
     expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/ivoire-champagne.png)");
     expect(wrap.style.getPropertyValue("--ink")).toBe("#39332E");
-    expect(wrap.style.getPropertyValue("--rule-guard")).toBe("0");
+    expect(wrap.style.getPropertyValue("--rule-guard")).toBe("1");
     expect(section.style.getPropertyValue("--d-m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/desktop/ivoire-champagne-desktop.png)");
   });
 
   it("LIGHT rend la matière bleu pétrole, son Master et son encre claire — jamais l'ivoire", () => {
-    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="light" />);
-    const section = screen.getByTestId("recit-v2-mobile");
+    render(<RecitDeVieV2 content={content} language="fr" skinVariant="light" />);
+    const section = screen.getByTestId("recit-de-vie-v2");
     expect(section.dataset.artwork).toBe("bleuPetrole");
     const wrap = section.parentElement as HTMLElement;
     expect(wrap.style.getPropertyValue("--m-src")).toBe("url(/assets/recit-de-vie/runtime-v2/mobile/bleu-petrole.png)");
@@ -61,7 +61,7 @@ describe("RecitDeVieMobileV2", () => {
   });
 
   it("affiche l'en-tête, l'introduction nominative et les trois chapitres dans l'ordre", () => {
-    render(<RecitDeVieMobileV2 content={content} language="fr" skinVariant="dark" />);
+    render(<RecitDeVieV2 content={content} language="fr" skinVariant="dark" />);
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Récit de vie");
     expect(screen.getByText(/le parcours de Élise/)).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
@@ -77,8 +77,8 @@ describe("RecitDeVieMobileV2", () => {
       ...content,
       legacy: { text: "Elle nous laisse une leçon : prendre le temps !" },
     } as unknown as MemorialContent;
-    render(<RecitDeVieMobileV2 content={withPunctuation} language="fr" skinVariant="dark" />);
-    const legacyBody = screen.getByTestId("recit-v2-mobile").querySelector('[data-matter="a12"] p:last-child');
+    render(<RecitDeVieV2 content={withPunctuation} language="fr" skinVariant="dark" />);
+    const legacyBody = screen.getByTestId("recit-de-vie-v2").querySelector('[data-matter="a12"] p:last-child');
     expect(legacyBody?.textContent).toBe("Elle nous laisse une leçon\u00A0: prendre le temps\u00A0!");
     expect((withPunctuation as unknown as { legacy: { text: string } }).legacy.text).toBe(
       "Elle nous laisse une leçon : prendre le temps !",

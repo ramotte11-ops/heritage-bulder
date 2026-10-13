@@ -16,12 +16,14 @@ import {
   type RecitV2DesktopArtworkTokens,
   type RecitV2MobileArtworkTokens,
 } from "@/config/recit-de-vie-v2-tokens";
-import styles from "./RecitDeVieMobileV2.module.css";
+import { SkinScope } from "@/components/memorial/SkinScope";
+import styles from "./RecitDeVieV2.module.css";
 
 /**
- * Récit de vie V2 — Mobile (architecture « A », PROTOTYPE LOCAL, non
- * branché sur le Mémorial). Un seul moteur de mise en page pour les deux
- * matières : la variante du mémorial choisit la matière par
+ * Récit de vie V2 — rendu de la section `story` (Mobile et Desktop,
+ * architecture « A »), branché via `RecitDeVieV2` dans
+ * config/memorial-section-renderers.ts. Un seul moteur de mise en page
+ * pour les deux matières : la variante du mémorial choisit la matière par
  * `RECIT_V2_ARTWORK_FOR_VARIANT` (décision PO : LIGHT = bleu pétrole,
  * DARK = ivoire / champagne), et la matière n'apporte que ses réglages
  * (Master, coupe, papier, zones de texte, couleurs) ; aucune variante ne se
@@ -99,23 +101,27 @@ function desktopVars(D: RecitV2DesktopArtworkTokens): CSSProperties {
   } as CSSProperties;
 }
 
-export interface RecitDeVieMobileV2Props {
+export interface RecitDeVieV2Props {
   content: MemorialContent;
   language: Language;
   skinVariant: SkinVariant;
 }
 
-export function RecitDeVieMobileV2({ skinVariant, ...props }: RecitDeVieMobileV2Props) {
+export function RecitDeVieV2({ skinVariant, ...props }: RecitDeVieV2Props) {
   const { artwork, tokens } = resolveRecitV2MobileArtwork(skinVariant);
-  return <RecitDeVieMobileV2Layout {...props} artwork={artwork} tokens={tokens} />;
+  return (
+    <SkinScope skin="intemporel" skinVariant={skinVariant}>
+      <RecitDeVieV2Layout {...props} artwork={artwork} tokens={tokens} />
+    </SkinScope>
+  );
 }
 
-function RecitDeVieMobileV2Layout({
+function RecitDeVieV2Layout({
   content,
   language,
   artwork,
   tokens: T,
-}: Omit<RecitDeVieMobileV2Props, "skinVariant"> & { artwork: RecitV2Artwork; tokens: RecitV2MobileArtworkTokens }) {
+}: Omit<RecitDeVieV2Props, "skinVariant"> & { artwork: RecitV2Artwork; tokens: RecitV2MobileArtworkTokens }) {
   const matters = resolveLifeStoryContent(content, language);
   const name = readHero(content).displayName?.trim() ?? "";
   const intro = name !== "" ? translateWith(language, "recit.v2.intro", { name }) : translate(language, "recit.v2.introNoName");
@@ -137,6 +143,9 @@ function RecitDeVieMobileV2Layout({
       setExtension(Math.max(0, Math.round((height - masterHeight) * 10) / 10));
     };
     measure();
+    // Sans ResizeObserver (environnements anciens ou de test), une mesure
+    // unique suffit : le décor n'est jamais nécessaire à la lecture.
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(section);
     return () => observer.disconnect();
@@ -147,7 +156,7 @@ function RecitDeVieMobileV2Layout({
       <section
         ref={sectionRef}
         className={styles.section}
-        data-testid="recit-v2-mobile"
+        data-testid="recit-de-vie-v2"
         data-artwork={artwork}
         data-extended={extension > 0.5}
         style={{ ...desktopVars(T.desktop), "--ext": `${extension}px` } as CSSProperties}

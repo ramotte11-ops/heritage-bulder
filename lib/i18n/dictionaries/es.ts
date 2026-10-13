@@ -238,6 +238,10 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "personSheet.a12Question": "¿Qué deja detrás de sí?",
   "personSheet.a12Helper":
     "Un valor, una expresión, un gesto, algo que les enseñó o transmitió, o simplemente lo que siempre recordarán de ella…",
+  "personSheet.counter": "{count} / {max} caracteres",
+  "personSheet.limitReached": "Ha alcanzado los {max} caracteres de este capítulo.",
+  "personSheet.limitRefused": "Esto superaría los {max} caracteres de este capítulo; no se ha añadido.",
+  "personSheet.overLimit": "Este texto supera los {max} caracteres. Se conserva tal cual; puede acortarlo cuando lo desee.",
   "personSheet.skip": "Omitir este paso",
   "recit.title": "EL RELATO DE UNA VIDA",
   "recit.v2.surtitle": "EL RELATO DE UNA VIDA",

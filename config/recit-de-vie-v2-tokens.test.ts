@@ -56,12 +56,12 @@ describe("resolveRecitV2MobileArtwork", () => {
     expect(tokens.ruleMinGap).toBeGreaterThan(0);
   });
 
-  it("le Mobile Dark validé garde sa géométrie : numéros 46 px, aucune garde de filet", () => {
+  it("le Mobile Dark validé garde sa géométrie : numéros 46 px ; garde de filet 6 px (GO PO, « 03 » à 320 px)", () => {
     const { tokens } = resolveRecitV2MobileArtwork("dark");
     expect(tokens.numberSize).toBe(46);
     expect(tokens.numberColumn).toBe(0.205);
     expect(tokens.numberInset).toBe(0.035);
-    expect(tokens.ruleMinGap).toBe(0);
+    expect(tokens.ruleMinGap).toBe(6);
     expect(tokens.paperGrains).toHaveLength(1);
   });
 });

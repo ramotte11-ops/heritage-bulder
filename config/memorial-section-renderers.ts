@@ -17,9 +17,10 @@ import type { Skin } from "./skins";
  * renderer — the composition fails closed on it (`noRenderer`), it never
  * substitutes another skin's renderer.
  *
- *  - `story` → `RecitDeVieIntemporel`: the link between the catalog's
- *    `story` section and the Récit de vie runtime (A10/A11/A12), which no
- *    code on `main` expressed until now.
+ *  - `story` → `RecitDeVieV2`: the Récit de vie V2 (A10/A11/A12, Mobile
+ *    and Desktop, LIGHT = bleu pétrole / DARK = ivoire-champagne). The V1
+ *    renderer `RecitDeVieIntemporel` stays registered: switching this one
+ *    line back to it is the whole rollback.
  *  - `gallery` → `GalleryIntemporel` (dettes D2–D4): the product host of
  *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
  *  - `traditions`, `testimonials`, `condolences`, `video`,
@@ -35,6 +36,7 @@ export const RENDERER_KEYS = [
   "DeathNoticeIntemporel",
   "CeremonyIntemporel",
   "RecitDeVieIntemporel",
+  "RecitDeVieV2",
   "GalleryIntemporel",
 ] as const;
 
@@ -46,7 +48,7 @@ export const SECTION_RENDERERS: Readonly<
   hero: { intemporel: "HeroIntemporel" },
   deathNotice: { intemporel: "DeathNoticeIntemporel" },
   ceremony: { intemporel: "CeremonyIntemporel" },
-  story: { intemporel: "RecitDeVieIntemporel" },
+  story: { intemporel: "RecitDeVieV2" },
   gallery: { intemporel: "GalleryIntemporel" },
 };
 

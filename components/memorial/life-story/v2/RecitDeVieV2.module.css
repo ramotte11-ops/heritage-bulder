@@ -1,6 +1,5 @@
 /*
- * Récit de vie V2 — Mobile (prototype local), moteur commun aux deux
- * matières. Toute géométrie du décor est exprimée en fraction de la largeur
+ * Récit de vie V2 — Mobile et Desktop, moteur commun aux deux matières. Toute géométrie du décor est exprimée en fraction de la largeur
  * rendue (cqw du .wrap), à partir du canevas du Master de la matière ;
  * couleurs et modes de fusion viennent aussi de la matière (variables CSS
  * posées par le composant) ; la typographie est en px CSS
@@ -10,6 +9,9 @@
 .wrap {
   container-type: inline-size;
   width: 100%;
+  /* Plafond Desktop (comme le V1) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+  margin-inline: auto;
   /* hauteur du Master à la largeur rendue */
   --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
   --px: calc(100cqw / var(--canvas-w)); /* 1 px de canevas */
@@ -209,17 +211,17 @@
 }
 
 /*
- * Desktop (≥ 1024 px, la bascule du Récit V1). Même moteur de décor sur le
- * Master Desktop de la matière : les variables --d-* posées sur la section
- * remplacent celles du Mobile, puis --mh et --px sont recalculés sur le
- * canevas Desktop. Texte : en-tête centré, trois colonnes, numéro à gauche.
+ * Desktop : dès que la LARGEUR RÉELLE du Récit atteint 1024 px (requête de
+ * conteneur sur .wrap, pas sur la fenêtre). Dans la Preview du Builder,
+ * plus étroite que la fenêtre (colonne Builder, plein aperçu plafonné à
+ * 960 px), c'est donc la composition Mobile validée qui s'affiche, à la
+ * bonne échelle ; hors Preview, la bascule reste à 1024 px comme le V1.
+ * Même moteur de décor sur le Master Desktop de la matière : les variables
+ * --d-* posées sur la section remplacent celles du Mobile, puis --mh et --px
+ * sont recalculés sur le canevas Desktop. Texte : en-tête centré, trois
+ * colonnes, numéro à gauche.
  */
-@media (min-width: 1024px) {
-  .wrap {
-    max-width: 1448px;
-    margin-inline: auto;
-  }
-
+@container (min-width: 1024px) {
   .section {
     --m-src: var(--d-m-src);
     --paper-images: var(--d-paper-images);

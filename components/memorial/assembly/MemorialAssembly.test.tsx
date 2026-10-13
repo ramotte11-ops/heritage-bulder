@@ -44,6 +44,7 @@ const { HeroIntemporel } = await import("@/components/memorial/hero/HeroIntempor
 const { DeathNoticeIntemporel } = await import("@/components/memorial/death-notice/DeathNoticeIntemporel");
 const { CeremonyIntemporel } = await import("@/components/memorial/ceremony/CeremonyIntemporel");
 const { RecitDeVieIntemporel } = await import("@/components/memorial/life-story/RecitDeVieIntemporel");
+const { RecitDeVieV2 } = await import("@/components/memorial/life-story/v2/RecitDeVieV2");
 
 const adapters = RENDERER_ADAPTERS as unknown as Record<string, unknown>;
 const originalAdapters = { ...adapters };
@@ -86,7 +87,7 @@ describe("MemorialAssembly — the real renderers, in the composition's order", 
 
     expect(block("hero").querySelector('img[src*="hero-runtime-light-desktop.png"]')).toBeTruthy();
     expect(block("deathNotice").querySelector('img[src*="a03-scene-top.png"]')).toBeTruthy();
-    expect(block("story").querySelector('[data-testid="recit-de-vie-intemporel"]')).toBeTruthy();
+    expect(block("story").querySelector('[data-testid="recit-de-vie-v2"]')).toBeTruthy();
     expect(block("story").textContent).toContain(FIXTURE_PERSON_WORDS);
     expect(block("ceremony").querySelector('[data-testid="ceremony-intemporel"]')).toBeTruthy();
   });
@@ -155,6 +156,7 @@ describe("renderer registry", () => {
     expect(RENDERER_COMPONENTS.DeathNoticeIntemporel).toBe(DeathNoticeIntemporel);
     expect(RENDERER_COMPONENTS.CeremonyIntemporel).toBe(CeremonyIntemporel);
     expect(RENDERER_COMPONENTS.RecitDeVieIntemporel).toBe(RecitDeVieIntemporel);
+    expect(RENDERER_COMPONENTS.RecitDeVieV2).toBe(RecitDeVieV2);
   });
 });
 

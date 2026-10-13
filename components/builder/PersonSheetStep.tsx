@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
-import { translate } from "@/lib/i18n/translate";
+import { translate, translateWith } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
 import {
   commitPersonSheet,
@@ -15,6 +15,12 @@ import {
   writeLovedThingsFieldText,
   writePersonWordsFieldText,
 } from "@/lib/builder/guided-flow/person-sheet-step";
+import {
+  LIFE_STORY_MAX_CHARACTERS,
+  acceptLifeStoryEdit,
+  countLifeStoryCharacters,
+  lifeStoryLimitStatus,
+} from "@/lib/builder/guided-flow/life-story-limit";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
@@ -49,6 +55,77 @@ interface PersonSheetStepProps {
  * étape" is always available and resolves the whole sheet as `"skipped"`
  * for all three without discarding any already-typed draft.
  */
+interface LifeStoryFieldProps {
+  id: string;
+  language: Language;
+  label: string;
+  helper: string;
+  /** Le texte enregistré, affiché EN ENTIER, même au-delà de la limite. */
+  initialValue: string;
+  disabled: boolean;
+  onAcceptedChange: (value: string) => void;
+}
+
+/**
+ * Un chapitre du Récit (A10/A11/A12), avec son compteur de 240 caractères
+ * (règle : lib/builder/guided-flow/life-story-limit.ts). Une frappe ou un
+ * collage qui ferait dépasser la limite est refusé en entier — jamais
+ * tronqué ; un texte déjà plus long reste entier, se raccourcit ou se
+ * corrige librement, mais ne s'allonge pas.
+ */
+function LifeStoryField({ id, language, label, helper, initialValue, disabled, onAcceptedChange }: LifeStoryFieldProps) {
+  const [value, setValue] = useState(initialValue);
+  const [refused, setRefused] = useState(false);
+  const status = lifeStoryLimitStatus(value);
+  const max = LIFE_STORY_MAX_CHARACTERS;
+
+  function handleChange(next: string) {
+    if (!acceptLifeStoryEdit(value, next)) {
+      setRefused(true);
+      return;
+    }
+    setRefused(false);
+    setValue(next);
+    onAcceptedChange(next);
+  }
+
+  const notice =
+    status === "over"
+      ? translateWith(language, "personSheet.overLimit", { max })
+      : refused
+        ? translateWith(language, "personSheet.limitRefused", { max })
+        : status === "reached"
+          ? translateWith(language, "personSheet.limitReached", { max })
+          : null;
+
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id} className={styles.fieldLabel}>
+        {label}
+      </label>
+      <p id={`${id}-helper`} className={styles.helper}>
+        {helper}
+      </p>
+      <textarea
+        id={id}
+        className={styles.textarea}
+        value={value}
+        disabled={disabled}
+        aria-describedby={`${id}-helper ${id}-count`}
+        onChange={(event) => handleChange(event.target.value)}
+      />
+      <p id={`${id}-count`} className={styles.counter} data-limit-status={status} aria-live="polite">
+        {translateWith(language, "personSheet.counter", { count: countLifeStoryCharacters(value), max })}
+      </p>
+      {notice !== null && (
+        <p className={styles.limitNotice} data-limit-status={status}>
+          {notice}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PersonSheetStep({ language, content: initialContent, persist }: PersonSheetStepProps) {
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -158,47 +235,35 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
       </div>
 
       <form className={styles.form} onSubmit={handleContinue}>
-        <div className={styles.field}>
-          <label htmlFor="person-sheet-a10" className={styles.fieldLabel}>
-            {translate(language, "personSheet.a10Question")}
-          </label>
-          <p className={styles.helper}>{translate(language, "personSheet.a10Helper")}</p>
-          <textarea
-            id="person-sheet-a10"
-            className={styles.textarea}
-            defaultValue={read.personWords.text ?? ""}
-            disabled={controlsDisabled}
-            onChange={(event) => handlePersonWordsChange(event.target.value)}
-          />
-        </div>
+        <LifeStoryField
+          id="person-sheet-a10"
+          language={language}
+          label={translate(language, "personSheet.a10Question")}
+          helper={translate(language, "personSheet.a10Helper")}
+          initialValue={read.personWords.text ?? ""}
+          disabled={controlsDisabled}
+          onAcceptedChange={handlePersonWordsChange}
+        />
 
-        <div className={styles.field}>
-          <label htmlFor="person-sheet-a11" className={styles.fieldLabel}>
-            {translate(language, "personSheet.a11Question")}
-          </label>
-          <p className={styles.helper}>{translate(language, "personSheet.a11Helper")}</p>
-          <textarea
-            id="person-sheet-a11"
-            className={styles.textarea}
-            defaultValue={read.lovedThings.text ?? ""}
-            disabled={controlsDisabled}
-            onChange={(event) => handleLovedThingsChange(event.target.value)}
-          />
-        </div>
+        <LifeStoryField
+          id="person-sheet-a11"
+          language={language}
+          label={translate(language, "personSheet.a11Question")}
+          helper={translate(language, "personSheet.a11Helper")}
+          initialValue={read.lovedThings.text ?? ""}
+          disabled={controlsDisabled}
+          onAcceptedChange={handleLovedThingsChange}
+        />
 
-        <div className={styles.field}>
-          <label htmlFor="person-sheet-a12" className={styles.fieldLabel}>
-            {translate(language, "personSheet.a12Question")}
-          </label>
-          <p className={styles.helper}>{translate(language, "personSheet.a12Helper")}</p>
-          <textarea
-            id="person-sheet-a12"
-            className={styles.textarea}
-            defaultValue={read.legacy.text ?? ""}
-            disabled={controlsDisabled}
-            onChange={(event) => handleLegacyChange(event.target.value)}
-          />
-        </div>
+        <LifeStoryField
+          id="person-sheet-a12"
+          language={language}
+          label={translate(language, "personSheet.a12Question")}
+          helper={translate(language, "personSheet.a12Helper")}
+          initialValue={read.legacy.text ?? ""}
+          disabled={controlsDisabled}
+          onAcceptedChange={handleLegacyChange}
+        />
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>

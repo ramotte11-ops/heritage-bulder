@@ -118,3 +118,24 @@
   font-size: 0.875rem;
   color: var(--heritage-state-error-text);
 }
+
+/* Récit de vie — compteur de 240 caractères et indications douces. */
+.counter {
+  margin: 0.25rem 0 0;
+  text-align: right;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--heritage-text-secondary);
+}
+
+.counter[data-limit-status="reached"],
+.counter[data-limit-status="over"] {
+  color: var(--heritage-text-primary);
+}
+
+.limitNotice {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--heritage-text-secondary);
+}

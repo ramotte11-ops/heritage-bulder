@@ -1,9 +1,9 @@
 import type { SkinVariant } from "@/config/skins";
 
 /**
- * Récit de vie V2 — Mobile, architecture « A » retenue par le QG (Master
- * authentique + papier central CSS + hauteur dynamique, sans nouvel asset
- * Studio). PROTOTYPE LOCAL — non branché sur le Mémorial.
+ * Récit de vie V2 — Mobile et Desktop, architecture « A » retenue par le QG
+ * (Master authentique + papier central CSS + hauteur dynamique, sans nouvel
+ * asset Studio). Rendu de la section `story` (`RecitDeVieV2`).
  *
  * ## Matière ≠ nom de fichier du handoff (autorité PO)
  *
@@ -42,7 +42,7 @@ export const RECIT_V2_ARTWORK_FOR_VARIANT: Readonly<Record<SkinVariant, RecitV2A
 });
 
 /** Tout ce qui distingue une matière ; le moteur de mise en page
- * (`RecitDeVieMobileV2`) est commun. Géométrie en px de canevas ou en
+ * (`RecitDeVieV2`) est commun. Géométrie en px de canevas ou en
  * fraction du Master ; couleurs en valeurs CSS. */
 
 /** Réglages Desktop (≥ 1024 px) d'une matière : même moteur de décor que le
@@ -150,7 +150,10 @@ const IVOIRE_CHAMPAGNE: RecitV2MobileArtworkTokens = {
   numberColumn: 0.205,
   numberInset: 0.035,
   numberSize: 46,
-  ruleMinGap: 0,
+  /** Garde d'écart « 03 » / filet (GO PO) : sous ~352 px, le filet se décale
+   * dans la marge du texte (5,4 px à 320 px) ; texte et numéro ne bougent
+   * pas ; aucun effet à partir de ~352 px. */
+  ruleMinGap: 6,
   paperProfile: "linear-gradient(to right, rgb(205,154,111) 0.0%, rgb(211,157,110) 4.1%, rgb(223,171,123) 8.3%, rgb(234,195,156) 12.6%, rgb(240,206,170) 16.7%, rgb(242,210,175) 20.9%, rgb(244,213,179) 25.0%, rgb(245,216,183) 29.1%, rgb(245,217,185) 33.3%, rgb(244,217,186) 37.4%, rgb(244,218,188) 41.7%, rgb(245,219,189) 45.9%, rgb(245,219,190) 50.0%, rgb(245,219,190) 54.1%, rgb(244,219,189) 58.3%, rgb(244,218,187) 62.6%, rgb(244,217,186) 66.7%, rgb(244,216,185) 70.9%, rgb(243,215,184) 75.0%, rgb(242,213,182) 79.1%, rgb(240,211,179) 83.3%, rgb(239,207,174) 87.4%, rgb(234,197,160) 91.7%, rgb(211,167,123) 95.9%, rgb(202,153,101) 100.0%)",
   noiseBlend: "soft-light",
   ink: "#39332E",

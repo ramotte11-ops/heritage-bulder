@@ -5,8 +5,12 @@ import { SKINS } from "./skins";
 import { RENDERER_KEYS, SECTION_RENDERERS, resolveSectionRenderer } from "./memorial-section-renderers";
 
 describe("SECTION_RENDERERS", () => {
-  it("links story to the Récit de vie runtime", () => {
-    expect(resolveSectionRenderer("story", "intemporel")).toBe("RecitDeVieIntemporel");
+  it("links story to the Récit de vie V2", () => {
+    expect(resolveSectionRenderer("story", "intemporel")).toBe("RecitDeVieV2");
+  });
+
+  it("keeps the Récit de vie V1 registered, for a one-line rollback", () => {
+    expect(RENDERER_KEYS).toContain("RecitDeVieIntemporel");
   });
 
   it("maps the five existing Intemporel renderers and nothing else", () => {
@@ -33,12 +37,16 @@ describe("SECTION_RENDERERS", () => {
       DeathNoticeIntemporel: "death-notice",
       CeremonyIntemporel: "ceremony",
       RecitDeVieIntemporel: "life-story",
+      RecitDeVieV2: "life-story/v2",
       GalleryIntemporel: "gallery",
     };
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);
     }
+    // Every key is wired to a section, except the V1 Récit kept only as the
+    // rollback target of the `story` row.
     const used = Object.values(SECTION_RENDERERS).flatMap((bySkin) => Object.values(bySkin ?? {}));
-    expect([...new Set(used)].sort()).toEqual([...RENDERER_KEYS].sort());
+    const rollbackOnly = ["RecitDeVieIntemporel"];
+    expect([...new Set(used)].sort()).toEqual(RENDERER_KEYS.filter((key) => !rollbackOnly.includes(key)).sort());
   });
 });
