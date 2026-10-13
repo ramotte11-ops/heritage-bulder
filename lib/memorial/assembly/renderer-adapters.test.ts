@@ -8,6 +8,7 @@ import {
   adaptDeathNoticeIntemporel,
   adaptHeroIntemporel,
   adaptRecitDeVieIntemporel,
+  adaptRecitDeVieV2,
   type AdapterContext,
 } from "./renderer-adapters";
 import type { ResolvedMedia } from "./media-resolver";
@@ -135,6 +136,34 @@ describe("adaptRecitDeVieIntemporel", () => {
     async (key) => {
       const content = { ...fullAnnouncement(), [key]: { text: 42 } } as unknown as MemorialContent;
       expect(await adaptRecitDeVieIntemporel(context(content))).toEqual({ ok: false, reason: "contentUnreadable" });
+    },
+  );
+});
+
+describe("adaptRecitDeVieV2", () => {
+  it("passes exactly the V1 props: content, language, variant", async () => {
+    const content = fullAnnouncement();
+    expect(await adaptRecitDeVieV2(context(content))).toEqual({
+      ok: true,
+      props: { content, language: context(content).language, skinVariant: context(content).skinVariant },
+    });
+  });
+
+  it("refuses any other skin", async () => {
+    expect(await adaptRecitDeVieV2({ ...context(fullAnnouncement()), skin: "musulman" })).toEqual({ ok: false, reason: "skinMismatch" });
+  });
+
+  it("QG decision: three empty matters are accepted (HERITAGE fallbacks)", async () => {
+    const content = fullAnnouncementEmptyRecit();
+    const result = await adaptRecitDeVieV2(context(content));
+    expect(result.ok && result.props.content).toBe(content);
+  });
+
+  it.each(["personWords", "lovedThings", "legacy"])(
+    "a corrupted %s → contentUnreadable (a fallback must never stand in for the family's text)",
+    async (key) => {
+      const content = { ...fullAnnouncement(), [key]: { text: 42 } } as unknown as MemorialContent;
+      expect(await adaptRecitDeVieV2(context(content))).toEqual({ ok: false, reason: "contentUnreadable" });
     },
   );
 });

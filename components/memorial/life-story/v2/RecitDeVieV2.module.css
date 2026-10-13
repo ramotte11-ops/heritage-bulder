@@ -1,0 +1,293 @@
+/*
+ * Récit de vie V2 — Mobile et Desktop, moteur commun aux deux matières. Toute géométrie du décor est exprimée en fraction de la largeur
+ * rendue (cqw du .wrap), à partir du canevas du Master de la matière ;
+ * couleurs et modes de fusion viennent aussi de la matière (variables CSS
+ * posées par le composant) ; la typographie est en px CSS
+ * lisibles, indépendante de l'échelle du décor.
+ */
+
+.wrap {
+  container-type: inline-size;
+  width: 100%;
+  /* Plafond Desktop (comme le V1) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+  margin-inline: auto;
+  /* hauteur du Master à la largeur rendue */
+  --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+  --px: calc(100cqw / var(--canvas-w)); /* 1 px de canevas */
+}
+
+.section {
+  position: relative;
+  isolation: isolate;
+  color: var(--ink);
+}
+
+/* Le Master entier, à son ratio naturel, ancré en haut. */
+.master {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--mh);
+  background: var(--m-src) top / 100% auto no-repeat;
+  z-index: 0;
+}
+
+/* Le bas authentique [cut − fade : H], ancré au bas de la section. Les
+   rangées [cut − fade : cut] (papier nu) passent sous le fondu bas du
+   papier central. */
+.bottom {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--px) * (var(--canvas-h) - var(--cut) + var(--fade)));
+  background: var(--m-src) bottom / 100% auto no-repeat;
+  z-index: 1;
+}
+
+/* Section étendue : le Master ne montre plus que [0 : cut + fade] ; sous le
+   papier central il n'y a donc jamais de rangée du bas déplacée. */
+.section[data-extended="true"] .master {
+  height: calc(var(--px) * (var(--cut) + var(--fade)));
+}
+
+/* Le papier central, seulement quand le texte dépasse le Master : de la
+   hauteur exacte de l'excédent, plus un fondu à chaque raccord. */
+.paper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background-image: var(--paper-images);
+  background-size: var(--paper-sizes);
+  background-repeat: var(--paper-repeat);
+  background-blend-mode: var(--paper-blend);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--mh);
+  padding:
+    calc(var(--mh) * var(--text-top))
+    calc(100cqw * (1 - var(--text-right)))
+    calc(var(--mh) * var(--foot))
+    calc(100cqw * var(--text-left));
+}
+
+.header {
+  margin: 0 calc(100cqw * var(--header-inset-right)) 0 calc(100cqw * var(--header-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.surtitle {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: 11px;
+  line-height: 1.4;
+  /* 0,32em dès ~350 px ; resserré en dessous pour que les surtitres longs
+     (ES « EL RELATO DE UNA VIDA ») restent hors du feuillage haut droit. */
+  letter-spacing: clamp(0.2em, calc(0.2em + (100cqw - 320px) * 0.04), 0.32em);
+}
+
+.title {
+  margin: 6px 0 0;
+  font-family: var(--font-heritage-serif), serif;
+  font-weight: 500;
+  /* 38 px dès ~365 px ; en dessous, suit la largeur (ES « Relato de vida »
+     touchait la feuille haut gauche à 320 px). */
+  font-size: clamp(32px, 10.4cqw, 38px);
+  line-height: 1.08;
+}
+
+.intro {
+  margin: 10px 0 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: 16px;
+  line-height: 1.38;
+}
+
+.separator {
+  display: block;
+  width: 54px;
+  margin: 14px 0 6px;
+  border-top: 1px solid var(--rule);
+}
+
+/* Les chapitres prennent la place restante ; si le texte est court,
+   l'espace libre se répartit de part et d'autre des filets. */
+.chapters {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-right: calc(100cqw * (var(--text-right) - var(--chapter-right)));
+}
+
+.chapterSlot {
+  display: contents;
+}
+
+/* Filet entre deux chapitres : les marges automatiques absorbent l'espace
+   libre quand le texte est court ; l'écart minimal vient du padding des
+   chapitres. */
+.divider {
+  flex: none;
+  width: 100%;
+  height: 0;
+  margin: auto 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* Colonne des numéros : largeur, retrait et taille propres à chaque matière
+   (--number-column, --number-inset, --number-size), calibrés pour tenir le
+   numéro hors du feuillage de son Master. */
+.chapter {
+  display: grid;
+  grid-template-columns: calc(100cqw * var(--number-column)) 1fr;
+  padding: 14px 0;
+}
+
+.number {
+  margin: 0;
+  padding-left: calc(100cqw * var(--number-inset));
+  font-family: var(--font-heritage-serif), serif;
+  font-weight: 500;
+  font-size: var(--number-size);
+  line-height: 1;
+  font-variant-numeric: lining-nums;
+  background: var(--number-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Garde d'écart numéro / filet (--rule-min-gap ; --rule-guard 0 = inactive) : quand
+   l'écart naturel entre le numéro le plus large (« 03 » : 1,165 em en
+   Playfair 500, chiffres alignés) et le filet passe sous la garde, le filet
+   se décale vers la droite dans la marge de 12 px ; le texte ne bouge pas. */
+.text {
+  --rule-shift: calc(
+    var(--rule-guard) *
+      max(0px, calc(var(--rule-min-gap) - (100cqw * (var(--number-column) - var(--number-inset)) - var(--number-size) * 1.17)))
+  );
+  border-left: 1px solid var(--rule);
+  margin-left: var(--rule-shift);
+  padding-left: calc(12px - var(--rule-shift));
+  min-width: 0;
+}
+
+.chapterTitle {
+  margin: 0;
+  font-family: var(--font-heritage-serif), serif;
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+.rule {
+  display: block;
+  width: 32px;
+  margin: 8px 0 9px;
+  border-top: 1px solid var(--accent-rule);
+}
+
+/* Taille uniforme pour les trois chapitres : 16 px à 375 px, 17 px à 430 px. */
+.body {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-size: clamp(16px, calc(16px + (100cqw - 375px) * 0.0182), 17px);
+  line-height: 1.42;
+  overflow-wrap: break-word;
+}
+
+/*
+ * Desktop : dès que la LARGEUR RÉELLE du Récit atteint 1024 px (requête de
+ * conteneur sur .wrap, pas sur la fenêtre). Dans la Preview du Builder,
+ * plus étroite que la fenêtre (colonne Builder, plein aperçu plafonné à
+ * 960 px), c'est donc la composition Mobile validée qui s'affiche, à la
+ * bonne échelle ; hors Preview, la bascule reste à 1024 px comme le V1.
+ * Même moteur de décor sur le Master Desktop de la matière : les variables
+ * --d-* posées sur la section remplacent celles du Mobile, puis --mh et --px
+ * sont recalculés sur le canevas Desktop. Texte : en-tête centré, trois
+ * colonnes, numéro à gauche.
+ */
+@container (min-width: 1024px) {
+  .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut);
+    --fade: var(--d-fade);
+    --text-top: var(--d-text-top);
+    --foot: var(--d-foot);
+    --text-left: var(--d-text-left);
+    --text-right: var(--d-text-right);
+    --chapter-right: var(--d-text-right);
+    --header-inset-left: var(--d-header-inset-left);
+    --header-inset-right: var(--d-header-inset-right);
+    --number-size: var(--d-number-size);
+    --rule-guard: 0;
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  .surtitle {
+    font-size: 12px;
+    letter-spacing: 0.32em;
+  }
+
+  .title {
+    margin-top: 8px;
+    font-size: 48px;
+  }
+
+  .intro {
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 1.42;
+  }
+
+  .separator {
+    width: 64px;
+    margin: 18px 0 28px;
+  }
+
+  .chapters {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: calc(100cqw * var(--d-column-gap));
+    align-items: start;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .chapter {
+    grid-template-columns: calc(var(--number-size) * 1.22) minmax(0, 1fr);
+    padding: 0;
+  }
+
+  .number {
+    padding-left: 0;
+  }
+
+  .body {
+    font-size: 17px;
+  }
+}

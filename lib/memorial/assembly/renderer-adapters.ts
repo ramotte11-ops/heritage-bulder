@@ -7,6 +7,7 @@ import type { HeroIntemporelProps } from "@/components/memorial/hero/HeroIntempo
 import type { DeathNoticeIntemporelProps } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import type { CeremonyIntemporelProps } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import type { RecitDeVieIntemporelProps } from "@/components/memorial/life-story/RecitDeVieIntemporel";
+import type { RecitDeVieV2Props } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import type { GalleryIntemporelProps } from "@/components/memorial/gallery/GalleryIntemporel";
 import { inspectHero, isHeroContentComplete } from "@/lib/memorial/hero";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
@@ -45,6 +46,7 @@ export interface RendererPropsMap {
   DeathNoticeIntemporel: DeathNoticeIntemporelProps;
   CeremonyIntemporel: CeremonyIntemporelProps;
   RecitDeVieIntemporel: RecitDeVieIntemporelProps;
+  RecitDeVieV2: RecitDeVieV2Props;
   GalleryIntemporel: GalleryIntemporelProps;
 }
 
@@ -154,7 +156,7 @@ export const adaptCeremonyIntemporel: RendererAdapter<"CeremonyIntemporel"> = as
  * renderable (the renderer's HERITAGE fallbacks). Only a CORRUPTED
  * matter is refused — its fallback would stand in for the family's own
  * text. */
-export const adaptRecitDeVieIntemporel: RendererAdapter<"RecitDeVieIntemporel"> = async (context) => {
+function adaptLifeStory(context: AdapterContext): AdapterResult<"RecitDeVieIntemporel" | "RecitDeVieV2"> {
   if (context.skin !== "intemporel") return refuse("skinMismatch");
   if (
     inspectPersonWords(context.content).status === "corrupted" ||
@@ -168,7 +170,13 @@ export const adaptRecitDeVieIntemporel: RendererAdapter<"RecitDeVieIntemporel"> 
     ok: true,
     props: { content: context.content, language: context.language, skinVariant: context.skinVariant },
   };
-};
+}
+
+export const adaptRecitDeVieIntemporel: RendererAdapter<"RecitDeVieIntemporel"> = async (context) => adaptLifeStory(context);
+
+/** Récit de vie V2 — exactly the same contract as the V1 adapter (same
+ * matters, same refusals, same props): only the renderer differs. */
+export const adaptRecitDeVieV2: RendererAdapter<"RecitDeVieV2"> = async (context) => adaptLifeStory(context);
 
 /**
  * Dettes D2–D4 — the Gallery's HERITAGE title and subtitle, owned by the
@@ -261,5 +269,6 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   DeathNoticeIntemporel: adaptDeathNoticeIntemporel,
   CeremonyIntemporel: adaptCeremonyIntemporel,
   RecitDeVieIntemporel: adaptRecitDeVieIntemporel,
+  RecitDeVieV2: adaptRecitDeVieV2,
   GalleryIntemporel: adaptGalleryIntemporel,
 };

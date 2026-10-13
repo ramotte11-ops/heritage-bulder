@@ -199,7 +199,7 @@ describe("story (Récit de vie)", () => {
     const skipped = ok(skipPersonSheet(throughA09Skipped()));
     const composition = compose(skipped);
     expect(stateOf(composition, "story")).toBe("renderable");
-    expect(composition.sections.find((s) => s.sectionId === "story")?.rendererKey).toBe("RecitDeVieIntemporel");
+    expect(composition.sections.find((s) => s.sectionId === "story")?.rendererKey).toBe("RecitDeVieV2");
     expect(resolveExplicitContentSectionIds(skipped)).toContain("story");
   });
 });
@@ -384,7 +384,7 @@ describe("real parcours (announcement, through A12, ceremony yes)", () => {
     expect(composition.sections.filter((s) => s.state === "renderable").map((s) => s.rendererKey)).toEqual([
       "HeroIntemporel",
       "DeathNoticeIntemporel",
-      "RecitDeVieIntemporel",
+      "RecitDeVieV2",
       "CeremonyIntemporel",
     ]);
     expect(stateOf(composition, "gallery")).toBe("optional");

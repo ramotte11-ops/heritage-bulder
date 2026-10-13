@@ -115,7 +115,7 @@ describe("consumes composeMemorial", () => {
     const content = fullAnnouncementEmptyRecit();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
     const story = assembled.sections.find((s) => s.sectionId === "story");
-    expect(story?.rendererKey).toBe("RecitDeVieIntemporel");
+    expect(story?.rendererKey).toBe("RecitDeVieV2");
   });
 });
 
@@ -154,7 +154,7 @@ describe("renderer props", () => {
   it("Cérémonie and Récit: the content itself, language and variant", async () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
-    for (const key of ["CeremonyIntemporel", "RecitDeVieIntemporel"] as const) {
+    for (const key of ["CeremonyIntemporel", "RecitDeVieV2"] as const) {
       const section = assembled.sections.find((s) => s.rendererKey === key);
       expect(section?.props).toEqual({ content, language: "fr", skinVariant: "light" });
     }
@@ -239,12 +239,12 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
   });
 
   it("a throwing adapter is a failure, never an exception", async () => {
-    adapters.RecitDeVieIntemporel = async () => {
+    adapters.RecitDeVieV2 = async () => {
       throw new Error("boom");
     };
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
     expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony"]);
-    expect(assembled.failures).toEqual([{ sectionId: "story", rendererKey: "RecitDeVieIntemporel", reason: "adapterError" }]);
+    expect(assembled.failures).toEqual([{ sectionId: "story", rendererKey: "RecitDeVieV2", reason: "adapterError" }]);
   });
 
   it("a renderer key with no adapter is a failure (noAdapter), never another renderer", async () => {

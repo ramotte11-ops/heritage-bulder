@@ -213,3 +213,65 @@ describe("PersonSheetStep — continue avec un ou plusieurs textes → completed
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
+
+describe("PersonSheetStep — limite de 240 caractères (jamais de troncature)", () => {
+  const a = (n: number) => "a".repeat(n);
+  const field = (id: string) => document.getElementById(id) as HTMLTextAreaElement;
+
+  it("affiche un compteur par chapitre, qui suit la saisie", () => {
+    render(<PersonSheetStep {...baseProps()} />);
+    expect(screen.getAllByText("0 / 240 caractères")).toHaveLength(3);
+    fireEvent.change(field("person-sheet-a10"), { target: { value: "Elle aimait les livres." } });
+    expect(screen.getByText("23 / 240 caractères")).toBeTruthy();
+  });
+
+  it("refuse en entier une saisie qui ferait dépasser 240 caractères, avec une indication douce", () => {
+    render(<PersonSheetStep {...baseProps()} />);
+    fireEvent.change(field("person-sheet-a11"), { target: { value: a(240) } });
+    expect(field("person-sheet-a11").value).toHaveLength(240);
+    expect(screen.getByText("Vous avez atteint les 240 caractères de ce chapitre.")).toBeTruthy();
+
+    fireEvent.change(field("person-sheet-a11"), { target: { value: a(260) } });
+    expect(field("person-sheet-a11").value).toHaveLength(240);
+    expect(screen.getByText("240 / 240 caractères")).toBeTruthy();
+    expect(screen.getByText("Cet ajout dépasserait les 240 caractères de ce chapitre ; il n'a pas été pris en compte.")).toBeTruthy();
+  });
+
+  it("un texte existant de plus de 240 caractères s'affiche en entier, n'est jamais réécrit, se raccourcit mais ne s'allonge pas", async () => {
+    const existing = `${a(150)} ${a(149)}`; // 300 caractères
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    render(<PersonSheetStep {...baseProps({ content: { ...CONTENT, legacy: { text: existing } } as never, persist })} />);
+
+    expect(field("person-sheet-a12").value).toBe(existing);
+    expect(screen.getByText("300 / 240 caractères")).toBeTruthy();
+    expect(screen.getByText(/Ce texte dépasse 240 caractères\. Il est conservé tel quel/)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(persist).not.toHaveBeenCalled();
+
+    fireEvent.change(field("person-sheet-a12"), { target: { value: `${existing}b` } });
+    expect(field("person-sheet-a12").value).toBe(existing);
+
+    fireEvent.change(field("person-sheet-a12"), { target: { value: existing.slice(0, 299) } });
+    expect(field("person-sheet-a12").value).toBe(existing.slice(0, 299));
+    expect(screen.getByText("299 / 240 caractères")).toBeTruthy();
+  });
+
+  it("un collage refusé sous la limite le dit exactement, sans prétendre la limite atteinte", () => {
+    render(<PersonSheetStep {...baseProps()} />);
+    fireEvent.change(field("person-sheet-a10"), { target: { value: "Un café au soleil." } });
+    fireEvent.change(field("person-sheet-a10"), { target: { value: a(300) } });
+    expect(field("person-sheet-a10").value).toBe("Un café au soleil.");
+    expect(screen.queryByText("Vous avez atteint les 240 caractères de ce chapitre.")).toBeNull();
+    expect(screen.getByText("Cet ajout dépasserait les 240 caractères de ce chapitre ; il n'a pas été pris en compte.")).toBeTruthy();
+  });
+
+  it("compteur et indications en anglais et en espagnol", () => {
+    render(<PersonSheetStep {...baseProps({ language: "en", content: { ...CONTENT, personWords: { text: a(241) } } as never })} />);
+    expect(screen.getByText("241 / 240 characters")).toBeTruthy();
+    expect(screen.getByText(/This text is longer than 240 characters/)).toBeTruthy();
+    cleanup();
+    render(<PersonSheetStep {...baseProps({ language: "es", content: { ...CONTENT, personWords: { text: a(240) } } as never })} />);
+    expect(screen.getByText("240 / 240 caracteres")).toBeTruthy();
+    expect(screen.getByText("Ha alcanzado los 240 caracteres de este capítulo.")).toBeTruthy();
+  });
+});

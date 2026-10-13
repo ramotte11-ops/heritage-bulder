@@ -46,7 +46,7 @@ import {
   buildQgRuntimeDemoContent,
   buildQgRuntimeDemoContentThroughA03,
 } from "@/lib/builder/qg-runtime-demo";
-import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
+import { RecitDeVieV2 } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import { writePersonWords } from "@/lib/memorial/person-words";
 import { writeLovedThings } from "@/lib/memorial/loved-things";
 import { writeLegacy } from "@/lib/memorial/legacy";
@@ -347,7 +347,7 @@ export default function QgRuntimeDemoPage() {
   if (showRecit) {
     const recitContent = buildRecitScenarioContent(recitScenario);
     stepLabel = `Récit de vie — ${RECIT_SCENARIOS.find((s) => s.id === recitScenario)?.label ?? recitScenario}`;
-    body = <RecitDeVieIntemporel content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
+    body = <RecitDeVieV2 content={recitContent} language={LANGUAGE} skinVariant={skinVariant} />;
   } else if (!welcomeDone) {
     stepLabel = "Bienvenue (après T01)";
     body = (
