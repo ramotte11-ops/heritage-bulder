@@ -201,13 +201,63 @@ describe("DeathNoticeV2 — i18n, titres, repères temporaires", () => {
     expect(section.container.querySelector("h3")!.textContent).toBe("Élise Martin");
   });
 
-  it("rameau, cœur et médaillons ne sont que des repères temporaires, masqués aux lecteurs d'écran", () => {
+  it("ornements : un rameau, un cœur, et un médaillon par précision rendue — tous masqués aux lecteurs d'écran", () => {
     const { container } = renderNotice();
-    expect(container.querySelectorAll('[data-placeholder="rameau"]')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-placeholder="coeur"]')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-placeholder="medaillon"]')).toHaveLength(5);
-    for (const el of container.querySelectorAll("[data-placeholder]")) {
+    expect(container.querySelectorAll('[data-ornament="rameau"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-ornament="coeur"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(5);
+    for (const el of container.querySelectorAll("[data-ornament]")) {
       expect(el.closest('[aria-hidden="true"]')).toBeTruthy();
+    }
+    expect(container.querySelector("[data-placeholder]")).toBeNull();
+  });
+
+  it.each([
+    [["quote"], 0, false],
+    [["generalLocation", "other"], 0, false],
+    [["generalLocation", "familyMessage", "thought"], 1, true],
+    [["generalLocation", "familyMessage", "thought", "quote"], 1, false],
+    [["generalLocation", "familyMessage", "thought", "quote", "other"], 2, true],
+  ] as const)(
+    "précisions %j : un médaillon par bloc, %i séparateur(s) de rangée, dernier court = %s",
+    (fields, rowRules, lastShort) => {
+      const precisions = Object.fromEntries(fields.map((f) => [f, ALL_PRECISIONS[f]]));
+      const { container } = renderNotice({ deathNotice: notice(precisions) });
+      const blocks = container.querySelectorAll("[data-field]");
+      expect(blocks).toHaveLength(fields.length);
+      for (const block of blocks) {
+        expect(block.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(1);
+      }
+      expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(fields.length);
+      const rules = container.querySelectorAll("[data-row-rule]");
+      expect(rules).toHaveLength(rowRules);
+      if (rowRules > 0) expect(rules[rules.length - 1].className.includes("rowRuleShort")).toBe(lastShort);
+    },
+  );
+
+  it("chaque médaillon porte le pictogramme de sa précision (cinq tracés distincts)", () => {
+    const { container } = renderNotice();
+    const drawings = Array.from(container.querySelectorAll('[data-ornament="medaillon"] svg')).map((svg) =>
+      svg.innerHTML.replace(/id="[^"]*"|url\(#[^)]*\)/g, ""),
+    );
+    expect(new Set(drawings).size).toBe(5);
+  });
+
+  it("sans précision : ni médaillon, ni séparateur ; rameau et cœur restent", () => {
+    const { container } = renderNotice({ deathNotice: notice({}) });
+    expect(container.querySelector('[data-ornament="medaillon"]')).toBeNull();
+    expect(container.querySelector("[data-row-rule]")).toBeNull();
+    expect(container.querySelector('[data-ornament="rameau"]')).toBeTruthy();
+    expect(container.querySelector('[data-ornament="coeur"]')).toBeTruthy();
+  });
+
+  it("les SVG d'ornements gardent leur ratio (viewBox fixe, aucune déformation)", () => {
+    const { container } = renderNotice();
+    expect(container.querySelector('[data-ornament="rameau"]')!.getAttribute("viewBox")).toBe("0 0 160 86");
+    expect(container.querySelector('[data-ornament="coeur"]')!.getAttribute("viewBox")).toBe("0 0 30 27");
+    for (const svg of container.querySelectorAll('[data-ornament="medaillon"] svg')) {
+      expect(svg.getAttribute("viewBox")).toBe("0 0 100 100");
+      expect(svg.getAttribute("preserveAspectRatio")).toBeNull();
     }
   });
 

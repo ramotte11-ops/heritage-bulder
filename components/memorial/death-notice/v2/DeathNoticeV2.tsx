@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { HeroContent } from "@/types/hero";
@@ -10,13 +10,13 @@ import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
 import { DEATH_NOTICE_V2_TOKENS, type DeathNoticeV2MobileTokens } from "@/config/death-notice-v2-tokens";
-import { DEATH_NOTICE_INTEMPOREL_ICONS } from "@/config/death-notice-intemporel-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { avisNameSerif, ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
+import { Branch, Heart, Medallion } from "./DeathNoticeV2Ornaments";
 import styles from "./DeathNoticeV2.module.css";
 
 /**
- * Avis de décès V2 — PHASE 1 : pilote Mobile Light (GO QG). Non branché
+ * Avis de décès V2 — pilote Mobile Light (phases 1 et 2, GO QG). Non branché
  * sur le registre de production : `DeathNoticeIntemporel` (V1) reste le
  * renderer de la section `deathNotice`.
  *
@@ -34,9 +34,10 @@ import styles from "./DeathNoticeV2.module.css";
  * géométrie est en px de canevas rapportés à la largeur réelle du
  * conteneur (cqw) ; les textes ont un plancher en px CSS lisibles.
  *
- * Ornements : repères TEMPORAIRES (`data-placeholder`) aux positions et
- * dimensions de la maquette — médaillons, rameau, cœur. Leur reconstruction
- * est la phase 2.
+ * Ornements (phase 2) : médaillons, rameau, cœur et filets reconstruits
+ * d'après la maquette (DeathNoticeV2Ornaments.tsx), tous `aria-hidden`.
+ * Chaque médaillon appartient à son bloc de précision ; chaque séparateur
+ * de rangée n'existe qu'entre deux rangées réellement rendues.
  */
 
 export interface DeathNoticeV2Props {
@@ -52,14 +53,13 @@ export interface DeathNoticeV2Props {
 const PRECISION_BLOCKS: readonly {
   field: DeathNoticePrecisionField;
   labelKey: TranslationKey;
-  icon: string;
   italic: boolean;
 }[] = [
-  { field: "generalLocation", labelKey: "deathNotice.blockLocation", icon: DEATH_NOTICE_INTEMPOREL_ICONS.generalLocation, italic: false },
-  { field: "familyMessage", labelKey: "deathNotice.blockFamilyMessage", icon: DEATH_NOTICE_INTEMPOREL_ICONS.familyMessage, italic: true },
-  { field: "thought", labelKey: "deathNotice.blockThought", icon: DEATH_NOTICE_INTEMPOREL_ICONS.thought, italic: true },
-  { field: "quote", labelKey: "deathNotice.blockQuote", icon: DEATH_NOTICE_INTEMPOREL_ICONS.quote, italic: true },
-  { field: "other", labelKey: "deathNotice.blockOther", icon: DEATH_NOTICE_INTEMPOREL_ICONS.other, italic: false },
+  { field: "generalLocation", labelKey: "deathNotice.blockLocation", italic: false },
+  { field: "familyMessage", labelKey: "deathNotice.blockFamilyMessage", italic: true },
+  { field: "thought", labelKey: "deathNotice.blockThought", italic: true },
+  { field: "quote", labelKey: "deathNotice.blockQuote", italic: true },
+  { field: "other", labelKey: "deathNotice.blockOther", italic: false },
 ];
 
 const COARSE_NOISE =
@@ -184,14 +184,14 @@ function DeathNoticeV2Layout({
               <span className={styles.titleRule} aria-hidden="true" />
             </div>
 
-            <span className={styles.branch} data-placeholder="rameau" aria-hidden="true" />
+            <Branch />
 
             <NameTag className={styles.name}>{hero.displayName ?? ""}</NameTag>
             {dateRangeText !== null && <p className={styles.dates}>{renderDateRange(dateRangeText)}</p>}
 
             <div className={styles.heartRow} aria-hidden="true">
               <span className={styles.heartRule} />
-              <span className={styles.heart} data-placeholder="coeur" />
+              <Heart />
               <span className={styles.heartRule} />
             </div>
 
@@ -204,27 +204,37 @@ function DeathNoticeV2Layout({
             <>
               <span className={styles.detailsRule} aria-hidden="true" />
               <div className={styles.details} data-count={blocks.length}>
-                {blocks.map((block, index) => (
-                  <div
-                    key={block.field}
-                    className={`${styles.block} ${oddTotal && index === blocks.length - 1 ? styles.blockFull : ""}`}
-                    data-field={block.field}
-                  >
-                    <span
-                      className={styles.medallion}
-                      data-placeholder="medaillon"
-                      aria-hidden="true"
-                      // Pictogramme V1 statique (config/death-notice-intemporel-tokens.ts),
-                      // jamais du contenu familial — repère temporaire de phase 1.
-                      dangerouslySetInnerHTML={{ __html: block.icon }}
-                    />
-                    <div className={styles.blockText}>
-                      <span className={styles.label}>{translate(language, block.labelKey)}</span>
-                      <span className={styles.labelRule} aria-hidden="true" />
-                      <p className={`${styles.body} ${block.italic ? styles.bodyItalic : ""}`}>{block.text}</p>
-                    </div>
-                  </div>
-                ))}
+                {blocks.map((block, index) => {
+                  const isFull = oddTotal && index === blocks.length - 1;
+                  const row = Math.floor(index / 2);
+                  return (
+                    <Fragment key={block.field}>
+                      {/* Séparateur de rangée (deux colonnes) : seulement entre
+                          deux rangées réellement rendues ; plus court avant le
+                          bloc final centré, comme dans la maquette. */}
+                      {index > 0 && index % 2 === 0 && (
+                        <span
+                          className={`${styles.rowRule} ${isFull ? styles.rowRuleShort : ""}`}
+                          data-row-rule=""
+                          aria-hidden="true"
+                        />
+                      )}
+                      <div
+                        className={`${styles.block} ${isFull ? styles.blockFull : ""}`}
+                        data-field={block.field}
+                        data-col={isFull ? "full" : index % 2 === 0 ? "left" : "right"}
+                        data-row={row}
+                      >
+                        <Medallion field={block.field} />
+                        <div className={styles.blockText}>
+                          <span className={styles.label}>{translate(language, block.labelKey)}</span>
+                          <span className={styles.labelRule} aria-hidden="true" />
+                          <p className={`${styles.body} ${block.italic ? styles.bodyItalic : ""}`}>{block.text}</p>
+                        </div>
+                      </div>
+                    </Fragment>
+                  );
+                })}
               </div>
             </>
           )}

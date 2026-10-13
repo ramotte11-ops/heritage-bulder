@@ -81,6 +81,15 @@ export const DEATH_NOTICE_V2_PILOT_CASES: readonly DeathNoticeV2PilotCase[] = [
     deathNotice: notice(REFERENCE_ANNOUNCEMENT, { quote: REFERENCE_PRECISIONS.quote }),
   },
   {
+    id: "two",
+    label: "Deux précisions (lieu, citation)",
+    hero: hero("Élise Martin", { precision: "year", year: 1948 }, { precision: "year", year: 2023 }),
+    deathNotice: notice(REFERENCE_ANNOUNCEMENT, {
+      generalLocation: REFERENCE_PRECISIONS.generalLocation,
+      quote: REFERENCE_PRECISIONS.quote,
+    }),
+  },
+  {
     id: "three",
     label: "Trois précisions (lieu, pensée, autre)",
     hero: hero("Élise Martin", { precision: "date", date: "1948-04-17" }, null),

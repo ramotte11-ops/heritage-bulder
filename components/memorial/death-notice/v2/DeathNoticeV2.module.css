@@ -1,5 +1,5 @@
 /*
- * Avis de décès V2 — phase 1, pilote Mobile Light. Moteur du Récit de vie
+ * Avis de décès V2 — pilote Mobile Light (phases 1 et 2). Moteur du Récit de vie
  * V2 (RecitDeVieV2.module.css) : toute géométrie du décor est exprimée en
  * px de canevas (941 de large) rapportés à la largeur réelle du conteneur
  * (cqw du .wrap). Les tailles de texte suivent la même échelle avec un
@@ -7,8 +7,10 @@
  * maquette ; sur un téléphone, les textes gardent une taille de lecture
  * et la section s'allonge (papier central).
  *
- * Les ornements sont des repères TEMPORAIRES ([data-placeholder]) — leur
- * reconstruction est la phase 2.
+ * Ornements (phase 2) : d'après la maquette Mobile Light, en px de canevas
+ * rapportés à la largeur réelle, ratio toujours conservé — médaillons
+ * (anneau et face en CSS, pictogramme SVG), rameau et cœur (SVG, voir
+ * DeathNoticeV2Ornaments.tsx), filets gravés (trait sombre + liseré clair).
  */
 
 .wrap {
@@ -105,40 +107,47 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--px) * 22);
+  gap: calc(var(--px) * 25);
   width: 100%;
 }
 
 .titleRule {
-  flex: 0 1 calc(var(--px) * 92);
+  flex: 0 1 calc(var(--px) * 90);
   min-width: 18px;
-  border-top: 1px solid var(--rule);
 }
 
 .title {
   margin: 0;
   font-family: var(--font-heritage-ceremony-serif), serif;
   font-weight: 400;
-  font-size: max(11px, calc(var(--px) * 27));
+  font-size: max(11px, calc(var(--px) * 28));
   line-height: 1.2;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.26em;
   /* l'espacement final ne doit pas décentrer le mot */
-  margin-right: -0.24em;
+  margin-right: -0.26em;
   text-transform: uppercase;
   color: var(--ink);
   white-space: nowrap;
 }
 
-/* Repère temporaire du rameau : x 385–540, y 285–365 de la maquette. */
+/* Rameau (SVG 160 × 86, ratio conservé) : x 382–540, y 284–370 de la
+   maquette, dans le flux — un nom long le repousse, jamais l'inverse. */
 .branch {
   display: block;
-  width: calc(var(--px) * 155);
-  height: calc(var(--px) * 80);
-  margin-top: calc(var(--px) * 18);
+  flex: none;
+  width: calc(var(--px) * 160);
+  height: calc(var(--px) * 86);
+  margin-top: calc(var(--px) * 15);
+  overflow: visible;
+  /* La tige part à gauche : le rameau de la maquette est centré sur
+     x 461, 9,5 px à gauche de l'axe du texte. Décalage visuel seul. */
+  transform: translateX(calc(var(--px) * -9.5));
 }
 
 .name {
-  margin: calc(var(--px) * 10) 0 0;
+  /* Au moins 6 px sous le rameau : sur téléphone, le nom garde son
+     plancher de 34 px et son accent remonterait vers les feuilles. */
+  margin: max(6px, calc(var(--px) * 7)) 0 0;
   font-family: var(--font-heritage-avis-name), serif;
   font-weight: 600;
   font-size: max(34px, calc(var(--px) * 88));
@@ -165,25 +174,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--px) * 25);
-  margin-top: calc(var(--px) * 24);
+  gap: calc(var(--px) * 23);
+  margin-top: calc(var(--px) * 20);
   width: 100%;
 }
 
+/* Filets du cœur : x 290–432 et 509–651, plus clairs que ceux du titre. */
 .heartRule {
-  flex: 0 1 calc(var(--px) * 140);
-  border-top: 1px solid var(--rule);
+  flex: 0 1 calc(var(--px) * 142);
 }
 
-/* Repère temporaire du cœur : 30 × 28 px de canevas. */
+/* Cœur au trait (SVG 30 × 27, ratio conservé). */
 .heart {
+  display: block;
   flex: none;
   width: calc(var(--px) * 30);
-  height: calc(var(--px) * 28);
+  height: calc(var(--px) * 27);
 }
 
 .announcement {
-  margin: calc(var(--px) * 14) 0 0;
+  margin: calc(var(--px) * 22) 0 0;
   font-family: var(--font-heritage-recit-serif-italic), serif;
   font-style: italic;
   font-size: max(16px, calc(var(--px) * 36));
@@ -203,58 +213,103 @@
   display: inline-block;
 }
 
+/* --- Filets : trait gravé (ligne sombre + liseré clair dessous) ------- */
+
+.titleRule,
+.heartRule,
+.detailsRule,
+.rowRule {
+  display: block;
+  height: max(1px, calc(var(--px) * 1.7));
+  box-shadow: 0 max(0.5px, calc(var(--px) * 1.1)) 0 rgb(255 247 232 / 0.75);
+}
+
+/* Maquette : cœur des filets #31281d (titre), #191713 (annonce → grille). */
+.titleRule {
+  background: rgb(42 34 25 / 0.92);
+}
+
+/* Filets du cœur : #7d7060 sur 1 px — plus clairs et plus fins. */
+.heartRule {
+  height: max(1px, calc(var(--px) * 1.3));
+  background: rgb(92 80 64 / 0.85);
+}
+
 /* --- Précisions : 2 + 2 + 1 ------------------------------------------- */
 
+/* Filet annonce → précisions : x 309–658 de la maquette. */
 .detailsRule {
-  display: block;
   align-self: center;
   width: calc(var(--px) * 350);
-  margin-top: calc(var(--px) * 28);
-  border-top: 1px solid var(--rule);
+  margin-top: calc(var(--px) * 32);
+  height: max(1px, calc(var(--px) * 2));
+  background: rgb(29 26 20 / 0.92);
 }
 
 .details {
   display: grid;
-  grid-template-columns: 380fr 402fr;
-  margin-top: calc(var(--px) * 34);
+  /* Filet vertical de la maquette à x 467,5 : 379,5 / 412,5 sur 792. */
+  grid-template-columns: 379.5fr 412.5fr;
+  margin-top: calc(var(--px) * 31);
 }
 
 .block {
   position: relative;
   display: grid;
-  grid-template-columns: calc(var(--px) * 92) minmax(0, 1fr);
-  column-gap: calc(var(--px) * 30);
+  grid-template-columns: calc(var(--px) * 95) minmax(0, 1fr);
+  column-gap: calc(var(--px) * 28);
   align-items: start;
   padding-bottom: calc(var(--px) * 28);
   min-width: 0;
 }
 
-/* Rangées 2 et 3 : filet horizontal au-dessus, sur toute la largeur. */
-.block:nth-child(n + 3) {
-  padding-top: calc(var(--px) * 34);
-  border-top: 1px solid var(--rule);
+/* Rangées 2 et 3, sous leur séparateur. */
+.block:not([data-row="0"]) {
+  padding-top: calc(var(--px) * 31);
 }
 
-/* Colonne de droite : filet vertical, en retrait des filets horizontaux. */
-.block:nth-child(even) {
-  padding-left: calc(var(--px) * 32);
+/* Séparateur de rangée (deux colonnes) : maquette x 100–840 entre deux
+   rangées pleines, x 140–805 avant le bloc final centré ; #a08d79 sur
+   2 px. */
+.rowRule {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: calc(var(--px) * 740);
+  max-width: 100%;
+  height: max(1px, calc(var(--px) * 2));
+  background: rgb(120 100 80 / 0.72);
+  transform: translateX(calc(var(--px) * -18));
 }
 
-.block:nth-child(even)::before {
+.rowRuleShort {
+  width: calc(var(--px) * 665);
+  transform: translateX(calc(var(--px) * -12));
+}
+
+/* Colonne de droite : filet vertical (#3c3325, 2 px) en retrait des
+   séparateurs — maquette y 815–926 pour une rangée de 806–930. */
+.block[data-col="right"] {
+  padding-left: calc(var(--px) * 30);
+  /* Maquette : médaillon x 498–592, texte dès x 627. */
+  column-gap: calc(var(--px) * 34);
+}
+
+.block[data-col="right"]::before {
   content: "";
   position: absolute;
   left: 0;
   top: calc(var(--px) * 5);
   bottom: calc(var(--px) * 4);
-  border-left: 1px solid var(--rule);
+  width: max(1px, calc(var(--px) * 1.8));
+  background: rgb(60 51 37 / 0.82);
 }
 
-.block:nth-child(n + 3):nth-child(even)::before {
-  top: calc(var(--px) * 39);
+.block[data-col="right"]:not([data-row="0"])::before {
+  top: calc(var(--px) * 36);
 }
 
 /* Colonne de gauche : la maquette arrête le texte ~60 px avant le filet. */
-.block:nth-child(odd) {
+.block[data-col="left"] {
   padding-right: calc(var(--px) * 72);
 }
 
@@ -266,29 +321,83 @@
 }
 
 /* Dernière précision d'un total impair : seule sur sa rangée, centrée
-   (maquette : médaillon x 210–300, texte x 340–720). */
+   (maquette : médaillon x 205–300, texte x 340–720 — au-delà, le papier
+   se resserre vers le bord déchiré). */
 .blockFull {
   grid-column: 1 / -1;
-  grid-template-columns: calc(var(--px) * 92) minmax(0, calc(var(--px) * 420));
+  grid-template-columns: calc(var(--px) * 95) minmax(0, calc(var(--px) * 385));
+  column-gap: calc(var(--px) * 35);
   justify-content: center;
-  padding-right: 0;
+  /* Centré sur l'axe du texte de la maquette (x ≈ 471), non sur la grille
+     (x 484) : médaillon x 213–308, texte x 343–728. */
+  padding-right: calc(var(--px) * 27);
 }
 
-/* Repère temporaire du médaillon : disque de 92 px de canevas, pictogramme
-   V1 au centre. */
+/* La maquette compose ce dernier bloc un peu plus petit (« La famille
+   remercie chaleureusement » et « tous ceux qui partagent son souvenir. »
+   tiennent en 375–380 px, soit 27 px de canevas). */
+.blockFull .body {
+  font-size: max(14px, calc(var(--px) * 27));
+}
+
+/* --- Médaillon bronze (Ø 95 px de canevas) -----------------------------
+   Anneau : cuivre clair biseauté (#cf955f / #e9a56b, reflet en haut et en
+   bas), liseré extérieur sombre, ombre portée basse sur le papier. Face :
+   bronze brossé — reflets verticaux en éventail (#a4663b en haut,
+   #d7955e en bas), flancs sombres (#40230c), sillon sombre (#371b07) au
+   bord. Mesures : maquette, médaillon « Lieu général », centre (133, 856). */
 .medallion {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--px) * 92);
-  height: calc(var(--px) * 92);
+  position: relative;
+  display: block;
+  width: calc(var(--px) * 95);
+  height: calc(var(--px) * 95);
   border-radius: 50%;
-  color: var(--accent);
+  background:
+    radial-gradient(circle at 50% 3%, rgb(255 226 180 / 0.9) 0, rgb(255 226 180 / 0) 20%),
+    radial-gradient(circle at 50% 97%, rgb(255 214 160 / 0.75) 0, rgb(255 214 160 / 0) 18%),
+    linear-gradient(160deg, #eab680 0%, #c3854b 26%, #8a4f26 52%, #b06f3d 74%, #e5a86b 90%, #9c5e2e 100%);
+  box-shadow:
+    0 0 0 max(0.5px, calc(var(--px) * 1)) rgb(62 30 8 / 0.75),
+    0 calc(var(--px) * 3) calc(var(--px) * 4) rgb(70 36 12 / 0.38);
 }
 
-.medallion svg {
-  width: 44%;
-  height: 44%;
+.medallion::before {
+  content: "";
+  position: absolute;
+  inset: 4.6%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 34% 26% at 62% 22%, rgb(196 128 74 / 0.32) 0, rgb(196 128 74 / 0) 100%),
+    linear-gradient(118deg, rgb(0 0 0 / 0) 46%, rgb(222 160 108 / 0.2) 58%, rgb(0 0 0 / 0) 70%),
+    radial-gradient(ellipse 60% 45% at 50% 8%, rgb(206 140 84 / 0.55) 0, rgb(206 140 84 / 0) 100%),
+    radial-gradient(circle at 50% 46%, rgb(0 0 0 / 0) 50%, rgb(22 9 1 / 0.5) 100%),
+    conic-gradient(
+      from 0deg,
+      #845030 0deg,
+      #6c3e20 30deg,
+      #5a3219 60deg,
+      #4a2912 95deg,
+      #3d210c 130deg,
+      #46260f 165deg,
+      #522d14 180deg,
+      #46260f 195deg,
+      #3d210c 230deg,
+      #4a2912 265deg,
+      #5a3219 300deg,
+      #6c3e20 330deg,
+      #845030 360deg
+    );
+  box-shadow:
+    0 0 0 max(0.5px, calc(var(--px) * 1.3)) #341905,
+    inset 0 calc(var(--px) * 2) calc(var(--px) * 3) rgb(0 0 0 / 0.4);
+}
+
+.medallionIcon {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
 }
 
 .blockText {
@@ -312,15 +421,17 @@
    l'étiquette s'arrête donc à x 866 (une étiquette longue, ES « UNAS
    PALABRAS DE LA FAMILIA », passe à la ligne). Le texte, plus bas, garde la
    largeur de la maquette (x 880). */
-.block:nth-child(even) .label {
+.block[data-col="right"] .label {
   margin-right: calc(var(--px) * 14);
 }
 
+/* Petit filet bronze sous l'étiquette : 40 px, #5d3716 sur ~1,5 px. */
 .labelRule {
   display: block;
   width: calc(var(--px) * 40);
+  height: max(1px, calc(var(--px) * 1.6));
   margin: calc(var(--px) * 8) 0 calc(var(--px) * 12);
-  border-top: 1px solid var(--accent);
+  background: rgb(98 60 26 / 0.9);
 }
 
 .body {
@@ -341,7 +452,7 @@
 
 /* Adaptation autorisée par la PO : sous `singleColumnBelowPx` de largeur
    réelle, une précision par rangée (médaillon à gauche, texte à droite),
-   dans le même ordre, avec le même filet entre les rangées. */
+   dans le même ordre, un filet entre deux précisions. */
 @container (max-width: 519.98px) {
   /* Une colonne : chaque précision est pleine largeur, donc toutes restent
      dans la bande de papier nu du bas, et le contenu s'arrête au-dessus du
@@ -361,36 +472,30 @@
     padding-right: calc(var(--px) * (var(--text-right) - var(--band-right)));
   }
 
-  .block:nth-child(n + 2) {
-    padding-top: calc(var(--px) * 34);
-    border-top: 1px solid var(--rule);
+  .rowRule {
+    display: none;
   }
 
-  .block:nth-child(even)::before {
+  .block:not(:first-child) {
+    padding-top: calc(var(--px) * 34);
+  }
+
+  .block:not(:first-child)::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: calc(var(--px) * (var(--band-left) - var(--text-left)));
+    right: calc(var(--px) * (var(--text-right) - var(--band-right)));
+    height: max(1px, calc(var(--px) * 2));
+    background: rgb(120 100 80 / 0.72);
+  }
+
+  .block[data-col="right"]::before {
     content: none;
   }
 
   .blockFull {
     justify-content: stretch;
-    grid-template-columns: calc(var(--px) * 92) minmax(0, 1fr);
+    grid-template-columns: calc(var(--px) * 95) minmax(0, 1fr);
   }
-}
-
-/* --- Repères temporaires (phase 1) ------------------------------------ */
-
-.section [data-placeholder] {
-  box-sizing: border-box;
-  border: 1px dashed rgb(138 90 44 / 0.65);
-}
-
-.branch[data-placeholder] {
-  border-radius: 40% 60% 45% 55%;
-}
-
-.heart[data-placeholder] {
-  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-}
-
-.medallion[data-placeholder] {
-  border-radius: 50%;
 }

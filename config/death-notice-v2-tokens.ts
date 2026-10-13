@@ -1,7 +1,7 @@
 import type { SkinVariant } from "@/config/skins";
 
 /**
- * Avis de décès V2 — PHASE 1, pilote Mobile Light uniquement (GO QG).
+ * Avis de décès V2 — pilote Mobile Light uniquement (phases 1 et 2, GO QG).
  *
  * Même moteur que le Récit de vie V2 (config/recit-de-vie-v2-tokens.ts),
  * réglages propres à l'Avis : Master authentique + papier central CSS +
@@ -26,12 +26,13 @@ import type { SkinVariant } from "@/config/skins";
  * dérivées du Master, fondu de `fadePx` aux deux raccords). Dérivations
  * reproductibles : scripts/pilot/avis-v2-mobile-light-derive.py.
  *
- * ## Hors phase 1
+ * ## Périmètre
  *
- * Mobile Dark, Desktop Light et Desktop Dark n'ont pas encore de réglages
- * (`null`) ; les ornements (médaillons, rameau, cœur, filets) ne sont que
- * des repères temporaires. Ce renderer n'est branché sur aucun registre de
- * production.
+ * Mobile Light seulement. Mobile Dark, Desktop Light et Desktop Dark n'ont
+ * pas encore de réglages (`null`). Les ornements Mobile Light (médaillons,
+ * rameau, cœur, filets — phase 2) sont reconstruits en SVG/CSS dans
+ * components/memorial/death-notice/v2/. Ce renderer n'est branché sur aucun
+ * registre de production.
  */
 
 export interface DeathNoticeV2MobileTokens {
@@ -124,7 +125,9 @@ const MOBILE_LIGHT: DeathNoticeV2MobileTokens = {
    * sur plus de 5 % d'une bande de 20 rangées) : x 0,07–0,92 jusqu'à la
    * rangée 1020 ; x 0,19–0,86 de 1020 à 1220 ; x 0,22–0,75 de 1240 à 1300,
    * où la maquette ne pose que son bloc final centré (texte jusqu'à 1289). */
-  footCanvas: 350,
+  /** 346 : phase 2, les rangées des précisions suivent la maquette au
+   * pixel près (dernier texte à 1289 comme la maquette). */
+  footCanvas: 346,
   footPairCanvas: 511,
   pairRightCanvas: 850,
   footSingleColumnCanvas: 451,
@@ -139,7 +142,8 @@ const MOBILE_LIGHT: DeathNoticeV2MobileTokens = {
   /** Encres échantillonnées sur la maquette (médiane des pixels d'encre). */
   ink: "#211d13",
   inkSoft: "#2f2a20",
-  label: "#4a4234",
+  /** Phase 2 : étiquettes un peu plus sombres, comme la maquette. */
+  label: "#3a3226",
   accent: "#8a5a2c",
   rule: "rgb(58 47 32 / 0.55)",
 };
