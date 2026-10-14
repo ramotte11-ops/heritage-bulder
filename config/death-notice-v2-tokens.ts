@@ -102,7 +102,8 @@ export interface DeathNoticeV2DesktopZoneTokens {
   paperTone: string;
 }
 
-export type DeathNoticeV2PrecisionCount = 1 | 2 | 3 | 4 | 5;
+/** Nombre de colonnes de la rangée des précisions (hors lieu) : 1 à 4. */
+export type DeathNoticeV2ColumnCount = 1 | 2 | 3 | 4;
 
 export interface DeathNoticeV2DesktopTokens {
   masterSrc: string;
@@ -135,18 +136,28 @@ export interface DeathNoticeV2DesktopTokens {
    */
   precisionLeftCanvas: number;
   precisionRightCanvas: number;
-  /** Pas des colonnes selon le nombre de précisions rendues : 286 pour cinq
-   * (maquette), plus large quand il y en a moins, groupe centré sur l'axe. */
-  columnPitchCanvas: Readonly<Record<DeathNoticeV2PrecisionCount, number>>;
+  /**
+   * Composition 1 + 4 (décision PO, pilote) : le lieu général occupe
+   * TOUJOURS sa propre rangée, centrée sur l'axe, au-dessus des autres
+   * précisions — court ou long, sans détection de longueur. Demi-largeur de
+   * lecture du lieu, écart entre sa rangée et la suivante, et réserve basse
+   * quand il est la dernière rangée (bord déchiré à 784 sous x 526–1146).
+   */
+  locationHalfCanvas: number;
+  locationRowGapCanvas: number;
+  locationFootCanvas: number;
+  /** Pas des colonnes de la rangée des autres précisions selon leur nombre
+   * (1 à 4), groupe centré sur l'axe : les pas validés en phase 4. */
+  columnPitchCanvas: Readonly<Record<DeathNoticeV2ColumnCount, number>>;
   /** Retrait du texte de part et d'autre, dans sa colonne. */
   columnInsetCanvas: number;
   /**
    * Réserve basse supplémentaire de chaque colonne, en px de canevas : le
-   * bord déchiré du bas remonte à gauche (rangée 745 sous la première
-   * colonne de cinq, 805 au centre) ; chaque texte s'arrête 18 px au-dessus
-   * du bord qui passe sous lui.
+   * bord déchiré du bas remonte à gauche (rangée 751 sous la première
+   * colonne de quatre, 805 au centre) ; chaque texte s'arrête 18 px
+   * au-dessus du bord qui passe sous lui.
    */
-  columnFootCanvas: Readonly<Record<DeathNoticeV2PrecisionCount, readonly number[]>>;
+  columnFootCanvas: Readonly<Record<DeathNoticeV2ColumnCount, readonly number[]>>;
 }
 
 export interface DeathNoticeV2VariantTokens {
@@ -304,8 +315,11 @@ const DESKTOP_LIGHT: DeathNoticeV2DesktopTokens = {
   axisCanvas: 836,
   precisionLeftCanvas: 182,
   precisionRightCanvas: 1530,
-  /** Maquette : médaillons centrés à 262 / 550 / 835 / 1113 / 1407. */
-  columnPitchCanvas: { 1: 480, 2: 380, 3: 330, 4: 310, 5: 286 },
+  /** Lieu : 620 px de lecture (≈ 40 signes en corps 33), centré. */
+  locationHalfCanvas: 310,
+  locationRowGapCanvas: 40,
+  locationFootCanvas: 9,
+  columnPitchCanvas: { 1: 480, 2: 380, 3: 330, 4: 310 },
   /** Texte le plus large de la maquette : 237 px dans une colonne de 286
    * (« qui partagent son souvenir. ») ; 244 px de place utile. */
   columnInsetCanvas: 21,
@@ -314,7 +328,6 @@ const DESKTOP_LIGHT: DeathNoticeV2DesktopTokens = {
     2: [9, 0],
     3: [17, 1, 0],
     4: [42, 9, 0, 0],
-    5: [48, 17, 0, 0, 0],
   },
 };
 
@@ -343,17 +356,34 @@ export interface DeathNoticeV2DesktopColumn {
 }
 
 /**
- * Colonnes Desktop des précisions réellement rendues (1 à 5) : groupe
+ * Colonnes Desktop de la rangée des précisions hors lieu (1 à 4) : groupe
  * centré sur l'axe, pas `columnPitchCanvas[count]`, chaque texte borné par
  * sa colonne et par la bande sans ornement.
  */
 export function deathNoticeV2DesktopColumns(D: DeathNoticeV2DesktopTokens, count: number): DeathNoticeV2DesktopColumn[] {
-  if (count < 1 || count > 5) return [];
-  const n = count as DeathNoticeV2PrecisionCount;
+  if (count < 1 || count > 4) return [];
+  const n = count as DeathNoticeV2ColumnCount;
   const pitch = D.columnPitchCanvas[n];
   return Array.from({ length: n }, (_, index) => {
     const center = D.axisCanvas + (index - (n - 1) / 2) * pitch;
     const half = Math.min(pitch / 2 - D.columnInsetCanvas, center - D.precisionLeftCanvas, D.precisionRightCanvas - center);
     return { center, pitch, half, foot: D.columnFootCanvas[n][index] ?? 0 };
   });
+}
+
+/**
+ * Composition 1 + 4 : géométrie Desktop de chaque précision rendue, dans
+ * l'ordre des champs. Le lieu général a sa rangée propre (centrée, largeur
+ * de lecture `locationHalfCanvas`, réserve basse seulement s'il est seul) ;
+ * les autres se répartissent en colonnes selon LEUR nombre.
+ */
+export function deathNoticeV2DesktopPlacement(D: DeathNoticeV2DesktopTokens, fields: readonly string[]): DeathNoticeV2DesktopColumn[] {
+  const others = fields.filter((f) => f !== "generalLocation");
+  const columns = deathNoticeV2DesktopColumns(D, others.length);
+  let next = 0;
+  return fields.map((field) =>
+    field === "generalLocation"
+      ? { center: D.axisCanvas, pitch: D.canvas.width, half: D.locationHalfCanvas, foot: others.length === 0 ? D.locationFootCanvas : 0 }
+      : columns[next++],
+  );
 }

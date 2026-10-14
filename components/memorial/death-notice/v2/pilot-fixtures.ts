@@ -100,6 +100,33 @@ export const DEATH_NOTICE_V2_PILOT_CASES: readonly DeathNoticeV2PilotCase[] = [
     }),
   },
   {
+    id: "location-only",
+    label: "Lieu seul",
+    hero: hero("Élise Martin", { precision: "year", year: 1948 }, { precision: "year", year: 2023 }),
+    deathNotice: notice(REFERENCE_ANNOUNCEMENT, { generalLocation: REFERENCE_PRECISIONS.generalLocation }),
+  },
+  {
+    id: "no-location",
+    label: "Quatre précisions sans lieu",
+    hero: hero("Élise Martin", { precision: "year", year: 1948 }, { precision: "year", year: 2023 }),
+    deathNotice: notice(REFERENCE_ANNOUNCEMENT, {
+      familyMessage: REFERENCE_PRECISIONS.familyMessage,
+      thought: REFERENCE_PRECISIONS.thought,
+      quote: REFERENCE_PRECISIONS.quote,
+      other: REFERENCE_PRECISIONS.other,
+    }),
+  },
+  {
+    id: "long-address",
+    label: "Cinq précisions, adresse longue (contrôle PO)",
+    hero: hero("Élise Martin", { precision: "year", year: 1948 }, { precision: "year", year: 2023 }),
+    deathNotice: notice(REFERENCE_ANNOUNCEMENT, {
+      ...REFERENCE_PRECISIONS,
+      generalLocation:
+        "Cimetière communal de Saint-Benoît-sur-Loire, entrée principale, avenue des Tilleuls, 45730 Saint-Benoît-sur-Loire, France.",
+    }),
+  },
+  {
     id: "four",
     label: "Quatre précisions",
     hero: hero("Élise Martin", { precision: "year", year: 1948 }, { precision: "year", year: 2023 }),

@@ -11,7 +11,7 @@ import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
 import {
   DEATH_NOTICE_V2_TOKENS,
-  deathNoticeV2DesktopColumns,
+  deathNoticeV2DesktopPlacement,
   type DeathNoticeV2DesktopTokens,
   type DeathNoticeV2MobileTokens,
 } from "@/config/death-notice-v2-tokens";
@@ -47,9 +47,9 @@ import styles from "./DeathNoticeV2.module.css";
  * Desktop (phase 4) : à partir de 1024 px de largeur RÉELLE du conteneur
  * (requête de conteneur, jamais le viewport), et seulement pour une
  * variante qui a des réglages Desktop, la feuille de style bascule sur le
- * Master Desktop (plafond 1448 px) : même DOM, mêmes données ; les
- * précisions passent en une rangée de colonnes centrées (une par précision
- * rendue). La surface Desktop s'ouvre à deux coupes (zones gauche et
+ * Master Desktop (plafond 1448 px) : même DOM, mêmes données ; composition
+ * 1 + 4 (pilote PO) — le lieu général sur sa propre rangée centrée, les
+ * autres précisions rendues en une rangée de colonnes centrées. La surface Desktop s'ouvre à deux coupes (zones gauche et
  * droite, voir config/death-notice-v2-tokens.ts) : la seconde pile de
  * décor n'est rendue que pour une telle variante, et masquée sous 1024 px.
  */
@@ -141,6 +141,7 @@ function desktopVars(D: DeathNoticeV2DesktopTokens): CSSProperties {
     "--d-text-top": D.textTopCanvas,
     "--d-foot": D.footCanvas,
     "--d-axis": D.axisCanvas,
+    "--d-location-gap": D.locationRowGapCanvas,
   } as CSSProperties;
 }
 
@@ -197,7 +198,7 @@ function DeathNoticeV2Layout({
     text: deathNotice.precisions[block.field] as string,
   }));
   const oddTotal = blocks.length % 2 === 1;
-  const desktopColumns = D !== null ? deathNoticeV2DesktopColumns(D, blocks.length) : [];
+  const desktopColumns = D !== null ? deathNoticeV2DesktopPlacement(D, blocks.map((b) => b.field)) : [];
 
   const sectionRef = useRef<HTMLElement | null>(null);
   const [extension, setExtension] = useState(0);

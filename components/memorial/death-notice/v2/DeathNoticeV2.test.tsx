@@ -30,6 +30,7 @@ const {
   DEATH_NOTICE_V2_DESKTOP_MAX_PX,
   DEATH_NOTICE_V2_DESKTOP_MIN_PX,
   deathNoticeV2DesktopColumns,
+  deathNoticeV2DesktopPlacement,
 } = await import("@/config/death-notice-v2-tokens");
 
 afterEach(cleanup);
@@ -424,13 +425,7 @@ describe("DeathNoticeV2 — Desktop Light (phase 4)", () => {
     }
   });
 
-  it("cinq précisions : colonnes de la maquette (centres à ±10 px de 262 / 550 / 835 / 1113 / 1407)", () => {
-    const columns = deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 5);
-    const maquette = [262, 550, 835, 1113, 1407];
-    columns.forEach((c, i) => expect(Math.abs(c.center - maquette[i])).toBeLessThanOrEqual(10));
-  });
-
-  it.each([1, 2, 3, 4, 5])("%i précision(s) : groupe centré sur l'axe, textes dans la bande sans ornement", (count) => {
+  it.each([1, 2, 3, 4])("rangée des autres précisions, %i colonne(s) : groupe centré sur l'axe, textes dans la bande sans ornement", (count) => {
     const columns = deathNoticeV2DesktopColumns(DESKTOP_LIGHT, count);
     expect(columns).toHaveLength(count);
     const mean = columns.reduce((sum, c) => sum + c.center, 0) / count;
@@ -438,24 +433,56 @@ describe("DeathNoticeV2 — Desktop Light (phase 4)", () => {
     for (const c of columns) {
       expect(c.center - c.half).toBeGreaterThanOrEqual(DESKTOP_LIGHT.precisionLeftCanvas);
       expect(c.center + c.half).toBeLessThanOrEqual(DESKTOP_LIGHT.precisionRightCanvas);
-      // Le plus étroit (première de cinq, contre le bouquet) garde 160 px.
-      expect(c.half * 2).toBeGreaterThanOrEqual(160);
+      expect(c.half * 2).toBeGreaterThanOrEqual(240);
       expect(c.foot).toBeGreaterThanOrEqual(0);
     }
-    expect(DESKTOP_LIGHT.columnFootCanvas[count as 1 | 2 | 3 | 4 | 5]).toHaveLength(count);
+    expect(DESKTOP_LIGHT.columnFootCanvas[count as 1 | 2 | 3 | 4]).toHaveLength(count);
+    expect(deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 5)).toEqual([]);
   });
 
-  it("chaque bloc rendu reçoit sa colonne Desktop ; aucun emplacement pour une précision absente", () => {
+  it("composition 1 + 4 : le lieu a toujours sa rangée propre, centrée ; les quatre autres en colonnes", () => {
+    const fields = ["generalLocation", "familyMessage", "thought", "quote", "other"];
+    const placement = deathNoticeV2DesktopPlacement(DESKTOP_LIGHT, fields);
+    expect(placement[0]).toMatchObject({ center: DESKTOP_LIGHT.axisCanvas, half: DESKTOP_LIGHT.locationHalfCanvas, foot: 0 });
+    expect(placement.slice(1)).toEqual(deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 4));
+  });
+
+  it.each([
+    [["generalLocation"], DESKTOP_LIGHT.locationFootCanvas],
+    [["generalLocation", "thought", "other"], 0],
+  ] as const)("lieu %j : sa réserve basse ne s'applique que s'il est la dernière rangée", (fields, foot) => {
+    const placement = deathNoticeV2DesktopPlacement(DESKTOP_LIGHT, fields);
+    expect(placement[0].foot).toBe(foot);
+    expect(placement.slice(1)).toEqual(deathNoticeV2DesktopColumns(DESKTOP_LIGHT, fields.length - 1));
+  });
+
+  it("sans lieu : aucune rangée de lieu, les précisions présentes se répartissent seules", () => {
+    const fields = ["familyMessage", "thought", "quote", "other"];
+    expect(deathNoticeV2DesktopPlacement(DESKTOP_LIGHT, fields)).toEqual(deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 4));
+    expect(deathNoticeV2DesktopPlacement(DESKTOP_LIGHT, [])).toEqual([]);
+  });
+
+  it("chaque bloc rendu reçoit sa géométrie Desktop ; aucun emplacement pour une précision absente", () => {
     const { container } = renderNotice({ deathNotice: notice({ generalLocation: ALL_PRECISIONS.generalLocation, quote: ALL_PRECISIONS.quote }) });
     const blocks = Array.from(container.querySelectorAll<HTMLElement>("[data-field]"));
     expect(blocks).toHaveLength(2);
-    const expected = deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 2);
+    const expected = deathNoticeV2DesktopPlacement(DESKTOP_LIGHT, ["generalLocation", "quote"]);
     blocks.forEach((block, i) => {
       expect(block.style.getPropertyValue("--col-pitch")).toBe(String(expected[i].pitch));
       expect(block.style.getPropertyValue("--col-half")).toBe(String(expected[i].half));
       expect(block.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(1);
     });
-    expect(deathNoticeV2DesktopColumns(DESKTOP_LIGHT, 0)).toEqual([]);
+    expect(blocks[0].style.getPropertyValue("--col-half")).toBe(String(DESKTOP_LIGHT.locationHalfCanvas));
+  });
+
+  it("la règle du lieu ne dépend pas de la longueur : même géométrie pour « Paris, France » et une adresse longue", () => {
+    const short = renderNotice({ deathNotice: notice(ALL_PRECISIONS) });
+    const a = (short.container.querySelector('[data-field="generalLocation"]') as HTMLElement).getAttribute("style");
+    short.unmount();
+    const long = renderNotice({
+      deathNotice: notice({ ...ALL_PRECISIONS, generalLocation: "Cimetière communal de Saint-Benoît-sur-Loire, entrée principale, avenue des Tilleuls, 45730 Saint-Benoît-sur-Loire, France." }),
+    });
+    expect((long.container.querySelector('[data-field="generalLocation"]') as HTMLElement).getAttribute("style")).toBe(a);
   });
 
   it("les réglages Mobile validés ne changent pas (phases 1 à 3)", () => {

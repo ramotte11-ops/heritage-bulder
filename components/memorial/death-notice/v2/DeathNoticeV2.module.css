@@ -768,8 +768,9 @@
     line-height: 1.085;
   }
 
-  /* Précisions : une rangée de colonnes centrées sur l'axe, une par
-     précision rendue ; pas de filet horizontal avant la rangée. */
+  /* Précisions — composition 1 + 4 (pilote PO) : le lieu général sur sa
+     propre rangée centrée, puis les autres précisions rendues en une
+     rangée de colonnes centrées sur l'axe ; pas de filet horizontal. */
   .wrap[data-desktop] .detailsRule,
   .wrap[data-desktop] .rowRule {
     display: none;
@@ -777,6 +778,7 @@
 
   .wrap[data-desktop] .details {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: stretch;
     margin-top: calc(var(--px) * 22);
@@ -903,6 +905,24 @@
   }
 
   .wrap[data-desktop] .details[data-count] .block::after {
+    content: none;
+  }
+
+  /* Rangée du lieu : pleine largeur, médaillon et texte centrés sur l'axe,
+     largeur de lecture propre ; l'écart vers la rangée suivante est un
+     simple blanc (aucun ornement ajouté). Jamais de filet vertical à sa
+     gauche, ni à gauche de la première colonne qui la suit. */
+  .wrap[data-desktop] .details[data-count] .block[data-field="generalLocation"] {
+    flex: 0 0 100%;
+    padding-bottom: calc(var(--px) * (var(--d-location-gap) + var(--col-foot)));
+  }
+
+  .wrap[data-desktop] .details[data-count] .block[data-field="generalLocation"]:last-child {
+    padding-bottom: calc(var(--px) * var(--col-foot));
+  }
+
+  .wrap[data-desktop] .details[data-count] .block[data-field="generalLocation"]::before,
+  .wrap[data-desktop] .details[data-count] .block[data-field="generalLocation"] + .block::before {
     content: none;
   }
 }
