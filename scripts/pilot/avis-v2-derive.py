@@ -1,9 +1,10 @@
-"""Avis de décès V2 — Mobile Light et Mobile Dark : dérivations du fond.
+"""Avis de décès V2 — dérivations des fonds (Mobile Light, Mobile Dark,
+Desktop Light).
 
-Lit le fond vierge Mobile de la variante (jamais modifié), vérifie son
-SHA-256, puis dérive — avec la méthode du Récit de vie V2
+Lit le fond vierge de la variante (jamais modifié), vérifie son SHA-256,
+puis dérive — avec la méthode du Récit de vie V2
 (config/recit-de-vie-v2-tokens.ts), réglages PROPRES à chaque variante
-(table VARIANTS ; aucun réglage Light n'est réutilisé pour le Dark) :
+(table VARIANTS ; aucun réglage n'est recopié d'une variante à l'autre) :
 
   1. la ligne de coupe : fenêtre de rangées où les bords portent le moins
      de détail net (pixels dont l'écart à un flou gaussien σ=3 dépasse 14
@@ -11,7 +12,7 @@ SHA-256, puis dérive — avec la méthode du Récit de vie V2
   2. la teinte : deux profils horizontaux — médiane, colonne par colonne,
      des 50 rangées juste au-dessus du raccord haut [cut-fade-50, cut-fade]
      et des 50 rangées juste sous le raccord bas [cut+fade, cut+fade+50],
-     lissées (σ = 22 px) —, écrits comme une image 941×2 que le navigateur
+     lissées (σ = 22 px) —, écrits comme une image W×2 que le navigateur
      étire sur toute la surface : chaque raccord retrouve exactement la
      teinte du Master qu'il touche, et la surface passe de l'une à l'autre
      sans arête (le bord gauche du Master s'assombrit sous la coupe —
@@ -27,14 +28,27 @@ SHA-256, puis dérive — avec la méthode du Récit de vie V2
      éclaircissent légèrement la surface ; la teinte est corrigée, canal par
      canal, de l'écart mesuré sur rendu (comme le × 0,875 du Récit V2).
 
-Usage :
-  python3 -I scripts/pilot/avis-v2-mobile-derive.py <light|dark> <fond.png> <dossier-de-sortie>
+Desktop Light (phase 4) : le fond horizontal porte du décor net sur ses
+deux bords à toutes les hauteurs — à gauche les feuillets écrits (rangées
+250–460) puis le bouquet (470–780), à droite le brin fleuri (390–560) puis
+le bouquet (650–941). Aucune rangée unique ne traverse les deux bords sans
+couper un ornement. La surface s'ouvre donc à DEUX coupes, une par zone
+(`zones` : gauche entre feuillets et bouquet, droite sous le brin fleuri),
+chacune cherchée sur les seules colonnes de sa zone ; les deux piles se
+raccordent par un fondu vertical dans le papier nu du centre. La teinte
+est celle du PAPIER seul (pixels sans détail net, clairs, non saturés),
+interpolée sous le décor et prolongée jusqu'aux bords : aucune couleur
+de fleur ou de feuille n'est étirée dans la surface.
 
-Mobile Light (phases 1-2, CLOSED) : réglages inchangés ; ses fichiers
-régénérés sont identiques octet pour octet à ceux du dépôt.
+Usage :
+  python3 -I scripts/pilot/avis-v2-derive.py <mobile-light|mobile-dark|desktop-light> <fond.png> <dossier-de-sortie>
+
+Mobile Light (phases 1-2) et Mobile Dark (phase 3), validés PO :
+réglages inchangés ; leurs fichiers régénérés sont identiques octet pour
+octet à ceux du dépôt.
 
 Le fond lui-même est copié octet pour octet à part (cp) : ce script
-n'écrit que l'image de teinte et les tuiles de grain, et imprime les
+n'écrit que les images de teinte et les tuiles de grain, et imprime les
 réglages à reporter dans config/death-notice-v2-tokens.ts.
 """
 
@@ -51,7 +65,7 @@ OVERLAP = 48
 
 VARIANTS = {
     # Mobile Light — phases 1-2, validé PO : NE PAS MODIFIER.
-    "light": {
+    "mobile-light": {
         "sha256": "757fab95d4094a9fcf3ee3c651b1b3c962a0a723a781a3ccde14f89608fb3e6a",
         "fade": 40,
         "search": (760, 1120),
@@ -69,7 +83,8 @@ VARIANTS = {
     # bord déchiré droit traverse toute la fenêtre du fondu. Cuir sombre
     # central (x 0,25–0,75), craquelé visible : zones calmes sans feuillage
     # ni bord. Gain et compensation calibrés sur rendu (rapport de phase 3).
-    "dark": {
+    # Validé PO : NE PAS MODIFIER.
+    "mobile-dark": {
         "sha256": "0164cefbe1281d61bdff86c2e6bc24c385f6ee45350a4dd4328b2a5be2b43980",
         "fade": 40,
         "search": (760, 1040),
@@ -79,6 +94,31 @@ VARIANTS = {
             "a": (236, 470, 460, 620),
             "b": (262, 260, 400, 540),
             "c": (292, 760, 340, 460),
+        },
+    },
+    # Desktop Light — phase 4. Deux zones de coupe (voir l'en-tête) :
+    #   - gauche (colonnes 0–420) : entre le bas des feuillets écrits et le
+    #     haut du bouquet, cherchée dans 400–530 ; fondu court (le bouquet
+    #     commence 15 rangées sous la coupe) ;
+    #   - droite (colonnes 1250–1672) : sous le brin fleuri et les ombres
+    #     de feuilles, au-dessus du bouquet du bas, cherchée dans 540–680.
+    # Teinte du papier seul, lissée σ = PAPER_SIGMA. Grain : papier central
+    # nu (x 470–1180, y 170–770 : écart moyen au flou 1,4 niveau, aucun
+    # pixel de détail net), tuiles 560 / 480 / 410.
+    "desktop-light": {
+        "sha256": "f95b05ce584292ae3059f4d2f4463b8bd62ad72fb6ed7f6433d451e9d721c070",
+        "zones": {
+            "left": {"columns": (0, 420), "search": (400, 530), "fade": 28},
+            "right": {"columns": (1250, 1672), "search": (540, 680), "fade": 40},
+        },
+        "paper_sigma": 40,
+        # Calibré sur rendu (surface étendue 1,50 à 2,4 → papier du Master 1,74).
+        "grain_gain": 2.8,
+        "tone_gain": (0.996, 0.991, 0.985),
+        "grain_zones": {
+            "a": (470, 170, 560, 380),
+            "b": (660, 300, 480, 340),
+            "c": (560, 430, 410, 290),
         },
     },
 }
@@ -137,6 +177,43 @@ def grain_tile(img: Image.Image, zone: tuple[int, int, int, int], gain: float) -
     return Image.fromarray(np.clip(np.round(128 + detail), 0, 255).astype(np.uint8), "RGB")
 
 
+def sharp_mask(img: Image.Image, threshold: float) -> np.ndarray:
+    lum = img.convert("L")
+    return np.abs(np.asarray(lum, dtype=float) - np.asarray(lum.filter(ImageFilter.GaussianBlur(3)), dtype=float)) > threshold
+
+
+def find_zone_cut(img: Image.Image, fade: int, search: tuple[int, int], columns: tuple[int, int]) -> tuple[int, float]:
+    """`find_cut`, restreint aux colonnes de la zone."""
+    per_row = sharp_mask(img, 14)[:, columns[0] : columns[1]].sum(axis=1)
+    best = None
+    for y in range(search[0] + fade, search[1] - fade):
+        score = per_row[y - fade : y + fade].mean()
+        if best is None or score < best[1]:
+            best = (y, score)
+    return best
+
+
+def paper_profile(rgb: np.ndarray, sharp: np.ndarray, start: int, sigma: float) -> tuple[np.ndarray, int]:
+    """Teinte du papier seul sur [start, start + PROFILE_ROWS] : par colonne,
+    médiane des pixels sans détail net, clairs (moyenne > 205) et peu
+    saturés (R − B < 80) ; une colonne où ces pixels font moins de 60 % des
+    rangées (fleur, feuille, ombre dense) est interpolée depuis ses voisines
+    de papier, puis prolongée jusqu'aux bords."""
+    block = rgb[start : start + PROFILE_ROWS]
+    ok = ~sharp[start : start + PROFILE_ROWS] & (block.mean(axis=2) > 205) & (block[..., 0] - block[..., 2] < 80)
+    width = rgb.shape[1]
+    values = np.full((width, 3), np.nan)
+    for x in range(width):
+        sel = ok[:, x]
+        if sel.sum() >= 0.6 * PROFILE_ROWS:
+            values[x] = np.median(block[sel, x], axis=0)
+    good = ~np.isnan(values[:, 0])
+    xs = np.arange(width)
+    for c in range(3):
+        values[:, c] = np.interp(xs, xs[good], values[good, c])
+    return gaussian_1d(values, sigma), int(good.sum())
+
+
 def main() -> None:
     variant, src, out = sys.argv[1], sys.argv[2], sys.argv[3]
     v = VARIANTS[variant]
@@ -145,15 +222,28 @@ def main() -> None:
         sys.exit(f"SHA-256 inattendu : {digest}")
     img = Image.open(src).convert("RGB")
     rgb = np.asarray(img, dtype=float)
-    cut, score = find_cut(img, v["fade"], v["search"])
     print(f"variante {variant} — canvas {img.width}x{img.height}")
-    print(f"cutY {cut} (fondu {v['fade']}, détail net moyen {score:.1f} px/rangée)")
-    tone_path = f"{out}/avis-mobile-{variant}-tone.png"
-    tone(rgb, cut, v["fade"], v["tone_gain"]).save(tone_path, optimize=True)
-    print(f"tone {tone_path}")
+    if "zones" in v:
+        sharp = sharp_mask(img, 10)
+        for zone_name, zone in v["zones"].items():
+            fade = zone["fade"]
+            cut, score = find_zone_cut(img, fade, zone["search"], zone["columns"])
+            print(f"zone {zone_name} : cutY {cut} (fondu {fade}, détail net moyen {score:.1f} px/rangée sur les colonnes {zone['columns']})")
+            top, top_cols = paper_profile(rgb, sharp, cut - fade - PROFILE_ROWS, v["paper_sigma"])
+            bottom, bottom_cols = paper_profile(rgb, sharp, cut + fade, v["paper_sigma"])
+            rows = np.stack([top, bottom]) * np.array(v["tone_gain"])
+            tone_path = f"{out}/avis-{variant}-tone-{zone_name}.png"
+            Image.fromarray(np.clip(np.round(rows), 0, 255).astype(np.uint8), "RGB").save(tone_path, optimize=True)
+            print(f"  teinte {tone_path} (colonnes de papier mesurées : {top_cols} / {bottom_cols} sur {img.width})")
+    else:
+        cut, score = find_cut(img, v["fade"], v["search"])
+        print(f"cutY {cut} (fondu {v['fade']}, détail net moyen {score:.1f} px/rangée)")
+        tone_path = f"{out}/avis-{variant}-tone.png"
+        tone(rgb, cut, v["fade"], v["tone_gain"]).save(tone_path, optimize=True)
+        print(f"tone {tone_path}")
     for name, zone in v["grain_zones"].items():
         tile = grain_tile(img, zone, v["grain_gain"])
-        path = f"{out}/avis-mobile-{variant}-grain-{name}.png"
+        path = f"{out}/avis-{variant}-grain-{name}.png"
         tile.save(path, optimize=True)
         dev = np.asarray(tile, dtype=float) - 128
         print(f"grain {name} {tile.width}x{tile.height} écart-type {dev.std():.2f} -> {path}")

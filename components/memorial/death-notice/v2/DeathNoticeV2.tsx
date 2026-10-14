@@ -9,14 +9,19 @@ import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
-import { DEATH_NOTICE_V2_TOKENS, type DeathNoticeV2MobileTokens } from "@/config/death-notice-v2-tokens";
+import {
+  DEATH_NOTICE_V2_TOKENS,
+  deathNoticeV2DesktopColumns,
+  type DeathNoticeV2DesktopTokens,
+  type DeathNoticeV2MobileTokens,
+} from "@/config/death-notice-v2-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { avisNameSerif, ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
 import { Branch, Heart, Medallion, ORNAMENT_PALETTES } from "./DeathNoticeV2Ornaments";
 import styles from "./DeathNoticeV2.module.css";
 
 /**
- * Avis de décès V2 — pilote Mobile Light (phases 1 et 2, GO QG). Non branché
+ * Avis de décès V2 — pilote (Mobile Light et Dark, Desktop Light). Non branché
  * sur le registre de production : `DeathNoticeIntemporel` (V1) reste le
  * renderer de la section `deathNotice`.
  *
@@ -38,6 +43,15 @@ import styles from "./DeathNoticeV2.module.css";
  * d'après la maquette (DeathNoticeV2Ornaments.tsx), tous `aria-hidden`.
  * Chaque médaillon appartient à son bloc de précision ; chaque séparateur
  * de rangée n'existe qu'entre deux rangées réellement rendues.
+ *
+ * Desktop (phase 4) : à partir de 1024 px de largeur RÉELLE du conteneur
+ * (requête de conteneur, jamais le viewport), et seulement pour une
+ * variante qui a des réglages Desktop, la feuille de style bascule sur le
+ * Master Desktop (plafond 1448 px) : même DOM, mêmes données ; les
+ * précisions passent en une rangée de colonnes centrées (une par précision
+ * rendue). La surface Desktop s'ouvre à deux coupes (zones gauche et
+ * droite, voir config/death-notice-v2-tokens.ts) : la seconde pile de
+ * décor n'est rendue que pour une telle variante, et masquée sous 1024 px.
  */
 
 export interface DeathNoticeV2Props {
@@ -65,13 +79,23 @@ const PRECISION_BLOCKS: readonly {
 const COARSE_NOISE =
   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'><filter id='n' x='0' y='0'><feTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='3' stitchTiles='stitch' seed='11'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0' intercept='.22'/></feComponentTransfer></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")";
 
+function paperLayers(grains: DeathNoticeV2MobileTokens["paperGrains"], noiseBlend: string, tone: string) {
+  return {
+    images: [...grains.map((g) => `url(${g.src})`), COARSE_NOISE, `url(${tone})`].join(", "),
+    sizes: [...grains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
+    repeat: [...grains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
+    blend: [...grains.map((g) => g.blend), noiseBlend, "normal"].join(", "),
+  };
+}
+
 function mobileVars(T: DeathNoticeV2MobileTokens): CSSProperties {
+  const paper = paperLayers(T.paperGrains, T.noiseBlend, T.paperTone);
   return {
     "--m-src": `url(${T.masterSrc})`,
-    "--paper-images": [...T.paperGrains.map((g) => `url(${g.src})`), COARSE_NOISE, `url(${T.paperTone})`].join(", "),
-    "--paper-sizes": [...T.paperGrains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
-    "--paper-repeat": [...T.paperGrains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
-    "--paper-blend": [...T.paperGrains.map((g) => g.blend), T.noiseBlend, "normal"].join(", "),
+    "--paper-images": paper.images,
+    "--paper-sizes": paper.sizes,
+    "--paper-repeat": paper.repeat,
+    "--paper-blend": paper.blend,
     "--canvas-w": T.canvas.width,
     "--canvas-h": T.canvas.height,
     "--cut": T.cutY,
@@ -90,6 +114,33 @@ function mobileVars(T: DeathNoticeV2MobileTokens): CSSProperties {
     "--label": T.label,
     "--accent": T.accent,
     "--rule": T.rule,
+  } as CSSProperties;
+}
+
+/** Réglages Desktop, préfixés `--d-` : la feuille de style ne les active
+ * qu'à partir de 1024 px ; sous ce seuil, ils n'ont aucun effet et le
+ * Mobile reste strictement inchangé. */
+function desktopVars(D: DeathNoticeV2DesktopTokens): CSSProperties {
+  const left = paperLayers(D.paperGrains, D.noiseBlend, D.zones.left.paperTone);
+  const right = paperLayers(D.paperGrains, D.noiseBlend, D.zones.right.paperTone);
+  return {
+    "--d-m-src": `url(${D.masterSrc})`,
+    "--d-paper-images-left": left.images,
+    "--d-paper-images-right": right.images,
+    "--d-paper-sizes": left.sizes,
+    "--d-paper-repeat": left.repeat,
+    "--d-paper-blend": left.blend,
+    "--d-canvas-w": D.canvas.width,
+    "--d-canvas-h": D.canvas.height,
+    "--d-cut-left": D.zones.left.cutY,
+    "--d-fade-left": D.zones.left.fadePx,
+    "--d-cut-right": D.zones.right.cutY,
+    "--d-fade-right": D.zones.right.fadePx,
+    "--d-zone-split": D.zoneSplitCanvas,
+    "--d-zone-blend": D.zoneBlendCanvas,
+    "--d-text-top": D.textTopCanvas,
+    "--d-foot": D.footCanvas,
+    "--d-axis": D.axisCanvas,
   } as CSSProperties;
 }
 
@@ -118,7 +169,7 @@ export function DeathNoticeV2({ skinVariant, ...props }: DeathNoticeV2Props) {
   if (tokens === null) return null;
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
-      <DeathNoticeV2Layout {...props} variant={skinVariant} tokens={tokens.mobile} />
+      <DeathNoticeV2Layout {...props} variant={skinVariant} tokens={tokens.mobile} desktop={tokens.desktop} />
     </SkinScope>
   );
 }
@@ -130,7 +181,12 @@ function DeathNoticeV2Layout({
   headingLevel = "page",
   variant,
   tokens: T,
-}: Omit<DeathNoticeV2Props, "skinVariant"> & { variant: SkinVariant; tokens: DeathNoticeV2MobileTokens }) {
+  desktop: D,
+}: Omit<DeathNoticeV2Props, "skinVariant"> & {
+  variant: SkinVariant;
+  tokens: DeathNoticeV2MobileTokens;
+  desktop: DeathNoticeV2DesktopTokens | null;
+}) {
   const palette = ORNAMENT_PALETTES[variant];
   const TitleTag = headingLevel === "section" ? "h2" : "h1";
   const NameTag = headingLevel === "section" ? "h3" : "h2";
@@ -141,6 +197,7 @@ function DeathNoticeV2Layout({
     text: deathNotice.precisions[block.field] as string,
   }));
   const oddTotal = blocks.length % 2 === 1;
+  const desktopColumns = D !== null ? deathNoticeV2DesktopColumns(D, blocks.length) : [];
 
   const sectionRef = useRef<HTMLElement | null>(null);
   const [extension, setExtension] = useState(0);
@@ -150,7 +207,12 @@ function DeathNoticeV2Layout({
     if (section === null) return;
     const measure = () => {
       const { width, height } = section.getBoundingClientRect();
-      const masterHeight = (width * T.canvas.height) / T.canvas.width;
+      // Le canevas actif (Mobile ou Desktop) est celui que la feuille de
+      // style a retenu pour cette largeur de conteneur.
+      const style = getComputedStyle(section);
+      const canvasW = parseFloat(style.getPropertyValue("--canvas-w")) || T.canvas.width;
+      const canvasH = parseFloat(style.getPropertyValue("--canvas-h")) || T.canvas.height;
+      const masterHeight = (width * canvasH) / canvasW;
       setExtension(Math.max(0, Math.round((height - masterHeight) * 10) / 10));
     };
     measure();
@@ -167,6 +229,7 @@ function DeathNoticeV2Layout({
       className={`${styles.wrap} ${avisNameSerif.variable} ${ebGaramond.variable} ${ebGaramondItalic.variable}`}
       style={mobileVars(T)}
       data-variant={variant}
+      data-desktop={D !== null ? "" : undefined}
       lang={language}
     >
       <section
@@ -174,11 +237,26 @@ function DeathNoticeV2Layout({
         className={styles.section}
         data-testid="death-notice-v2"
         data-extended={extension > 0.5}
-        style={{ "--ext": `${extension}px`, "--single-below": `${T.singleColumnBelowPx}px` } as CSSProperties}
+        style={
+          {
+            ...(D !== null ? desktopVars(D) : {}),
+            "--ext": `${extension}px`,
+            "--single-below": `${T.singleColumnBelowPx}px`,
+          } as CSSProperties
+        }
       >
         <div className={styles.master} aria-hidden="true" />
         <div className={styles.bottom} aria-hidden="true" />
         {extension > 0.5 && <div className={styles.paper} aria-hidden="true" />}
+        {/* Desktop : pile de la zone droite (coupe propre), fondue sur la
+            pile principale dans le papier nu du centre. Masquée en Mobile. */}
+        {D !== null && (
+          <div className={styles.zoneRight} data-zone="right" aria-hidden="true">
+            <div className={styles.master} />
+            <div className={styles.bottom} />
+            {extension > 0.5 && <div className={styles.paper} />}
+          </div>
+        )}
 
         <div className={styles.content} data-last-row={blocks.length === 0 ? "none" : oddTotal ? "single" : "pair"}>
           <header className={styles.header}>
@@ -211,6 +289,7 @@ function DeathNoticeV2Layout({
                 {blocks.map((block, index) => {
                   const isFull = oddTotal && index === blocks.length - 1;
                   const row = Math.floor(index / 2);
+                  const column = desktopColumns[index];
                   return (
                     <Fragment key={block.field}>
                       {/* Séparateur de rangée (deux colonnes) : seulement entre
@@ -228,6 +307,15 @@ function DeathNoticeV2Layout({
                         data-field={block.field}
                         data-col={isFull ? "full" : index % 2 === 0 ? "left" : "right"}
                         data-row={row}
+                        style={
+                          column !== undefined
+                            ? ({
+                                "--col-pitch": column.pitch,
+                                "--col-half": column.half,
+                                "--col-foot": column.foot,
+                              } as CSSProperties)
+                            : undefined
+                        }
                       >
                         <Medallion field={block.field} palette={palette} />
                         <div className={styles.blockText}>

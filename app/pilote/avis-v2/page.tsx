@@ -7,11 +7,14 @@ import { DeathNoticeV2 } from "@/components/memorial/death-notice/v2/DeathNotice
 import { DEATH_NOTICE_V2_PILOT_CASES } from "@/components/memorial/death-notice/v2/pilot-fixtures";
 
 /**
- * Avis de décès V2 : banc d'essai LOCAL du pilote Mobile (Light et Dark),
- * pour les captures de validation PO/QG. Inaccessible en production
- * (`notFound`) ; n'appartient à aucun parcours.
+ * Avis de décès V2 : banc d'essai LOCAL du pilote (Mobile Light et Dark,
+ * Desktop Light), pour les captures de validation PO/QG. Inaccessible en
+ * production (`notFound`) ; n'appartient à aucun parcours. `w` fixe la
+ * largeur du CONTENEUR (la bascule Desktop suit le conteneur, jamais la
+ * fenêtre : w=700 dans une fenêtre de 1920 px reste en Mobile).
  *
  *   /pilote/avis-v2?case=reference&lang=fr&w=941&v=dark
+ *   /pilote/avis-v2?case=reference&lang=fr&w=1448
  *   /pilote/avis-v2?fonts=1   (comparaison des polices candidates du nom)
  */
 

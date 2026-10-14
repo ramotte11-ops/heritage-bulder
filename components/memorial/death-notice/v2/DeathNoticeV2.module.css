@@ -626,3 +626,283 @@
   }
 }
 
+
+/* --- Desktop Light (phase 4) --------------------------------------------
+   À partir de 1024 px de largeur RÉELLE du conteneur, et seulement pour une
+   variante qui a des réglages Desktop (`data-desktop`) : Master Desktop
+   (1672 × 941) plafonné à 1448 px, même moteur de décor, en-tête centré et
+   précisions en une rangée de colonnes. Sous ce seuil, aucune règle de ce
+   bloc ne s'applique : le Mobile reste celui validé. Mesures : maquette
+   Desktop Light, en px de canevas. */
+
+.wrap[data-desktop] {
+  /* Plafond Desktop (décision PO) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+}
+
+/* Pile de la zone droite : n'existe qu'en Desktop. */
+.zoneRight {
+  display: none;
+}
+
+@container (min-width: 1024px) {
+  .wrap[data-desktop] .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images-left);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut-left);
+    --fade: var(--d-fade-left);
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  /* Zone droite : sa propre coupe, son fondu et sa teinte ; elle recouvre
+     la pile principale à partir du fondu vertical du centre (papier nu
+     entre les deux coupes). */
+  .wrap[data-desktop] .zoneRight {
+    --cut: var(--d-cut-right);
+    --fade: var(--d-fade-right);
+    --paper-images: var(--d-paper-images-right);
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+  }
+
+  .wrap[data-desktop] .content,
+  .wrap[data-desktop] .content[data-last-row] {
+    --foot-active: var(--d-foot);
+    padding: calc(var(--px) * var(--d-text-top)) 0 calc(var(--px) * var(--d-foot));
+  }
+
+  /* En-tête : axe x 836, dans la bande de papier nu entre les feuillets de
+     gauche (x 430) et ceux de droite (x 1240). */
+  .wrap[data-desktop] .header {
+    align-self: center;
+    width: calc(var(--px) * 810);
+    padding-inline: 0;
+    transform: translateX(calc(var(--px) * (var(--d-axis) - var(--canvas-w) / 2)));
+  }
+
+  /* Titre : capitales x 702–967, y 102–119 ; filets x 582–678 et 992–1087
+     à y 113. */
+  .wrap[data-desktop] .titleRow {
+    gap: calc(var(--px) * 24);
+  }
+
+  /* Les filets passent 4,5 px sous le milieu des capitales. */
+  .wrap[data-desktop] .titleRule {
+    flex-basis: calc(var(--px) * 96);
+    height: max(1px, calc(var(--px) * 1.3));
+    transform: translateY(calc(var(--px) * 4.5));
+  }
+
+  /* La maquette Desktop compose le titre et les intitulés plus appuyés
+     que le Mobile : même famille, graisse 600 déjà chargée pour le nom
+     (aucun fichier de police supplémentaire). */
+  .wrap[data-desktop] .title {
+    font-family: var(--font-heritage-avis-name), serif;
+    font-weight: 600;
+    font-size: max(14px, calc(var(--px) * 26));
+    letter-spacing: 0.27em;
+    margin-right: -0.27em;
+  }
+
+  /* Rameau : x 749–904, y 137–211. */
+  .wrap[data-desktop] .branch {
+    width: calc(var(--px) * 155);
+    height: calc(var(--px) * 83.3);
+    margin-top: calc(var(--px) * 8);
+    transform: translateX(calc(var(--px) * -9));
+  }
+
+  /* Nom : x 622–1054, accent à 215, ligne de base à 294. */
+  .wrap[data-desktop] .name {
+    margin-top: calc(var(--px) * 4);
+    font-size: max(40px, calc(var(--px) * 88));
+    letter-spacing: 0;
+  }
+
+  /* Dates : x 719–947, chiffres 319–339. */
+  .wrap[data-desktop] .dates {
+    margin-top: calc(var(--px) * 1);
+    font-size: max(16px, calc(var(--px) * 32));
+    letter-spacing: 0.25em;
+    margin-right: -0.25em;
+  }
+
+  /* Cœur : x 820–850, y 358–385 ; filets x 658–788 et 881–1011. */
+  .wrap[data-desktop] .heartRow {
+    gap: calc(var(--px) * 31);
+    margin-top: calc(var(--px) * 11);
+  }
+
+  .wrap[data-desktop] .heartRule {
+    flex-basis: calc(var(--px) * 130);
+  }
+
+  /* Annonce : trois lignes centrées (x 478–1191), pas de 38,5 px ; à
+     728 px, le texte de référence se coupe comme la maquette (« annonce » /
+     « générosité » en fin de ligne). */
+  .wrap[data-desktop] .announcement {
+    width: calc(var(--px) * 728);
+    max-width: 100%;
+    margin-top: calc(var(--px) * 18);
+    padding-inline: 0;
+    font-size: max(18px, calc(var(--px) * 35.5));
+    line-height: 1.085;
+  }
+
+  /* Précisions : une rangée de colonnes centrées sur l'axe, une par
+     précision rendue ; pas de filet horizontal avant la rangée. */
+  .wrap[data-desktop] .detailsRule,
+  .wrap[data-desktop] .rowRule {
+    display: none;
+  }
+
+  .wrap[data-desktop] .details {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    margin-top: calc(var(--px) * 22);
+    transform: translateX(calc(var(--px) * (var(--d-axis) - var(--canvas-w) / 2)));
+  }
+
+  .wrap[data-desktop] .details[data-count] .block:nth-child(n) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 0 0 calc(var(--px) * var(--col-pitch));
+    padding: 0 0 calc(var(--px) * var(--col-foot));
+    column-gap: 0;
+  }
+
+  /* Médaillon Ø 89 (maquette : 218–307 × 544–631). La maquette Desktop
+     le dessine plus lumineux que le Mobile : liseré fin et brillant en haut
+     (#c98048) comme en bas (reflet #ffdeb1), face cuivrée claire en haut
+     (#c88048) descendant vers #5c2c0e, flancs #66351a. Surcharge Desktop
+     seule : le médaillon Mobile validé ne change pas. */
+  .wrap[data-desktop] .medallion {
+    width: calc(var(--px) * 89);
+    height: calc(var(--px) * 89);
+    background:
+      radial-gradient(circle at 50% 97%, rgb(255 226 182 / 0.95) 0, rgb(255 226 182 / 0) 22%),
+      radial-gradient(circle at 50% 2%, rgb(236 168 108 / 0.8) 0, rgb(236 168 108 / 0) 24%),
+      linear-gradient(180deg, #d08a52 0%, #b06b36 22%, #7c4420 50%, #a9652f 76%, #f2c48e 94%, #c4824a 100%);
+    box-shadow:
+      0 0 0 max(0.5px, calc(var(--px) * 1)) rgb(30 10 2 / 0.85),
+      0 calc(var(--px) * 3) calc(var(--px) * 4) rgb(70 36 12 / 0.32);
+  }
+
+  .wrap[data-desktop] .medallion::before {
+    inset: 3.8%;
+    background:
+      radial-gradient(ellipse 58% 34% at 50% 6%, rgb(214 140 82 / 0.78) 0, rgb(214 140 82 / 0) 100%),
+      linear-gradient(118deg, rgb(0 0 0 / 0) 44%, rgb(230 168 112 / 0.18) 56%, rgb(0 0 0 / 0) 68%),
+      radial-gradient(circle at 50% 46%, rgb(0 0 0 / 0) 56%, rgb(40 16 2 / 0.42) 100%),
+      conic-gradient(
+        from 0deg,
+        #9c5e33 0deg,
+        #8a5129 30deg,
+        #7a4520 60deg,
+        #6c3b1a 95deg,
+        #613314 130deg,
+        #5f3113 165deg,
+        #66361a 180deg,
+        #5f3113 195deg,
+        #613314 230deg,
+        #6c3b1a 265deg,
+        #7a4520 300deg,
+        #8a5129 330deg,
+        #9c5e33 360deg
+      );
+    box-shadow:
+      0 0 0 max(0.5px, calc(var(--px) * 1)) #3a1a06,
+      inset 0 calc(var(--px) * 2) calc(var(--px) * 3) rgb(0 0 0 / 0.3);
+  }
+
+  .wrap[data-desktop] .blockText {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: calc(var(--px) * var(--col-half) * 2);
+    padding-top: calc(var(--px) * 12);
+    text-align: center;
+  }
+
+  /* Intitulé : capitales 645–654 (« MOT DE LA FAMILLE » x 456–654). */
+  .wrap[data-desktop] .label,
+  .wrap[data-desktop] .block[data-col="right"] .label {
+    margin-right: 0;
+    font-family: var(--font-heritage-avis-name), serif;
+    font-weight: 600;
+    font-size: max(10px, calc(var(--px) * 15));
+    letter-spacing: 0.22em;
+  }
+
+  /* Filet d'intitulé : 40 px centré, y 671. */
+  .wrap[data-desktop] .labelRule {
+    width: calc(var(--px) * 40);
+    margin: calc(var(--px) * 12) auto calc(var(--px) * 10);
+  }
+
+  /* Corps : italique 26 (pas de 30) ; la maquette compose le lieu plus
+     grand (« Paris, France » x 189–344) et l'autre précision plus petite
+     (« chaleureusement tous ceux » en 236 px, pas de 29,5) — comme le
+     Mobile validé (lieu 29, dernier bloc 27). */
+  .wrap[data-desktop] .body,
+  .wrap[data-desktop] .blockFull .body {
+    font-size: max(15px, calc(var(--px) * 25));
+    line-height: 1.18;
+  }
+
+  .wrap[data-desktop] .bodyItalic {
+    font-size: max(15px, calc(var(--px) * 26));
+    line-height: 1.16;
+  }
+
+  .wrap[data-desktop] .block[data-field="generalLocation"] .body {
+    font-size: max(17px, calc(var(--px) * 33));
+    line-height: 1.1;
+  }
+
+  .wrap[data-desktop] .block[data-field="other"] .body {
+    font-size: max(15px, calc(var(--px) * 23.5));
+    line-height: 1.25;
+  }
+
+  /* Filets verticaux entre colonnes : x 405 / 701 / 975 / 1252, de 22 px
+     sous le haut des médaillons à ~20 px au-dessus du dernier texte. */
+  .wrap[data-desktop] .details[data-count] .block:not(:first-child)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: calc(var(--px) * 22);
+    bottom: calc(var(--px) * (20 + var(--col-foot)));
+    /* Maquette : trait brun moyen (#78654f) d'environ 1,5 px, liseré de
+       lumière à droite. */
+    width: max(1px, calc(var(--px) * 1.5));
+    background: rgb(112 94 74 / 0.8);
+    box-shadow: max(0.5px, calc(var(--px) * 1.1)) 0 0 rgb(255 247 232 / 0.75);
+  }
+
+  .wrap[data-desktop] .details[data-count] .block::after {
+    content: none;
+  }
+}

@@ -92,8 +92,68 @@ export interface DeathNoticeV2MobileTokens {
   rule: string;
 }
 
+/** Une zone de la surface Desktop : sa coupe, son fondu et sa teinte. */
+export interface DeathNoticeV2DesktopZoneTokens {
+  /** Ligne de coupe de la zone : dernière rangée du haut = cutY − 1. */
+  cutY: number;
+  fadePx: number;
+  /** Teinte du papier seul (image W×2 : au-dessus du raccord haut, sous le
+   * raccord bas), étirée sur la surface de la zone. */
+  paperTone: string;
+}
+
+export type DeathNoticeV2PrecisionCount = 1 | 2 | 3 | 4 | 5;
+
+export interface DeathNoticeV2DesktopTokens {
+  masterSrc: string;
+  /** SHA-256 du Master, identique au fichier de référence de la PO. */
+  masterSha256: string;
+  paperGrains: readonly { src: string; tileWidth: number; blend: string }[];
+  noiseBlend: string;
+  canvas: { width: number; height: number };
+  /**
+   * Deux piles Master + surface : `left` sert tout le décor, `right` le
+   * recouvre à partir du fondu vertical centré sur `zoneSplitCanvas`
+   * (largeur `zoneBlendCanvas`), placé dans le papier nu du centre. Sans
+   * extension, les deux piles montrent le même Master : le raccord est
+   * invisible par construction.
+   */
+  zones: { left: DeathNoticeV2DesktopZoneTokens; right: DeathNoticeV2DesktopZoneTokens };
+  zoneSplitCanvas: number;
+  zoneBlendCanvas: number;
+  /** Haut du bloc de texte (haut de la ligne du titre), en px de canevas. */
+  textTopCanvas: number;
+  /** Réserve basse commune : bas du contenu de la maquette (rangée 775). */
+  footCanvas: number;
+  /** Axe de la composition, en px de canevas. */
+  axisCanvas: number;
+  /**
+   * Bande des précisions sans ornement, à toutes les hauteurs où le décor
+   * latéral peut descendre avec l'extension : bouquet gauche jusqu'à
+   * x 175, bouquet droit dès x 1539 ; « Paris, France » (maquette
+   * x 189–344) et « qui partagent son souvenir. » (x 1291–1528) y tiennent.
+   */
+  precisionLeftCanvas: number;
+  precisionRightCanvas: number;
+  /** Pas des colonnes selon le nombre de précisions rendues : 286 pour cinq
+   * (maquette), plus large quand il y en a moins, groupe centré sur l'axe. */
+  columnPitchCanvas: Readonly<Record<DeathNoticeV2PrecisionCount, number>>;
+  /** Retrait du texte de part et d'autre, dans sa colonne. */
+  columnInsetCanvas: number;
+  /**
+   * Réserve basse supplémentaire de chaque colonne, en px de canevas : le
+   * bord déchiré du bas remonte à gauche (rangée 745 sous la première
+   * colonne de cinq, 805 au centre) ; chaque texte s'arrête 18 px au-dessus
+   * du bord qui passe sous lui.
+   */
+  columnFootCanvas: Readonly<Record<DeathNoticeV2PrecisionCount, readonly number[]>>;
+}
+
 export interface DeathNoticeV2VariantTokens {
   mobile: DeathNoticeV2MobileTokens;
+  /** Composition Desktop, ou `null` tant que la variante n'en a pas : la
+   * composition Mobile s'applique alors à toutes les largeurs. */
+  desktop: DeathNoticeV2DesktopTokens | null;
 }
 
 const ROOT = "/assets/death-notice/v2/mobile/light";
@@ -204,8 +264,96 @@ const MOBILE_DARK: DeathNoticeV2MobileTokens = {
   rule: "rgb(216 190 150 / 0.6)",
 };
 
-/** Mobile Light (phases 1-2, CLOSED) et Mobile Dark (phase 3). */
+const DESKTOP_LIGHT_ROOT = "/assets/death-notice/v2/desktop/light";
+
+/**
+ * Desktop Light (phase 4). Réglages mesurés sur SES références — fond
+ * `02_FONDS_VIERGES/DESKTOP_LIGHT.png` (1672×941, SHA-256 ci-dessous) et
+ * maquette `01_MAQUETTES_ILLUSTREES/DESKTOP_LIGHT.png` (1670×941, même
+ * cadrage à x 0) —, jamais recopiés du Mobile.
+ *
+ * Coupes (scripts/pilot/avis-v2-derive.py) : à gauche (colonnes 0–420),
+ * rangée 468, fondu 28, entre le bas des feuillets écrits et le haut du
+ * bouquet ; à droite (colonnes 1250–1672), rangée 616, fondu 40, sous le
+ * brin fleuri et les ombres de feuilles (9 px de détail net par rangée).
+ * Raccord des deux piles : fondu de 600 px centré sur x 836, où les
+ * rangées 468–616 sont du papier nu. Grain : trois tuiles du papier
+ * central (560 / 480 / 410).
+ */
+const DESKTOP_LIGHT: DeathNoticeV2DesktopTokens = {
+  masterSrc: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-master.png`,
+  masterSha256: "f95b05ce584292ae3059f4d2f4463b8bd62ad72fb6ed7f6433d451e9d721c070",
+  paperGrains: [
+    { src: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-grain-a.png`, tileWidth: 560, blend: "overlay" },
+    { src: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-grain-b.png`, tileWidth: 480, blend: "overlay" },
+    { src: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-grain-c.png`, tileWidth: 410, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  canvas: { width: 1672, height: 941 },
+  zones: {
+    left: { cutY: 468, fadePx: 28, paperTone: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-tone-left.png` },
+    right: { cutY: 616, fadePx: 40, paperTone: `${DESKTOP_LIGHT_ROOT}/avis-desktop-light-tone-right.png` },
+  },
+  zoneSplitCanvas: 836,
+  zoneBlendCanvas: 600,
+  /** Maquette : capitales du titre à y 102 (accents à 98). */
+  textTopCanvas: 95,
+  /** Dernière ligne de la maquette (« qui demeure.” ») à 773. */
+  footCanvas: 166,
+  /** Titre, nom, dates, cœur et annonce centrés sur x 835 (maquette). */
+  axisCanvas: 836,
+  precisionLeftCanvas: 182,
+  precisionRightCanvas: 1530,
+  /** Maquette : médaillons centrés à 262 / 550 / 835 / 1113 / 1407. */
+  columnPitchCanvas: { 1: 480, 2: 380, 3: 330, 4: 310, 5: 286 },
+  /** Texte le plus large de la maquette : 237 px dans une colonne de 286
+   * (« qui partagent son souvenir. ») ; 244 px de place utile. */
+  columnInsetCanvas: 21,
+  columnFootCanvas: {
+    1: [9],
+    2: [9, 0],
+    3: [17, 1, 0],
+    4: [42, 9, 0, 0],
+    5: [48, 17, 0, 0, 0],
+  },
+};
+
+/** Mobile Light (phases 1-2, CLOSED), Mobile Dark (phase 3) et Desktop
+ * Light (phase 4). */
 export const DEATH_NOTICE_V2_TOKENS: Readonly<Record<SkinVariant, DeathNoticeV2VariantTokens | null>> = Object.freeze({
-  light: { mobile: MOBILE_LIGHT },
-  dark: { mobile: MOBILE_DARK },
+  light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
+  dark: { mobile: MOBILE_DARK, desktop: null },
 });
+
+/** Breakpoint Desktop (décision PO), sur la largeur RÉELLE du conteneur.
+ * Doit rester égal à la requête de conteneur du module CSS. */
+export const DEATH_NOTICE_V2_DESKTOP_MIN_PX = 1024;
+
+/** Largeur maximale de la composition Desktop (décision PO). */
+export const DEATH_NOTICE_V2_DESKTOP_MAX_PX = 1448;
+
+export interface DeathNoticeV2DesktopColumn {
+  /** Centre et largeur de la colonne, en px de canevas. */
+  center: number;
+  pitch: number;
+  /** Demi-largeur disponible pour l'intitulé et le texte. */
+  half: number;
+  /** Réserve basse supplémentaire de la colonne. */
+  foot: number;
+}
+
+/**
+ * Colonnes Desktop des précisions réellement rendues (1 à 5) : groupe
+ * centré sur l'axe, pas `columnPitchCanvas[count]`, chaque texte borné par
+ * sa colonne et par la bande sans ornement.
+ */
+export function deathNoticeV2DesktopColumns(D: DeathNoticeV2DesktopTokens, count: number): DeathNoticeV2DesktopColumn[] {
+  if (count < 1 || count > 5) return [];
+  const n = count as DeathNoticeV2PrecisionCount;
+  const pitch = D.columnPitchCanvas[n];
+  return Array.from({ length: n }, (_, index) => {
+    const center = D.axisCanvas + (index - (n - 1) / 2) * pitch;
+    const half = Math.min(pitch / 2 - D.columnInsetCanvas, center - D.precisionLeftCanvas, D.precisionRightCanvas - center);
+    return { center, pitch, half, foot: D.columnFootCanvas[n][index] ?? 0 };
+  });
+}
