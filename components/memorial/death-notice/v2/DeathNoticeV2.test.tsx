@@ -41,6 +41,9 @@ const MOBILE_DARK = DEATH_NOTICE_V2_TOKENS.dark!.mobile;
 const DESKTOP_LIGHT = DEATH_NOTICE_V2_TOKENS.light!.desktop!;
 /** SHA-256 du fond vierge Desktop Light remis par la PO (même ZIP). */
 const PO_DESKTOP_LIGHT_SHA256 = "f95b05ce584292ae3059f4d2f4463b8bd62ad72fb6ed7f6433d451e9d721c070";
+const DESKTOP_DARK = DEATH_NOTICE_V2_TOKENS.dark!.desktop!;
+/** SHA-256 du fond vierge Desktop Dark remis par la PO (même ZIP). */
+const PO_DESKTOP_DARK_SHA256 = "8b07b2f25f32fd390f1123468370d06a9bc3eaf3410a3d5c4a8315df2ada78e0";
 /** SHA-256 du fond vierge Mobile Light remis par la PO (ZIP de référence). */
 const PO_MOBILE_LIGHT_SHA256 = "757fab95d4094a9fcf3ee3c651b1b3c962a0a723a781a3ccde14f89608fb3e6a";
 /** SHA-256 du fond vierge Mobile Dark remis par la PO (même ZIP). */
@@ -413,18 +416,6 @@ describe("DeathNoticeV2 — Desktop Light (phase 4)", () => {
     expect(wrap.style.getPropertyValue("--m-src")).toContain(MOBILE_LIGHT.masterSrc);
   });
 
-  it("Dark n'a pas encore de Desktop : ni réglages, ni pile droite, ni colonnes Desktop (Mobile à toutes les largeurs)", () => {
-    expect(DEATH_NOTICE_V2_TOKENS.dark!.desktop).toBeNull();
-    const { container } = renderNotice({ skinVariant: "dark" });
-    expect(container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(false);
-    expect(container.querySelector('[data-zone="right"]')).toBeNull();
-    const section = container.querySelector('[data-testid="death-notice-v2"]') as HTMLElement;
-    expect(section.style.getPropertyValue("--d-m-src")).toBe("");
-    for (const block of container.querySelectorAll<HTMLElement>("[data-field]")) {
-      expect(block.style.getPropertyValue("--col-pitch")).toBe("");
-    }
-  });
-
   it.each([1, 2, 3, 4])("rangée des autres précisions, %i colonne(s) : groupe centré sur l'axe, textes dans la bande sans ornement", (count) => {
     const columns = deathNoticeV2DesktopColumns(DESKTOP_LIGHT, count);
     expect(columns).toHaveLength(count);
@@ -489,5 +480,91 @@ describe("DeathNoticeV2 — Desktop Light (phase 4)", () => {
     expect([MOBILE_LIGHT.cutY, MOBILE_LIGHT.fadePx, MOBILE_LIGHT.footCanvas, MOBILE_LIGHT.textTopCanvas]).toEqual([955, 40, 346, 236]);
     expect([MOBILE_DARK.cutY, MOBILE_DARK.fadePx, MOBILE_DARK.footCanvas, MOBILE_DARK.textTopCanvas]).toEqual([895, 40, 356, 243]);
     expect([MOBILE_LIGHT.ink, MOBILE_LIGHT.label, MOBILE_DARK.ink, MOBILE_DARK.label]).toEqual(["#211d13", "#3a3226", "#f4e9d8", "#c6bcab"]);
+  });
+
+  it("les réglages Desktop Light 1 + 4 validés ne changent pas", () => {
+    expect(DESKTOP_LIGHT.zones.left.cutY).toBe(468);
+    expect(DESKTOP_LIGHT.zones.right.cutY).toBe(616);
+    expect([DESKTOP_LIGHT.textTopCanvas, DESKTOP_LIGHT.footCanvas, DESKTOP_LIGHT.axisCanvas]).toEqual([95, 166, 836]);
+    expect([DESKTOP_LIGHT.locationHalfCanvas, DESKTOP_LIGHT.locationRowGapCanvas, DESKTOP_LIGHT.locationFootCanvas]).toEqual([310, 40, 9]);
+  });
+});
+
+describe("DeathNoticeV2 — Desktop Dark (phase 5, pilote)", () => {
+  it("le Master Desktop Dark est le fond de la PO, octet pour octet", () => {
+    expect(DESKTOP_DARK.masterSha256).toBe(PO_DESKTOP_DARK_SHA256);
+    const digest = createHash("sha256").update(readFileSync(publicFile(DESKTOP_DARK.masterSrc))).digest("hex");
+    expect(digest).toBe(PO_DESKTOP_DARK_SHA256);
+    expect(DESKTOP_DARK.canvas).toEqual({ width: 1670, height: 942 });
+  });
+
+  it("textures dérivées propres au Desktop Dark : présentes, distinctes, aucune reprise du Light ni du Mobile", () => {
+    const derived = [DESKTOP_DARK.zones.left.paperTone, DESKTOP_DARK.zones.right.paperTone, ...DESKTOP_DARK.paperGrains.map((g) => g.src)];
+    expect(new Set(derived).size).toBe(derived.length);
+    for (const src of derived) {
+      expect(existsSync(publicFile(src))).toBe(true);
+      expect(src).not.toBe(DESKTOP_DARK.masterSrc);
+      expect(src).toContain("/desktop/dark/");
+    }
+    expect(DESKTOP_DARK.masterSrc).not.toBe(DESKTOP_LIGHT.masterSrc);
+  });
+
+  it("coupes propres au Dark, dans le Master, sous le titre et au-dessus du contenu le plus bas", () => {
+    for (const zone of [DESKTOP_DARK.zones.left, DESKTOP_DARK.zones.right]) {
+      expect(zone.cutY - zone.fadePx).toBeGreaterThan(DESKTOP_DARK.textTopCanvas);
+      expect(zone.cutY + zone.fadePx).toBeLessThan(DESKTOP_DARK.canvas.height);
+    }
+    expect([DESKTOP_DARK.zones.left.cutY, DESKTOP_DARK.zones.right.cutY]).not.toEqual([DESKTOP_LIGHT.zones.left.cutY, DESKTOP_LIGHT.zones.right.cutY]);
+  });
+
+  it("Dark rend son propre Desktop : son Master, sa pile droite masquée aux lecteurs d'écran, ses colonnes 1 + 4", () => {
+    const { container } = renderNotice({ skinVariant: "dark" });
+    const wrap = container.querySelector("[data-variant]") as HTMLElement;
+    expect(wrap.getAttribute("data-variant")).toBe("dark");
+    expect(wrap.hasAttribute("data-desktop")).toBe(true);
+    const section = container.querySelector('[data-testid="death-notice-v2"]') as HTMLElement;
+    expect(section.style.getPropertyValue("--d-m-src")).toContain(DESKTOP_DARK.masterSrc);
+    expect(section.style.getPropertyValue("--d-cut-left")).toBe(String(DESKTOP_DARK.zones.left.cutY));
+    expect(section.style.getPropertyValue("--d-cut-right")).toBe(String(DESKTOP_DARK.zones.right.cutY));
+    expect(container.querySelector('[data-zone="right"]')!.getAttribute("aria-hidden")).toBe("true");
+    // Le Mobile Dark garde son propre Master : les réglages Desktop sont à part.
+    expect(wrap.style.getPropertyValue("--m-src")).toContain(MOBILE_DARK.masterSrc);
+    const blocks = Array.from(container.querySelectorAll<HTMLElement>("[data-field]"));
+    const expected = deathNoticeV2DesktopPlacement(DESKTOP_DARK, blocks.map((b) => b.getAttribute("data-field")!));
+    blocks.forEach((block, i) => expect(block.style.getPropertyValue("--col-half")).toBe(String(expected[i].half)));
+    expect(blocks[0].style.getPropertyValue("--col-half")).toBe(String(DESKTOP_DARK.locationHalfCanvas));
+  });
+
+  it.each([1, 2, 3, 4])("Dark, %i colonne(s) : groupe centré sur l'axe Dark, textes dans la bande sans ornement", (count) => {
+    const columns = deathNoticeV2DesktopColumns(DESKTOP_DARK, count);
+    const mean = columns.reduce((sum, c) => sum + c.center, 0) / count;
+    expect(mean).toBeCloseTo(DESKTOP_DARK.axisCanvas, 6);
+    for (const c of columns) {
+      expect(c.center - c.half).toBeGreaterThanOrEqual(DESKTOP_DARK.precisionLeftCanvas);
+      expect(c.center + c.half).toBeLessThanOrEqual(DESKTOP_DARK.precisionRightCanvas);
+    }
+    expect(DESKTOP_DARK.columnFootCanvas[count as 1 | 2 | 3 | 4]).toHaveLength(count);
+  });
+
+  it.each([
+    [["generalLocation"], 1],
+    [["familyMessage", "thought", "quote", "other"], 4],
+    [["generalLocation", "thought", "other"], 3],
+    [[], 0],
+  ] as const)("Dark, précisions %j : %i médaillon(s), aucun emplacement fantôme", (fields, medallions) => {
+    const precisions = Object.fromEntries(fields.map((f) => [f, ALL_PRECISIONS[f]]));
+    const { container } = renderNotice({ skinVariant: "dark", deathNotice: notice(precisions) });
+    expect(container.querySelectorAll("[data-field]")).toHaveLength(fields.length);
+    expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(medallions);
+  });
+
+  it("les règles Desktop Dark ne visent que la variante Dark, à partir de 1024 px", () => {
+    const css = readFileSync(path.join(import.meta.dirname, "DeathNoticeV2.module.css"), "utf8");
+    const block = css.slice(css.indexOf("/* --- Desktop Dark (phase 5, pilote)"));
+    expect(block.startsWith("/* --- Desktop Dark")).toBe(true);
+    expect(block).toContain("@container (min-width: 1024px)");
+    const selectors = block.match(/^\s*\.wrap[^{]*\{/gm) ?? [];
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const sel of selectors) expect(sel).toContain('.wrap[data-variant="dark"][data-desktop]');
   });
 });

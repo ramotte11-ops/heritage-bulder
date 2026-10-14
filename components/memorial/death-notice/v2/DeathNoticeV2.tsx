@@ -21,7 +21,7 @@ import { Branch, Heart, Medallion, ORNAMENT_PALETTES } from "./DeathNoticeV2Orna
 import styles from "./DeathNoticeV2.module.css";
 
 /**
- * Avis de décès V2 — pilote (Mobile Light et Dark, Desktop Light). Non branché
+ * Avis de décès V2 — pilote (Mobile Light et Dark, Desktop Light et Dark). Non branché
  * sur le registre de production : `DeathNoticeIntemporel` (V1) reste le
  * renderer de la section `deathNotice`.
  *

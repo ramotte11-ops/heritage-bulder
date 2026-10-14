@@ -926,3 +926,119 @@
     content: none;
   }
 }
+
+/* --- Desktop Dark (phase 5, pilote) -------------------------------------
+   Même moteur et même composition 1 + 4 que le Desktop Light ; seules les
+   valeurs propres à la maquette Desktop Dark (en px de canevas du fond
+   Dark, 1670 × 942) sont surchargées ici, pour la variante Dark seule et à
+   partir de 1024 px. Sous ce seuil, le Mobile Dark validé reste
+   strictement inchangé ; le Desktop Light n'est pas concerné. */
+@container (min-width: 1024px) {
+  /* Titre : capitales régulières dorées, très espacées (x 692–986,
+     y 73–93) ; filets dorés x 554–662 et 1013–1117 à y 89,5. La largeur
+     de rangée du Mobile Dark ne s'applique pas ici. */
+  .wrap[data-variant="dark"][data-desktop] .titleRow {
+    width: 100%;
+    gap: calc(var(--px) * 30);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .titleRule {
+    flex-basis: calc(var(--px) * 108);
+    transform: translateY(calc(var(--px) * 6));
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .title {
+    font-family: var(--font-heritage-ceremony-serif), serif;
+    font-weight: 400;
+    font-size: max(14px, calc(var(--px) * 25));
+    letter-spacing: 0.42em;
+    margin-right: -0.42em;
+    color: #dfd2ba;
+  }
+
+  /* Titre ES (« AVISO DE DEFUNCIÓN », 18 signes) : à 0,42 em il frôle les
+     papiers déchirés du coin haut droit ; même principe que le Mobile Dark
+     validé, l'espacement se resserre, corps et casse inchangés. */
+  .wrap[data-variant="dark"][data-desktop]:lang(es) .title {
+    letter-spacing: 0.3em;
+    margin-right: -0.3em;
+  }
+
+  /* Rameau : x 753–899, y 110–179, centré sur x 826. */
+  .wrap[data-variant="dark"][data-desktop] .branch {
+    width: calc(var(--px) * 146);
+    height: calc(var(--px) * 78.5);
+    margin-top: calc(var(--px) * 10);
+    transform: translateX(calc(var(--px) * -12));
+  }
+
+  /* Nom : x 621–1065, accent à 186, ligne de base à 256. */
+  .wrap[data-variant="dark"][data-desktop] .name {
+    margin-top: calc(var(--px) * -3);
+    font-size: max(40px, calc(var(--px) * 88));
+    letter-spacing: 0.015em;
+  }
+
+  /* Dates : x 724–953, chiffres 280–301. */
+  .wrap[data-variant="dark"][data-desktop] .dates {
+    margin-top: calc(var(--px) * 0);
+  }
+
+  /* Cœur : x 824–851, y 322–346 ; filets dorés x 653–800 et 874–1021. */
+  .wrap[data-variant="dark"][data-desktop] .heartRow {
+    gap: calc(var(--px) * 24);
+    margin-top: calc(var(--px) * 11);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .heartRule {
+    flex-basis: calc(var(--px) * 147);
+  }
+
+  /* Annonce : quatre lignes équilibrées, x 565–1127, pas de 37,5. */
+  .wrap[data-variant="dark"][data-desktop] .announcement {
+    width: calc(var(--px) * 562);
+    margin-top: calc(var(--px) * 13);
+    font-size: max(18px, calc(var(--px) * 35));
+    line-height: 1.07;
+    text-wrap: balance;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .details {
+    margin-top: calc(var(--px) * 22);
+  }
+
+  /* Médaillon Ø 80 (maquette : 234–313 × 534–612), plus sombre et plus
+     contrasté que celui du Desktop Light : liseré cuivré fin et brillant
+     (#e0a466 en haut et en bas), sillon sombre, face de cuivre profond —
+     reflet #ab6636 en haut, #50260a au tiers, #221000 en bas. */
+  .wrap[data-variant="dark"][data-desktop] .medallion {
+    width: calc(var(--px) * 80);
+    height: calc(var(--px) * 80);
+    background:
+      radial-gradient(circle at 50% 2%, rgb(255 205 150 / 0.85) 0, rgb(255 205 150 / 0) 22%),
+      radial-gradient(circle at 50% 98%, rgb(236 168 104 / 0.3) 0, rgb(236 168 104 / 0) 18%),
+      linear-gradient(180deg, #e0a466 0%, #a3602c 24%, #5c2c0c 52%, #7a4018 78%, #b0703a 94%, #8a4c20 100%);
+    box-shadow:
+      0 0 0 max(0.5px, calc(var(--px) * 1)) rgb(12 5 0 / 0.9),
+      0 calc(var(--px) * 3) calc(var(--px) * 6) rgb(0 0 0 / 0.55);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .medallion::before {
+    inset: 5.5%;
+    background:
+      radial-gradient(ellipse 62% 40% at 50% 6%, rgb(196 120 62 / 0.9) 0, rgb(196 120 62 / 0) 100%),
+      linear-gradient(118deg, rgb(0 0 0 / 0) 44%, rgb(214 140 84 / 0.16) 56%, rgb(0 0 0 / 0) 68%),
+      radial-gradient(circle at 50% 46%, rgb(0 0 0 / 0) 52%, rgb(10 3 0 / 0.55) 100%),
+      linear-gradient(180deg, #8e5026 0%, #5e2f10 34%, #3c1a05 64%, #221000 100%);
+    box-shadow:
+      0 0 0 max(0.5px, calc(var(--px) * 1.4)) #160800,
+      inset 0 calc(var(--px) * 2) calc(var(--px) * 3) rgb(0 0 0 / 0.45);
+  }
+
+  /* Filets verticaux dorés (#be9057 au cœur), sans liseré clair : une
+     ombre sombre très douce les détache du cuir. */
+  .wrap[data-variant="dark"][data-desktop] .details[data-count] .block:not(:first-child)::before {
+    background: rgb(190 144 87 / 0.7);
+    box-shadow: 0 0 calc(var(--px) * 1.5) rgb(8 4 1 / 0.6);
+  }
+}

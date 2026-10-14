@@ -1,7 +1,8 @@
 import type { SkinVariant } from "@/config/skins";
 
 /**
- * Avis de décès V2 — pilote Mobile (Light : phases 1-2 ; Dark : phase 3).
+ * Avis de décès V2 — Mobile Light, Mobile Dark, Desktop Light (1 + 4) et
+ * Desktop Dark (phase 5, pilote).
  *
  * Même moteur que le Récit de vie V2 (config/recit-de-vie-v2-tokens.ts),
  * réglages propres à l'Avis : Master authentique + papier central CSS +
@@ -10,13 +11,14 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Autorités
  *
- * Pour chaque variante, son propre fond (`02_FONDS_VIERGES/MOBILE_LIGHT.png`,
- * `…/MOBILE_DARK.png`) du ZIP `HERITAGE_AVIS_DE_DECES_8_REFERENCES_AUDIT_OPUS`,
- * copié octet pour octet (SHA-256 ci-dessous, vérifié par les tests).
- * Composition : la maquette de la MÊME variante
- * (`01_MAQUETTES_ILLUSTREES/MOBILE_LIGHT.png` ou `…/MOBILE_DARK.png`),
+ * Pour chaque variante et chaque format, son propre fond
+ * (`02_FONDS_VIERGES/{MOBILE,DESKTOP}_{LIGHT,DARK}.png`) du ZIP
+ * `HERITAGE_AVIS_DE_DECES_8_REFERENCES_AUDIT_OPUS`, copié octet pour octet
+ * (SHA-256 ci-dessous, vérifié par les tests). Composition : la maquette
+ * de la MÊME variante et du même format (`01_MAQUETTES_ILLUSTREES/…`),
  * mesurée en px de canevas — chaque valeur `*Canvas` ci-dessous est la
- * valeur relevée sur cette maquette.
+ * valeur relevée sur cette maquette (Desktop : composition 1 + 4 décidée
+ * par la PO).
  *
  * ## Le décor
  *
@@ -25,14 +27,23 @@ import type { SkinVariant } from "@/config/skins";
  * demande plus de hauteur que le Master, une surface de papier CSS s'ouvre
  * à la ligne de coupe (teinte = profil horizontal, grain = trois tuiles
  * dérivées du Master, fondu de `fadePx` aux deux raccords). Dérivations
- * reproductibles : scripts/pilot/avis-v2-mobile-light-derive.py.
+ * reproductibles : scripts/pilot/avis-v2-derive.py.
+ *
+ * ## Desktop (≥ 1024 px de largeur réelle de conteneur)
+ *
+ * Même moteur, sur le Master Desktop de la variante, plafonné à 1448 px
+ * (décision PO). Le fond horizontal porte du décor net sur ses deux bords
+ * à toutes les hauteurs : la surface s'ouvre à deux coupes, une par zone
+ * (`zones.left`, `zones.right`), raccordées par un fondu vertical dans le
+ * papier nu du centre ; sa teinte est celle du papier (ou du cuir) seul.
+ * Sous 1024 px, la composition Mobile s'applique, strictement inchangée.
  *
  * ## Périmètre
  *
- * Mobile Light (phases 1-2, validé PO, CLOSED) et Mobile Dark (phase 3).
- * Desktop Light et Desktop Dark n'ont pas encore de réglages. Les
- * ornements (médaillons, rameau, cœur, filets) sont reconstruits en SVG/CSS
- * dans components/memorial/death-notice/v2/, avec une palette par variante.
+ * Mobile Light, Mobile Dark et Desktop Light 1 + 4 : validés PO, CLOSED.
+ * Desktop Dark : phase 5, pilote soumis à validation PO. Les ornements
+ * (médaillons, rameau, cœur, filets) sont reconstruits en SVG/CSS dans
+ * components/memorial/death-notice/v2/, avec une palette par variante.
  * Ce renderer n'est branché sur aucun registre de production.
  */
 
@@ -331,11 +342,72 @@ const DESKTOP_LIGHT: DeathNoticeV2DesktopTokens = {
   },
 };
 
-/** Mobile Light (phases 1-2, CLOSED), Mobile Dark (phase 3) et Desktop
- * Light (phase 4). */
+const DESKTOP_DARK_ROOT = "/assets/death-notice/v2/desktop/dark";
+
+/**
+ * Desktop Dark (phase 5, pilote). Réglages mesurés sur SES références —
+ * fond `02_FONDS_VIERGES/DESKTOP_DARK.png` (1670×942, SHA-256 ci-dessous)
+ * et maquette `01_MAQUETTES_ILLUSTREES/DESKTOP_DARK.png` (1670×941, même
+ * cadrage, une rangée plus haut : rangée de maquette + 1 = rangée du fond) —,
+ * jamais recopiés du Desktop Light. Composition : 1 + 4, comme le Desktop
+ * Light validé.
+ *
+ * Coupes (scripts/pilot/avis-v2-derive.py) : à gauche (colonnes 0–420),
+ * rangée 711, fondu 28 — la gerbe florale du bord gauche est continue des
+ * rangées 440 à 720 ; la coupe passe sous ses dernières fleurs, dans la
+ * poussière dorée, au-dessus des papiers déchirés du bas. À droite
+ * (colonnes 1250–1670), rangée 600, fondu 40 : cuir nu entre la feuille du
+ * bord et les papiers (7 px de détail net par rangée). Raccord des deux
+ * piles : fondu de 600 px centré sur x 835, cuir nu entre les deux coupes.
+ * Teinte du cuir seul ; grain : trois tuiles du cuir central calme.
+ */
+const DESKTOP_DARK: DeathNoticeV2DesktopTokens = {
+  masterSrc: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-master.png`,
+  masterSha256: "8b07b2f25f32fd390f1123468370d06a9bc3eaf3410a3d5c4a8315df2ada78e0",
+  paperGrains: [
+    { src: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-grain-a.png`, tileWidth: 560, blend: "overlay" },
+    { src: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-grain-b.png`, tileWidth: 480, blend: "overlay" },
+    { src: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-grain-c.png`, tileWidth: 410, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  canvas: { width: 1670, height: 942 },
+  zones: {
+    left: { cutY: 711, fadePx: 28, paperTone: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-tone-left.png` },
+    right: { cutY: 600, fadePx: 40, paperTone: `${DESKTOP_DARK_ROOT}/avis-desktop-dark-tone-right.png` },
+  },
+  zoneSplitCanvas: 835,
+  zoneBlendCanvas: 600,
+  /** Maquette Dark : capitales du titre à y 73 (fond). */
+  textTopCanvas: 70,
+  /** Bord déchiré du bas à 776 sous le centre : dernier texte à 758. */
+  footCanvas: 184,
+  /** Titre, nom, dates, cœur et annonce de la maquette Dark centrés sur
+   * x 838–843. */
+  axisCanvas: 838,
+  /** Gerbe gauche jusqu'à x 150 sous la rangée 640 ; papiers droits dès
+   * x 1524 à la rangée 740. */
+  precisionLeftCanvas: 182,
+  precisionRightCanvas: 1490,
+  locationHalfCanvas: 310,
+  locationRowGapCanvas: 40,
+  locationFootCanvas: 0,
+  columnPitchCanvas: { 1: 480, 2: 380, 3: 330, 4: 310 },
+  columnInsetCanvas: 21,
+  /** Bord déchiré du bas : 761 sous la première colonne de quatre, 766
+   * sous la dernière ; 776 et plus ailleurs. */
+  columnFootCanvas: {
+    1: [0],
+    2: [0, 0],
+    3: [0, 0, 1],
+    4: [15, 0, 0, 10],
+  },
+};
+
+/** Mobile Light (phases 1-2, CLOSED), Mobile Dark (phase 3, CLOSED),
+ * Desktop Light 1 + 4 (CLOSED) et Desktop Dark (phase 5, pilote). */
 export const DEATH_NOTICE_V2_TOKENS: Readonly<Record<SkinVariant, DeathNoticeV2VariantTokens | null>> = Object.freeze({
   light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
-  dark: { mobile: MOBILE_DARK, desktop: null },
+  dark: { mobile: MOBILE_DARK, desktop: DESKTOP_DARK },
 });
 
 /** Breakpoint Desktop (décision PO), sur la largeur RÉELLE du conteneur.
