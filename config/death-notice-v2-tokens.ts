@@ -1,7 +1,7 @@
 import type { SkinVariant } from "@/config/skins";
 
 /**
- * Avis de décès V2 — pilote Mobile Light uniquement (phases 1 et 2, GO QG).
+ * Avis de décès V2 — pilote Mobile (Light : phases 1-2 ; Dark : phase 3).
  *
  * Même moteur que le Récit de vie V2 (config/recit-de-vie-v2-tokens.ts),
  * réglages propres à l'Avis : Master authentique + papier central CSS +
@@ -10,12 +10,13 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Autorités
  *
- * Fond : `02_FONDS_VIERGES/MOBILE_LIGHT.png` du ZIP
- * `HERITAGE_AVIS_DE_DECES_8_REFERENCES_AUDIT_OPUS`, copié octet pour octet
- * (SHA-256 ci-dessous, vérifié par les tests). Composition : maquette
- * `01_MAQUETTES_ILLUSTREES/MOBILE_LIGHT.png` (941×1671), mesurée en px de
- * canevas — chaque valeur `*Canvas` ci-dessous est la valeur relevée sur
- * la maquette.
+ * Pour chaque variante, son propre fond (`02_FONDS_VIERGES/MOBILE_LIGHT.png`,
+ * `…/MOBILE_DARK.png`) du ZIP `HERITAGE_AVIS_DE_DECES_8_REFERENCES_AUDIT_OPUS`,
+ * copié octet pour octet (SHA-256 ci-dessous, vérifié par les tests).
+ * Composition : la maquette de la MÊME variante
+ * (`01_MAQUETTES_ILLUSTREES/MOBILE_LIGHT.png` ou `…/MOBILE_DARK.png`),
+ * mesurée en px de canevas — chaque valeur `*Canvas` ci-dessous est la
+ * valeur relevée sur cette maquette.
  *
  * ## Le décor
  *
@@ -28,11 +29,11 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light seulement. Mobile Dark, Desktop Light et Desktop Dark n'ont
- * pas encore de réglages (`null`). Les ornements Mobile Light (médaillons,
- * rameau, cœur, filets — phase 2) sont reconstruits en SVG/CSS dans
- * components/memorial/death-notice/v2/. Ce renderer n'est branché sur aucun
- * registre de production.
+ * Mobile Light (phases 1-2, validé PO, CLOSED) et Mobile Dark (phase 3).
+ * Desktop Light et Desktop Dark n'ont pas encore de réglages. Les
+ * ornements (médaillons, rameau, cœur, filets) sont reconstruits en SVG/CSS
+ * dans components/memorial/death-notice/v2/, avec une palette par variante.
+ * Ce renderer n'est branché sur aucun registre de production.
  */
 
 export interface DeathNoticeV2MobileTokens {
@@ -148,8 +149,63 @@ const MOBILE_LIGHT: DeathNoticeV2MobileTokens = {
   rule: "rgb(58 47 32 / 0.55)",
 };
 
-/** Phase 1 : seule la variante Light a des réglages Mobile. */
+const DARK_ROOT = "/assets/death-notice/v2/mobile/dark";
+
+/**
+ * Mobile Dark (phase 3). Réglages mesurés sur SES références — fond
+ * `02_FONDS_VIERGES/MOBILE_DARK.png` (941×1672, SHA-256 ci-dessous) et
+ * maquette `01_MAQUETTES_ILLUSTREES/MOBILE_DARK.png` —, jamais recopiés du
+ * Light. Coupe Y = 895, fondu 40 px : minimum de détail net aux bords
+ * (31 px/rangée) ; seules de fines brindilles dorées du bord gauche
+ * (x < 0,075) traversent la fenêtre du fondu ; plus bas (≈ 1130), le bord
+ * déchiré droit traverse tout le fondu. Teinte : médianes des rangées
+ * 805–855 et 935–985. Grain : trois tuiles du cuir central craquelé.
+ * Cuir nu mesuré (aucun pixel à plus de 40 niveaux du cuir sur plus de 5 %
+ * d'une bande de 20 rangées) : x 0,08–0,93 de 840 à 1180, x 0,16–0,89 vers
+ * 1220, x 0,20–0,79 de 1240 à 1280, x 0,24–0,73 vers 1300.
+ */
+const MOBILE_DARK: DeathNoticeV2MobileTokens = {
+  masterSrc: `${DARK_ROOT}/avis-mobile-dark-master.png`,
+  masterSha256: "0164cefbe1281d61bdff86c2e6bc24c385f6ee45350a4dd4328b2a5be2b43980",
+  paperGrains: [
+    { src: `${DARK_ROOT}/avis-mobile-dark-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${DARK_ROOT}/avis-mobile-dark-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${DARK_ROOT}/avis-mobile-dark-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  paperTone: `${DARK_ROOT}/avis-mobile-dark-tone.png`,
+  canvas: { width: 941, height: 1672 },
+  cutY: 895,
+  fadePx: 40,
+  /** Maquette Dark : titre à y 252 (Light 245). */
+  textTopCanvas: 243,
+  /** Dernier texte de la maquette Dark à 1278 (rendu : 1284) ; le cuir se
+   * resserre dès 1240. 356 : le contenu de référence tient exactement dans
+   * le Master à 941 px. */
+  footCanvas: 356,
+  /** Paire en dernière rangée : contenu arrêté à 1180, où le cuir reste nu
+   * jusqu'à x 0,92. */
+  footPairCanvas: 492,
+  pairRightCanvas: 866,
+  /** Une colonne : contenu arrêté à 1220, bande x 180–830. */
+  footSingleColumnCanvas: 452,
+  singleColumnBandLeftCanvas: 180,
+  singleColumnBandRightCanvas: 830,
+  /** Maquette Dark : médaillons de gauche dès x 90, « toujours.” » finit à
+   * x 878. */
+  textLeftCanvas: 88,
+  textRightCanvas: 880,
+  singleColumnBelowPx: 520,
+  /** Encres crème de la maquette Dark (médiane des pixels d'encre). */
+  ink: "#f4e9d8",
+  inkSoft: "#e7ddcb",
+  label: "#c6bcab",
+  accent: "#d9b886",
+  rule: "rgb(216 190 150 / 0.6)",
+};
+
+/** Mobile Light (phases 1-2, CLOSED) et Mobile Dark (phase 3). */
 export const DEATH_NOTICE_V2_TOKENS: Readonly<Record<SkinVariant, DeathNoticeV2VariantTokens | null>> = Object.freeze({
   light: { mobile: MOBILE_LIGHT },
-  dark: null,
+  dark: { mobile: MOBILE_DARK },
 });

@@ -1,16 +1,17 @@
 import { notFound } from "next/navigation";
 import { Cormorant_Garamond, EB_Garamond } from "next/font/google";
 import type { Language } from "@/config/languages";
+import type { SkinVariant } from "@/config/skins";
 import { playfairDisplay } from "@/components/builder/fonts";
 import { DeathNoticeV2 } from "@/components/memorial/death-notice/v2/DeathNoticeV2";
 import { DEATH_NOTICE_V2_PILOT_CASES } from "@/components/memorial/death-notice/v2/pilot-fixtures";
 
 /**
- * Avis de décès V2 — phase 1 : banc d'essai LOCAL du pilote Mobile Light,
+ * Avis de décès V2 : banc d'essai LOCAL du pilote Mobile (Light et Dark),
  * pour les captures de validation PO/QG. Inaccessible en production
  * (`notFound`) ; n'appartient à aucun parcours.
  *
- *   /pilote/avis-v2?case=reference&lang=fr&w=941
+ *   /pilote/avis-v2?case=reference&lang=fr&w=941&v=dark
  *   /pilote/avis-v2?fonts=1   (comparaison des polices candidates du nom)
  */
 
@@ -61,6 +62,7 @@ export default async function AvisV2PilotPage({
   const requested = one("lang") as Language | undefined;
   const language: Language = requested !== undefined && LANGUAGES.includes(requested) ? requested : "fr";
   const width = Number(one("w")) || null;
+  const skinVariant: SkinVariant = one("v") === "dark" ? "dark" : "light";
 
   return (
     <main style={{ background: "#d9d2c7", minHeight: "100dvh" }}>
@@ -69,7 +71,7 @@ export default async function AvisV2PilotPage({
           hero={pilotCase.hero}
           deathNotice={pilotCase.deathNotice}
           language={language}
-          skinVariant="light"
+          skinVariant={skinVariant}
           headingLevel="section"
         />
       </div>

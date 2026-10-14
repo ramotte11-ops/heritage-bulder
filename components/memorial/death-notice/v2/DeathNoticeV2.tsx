@@ -12,7 +12,7 @@ import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
 import { DEATH_NOTICE_V2_TOKENS, type DeathNoticeV2MobileTokens } from "@/config/death-notice-v2-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { avisNameSerif, ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
-import { Branch, Heart, Medallion } from "./DeathNoticeV2Ornaments";
+import { Branch, Heart, Medallion, ORNAMENT_PALETTES } from "./DeathNoticeV2Ornaments";
 import styles from "./DeathNoticeV2.module.css";
 
 /**
@@ -113,12 +113,12 @@ function renderDateRange(text: string) {
 
 export function DeathNoticeV2({ skinVariant, ...props }: DeathNoticeV2Props) {
   const tokens = DEATH_NOTICE_V2_TOKENS[skinVariant];
-  // Phase 1 : seule la variante Light existe. Aucune variante ne se rabat
-  // sur une autre : sans réglages, rien n'est rendu.
+  // Chaque variante a ses propres réglages ; aucune ne se rabat sur une
+  // autre : sans réglages, rien n'est rendu.
   if (tokens === null) return null;
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
-      <DeathNoticeV2Layout {...props} tokens={tokens.mobile} />
+      <DeathNoticeV2Layout {...props} variant={skinVariant} tokens={tokens.mobile} />
     </SkinScope>
   );
 }
@@ -128,8 +128,10 @@ function DeathNoticeV2Layout({
   deathNotice,
   language,
   headingLevel = "page",
+  variant,
   tokens: T,
-}: Omit<DeathNoticeV2Props, "skinVariant"> & { tokens: DeathNoticeV2MobileTokens }) {
+}: Omit<DeathNoticeV2Props, "skinVariant"> & { variant: SkinVariant; tokens: DeathNoticeV2MobileTokens }) {
+  const palette = ORNAMENT_PALETTES[variant];
   const TitleTag = headingLevel === "section" ? "h2" : "h1";
   const NameTag = headingLevel === "section" ? "h3" : "h2";
 
@@ -164,6 +166,8 @@ function DeathNoticeV2Layout({
     <div
       className={`${styles.wrap} ${avisNameSerif.variable} ${ebGaramond.variable} ${ebGaramondItalic.variable}`}
       style={mobileVars(T)}
+      data-variant={variant}
+      lang={language}
     >
       <section
         ref={sectionRef}
@@ -184,14 +188,14 @@ function DeathNoticeV2Layout({
               <span className={styles.titleRule} aria-hidden="true" />
             </div>
 
-            <Branch />
+            <Branch palette={palette} />
 
             <NameTag className={styles.name}>{hero.displayName ?? ""}</NameTag>
             {dateRangeText !== null && <p className={styles.dates}>{renderDateRange(dateRangeText)}</p>}
 
             <div className={styles.heartRow} aria-hidden="true">
               <span className={styles.heartRule} />
-              <Heart />
+              <Heart palette={palette} />
               <span className={styles.heartRule} />
             </div>
 
@@ -225,7 +229,7 @@ function DeathNoticeV2Layout({
                         data-col={isFull ? "full" : index % 2 === 0 ? "left" : "right"}
                         data-row={row}
                       >
-                        <Medallion field={block.field} />
+                        <Medallion field={block.field} palette={palette} />
                         <div className={styles.blockText}>
                           <span className={styles.label}>{translate(language, block.labelKey)}</span>
                           <span className={styles.labelRule} aria-hidden="true" />

@@ -499,3 +499,130 @@
     grid-template-columns: calc(var(--px) * 95) minmax(0, 1fr);
   }
 }
+
+/* --- Mobile Dark (phase 3) ---------------------------------------------
+   Surcharges limitées à la variante Dark : les règles ci-dessus restent
+   celles du Mobile Light validé (aucune valeur Light modifiée). Couleurs
+   et géométrie relevées sur la maquette Mobile Dark (encres crème, filets
+   et cœur dorés, médaillons bronze avec halo sur le cuir). */
+
+/* Filets dorés, sans liseré clair gravé (il n'existe que sur le papier
+   clair) : une ombre sombre très douce les détache du cuir. */
+.wrap[data-variant="dark"] :is(.titleRule, .heartRule, .detailsRule, .rowRule) {
+  box-shadow: 0 max(0.5px, calc(var(--px) * 1)) calc(var(--px) * 1.5) rgb(8 4 1 / 0.6);
+}
+
+/* #d4b183 (titre). */
+.wrap[data-variant="dark"] .titleRule {
+  background: rgb(212 177 131 / 0.9);
+}
+
+/* #ecd3a9 (filets du cœur). */
+.wrap[data-variant="dark"] .heartRule {
+  background: rgb(226 201 160 / 0.85);
+}
+
+/* #cfbfa0 (annonce → précisions). */
+.wrap[data-variant="dark"] .detailsRule {
+  background: rgb(207 191 160 / 0.85);
+}
+
+/* #c3b191 (séparateurs de rangée), plus discrets. */
+.wrap[data-variant="dark"] .rowRule {
+  background: rgb(195 177 145 / 0.55);
+}
+
+/* #d8cbaa (filet vertical). */
+.wrap[data-variant="dark"] .block[data-col="right"]::before {
+  background: rgb(216 203 170 / 0.6);
+}
+
+/* #edd4a6 (soulignement des étiquettes). */
+.wrap[data-variant="dark"] .labelRule {
+  background: rgb(227 196 146 / 0.9);
+}
+
+/* Médaillon : même bronze ; sur le cuir, ombre plus profonde et léger
+   halo cuivré autour de l'anneau. */
+.wrap[data-variant="dark"] .medallion {
+  box-shadow:
+    0 0 0 max(0.5px, calc(var(--px) * 1)) rgb(20 8 0 / 0.85),
+    0 calc(var(--px) * 3) calc(var(--px) * 6) rgb(0 0 0 / 0.55),
+    0 0 calc(var(--px) * 9) rgb(214 150 90 / 0.2);
+}
+
+/* Titre : le coin de cuir déchiré du haut droit du fond Dark commence vers
+   x 670 à hauteur du titre. Les titres longs (ES « AVISO DE DEFUNCIÓN »)
+   et le plancher de 11 px des écrans les plus étroits y arriveraient :
+   l'espacement des lettres se resserre alors, la casse et le corps restent
+   ceux de la maquette. */
+.wrap[data-variant="dark"] .title {
+  letter-spacing: clamp(0.16em, calc(0.16em + (100cqw - 320px) * 0.0005), 0.26em);
+  margin-right: calc(-1 * clamp(0.16em, calc(0.16em + (100cqw - 320px) * 0.0005), 0.26em));
+}
+
+/* Rangée du titre dans la largeur de la maquette Dark (filets x 235–720) :
+   pour un titre long, les filets raccourcissent au lieu de rejoindre les
+   feuilles du haut gauche. */
+.wrap[data-variant="dark"] .titleRow {
+  width: calc(var(--px) * 490);
+  max-width: 100%;
+}
+
+.wrap[data-variant="dark"]:lang(es) .title {
+  letter-spacing: clamp(0.14em, calc(0.14em + (100cqw - 320px) * 0.0005), 0.17em);
+  margin-right: calc(-1 * clamp(0.14em, calc(0.14em + (100cqw - 320px) * 0.0005), 0.17em));
+}
+
+/* Nom : plus grand dans la maquette Dark (« Élise Martin » x 264–693,
+   capitales 391–455) et plus proche du rameau (accent à 371, rameau
+   jusqu'à 368). Le plancher de 2 px garde un écart d'encre sur téléphone. */
+.wrap[data-variant="dark"] .name {
+  margin-top: max(2px, calc(var(--px) * -1));
+  font-size: max(35px, calc(var(--px) * 92));
+  letter-spacing: -0.025em;
+}
+
+/* Dates, cœur et annonce : maquette Dark — dates 483–504, cœur 532–557,
+   première ligne de l'annonce à 583 (pas de 39,7 px), filet vers les
+   précisions à 767. */
+.wrap[data-variant="dark"] .dates {
+  margin-top: calc(var(--px) * 2);
+}
+
+.wrap[data-variant="dark"] .announcement {
+  margin-top: calc(var(--px) * 17);
+  line-height: 1.1;
+}
+
+/* Précisions : maquette Dark — médaillons centrés à 835 / 1015 / 1210,
+   séparateurs à 944 et 1142, étiquette ~17 px sous le haut du médaillon. */
+.wrap[data-variant="dark"] .details {
+  margin-top: calc(var(--px) * 19.5);
+}
+
+.wrap[data-variant="dark"] .blockText {
+  padding-top: calc(var(--px) * 14);
+}
+
+/* Rangées : la maquette Dark n'est pas régulière (rangée 1 plus haute,
+   suivantes plus serrées) ; marges communes qui répartissent l'écart
+   (≤ 6,5 px de canevas sur les séparateurs et les médaillons). */
+.wrap[data-variant="dark"] .block {
+  padding-bottom: calc(var(--px) * 33);
+}
+
+.wrap[data-variant="dark"] .block:not([data-row="0"]) {
+  padding-top: calc(var(--px) * 20);
+}
+
+.wrap[data-variant="dark"] .block[data-col="right"]:not([data-row="0"])::before {
+  top: calc(var(--px) * 25);
+}
+
+@container (max-width: 519.98px) {
+  .wrap[data-variant="dark"] .block:not(:first-child)::after {
+    background: rgb(195 177 145 / 0.55);
+  }
+}
+

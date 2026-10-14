@@ -1,4 +1,5 @@
 import { useId } from "react";
+import type { SkinVariant } from "@/config/skins";
 import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
 import styles from "./DeathNoticeV2.module.css";
 
@@ -18,25 +19,99 @@ import styles from "./DeathNoticeV2.module.css";
  * Tracés en unités de leur propre viewBox ; la taille rendue vient du
  * module CSS (px de canevas rapportés à la largeur réelle), le ratio est
  * toujours conservé : aucun ornement n'est déformé par la largeur.
+ *
+ * Phase 3 : mêmes tracés pour Light et Dark ; seules les couleurs changent,
+ * par une palette relevée sur la maquette de CHAQUE variante
+ * (`ORNAMENT_PALETTES`). La palette Light reprend exactement les valeurs
+ * validées en phase 2.
  */
+
+export interface OrnamentPalette {
+  /** Dégradé du relief des pictogrammes (haut → bas). */
+  reliefStops: readonly (readonly [number, string])[];
+  reliefShadow: { color: string; opacity: number };
+  reliefLight: { color: string; opacity: number };
+  /** Nervures et découpes des pictogrammes (couleur de la face). */
+  iconFace: string;
+  /** Dégradé transversal d'une feuille du rameau (bord → bord). */
+  leafStops: readonly (readonly [number, string])[];
+  branchStem: string;
+  branchVein: { color: string; opacity: number };
+  /** Liseré autour du rameau : clair sur papier, ombre sur cuir. */
+  branchHalo: { dy: number; blur: number; color: string; opacity: number };
+  heartStroke: string;
+}
+
+export const ORNAMENT_PALETTES: Readonly<Record<SkinVariant, OrnamentPalette>> = Object.freeze({
+  /** Mobile Light — phase 2, validé PO : valeurs inchangées. */
+  light: {
+    reliefStops: [
+      [0, "#fffaf0"],
+      [0.22, "#fadcb2"],
+      [0.55, "#e2aa70"],
+      [0.8, "#c4884f"],
+      [1, "#9d5d2a"],
+    ],
+    reliefShadow: { color: "#140600", opacity: 0.95 },
+    reliefLight: { color: "#fff3dc", opacity: 0.75 },
+    iconFace: "#4a280f",
+    leafStops: [
+      [0, "#3a3a2a"],
+      [0.3, "#5f5e46"],
+      [0.5, "#959274"],
+      [0.62, "#6b6a50"],
+      [1, "#36372a"],
+    ],
+    branchStem: "#2f2f22",
+    branchVein: { color: "#cfccb2", opacity: 0.45 },
+    branchHalo: { dy: 0.6, blur: 0.6, color: "#fff6e6", opacity: 0.9 },
+    heartStroke: "#1a1611",
+  },
+  /**
+   * Mobile Dark — maquette Dark : pictogrammes du même bronze champagne ;
+   * rameau champagne doré (#5a4a28 → #e2d0a2), sans liseré clair mais
+   * avec une ombre douce sur le cuir ; cœur au trait doré (#ecd3a9).
+   */
+  dark: {
+    reliefStops: [
+      [0, "#fffaf0"],
+      [0.22, "#fadcb2"],
+      [0.55, "#e2aa70"],
+      [0.8, "#c4884f"],
+      [1, "#9d5d2a"],
+    ],
+    reliefShadow: { color: "#0d0400", opacity: 0.95 },
+    reliefLight: { color: "#fff3dc", opacity: 0.75 },
+    iconFace: "#4a280f",
+    leafStops: [
+      [0, "#5a4a28"],
+      [0.3, "#9c8758"],
+      [0.5, "#e2d0a2"],
+      [0.62, "#b8a372"],
+      [1, "#56462a"],
+    ],
+    branchStem: "#c2a872",
+    branchVein: { color: "#f6e7bf", opacity: 0.55 },
+    branchHalo: { dy: 0.8, blur: 0.8, color: "#0b0602", opacity: 0.7 },
+    heartStroke: "#ecd3a9",
+  },
+});
 
 /** Dégradés et filtres du relief des pictogrammes, propres à chaque SVG
  * (ids uniques par instance). */
-function ReliefDefs({ id }: { id: string }) {
+function ReliefDefs({ id, palette }: { id: string; palette: OrnamentPalette }) {
   return (
     <defs>
       {/* En coordonnées du disque : un dégradé « objectBoundingBox » ne
           peint pas un trait parfaitement vertical (boîte de largeur nulle). */}
       <linearGradient id={`${id}-fill`} gradientUnits="userSpaceOnUse" x1="38" y1="12" x2="58" y2="84">
-        <stop offset="0" stopColor="#fffaf0" />
-        <stop offset="0.22" stopColor="#fadcb2" />
-        <stop offset="0.55" stopColor="#e2aa70" />
-        <stop offset="0.8" stopColor="#c4884f" />
-        <stop offset="1" stopColor="#9d5d2a" />
+        {palette.reliefStops.map(([offset, color]) => (
+          <stop key={offset} offset={offset} stopColor={color} />
+        ))}
       </linearGradient>
       <filter id={`${id}-relief`} x="-25%" y="-25%" width="150%" height="150%">
-        <feDropShadow dx="0.7" dy="1.4" stdDeviation="0.4" floodColor="#140600" floodOpacity="0.95" />
-        <feDropShadow dx="-0.5" dy="-0.7" stdDeviation="0.2" floodColor="#fff3dc" floodOpacity="0.75" />
+        <feDropShadow dx="0.7" dy="1.4" stdDeviation="0.4" floodColor={palette.reliefShadow.color} floodOpacity={palette.reliefShadow.opacity} />
+        <feDropShadow dx="-0.5" dy="-0.7" stdDeviation="0.2" floodColor={palette.reliefLight.color} floodOpacity={palette.reliefLight.opacity} />
       </filter>
     </defs>
   );
@@ -80,8 +155,7 @@ function IconLeaf({ base, tip, half, fill, face }: { base: [number, number]; tip
 
 /** Les cinq pictogrammes, en unités d'un disque de 100 (centre 50, 50),
  * relevés sur les médaillons de la maquette (×4). */
-function Pictogram({ field, fill }: { field: DeathNoticePrecisionField; fill: string }) {
-  const face = "#4a280f";
+function Pictogram({ field, fill, face }: { field: DeathNoticePrecisionField; fill: string; face: string }) {
   switch (field) {
     case "generalLocation":
       return (
@@ -152,14 +226,14 @@ function Pictogram({ field, fill }: { field: DeathNoticePrecisionField; fill: st
 
 /** Médaillon bronze d'une précision : présent si, et seulement si, son
  * bloc l'est (rendu par ce bloc). */
-export function Medallion({ field }: { field: DeathNoticePrecisionField }) {
+export function Medallion({ field, palette }: { field: DeathNoticePrecisionField; palette: OrnamentPalette }) {
   const id = useId().replace(/:/g, "");
   return (
     <span className={styles.medallion} data-ornament="medaillon" aria-hidden="true">
       <svg className={styles.medallionIcon} viewBox="0 0 100 100" focusable="false">
-        <ReliefDefs id={id} />
+        <ReliefDefs id={id} palette={palette} />
         <g filter={`url(#${id}-relief)`}>
-          <Pictogram field={field} fill={`url(#${id}-fill)`} />
+          <Pictogram field={field} fill={`url(#${id}-fill)`} face={palette.iconFace} />
         </g>
       </svg>
     </span>
@@ -178,7 +252,7 @@ const BRANCH_LEAVES: readonly { base: [number, number]; tip: [number, number]; h
 ];
 
 /** Rameau décoratif sous le titre. */
-export function Branch() {
+export function Branch({ palette }: { palette: OrnamentPalette }) {
   const id = useId().replace(/:/g, "");
   return (
     <svg className={styles.branch} data-ornament="rameau" aria-hidden="true" viewBox="0 0 160 86" focusable="false">
@@ -201,23 +275,27 @@ export function Branch() {
               x2={mx - nx}
               y2={my - ny}
             >
-              <stop offset="0" stopColor="#3a3a2a" />
-              <stop offset="0.3" stopColor="#5f5e46" />
-              <stop offset="0.5" stopColor="#959274" />
-              <stop offset="0.62" stopColor="#6b6a50" />
-              <stop offset="1" stopColor="#36372a" />
+              {palette.leafStops.map(([offset, color]) => (
+                <stop key={offset} offset={offset} stopColor={color} />
+              ))}
             </linearGradient>
           );
         })}
         <filter id={`${id}-halo`} x="-10%" y="-10%" width="120%" height="120%">
-          <feDropShadow dx="0" dy="0.6" stdDeviation="0.6" floodColor="#fff6e6" floodOpacity="0.9" />
+          <feDropShadow
+            dx="0"
+            dy={palette.branchHalo.dy}
+            stdDeviation={palette.branchHalo.blur}
+            floodColor={palette.branchHalo.color}
+            floodOpacity={palette.branchHalo.opacity}
+          />
         </filter>
       </defs>
       <g filter={`url(#${id}-halo)`}>
         <path
           d="M1.8 61 C14 60.5 24 59.5 33 57.5 C46 54.5 58 52.5 68 50.5 C84 47 98 43.5 108.5 41 C111 40.2 112.8 39.4 114 38.6"
           fill="none"
-          stroke="#2f2f22"
+          stroke={palette.branchStem}
           strokeWidth="2.7"
           strokeLinecap="round"
         />
@@ -226,10 +304,10 @@ export function Branch() {
             <path d={leafPath(leaf.base, leaf.tip, leaf.half)} fill={`url(#${id}-leaf${i})`} />
             <path
               d={`M${leaf.base[0]} ${leaf.base[1]} L${leaf.base[0] + (leaf.tip[0] - leaf.base[0]) * 0.86} ${leaf.base[1] + (leaf.tip[1] - leaf.base[1]) * 0.86}`}
-              stroke="#cfccb2"
+              stroke={palette.branchVein.color}
               strokeWidth="0.7"
               strokeLinecap="round"
-              opacity="0.45"
+              opacity={palette.branchVein.opacity}
             />
           </g>
         ))}
@@ -239,13 +317,13 @@ export function Branch() {
 }
 
 /** Cœur au trait entre les dates et l'annonce. */
-export function Heart() {
+export function Heart({ palette }: { palette: OrnamentPalette }) {
   return (
     <svg className={styles.heart} data-ornament="coeur" aria-hidden="true" viewBox="0 0 30 27" focusable="false">
       <path
         d="M15 25.2 L4.1 14.3 C0.9 11.1 1 6 4.3 3.2 C7.4 0.6 11.9 1.3 14.2 4.6 L15 5.8 L15.8 4.6 C18.1 1.3 22.6 0.6 25.7 3.2 C29 6 29.1 11.1 25.9 14.3 Z"
         fill="none"
-        stroke="#1a1611"
+        stroke={palette.heartStroke}
         strokeWidth="2.7"
         strokeLinejoin="round"
       />

@@ -30,8 +30,15 @@ afterEach(cleanup);
 
 const ROOT = path.resolve(import.meta.dirname, "../../../..");
 const MOBILE_LIGHT = DEATH_NOTICE_V2_TOKENS.light!.mobile;
+const MOBILE_DARK = DEATH_NOTICE_V2_TOKENS.dark!.mobile;
 /** SHA-256 du fond vierge Mobile Light remis par la PO (ZIP de référence). */
 const PO_MOBILE_LIGHT_SHA256 = "757fab95d4094a9fcf3ee3c651b1b3c962a0a723a781a3ccde14f89608fb3e6a";
+/** SHA-256 du fond vierge Mobile Dark remis par la PO (même ZIP). */
+const PO_MOBILE_DARK_SHA256 = "0164cefbe1281d61bdff86c2e6bc24c385f6ee45350a4dd4328b2a5be2b43980";
+const VARIANTS = [
+  ["light", MOBILE_LIGHT, PO_MOBILE_LIGHT_SHA256],
+  ["dark", MOBILE_DARK, PO_MOBILE_DARK_SHA256],
+] as const;
 
 const HERO: HeroContent = {
   displayName: "Élise Martin",
@@ -67,34 +74,56 @@ function publicFile(src: string) {
 }
 
 describe("DeathNoticeV2 — Master et dérivés", () => {
-  it("le Master Mobile Light est le fond de la PO, octet pour octet", () => {
-    expect(MOBILE_LIGHT.masterSha256).toBe(PO_MOBILE_LIGHT_SHA256);
-    const digest = createHash("sha256").update(readFileSync(publicFile(MOBILE_LIGHT.masterSrc))).digest("hex");
-    expect(digest).toBe(PO_MOBILE_LIGHT_SHA256);
+  it.each(VARIANTS)("Mobile %s : le Master est le fond de la PO, octet pour octet", (_, T, sha) => {
+    expect(T.masterSha256).toBe(sha);
+    const digest = createHash("sha256").update(readFileSync(publicFile(T.masterSrc))).digest("hex");
+    expect(digest).toBe(sha);
   });
 
-  it("chaque texture dérivée existe, et aucune n'est le Master", () => {
-    const derived = [MOBILE_LIGHT.paperTone, ...MOBILE_LIGHT.paperGrains.map((g) => g.src)];
+  it.each(VARIANTS)("Mobile %s : chaque texture dérivée existe, et aucune n'est le Master", (_, T) => {
+    const derived = [T.paperTone, ...T.paperGrains.map((g) => g.src)];
     for (const src of derived) {
       expect(existsSync(publicFile(src))).toBe(true);
-      expect(src).not.toBe(MOBILE_LIGHT.masterSrc);
+      expect(src).not.toBe(T.masterSrc);
     }
   });
 
-  it("la coupe tombe dans le Master, son fondu aussi", () => {
-    expect(MOBILE_LIGHT.cutY - MOBILE_LIGHT.fadePx).toBeGreaterThan(MOBILE_LIGHT.textTopCanvas);
-    expect(MOBILE_LIGHT.cutY + MOBILE_LIGHT.fadePx).toBeLessThan(MOBILE_LIGHT.canvas.height - MOBILE_LIGHT.footCanvas);
+  it.each(VARIANTS)("Mobile %s : la coupe tombe dans le Master, son fondu aussi", (_, T) => {
+    expect(T.cutY - T.fadePx).toBeGreaterThan(T.textTopCanvas);
+    expect(T.cutY + T.fadePx).toBeLessThan(T.canvas.height - T.footCanvas);
   });
 
-  it("la requête de conteneur du module CSS suit `singleColumnBelowPx`", () => {
+  it("Light et Dark ont chacun leurs propres fond, textures et réglages (aucun recopié)", () => {
+    expect(MOBILE_DARK.masterSrc).not.toBe(MOBILE_LIGHT.masterSrc);
+    expect(MOBILE_DARK.paperTone).not.toBe(MOBILE_LIGHT.paperTone);
+    for (const g of MOBILE_DARK.paperGrains) expect(g.src).toContain("/mobile/dark/");
+    expect(MOBILE_DARK.cutY).not.toBe(MOBILE_LIGHT.cutY);
+    expect(MOBILE_DARK.canvas).toEqual({ width: 941, height: 1672 });
+    expect(MOBILE_DARK.ink).not.toBe(MOBILE_LIGHT.ink);
+  });
+
+  it.each(VARIANTS)("Mobile %s : la requête de conteneur du module CSS suit `singleColumnBelowPx`", (_, T) => {
     const css = readFileSync(path.join(import.meta.dirname, "DeathNoticeV2.module.css"), "utf8");
-    expect(css).toContain(`@container (max-width: ${MOBILE_LIGHT.singleColumnBelowPx - 0.02}px)`);
+    expect(css).toContain(`@container (max-width: ${T.singleColumnBelowPx - 0.02}px)`);
   });
 
-  it("phase 1 : la variante Dark n'a pas de réglages et ne rend rien (aucun repli sur Light)", () => {
-    expect(DEATH_NOTICE_V2_TOKENS.dark).toBeNull();
-    const { container } = renderNotice({ skinVariant: "dark" });
-    expect(container.innerHTML).toBe("");
+  it("chaque variante rend SON fond : Dark ne se rabat jamais sur Light", () => {
+    const light = renderNotice({ skinVariant: "light" });
+    const lightWrap = light.container.querySelector("[data-variant]") as HTMLElement;
+    expect(lightWrap.getAttribute("data-variant")).toBe("light");
+    expect(lightWrap.style.getPropertyValue("--m-src")).toContain(MOBILE_LIGHT.masterSrc);
+    light.unmount();
+    const dark = renderNotice({ skinVariant: "dark" });
+    const darkWrap = dark.container.querySelector("[data-variant]") as HTMLElement;
+    expect(darkWrap.getAttribute("data-variant")).toBe("dark");
+    expect(darkWrap.style.getPropertyValue("--m-src")).toContain(MOBILE_DARK.masterSrc);
+    expect(darkWrap.style.getPropertyValue("--ink")).toBe(MOBILE_DARK.ink);
+    expect(dark.container.querySelector('[data-heritage-skin-variant="dark"]')).toBeTruthy();
+  });
+
+  it("la langue du contenu est portée par le conteneur (titre ES resserré sur le fond Dark)", () => {
+    const { container } = renderNotice({ skinVariant: "dark", language: "es" });
+    expect(container.querySelector("[data-variant]")!.getAttribute("lang")).toBe("es");
   });
 });
 
@@ -271,3 +300,53 @@ describe("DeathNoticeV2 — i18n, titres, repères temporaires", () => {
     }
   });
 });
+
+describe("DeathNoticeV2 — Mobile Dark : mêmes règles de contenu que Light", () => {
+  it.each([
+    [["quote"], 0],
+    [["generalLocation", "other"], 0],
+    [["generalLocation", "familyMessage", "thought"], 1],
+    [["generalLocation", "familyMessage", "thought", "quote", "other"], 2],
+  ] as const)("précisions %j : un médaillon par bloc, %i séparateur(s)", (fields, rowRules) => {
+    const precisions = Object.fromEntries(fields.map((f) => [f, ALL_PRECISIONS[f]]));
+    const { container } = renderNotice({ skinVariant: "dark", deathNotice: notice(precisions) });
+    expect(container.querySelectorAll("[data-field]")).toHaveLength(fields.length);
+    expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(fields.length);
+    expect(container.querySelectorAll("[data-row-rule]")).toHaveLength(rowRules);
+  });
+
+  it("sans précision : ni médaillon, ni séparateur ; rameau et cœur restent", () => {
+    const { container } = renderNotice({ skinVariant: "dark", deathNotice: notice({}) });
+    expect(container.querySelector('[data-ornament="medaillon"]')).toBeNull();
+    expect(container.querySelector('[data-ornament="rameau"]')).toBeTruthy();
+    expect(container.querySelector('[data-ornament="coeur"]')).toBeTruthy();
+  });
+
+  it("textes familiaux rendus tels quels, aucun guillemet ajouté", () => {
+    const { container } = renderNotice({ skinVariant: "dark" });
+    for (const [field, text] of Object.entries(ALL_PRECISIONS)) {
+      expect(container.querySelector(`[data-field="${field}"] p`)!.textContent).toBe(text);
+    }
+  });
+
+  it.each([
+    ["fr", "Avis de décès"],
+    ["en", "Death Notice"],
+    ["es", "Aviso de defunción"],
+  ] as const)("%s : titre traduit", (language, title) => {
+    renderNotice({ skinVariant: "dark", language });
+    expect(screen.getByRole("heading", { name: title })).toBeTruthy();
+  });
+
+  it("palette d'ornements propre au Dark (cœur doré), Light inchangé", () => {
+    const stroke = (variant: "light" | "dark") => {
+      const r = renderNotice({ skinVariant: variant });
+      const value = r.container.querySelector('[data-ornament="coeur"] path')!.getAttribute("stroke");
+      r.unmount();
+      return value;
+    };
+    expect(stroke("light")).toBe("#1a1611");
+    expect(stroke("dark")).toBe("#ecd3a9");
+  });
+});
+
