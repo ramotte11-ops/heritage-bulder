@@ -1,0 +1,354 @@
+/*
+ * Traditions & repères V2 — pilote Mobile Light (P1). Moteur du Récit de
+ * vie V2 : toute géométrie est exprimée en px de canevas (941 de large)
+ * rapportés à la largeur réelle du conteneur (cqw du .wrap). Les textes
+ * suivent la même échelle avec un plancher en px CSS lisibles : à 941 px,
+ * la composition reproduit le Master ; sur un téléphone, les textes gardent
+ * une taille de lecture et la section s'allonge (papier central).
+ *
+ * Mesures : `MOBILE_LIGHT_MASTER_ILLUSTRE.png`, en px de canevas.
+ */
+
+.wrap {
+  container-type: inline-size;
+  width: 100%;
+  margin-inline: auto;
+  /* hauteur du Master à la largeur rendue */
+  --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+  --px: calc(100cqw / var(--canvas-w)); /* 1 px de canevas */
+}
+
+.section {
+  position: relative;
+  isolation: isolate;
+  color: var(--ink);
+}
+
+/* Le Master entier, à son ratio naturel, ancré en haut. */
+.master {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--mh);
+  background: var(--m-src) top / 100% auto no-repeat;
+  z-index: 0;
+}
+
+/* Le bas authentique [cut − fade : H], ancré au bas de la section. */
+.bottom {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--px) * (var(--canvas-h) - var(--cut) + var(--fade)));
+  background: var(--m-src) bottom / 100% auto no-repeat;
+  z-index: 1;
+}
+
+/* Section étendue : le Master ne montre plus que [0 : cut + fade]. */
+.section[data-extended="true"] .master {
+  height: calc(var(--px) * (var(--cut) + var(--fade)));
+}
+
+/* Le papier central, seulement quand le contenu dépasse le Master : de la
+   hauteur exacte de l'excédent, plus un fondu à chaque raccord. */
+.paper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background-image: var(--paper-images);
+  background-size: var(--paper-sizes);
+  background-repeat: var(--paper-repeat);
+  background-blend-mode: var(--paper-blend);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+/* Bords de la grande feuille dans la surface : bande tirée du décor,
+   répétée vers le haut depuis le bas de la surface, même fondu que le
+   papier aux deux raccords. */
+.edges {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background: var(--edges-src) left bottom / 100% calc(var(--px) * var(--edges-h)) repeat-y;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+/* Filtre SVG du bord des feuillets : présent dans le DOM, sans place. */
+.filterDefs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--mh);
+  box-sizing: border-box;
+  padding: calc(var(--px) * var(--text-top)) 0 calc(var(--px) * var(--foot));
+}
+
+/* --- En-tête : surtitre, filet, titre, rameau, introduction ------------- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* Axe du Master (x ≈ 471) ; bande x 150–790, hors du bouquet droit. */
+  padding-inline: calc(var(--px) * 150) calc(var(--px) * (var(--canvas-w) - 792));
+}
+
+/* « POUR NOUS ACCOMPAGNER » : capitales x 296–624, y 217–228. Le bouquet
+   commence à x 684 à cette hauteur : jamais plus large que 426 px de
+   canevas autour de l'axe (deux lignes plutôt que de le recouvrir). */
+.surtitle {
+  margin: 0;
+  max-width: calc(var(--px) * 426);
+  text-wrap: balance;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(10px, calc(var(--px) * 17.5));
+  line-height: 1.2;
+  letter-spacing: 0.27em;
+  margin-right: -0.27em;
+  text-transform: uppercase;
+  color: #444239;
+}
+
+/* Filet du surtitre : x 393–522, y 255. */
+.surtitleRule {
+  display: block;
+  width: calc(var(--px) * 129);
+  height: max(1px, calc(var(--px) * 1.6));
+  margin-top: calc(var(--px) * 22);
+  background: rgb(80 76 66 / 0.85);
+  transform: translateX(calc(var(--px) * -13));
+}
+
+/* « Traditions & repères » : x 210–732, capitale T y 290–334 (44 px) —
+   EB Garamond 600 à 62,3 px reproduit largeur et hauteur du Master. */
+.title {
+  margin: calc(var(--px) * 18) 0 0;
+  /* Jamais au-delà de sa largeur du Master : le bouquet et le sceau
+     commencent à x ≈ 720 ; sur les écrans étroits, le titre passe sur deux
+     lignes équilibrées plutôt que de les recouvrir. */
+  max-width: calc(var(--px) * 524);
+  font-family: var(--font-heritage-avis-name), serif;
+  font-weight: 600;
+  font-size: max(24px, calc(var(--px) * 64));
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+/* Rameau d'olivier : x 376–548, y 352–432 (SVG 172 × 80). */
+.sprig {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 172);
+  height: calc(var(--px) * 80);
+  margin-top: calc(var(--px) * 3);
+  overflow: visible;
+  transform: translateX(calc(var(--px) * -9));
+}
+
+/* Introduction : quatre lignes centrées, x 199–749, pas de 33 ;
+   EB Garamond 400 à 29,7 px reproduit la longueur des lignes du Master. */
+.intro {
+  margin: calc(var(--px) * 16) 0 0;
+  max-width: calc(var(--px) * 556);
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 29.7));
+  line-height: 1.111;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* --- Feuillets : une colonne, un par repère de la famille ---------------- */
+
+.entries {
+  list-style: none;
+  margin: calc(var(--px) * 33) 0 0;
+  padding: 0 calc(var(--px) * (var(--canvas-w) - var(--text-right))) 0 calc(var(--px) * var(--text-left));
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--px) * 18);
+}
+
+/* Feuillet : x 128–819 ; texte dès x 324 ; filet vertical à x 294. */
+.entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--px) * 196) minmax(0, 1fr);
+  min-height: calc(var(--px) * 150);
+  padding: calc(var(--px) * 33) calc(var(--px) * 29) calc(var(--px) * 24) 0;
+  box-sizing: border-box;
+}
+
+/* Papier du feuillet : un voile clair qui laisse voir le grain du décor
+   (Master : intérieur #f2e5d6 sur papier #f1e2d2), liseré de lumière,
+   bord irrégulier (déplacement SVG) et ombre portée vers le bas à gauche
+   (#e3cdb5 sous le bord, sur ~16 px). */
+.entryPaper {
+  position: absolute;
+  inset: 0;
+  border-radius: calc(var(--px) * 3);
+  background: rgb(255 249 240 / 0.24);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.8)) rgb(255 252 246 / 0.72),
+    inset 0 0 calc(var(--px) * 10) rgb(255 250 242 / 0.3);
+  filter: var(--deckle) drop-shadow(calc(var(--px) * -3) calc(var(--px) * 6) calc(var(--px) * 4) rgb(105 70 38 / 0.45));
+}
+
+/* Médaillon : disque Ø 103 (#e4d5bf) centré à x 216, au milieu du
+   feuillet ; rameau au trait neutre. */
+.medallion {
+  position: absolute;
+  left: calc(var(--px) * 36.5);
+  top: 50%;
+  width: calc(var(--px) * 103);
+  height: calc(var(--px) * 103);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle at 50% 50%, #e6d8c3 0, #e3d4be 70%, #e0d0b9 100%);
+  color: #3b3424;
+}
+
+/* Pictogramme : environ la moitié du disque, comme ceux du Master. */
+.medallionIcon {
+  position: absolute;
+  inset: 12%;
+  width: 76%;
+  height: 76%;
+}
+
+/* Filet vertical : x 294, de 31 px sous le haut à 24 px du bas. */
+.entryDivider {
+  position: absolute;
+  left: calc(var(--px) * 166);
+  top: calc(var(--px) * 31);
+  bottom: calc(var(--px) * 24);
+  width: max(1px, calc(var(--px) * 1.6));
+  background: rgb(140 130 112 / 0.85);
+}
+
+.entryText {
+  grid-column: 2;
+  min-width: 0;
+  position: relative;
+}
+
+/* Intitulé : capitales espacées, y 654–666. */
+.entryTitle {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(10px, calc(var(--px) * 18.5));
+  line-height: 1.25;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #2f2e2a;
+  overflow-wrap: break-word;
+}
+
+/* Filet d'intitulé : x 323–366, y 683–684. */
+.entryRule {
+  display: block;
+  width: calc(var(--px) * 44);
+  height: max(1px, calc(var(--px) * 1.6));
+  margin: calc(var(--px) * 15) 0 calc(var(--px) * 7);
+  background: var(--rule);
+}
+
+/* Texte de la famille : pas de 27, x 324–790 ; EB Garamond 400 à 25 px
+   reproduit la longueur des lignes du Master. */
+.entryBody {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 24));
+  line-height: 1.125;
+  letter-spacing: 0.015em;
+  /* Plus sombre que la médiane mesurée (#2b2923) : l'EB Garamond 400 est
+     plus fin que le dessin du Master. */
+  color: #1d1b16;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* --- Pied : filets, rameau, phrase manuscrite --------------------------- */
+
+.footer {
+  /* Avec peu de repères, le pied reste à sa place du Master. */
+  margin-top: auto;
+  padding-top: calc(var(--px) * 19);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Filets x 322–415 et 522–617 à y 1450 ; rameau x 431–508. */
+.footerOrnament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 12);
+  transform: translateX(calc(var(--px) * -1));
+}
+
+.footerRule {
+  display: block;
+  flex: 0 0 calc(var(--px) * 94);
+  height: max(1px, calc(var(--px) * 1.6));
+  background: rgb(80 76 66 / 0.8);
+}
+
+.footerSprig {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 82);
+  height: calc(var(--px) * 38);
+  overflow: visible;
+  transform: rotate(-14deg);
+  /* Au pied, le Master dessine le rameau plus sombre et plus net. */
+  filter: brightness(0.82) contrast(1.15);
+}
+
+/* Phrase manuscrite : deux lignes, x 238–710, y 1484–1579. La feuille
+   centrale se resserre vers le bas (papier nu x 236–746 à la rangée 1560,
+   282–700 à 1575) : 440 px de canevas au plus, lignes équilibrées. */
+.closing {
+  margin: calc(var(--px) * 8) 0 0;
+  max-width: calc(var(--px) * 440);
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 32));
+  line-height: 1.22;
+  color: #3e3a31;
+  text-wrap: balance;
+}
+
+/* Écrans étroits : le surtitre, à son plancher de lisibilité, resserre
+   ses capitales (la casse et le corps restent ceux du Master). */
+@container (max-width: 519.98px) {
+  .surtitle {
+    letter-spacing: 0.12em;
+    margin-right: -0.12em;
+  }
+}

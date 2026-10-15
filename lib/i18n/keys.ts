@@ -458,6 +458,13 @@ export const TRANSLATION_KEYS = [
   "recit.v2.a10",
   "recit.v2.a11",
   "recit.v2.a12",
+  // Traditions & repères V2 (pilote Mobile Light) — textes HERITAGE fixes
+  // du Master (décision PO) : surtitre, titre, introduction et phrase
+  // manuscrite finale. Jamais des données de la famille.
+  "traditions.v2.surtitle",
+  "traditions.v2.title",
+  "traditions.v2.intro",
+  "traditions.v2.closing",
   "recit.person",
   "recit.loved",
   "recit.legacy",

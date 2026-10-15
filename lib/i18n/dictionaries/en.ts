@@ -251,6 +251,11 @@ export const en: Record<TranslationKey, string> = {
   "recit.v2.a10": "Their story, their personality",
   "recit.v2.a11": "Their little joys",
   "recit.v2.a12": "Their mark on our lives",
+  "traditions.v2.surtitle": "To accompany us",
+  "traditions.v2.title": "Traditions & personal notes",
+  "traditions.v2.intro":
+    "Every family has its own customs, traditions and sensitivities. Here we share a few guidelines so that everyone can accompany us with care and respect.",
+  "traditions.v2.closing": "Thank you for accompanying our family in keeping with its traditions.",
   "recit.person": "THE PERSON THEY WERE",
   "recit.loved": "WHAT THEY LOVED",
   "recit.legacy": "WHAT THEY LEAVE BEHIND",
