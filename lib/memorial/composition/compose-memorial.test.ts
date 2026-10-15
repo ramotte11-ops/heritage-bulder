@@ -376,16 +376,16 @@ describe("source guards", () => {
 // ---------------------------------------------------------------------
 
 describe("real parcours (announcement, through A12, ceremony yes)", () => {
-  it("composes Hero, Avis, Récit and Cérémonie as renderable; Traditions skipped stays out", () => {
+  it("composes Hero, Avis, Cérémonie and Récit as renderable; Traditions skipped stays out", () => {
     let content = ok(skipA09(withCeremonyYesResolved()));
     content = ok(commitPersonSheet(ok(writePersonWordsFieldText(content, "Elle riait de tout."))));
     const composition = compose(content);
-    expect(composition.renderable).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(composition.renderable).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(composition.sections.filter((s) => s.state === "renderable").map((s) => s.rendererKey)).toEqual([
       "HeroIntemporel",
       "DeathNoticeIntemporel",
-      "RecitDeVieV2",
       "CeremonyIntemporel",
+      "RecitDeVieV2",
     ]);
     expect(stateOf(composition, "gallery")).toBe("optional");
   });

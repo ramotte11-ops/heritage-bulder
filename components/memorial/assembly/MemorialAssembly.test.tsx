@@ -72,7 +72,7 @@ function sectionIds(container: HTMLElement): (string | null)[] {
 describe("MemorialAssembly — the real renderers, in the composition's order", () => {
   it("renders every assembled section, in order, each in its own neutral block", async () => {
     const { container, assembled } = await renderAssembly(fullAnnouncement());
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(sectionIds(container)).toEqual(assembled.composition.renderable);
 
     for (const block of Array.from(container.querySelectorAll("[data-memorial-section]"))) {

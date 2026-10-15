@@ -61,8 +61,8 @@ function throughA09WithCeremony(): MemorialContent {
   return ok(skipA09(content));
 }
 
-/** Every built section renderable: Hero, Avis, Récit (with the
- * family's own A10 text), Cérémonie. */
+/** Every built section renderable: Hero, Avis, Cérémonie, Récit (with the
+ * family's own A10 text). */
 export function fullAnnouncement(): MemorialContent {
   const content = ok(writePersonWordsFieldText(throughA09WithCeremony(), FIXTURE_PERSON_WORDS));
   return ok(commitPersonSheet(content));
