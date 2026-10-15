@@ -154,7 +154,7 @@ describe("the assembly", () => {
       { skin: "intemporel", skinVariant: "light", language: "fr", content: fullAnnouncement() },
       { resolveMedia: recordingResolver().resolve },
     );
-    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(assembled.archivedSections).toEqual([]);
   });
 });
@@ -162,7 +162,7 @@ describe("the assembly", () => {
 describe("the rows of « Gérer les rubriques visibles »", () => {
   it("lists the memorial's own hideable sections — never the Hero, never one that does not apply", () => {
     const rows = resolveVisibilityEntries(compose(hide(fullAnnouncement(), "ceremony")));
-    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "story", "ceremony"]);
+    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "ceremony", "story"]);
     expect(rows.find((r) => r.sectionId === "ceremony")).toEqual({ sectionId: "ceremony", hidden: true, ready: true, archivable: true });
     expect(rows.find((r) => r.sectionId === "story")?.archivable).toBe(false);
 

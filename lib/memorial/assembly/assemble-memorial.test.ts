@@ -55,7 +55,7 @@ describe("consumes composeMemorial", () => {
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
 
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(ids(assembled.sections)).toEqual(assembled.composition.renderable);
     for (const section of assembled.sections) {
       const composed = assembled.composition.sections.find((s) => s.sectionId === section.sectionId);
@@ -103,7 +103,7 @@ describe("consumes composeMemorial", () => {
       resolveMedia: recordingResolver().resolve,
     });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
 
     const heroOnly = await assembleMemorial(input(withA00(throughA02())), {
       resolveMedia: recordingResolver().resolve,
@@ -250,7 +250,7 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
   it("a renderer key with no adapter is a failure (noAdapter), never another renderer", async () => {
     delete adapters.DeathNoticeIntemporel;
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
     expect(assembled.failures).toEqual([{ sectionId: "deathNotice", rendererKey: "DeathNoticeIntemporel", reason: "noAdapter" }]);
   });
 

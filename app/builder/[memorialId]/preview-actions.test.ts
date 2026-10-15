@@ -134,7 +134,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
     expect(result.assembled.status).toBe("assembled");
-    expect(result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     const hero = result.assembled.sections.find((s) => s.rendererKey === "HeroIntemporel");
     expect(hero?.props).toMatchObject({ photo: { readUrl: FIXTURE_READ_URL }, language: "fr", skinVariant: "light" });
   });
@@ -167,8 +167,8 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual([
       "hero",
       "deathNotice",
-      "story",
       "ceremony",
+      "story",
     ]);
   });
 
@@ -182,8 +182,8 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     const result = await loadMemorialPreviewAction("claimed-id");
     expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual([
       "hero",
-      "story",
       "ceremony",
+      "story",
     ]);
     expect(saveDraftContent).not.toHaveBeenCalled();
   });
