@@ -256,6 +256,7 @@ export const en: Record<TranslationKey, string> = {
   "traditions.v2.intro":
     "Every family has its own customs, traditions and sensitivities. Here we share a few guidelines so that everyone can accompany us with care and respect.",
   "traditions.v2.closing": "Thank you for accompanying our family in keeping with its traditions.",
+  "traditions.v2.cornerNote": "Meaningful\ngestures",
   "recit.person": "THE PERSON THEY WERE",
   "recit.loved": "WHAT THEY LOVED",
   "recit.legacy": "WHAT THEY LEAVE BEHIND",

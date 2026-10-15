@@ -256,6 +256,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "traditions.v2.intro":
     "Cada familia tiene sus costumbres, sus tradiciones y su sensibilidad. Compartimos aquí algunas indicaciones para que todos puedan acompañarnos con delicadeza y respeto.",
   "traditions.v2.closing": "Gracias por acompañar a nuestra familia en el respeto de sus tradiciones.",
+  "traditions.v2.cornerNote": "Gestos\ncon sentido",
   "recit.person": "LA PERSONA QUE ERA",
   "recit.loved": "LO QUE AMABA",
   "recit.legacy": "LO QUE DEJA",

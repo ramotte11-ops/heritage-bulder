@@ -1,7 +1,9 @@
 import type { SkinVariant } from "@/config/skins";
 
 /**
- * Traditions & repères V2 — pilote Mobile Light (P1, GO QG).
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
+ * GO QG. Un seul moteur et un seul composant ; chaque variante a ses
+ * réglages, ses textures et ses assets.
  *
  * Même moteur que le Récit de vie V2 et l'Avis de décès V2 : Master
  * authentique, papier central CSS, hauteur dynamique. Rien n'est recopié
@@ -38,8 +40,9 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light uniquement (P1). Mobile Dark, Desktop Light et Desktop
- * Dark n'ont pas encore de réglages (`null`). Ce renderer n'est branché
+ * Mobile Light (P1) et Mobile Dark (P2). Desktop Light et Desktop Dark
+ * n'ont pas encore de réglages. Une variante sans réglages (`null`) ne
+ * rend rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
  * sur aucun registre de production : page pilote seulement.
  */
 
@@ -76,6 +79,19 @@ export interface TraditionsV2MobileTokens {
   inkSoft: string;
   label: string;
   rule: string;
+  /** Filet du surtitre : un filet dessous (Light) ou un de chaque côté
+   * (Dark). */
+  surtitleRules: "below" | "flanked";
+  /** Ornement entre les deux filets du pied. */
+  footerOrnament: "sprig" | "heart";
+  /** Teinte du rameau d'olivier : feuillage (Light) ou bronze doré (Dark). */
+  sprigTone: "olive" | "bronze";
+  /**
+   * Mention manuscrite fixe hors de la feuille, ancrée en haut du Master
+   * (Dark : « Des gestes qui ont du sens » et son cœur, sur le papier
+   * sombre du coin haut droit). `null` : absente du Master.
+   */
+  cornerNote: { leftCanvas: number; topCanvas: number; widthCanvas: number; rotateDeg: number } | null;
 }
 
 export interface TraditionsV2VariantTokens {
@@ -83,6 +99,7 @@ export interface TraditionsV2VariantTokens {
 }
 
 const ROOT = "/assets/traditions/v2/mobile/light";
+const ROOT_DARK = "/assets/traditions/v2/mobile/dark";
 
 /**
  * Mobile Light. Coupe Y = 938, fondu 40 px : les rangées 720–990 sont la
@@ -123,10 +140,63 @@ const MOBILE_LIGHT: TraditionsV2MobileTokens = {
   inkSoft: "#21201b",
   label: "#373631",
   rule: "rgb(74 72 62 / 0.9)",
+  surtitleRules: "below",
+  footerOrnament: "sprig",
+  sprigTone: "olive",
+  cornerNote: null,
 };
 
-/** Mobile Light seulement (P1). */
+/**
+ * Mobile Dark. Le décor vierge (941×1671) correspond au Master (941×1672)
+ * décalé de 1 à 2 px vers le bas sous la rangée 300 ; les positions
+ * ci-dessous sont relevées sur le Master et ramenées au décor.
+ *
+ * Coupe Y = 1114, fondu 40 px : rangées 1040–1160, seule fenêtre où les
+ * profils de part et d'autre du raccord se suivent sur toute la largeur
+ * (au-dessus, papiers ivoire manuscrits à droite ; dessous, bouquet à
+ * droite dès 1200). 28 px de détail net par rangée : le gaufrage de la
+ * feuille chocolat. Bande des bords : rangées 934–1154 (L = 220), fleurs
+ * floues de gauche retirées de la bande. Grain : trois tuiles de la
+ * feuille centrale (460×420, 400×260, 340×340).
+ */
+const MOBILE_DARK: TraditionsV2MobileTokens = {
+  masterSrc: `${ROOT_DARK}/traditions-mobile-dark-master.png`,
+  masterSha256: "bbea9d4b7c3c95ad278e2961da23e80954380ce854ff90fa67f058ff379c2389",
+  paperGrains: [
+    { src: `${ROOT_DARK}/traditions-mobile-dark-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DARK}/traditions-mobile-dark-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DARK}/traditions-mobile-dark-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  paperTone: `${ROOT_DARK}/traditions-mobile-dark-tone.png`,
+  edgeStrip: { src: `${ROOT_DARK}/traditions-mobile-dark-edges.png`, heightCanvas: 220 },
+  canvas: { width: 941, height: 1671 },
+  cutY: 1114,
+  fadePx: 40,
+  /** Master : capitales du surtitre à y 298. */
+  textTopCanvas: 292,
+  /** Master : bas de la phrase manuscrite à 1569 ; cœur du pied à 1451. */
+  footCanvas: 96,
+  /** Master : feuillets x 130–826. */
+  textLeftCanvas: 130,
+  textRightCanvas: 826,
+  /** Master : titre, introduction et pied centrés sur x ≈ 472. */
+  axisCanvas: 472,
+  /** Encres échantillonnées sur le Master (médiane des pixels d'encre). */
+  ink: "#f6ecd9",
+  inkSoft: "#e9e1d4",
+  label: "#ecdfca",
+  rule: "rgb(224 178 122 / 0.9)",
+  surtitleRules: "flanked",
+  footerOrnament: "heart",
+  sprigTone: "bronze",
+  /** Master : « Des gestes / qui ont du sens », x 717–912, y 72–165, en
+   * diagonale montante (≈ −20°) ; cœur x 837–869, y 127–177. */
+  cornerNote: { leftCanvas: 706, topCanvas: 54, widthCanvas: 220, rotateDeg: -20 },
+};
+
+/** Mobile Light (P1) et Mobile Dark (P2). */
 export const TRADITIONS_V2_TOKENS: Readonly<Record<SkinVariant, TraditionsV2VariantTokens | null>> = Object.freeze({
   light: { mobile: MOBILE_LIGHT },
-  dark: null,
+  dark: { mobile: MOBILE_DARK },
 });

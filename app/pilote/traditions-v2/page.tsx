@@ -1,16 +1,17 @@
 import { notFound } from "next/navigation";
 import type { Language } from "@/config/languages";
+import type { SkinVariant } from "@/config/skins";
 import { TraditionsV2 } from "@/components/memorial/traditions/v2/TraditionsV2";
 import { TRADITIONS_V2_PILOT_CASES } from "@/components/memorial/traditions/v2/pilot-fixtures";
 import { avisNameSerif, cormorantGaramond, ebGaramond, laBelleAurore, playfairDisplay } from "@/components/builder/fonts";
 
 /**
- * Traditions & repères V2 : banc d'essai LOCAL du pilote Mobile Light (P1),
- * pour les captures de validation PO/QG. Inaccessible en production
+ * Traditions & repères V2 : banc d'essai LOCAL des pilotes Mobile Light
+ * (P1) et Mobile Dark (P2), pour les captures de validation PO/QG. Inaccessible en production
  * (`notFound`) ; n'appartient à aucun parcours et n'est branché sur aucun
  * registre de rendu. `w` fixe la largeur du CONTENEUR.
  *
- *   /pilote/traditions-v2?case=reference&lang=fr&w=941
+ *   /pilote/traditions-v2?case=reference&lang=fr&w=941&variant=dark
  *   /pilote/traditions-v2?fonts=1   (polices déjà chargées, pour le titre
  *                                   et la phrase manuscrite)
  */
@@ -56,11 +57,12 @@ export default async function TraditionsV2PilotPage({
   const requested = one("lang") as Language | undefined;
   const language: Language = requested !== undefined && LANGUAGES.includes(requested) ? requested : "fr";
   const width = Number(one("w")) || null;
+  const variant: SkinVariant = one("variant") === "dark" ? "dark" : "light";
 
   return (
-    <main style={{ background: "#d9d2c7", minHeight: "100dvh" }}>
+    <main style={{ background: variant === "dark" ? "#2a2119" : "#d9d2c7", minHeight: "100dvh" }}>
       <div style={{ width: width !== null ? `${width}px` : "100%", marginInline: "auto" }} data-pilot-case={pilotCase.id}>
-        <TraditionsV2 traditions={pilotCase.traditions} language={language} skinVariant="light" headingLevel="section" />
+        <TraditionsV2 traditions={pilotCase.traditions} language={language} skinVariant={variant} headingLevel="section" />
       </div>
     </main>
   );

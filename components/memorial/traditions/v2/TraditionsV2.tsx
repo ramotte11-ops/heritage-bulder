@@ -8,21 +8,26 @@ import { translate } from "@/lib/i18n/translate";
 import { TRADITIONS_V2_TOKENS, type TraditionsV2MobileTokens } from "@/config/traditions-v2-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
 import { avisNameSerif, ebGaramond, laBelleAurore, playfairDisplay } from "@/components/builder/fonts";
-import { DeckleFilter, LineSprig, OliveSprig } from "./TraditionsV2Ornaments";
+import { DeckleFilter, HandHeart, LineHeart, LineSprig, OliveSprig } from "./TraditionsV2Ornaments";
 import styles from "./TraditionsV2.module.css";
 
 /**
- * Traditions & repères V2 — pilote Mobile Light (P1, GO QG). Non branché
- * sur le registre de production : page pilote seulement.
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
+ * GO QG. Un seul composant pour les deux variantes : leurs différences de
+ * composition (filets du surtitre, ornement du pied, mention manuscrite du
+ * coin) sont des réglages (`config/traditions-v2-tokens.ts`), leurs
+ * couleurs et matières des variables du module CSS. Non branché sur le
+ * registre de production : page pilote seulement.
  *
  * Données : les repères de la famille (`content.traditions.entries`),
  * rendus tels quels — titre facultatif, texte libre, un feuillet par
  * repère, dans l'ordre saisi. Aucun repère n'est imposé : les quatre
  * exemples du Master ne sont qu'une référence visuelle.
  *
- * Textes HERITAGE (décision PO) : surtitre, titre, introduction et phrase
- * manuscrite finale sont des textes système traduits (FR/EN/ES), jamais
- * des données de la famille.
+ * Textes HERITAGE (décision PO) : surtitre, titre, introduction, phrase
+ * manuscrite finale et, sur le Dark, mention « Des gestes qui ont du
+ * sens » sont des textes système traduits (FR/EN/ES), jamais des données
+ * de la famille.
  *
  * Moteur du Récit de vie V2 : le Master entier à son ratio, le bas
  * authentique ancré en bas de section, et, quand le contenu dépasse la
@@ -64,6 +69,12 @@ function mobileVars(T: TraditionsV2MobileTokens): CSSProperties {
     "--ink-soft": T.inkSoft,
     "--label": T.label,
     "--rule": T.rule,
+    ...(T.cornerNote !== null && {
+      "--corner-left": T.cornerNote.leftCanvas,
+      "--corner-top": T.cornerNote.topCanvas,
+      "--corner-width": T.cornerNote.widthCanvas,
+      "--corner-rotate": `${T.cornerNote.rotateDeg}deg`,
+    }),
   } as CSSProperties;
 }
 
@@ -135,12 +146,31 @@ function TraditionsV2Layout({
 
         <div className={styles.content}>
           <header className={styles.header}>
-            <p className={styles.surtitle}>{translate(language, "traditions.v2.surtitle")}</p>
-            <span className={styles.surtitleRule} aria-hidden="true" />
+            {T.surtitleRules === "flanked" ? (
+              <div className={styles.surtitleRow}>
+                <span className={styles.surtitleSideRule} aria-hidden="true" />
+                <p className={styles.surtitle}>{translate(language, "traditions.v2.surtitle")}</p>
+                <span className={styles.surtitleSideRule} aria-hidden="true" />
+              </div>
+            ) : (
+              <>
+                <p className={styles.surtitle}>{translate(language, "traditions.v2.surtitle")}</p>
+                <span className={styles.surtitleRule} aria-hidden="true" />
+              </>
+            )}
             <TitleTag className={styles.title}>{translate(language, "traditions.v2.title")}</TitleTag>
-            <OliveSprig className={styles.sprig} />
+            <OliveSprig className={styles.sprig} tone={T.sprigTone} />
             <p className={styles.intro}>{translate(language, "traditions.v2.intro")}</p>
           </header>
+
+          {/* Mention manuscrite du coin haut droit (Dark) : placée hors du
+              flux, lue après l'en-tête. */}
+          {T.cornerNote !== null && (
+            <div className={styles.cornerNote}>
+              <p className={styles.cornerText}>{translate(language, "traditions.v2.cornerNote")}</p>
+              <HandHeart className={styles.cornerHeart} />
+            </div>
+          )}
 
           {traditions.entries.length > 0 && (
             <ul className={styles.entries} data-count={traditions.entries.length}>
@@ -168,7 +198,11 @@ function TraditionsV2Layout({
           <footer className={styles.footer}>
             <div className={styles.footerOrnament} aria-hidden="true">
               <span className={styles.footerRule} />
-              <OliveSprig className={styles.footerSprig} />
+              {T.footerOrnament === "heart" ? (
+                <LineHeart className={styles.footerHeart} />
+              ) : (
+                <OliveSprig className={styles.footerSprig} tone={T.sprigTone} />
+              )}
               <span className={styles.footerRule} />
             </div>
             <p className={styles.closing}>{translate(language, "traditions.v2.closing")}</p>

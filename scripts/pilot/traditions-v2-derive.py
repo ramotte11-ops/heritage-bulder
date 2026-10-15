@@ -23,7 +23,7 @@ puis dérive, avec la méthode du Récit de vie V2 et de l'Avis de décès V2 :
      exactement le bas authentique ; au raccord haut, le fondu l'absorbe.
 
 Usage :
-  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light> <decor.png> <dossier-de-sortie>
+  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light|mobile-dark> <decor.png> <dossier-de-sortie>
 
 Le décor lui-même est copié octet pour octet à part (cp) ; ce script
 n'écrit que la teinte et les grains, et imprime les réglages.
@@ -63,6 +63,46 @@ VARIANTS = {
             "c": (300, 980, 340, 340),
         },
     },
+    # Mobile Dark — feuille chocolat centrale nue de x 130 à 820 entre les
+    # rangées 660 et 1420 ; bords déchirés cuivrés à x ≈ 60–90 et 855–900.
+    # Coupe cherchée dans 1040–1160 : seule fenêtre où les deux côtés sont
+    # calmes ET où les profils de part et d'autre du raccord se suivent
+    # (au-dessus, papiers ivoire manuscrits à droite ; en dessous, bouquet
+    # à droite dès 1200 ; à gauche, fleurs floues de 960 à 1640, sans
+    # détail net).
+    "mobile-dark": {
+        "sha256": "bbea9d4b7c3c95ad278e2961da23e80954380ce854ff90fa67f058ff379c2389",
+        "fade": 40,
+        "search": (1040, 1160),
+        # Bande des bords : opaque autour du bord gauche (x 60–135, fondus
+        # 48→60 et 135→170) et du seul liseré droit (x 830–872, fondus
+        # 815→830 et 872→890). Au-delà, fleurs floues à gauche, second
+        # papier déchiré et coin de papier vert à droite se répéteraient
+        # visiblement : la teinte y suffit.
+        # Les fleurs floues qui touchent le bord gauche (rangées 960–1300)
+        # sont retirées de la bande (« veil ») : là où, au flou σ = 4, la
+        # luminance dépasse 85 (fleurs claires ; le liseré cuivré, fin,
+        # reste sous 85), l'alpha s'efface jusqu'à 0 à 115.
+        "edge_strip": {
+            "height": 220,
+            "left": (48, 60, 135, 170),
+            "right": (815, 830, 872, 890),
+            "veil": {"until": 100, "lum": (85, 115)},
+        },
+        # Bord gauche extérieur (x < 60) : les deux profils y sont des
+        # fleurs floues claires ; étirées sur la surface, elles feraient un
+        # aplat beige. Teinte prise au quantile 0,35 des rangées 960–1300
+        # (le papier sombre entre les fleurs), fondue vers le profil
+        # ordinaire de 60 à 85.
+        "tone_left": {"until": 60, "blend_to": 85, "rows": (960, 1300), "quantile": 0.35},
+        "grain_gain": 2.25,
+        "tone_gain": (0.877, 0.83, 0.787),
+        "grain_zones": {
+            "a": (190, 700, 460, 420),
+            "b": (320, 1130, 400, 260),
+            "c": (430, 760, 340, 340),
+        },
+    },
 }
 
 
@@ -95,8 +135,15 @@ def profile(rgb: np.ndarray, start: int) -> np.ndarray:
     return gaussian_1d(np.median(rgb[start : start + PROFILE_ROWS], axis=0), PROFILE_SIGMA)
 
 
-def tone(rgb: np.ndarray, cut: int, fade: int, gain: tuple[float, float, float]) -> Image.Image:
-    rows = np.stack([profile(rgb, cut - fade - PROFILE_ROWS), profile(rgb, cut + fade)]) * np.array(gain)
+def tone(rgb: np.ndarray, cut: int, fade: int, gain: tuple[float, float, float], left: dict | None = None) -> Image.Image:
+    rows = np.stack([profile(rgb, cut - fade - PROFILE_ROWS), profile(rgb, cut + fade)])
+    if left is not None:
+        y0, y1 = left["rows"]
+        dark = gaussian_1d(np.quantile(rgb[y0:y1], left["quantile"], axis=0), PROFILE_SIGMA)
+        xs = np.arange(rgb.shape[1], dtype=float)
+        w = np.clip((left["blend_to"] - xs) / (left["blend_to"] - left["until"]), 0, 1)[:, None]
+        rows = rows * (1 - w) + dark[None] * w
+    rows = rows * np.array(gain)
     return Image.fromarray(np.clip(np.round(rows), 0, 255).astype(np.uint8), "RGB")
 
 
@@ -131,11 +178,23 @@ def edge_strip(img: Image.Image, cut: int, fade: int, cfg: dict) -> Image.Image:
     band[:OVERLAP] = band[:OVERLAP] * ramp + after * (1 - ramp)
     width = band.shape[1]
     xs = np.arange(width, dtype=float)
-    (a0, a1, l0, l1), (r0, r1) = cfg["left"], cfg["right"]
+    (a0, a1, l0, l1), right = cfg["left"], cfg["right"]
     left = np.minimum(np.clip((xs - a0) / (a1 - a0), 0, 1), np.clip((l1 - xs) / (l1 - l0), 0, 1))
-    alpha = left + np.clip((xs - r0) / (r1 - r0), 0, 1)
-    alpha = np.clip(alpha, 0, 1)
-    rgba = np.dstack([np.clip(np.round(band), 0, 255), np.broadcast_to(np.round(alpha * 255), band.shape[:2])])
+    # Côté droit : (r0, r1) opaque jusqu'au bord ; (r0, r1, r2, r3) borné.
+    r0, r1 = right[:2]
+    rising = np.clip((xs - r0) / (r1 - r0), 0, 1)
+    if len(right) == 4:
+        rising = np.minimum(rising, np.clip((right[3] - xs) / (right[3] - right[2]), 0, 1))
+    alpha = left + rising
+    if "veil" in cfg:
+        until, (v0, v1) = cfg["veil"]["until"], cfg["veil"]["lum"]
+        lum = np.asarray(img.filter(ImageFilter.GaussianBlur(4)), dtype=float).mean(axis=2)
+        soft = lum[start:end].copy()
+        soft[:OVERLAP] = soft[:OVERLAP] * ramp[:, :, 0] + lum[end : end + OVERLAP] * (1 - ramp[:, :, 0])
+        veil = np.clip((soft - v0) / (v1 - v0), 0, 1) * (xs < until)[None, :]
+        alpha = np.clip(alpha, 0, 1)[None, :] * (1 - veil)
+    alpha = np.broadcast_to(np.clip(alpha, 0, 1), band.shape[:2])
+    rgba = np.dstack([np.clip(np.round(band), 0, 255), np.round(alpha * 255)])
     return Image.fromarray(rgba.astype(np.uint8), "RGBA")
 
 
@@ -151,7 +210,7 @@ def main() -> None:
     print(f"variante {variant} — canvas {img.width}x{img.height}")
     print(f"cutY {cut} (fondu {v['fade']}, détail net moyen {score:.1f} px/rangée)")
     tone_path = f"{out}/traditions-{variant}-tone.png"
-    tone(rgb, cut, v["fade"], v["tone_gain"]).save(tone_path, optimize=True)
+    tone(rgb, cut, v["fade"], v["tone_gain"], v.get("tone_left")).save(tone_path, optimize=True)
     print(f"tone {tone_path}")
     if "edge_strip" in v:
         strip = edge_strip(img, cut, v["fade"], v["edge_strip"])

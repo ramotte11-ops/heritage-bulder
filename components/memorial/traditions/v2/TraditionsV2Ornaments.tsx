@@ -2,13 +2,18 @@ import { useId } from "react";
 import styles from "./TraditionsV2.module.css";
 
 /**
- * Traditions & repères V2 — ornements reconstruits d'après le Master
- * Mobile Light (`MOBILE_LIGHT_MASTER_ILLUSTRE.png`). Purement décoratifs
- * (`aria-hidden`) : aucun texte de la famille n'y entre.
+ * Traditions & repères V2 — ornements reconstruits d'après les Masters
+ * Mobile Light et Mobile Dark (`MOBILE_{LIGHT,DARK}_MASTER_ILLUSTRE.png`).
+ * Purement décoratifs (`aria-hidden`) : aucun texte de la famille n'y
+ * entre.
  *
  *   - Rameau d'olivier : six feuilles pleines et une tige, x 376–548 /
  *     y 352–432 du Master (sous le titre) ; le même tracé, réduit et
  *     incliné, sert au pied (entre ses deux filets).
+ *     Sur le Dark, le même tracé en bronze doré (x 398–516, y 415–461).
+ *   - Cœurs (Dark) : cœur au trait du pied, entre les deux filets
+ *     (x 457–485, y 1451–1476), et cœur dessiné à main levée sous la
+ *     mention « Des gestes qui ont du sens » (x 837–869, y 127–177).
  *   - Rameau au trait : le pictogramme NEUTRE de chaque médaillon de
  *     repère (décision PO : aucun pictogramme culturel ou religieux
  *     imposé), dans le style des pictogrammes du Master (trait sombre
@@ -52,23 +57,40 @@ const SPRIG_LEAVES: readonly { base: [number, number]; tip: [number, number]; ha
   { base: [115, 44], tip: [160, 59], half: 7.5 },
 ];
 
+/** Teintes du rameau : dégradé des feuilles, tige, halo de détourage. */
+const SPRIG_TONES = {
+  // Light : feuillage gris-vert, halo clair sur le papier ivoire.
+  olive: {
+    stops: ["#3f3f30", "#6d6b55", "#9a977d", "#5f5e4a", "#36362a"],
+    stem: "#33332a",
+    halo: { color: "#fff7ea", opacity: 0.95 },
+  },
+  // Dark : bronze doré du Master (#dcb87a au plus clair), ombre sombre.
+  bronze: {
+    stops: ["#8a6633", "#c9a062", "#ecd29c", "#b8904f", "#7d5a2c"],
+    stem: "#b58c52",
+    halo: { color: "#1c1008", opacity: 0.45 },
+  },
+} as const;
+
 /** Rameau d'olivier (SVG 172 × 80). */
-export function OliveSprig({ className }: { className: string }) {
+export function OliveSprig({ className, tone = "olive" }: { className: string; tone?: keyof typeof SPRIG_TONES }) {
   const id = useId().replace(/:/g, "");
+  const t = SPRIG_TONES[tone];
   return (
     <svg className={className} viewBox="0 0 172 80" aria-hidden="true" focusable="false" data-ornament="rameau">
       <defs>
         <linearGradient id={`${id}-leaf`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3f3f30" />
-          <stop offset="0.38" stopColor="#6d6b55" />
-          <stop offset="0.52" stopColor="#9a977d" />
-          <stop offset="0.66" stopColor="#5f5e4a" />
-          <stop offset="1" stopColor="#36362a" />
+          <stop offset="0" stopColor={t.stops[0]} />
+          <stop offset="0.38" stopColor={t.stops[1]} />
+          <stop offset="0.52" stopColor={t.stops[2]} />
+          <stop offset="0.66" stopColor={t.stops[3]} />
+          <stop offset="1" stopColor={t.stops[4]} />
         </linearGradient>
         <filter id={`${id}-halo`} x="-20%" y="-30%" width="140%" height="160%">
           <feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="grown" />
           <feGaussianBlur in="grown" stdDeviation="0.9" result="soft" />
-          <feFlood floodColor="#fff7ea" floodOpacity="0.95" />
+          <feFlood floodColor={t.halo.color} floodOpacity={t.halo.opacity} />
           <feComposite in2="soft" operator="in" result="halo" />
           <feMerge>
             <feMergeNode in="halo" />
@@ -77,7 +99,7 @@ export function OliveSprig({ className }: { className: string }) {
         </filter>
       </defs>
       <g filter={`url(#${id}-halo)`}>
-        <path d="M11 49 C 48 49.5 88 47.5 116 43" fill="none" stroke="#33332a" strokeWidth="2.6" strokeLinecap="round" />
+        <path d="M11 49 C 48 49.5 88 47.5 116 43" fill="none" stroke={t.stem} strokeWidth="2.6" strokeLinecap="round" />
         {SPRIG_LEAVES.map((leaf, index) => (
           <path key={index} d={leafPath(leaf.base, leaf.tip, leaf.half)} fill={`url(#${id}-leaf)`} />
         ))}
@@ -103,6 +125,39 @@ export function LineSprig({ className }: { className: string }) {
           <path key={index} d={leafPath(leaf.base, leaf.tip, leaf.half)} />
         ))}
       </g>
+    </svg>
+  );
+}
+
+/** Cœur au trait du pied (Dark), SVG 28 × 25. */
+export function LineHeart({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 28 25" aria-hidden="true" focusable="false" data-ornament="coeur">
+      <path
+        d="M14 23.2 C 9.5 19.4 2.2 14.2 2.2 8.1 C 2.2 4.4 4.9 1.9 8.1 1.9 C 10.6 1.9 12.6 3.4 14 5.6 C 15.4 3.4 17.4 1.9 19.9 1.9 C 23.1 1.9 25.8 4.4 25.8 8.1 C 25.8 14.2 18.5 19.4 14 23.2 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Cœur dessiné à main levée (Dark), sous la mention du coin : allongé,
+ * légèrement penché, la boucle droite qui ne se referme pas tout à fait.
+ * SVG 32 × 50. */
+export function HandHeart({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 50" aria-hidden="true" focusable="false" data-ornament="coeur">
+      <path
+        d="M13.5 47.5 C 9 38 2.4 29 2.6 18.5 C 2.8 12.6 6.2 9.6 9.6 10.6 C 12.6 11.5 13.8 15 14.6 18.6 C 16.4 11 19.6 2.6 25.2 3.1 C 29.4 3.5 30.2 9.4 28.6 15.6 C 26.4 24.6 19.6 35.5 13.5 47.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

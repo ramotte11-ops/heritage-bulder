@@ -7,10 +7,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { TraditionEntry, TraditionsContent } from "@/types/traditions";
 
 /**
- * Traditions & repères V2 — pilote Mobile Light (P1). Contrats du renderer :
- * décor authentique (SHA-256), repères de la famille rendus tels quels
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2).
+ * Contrats du renderer : un seul composant, décor authentique propre à
+ * chaque variante (SHA-256), repères de la famille rendus tels quels
  * (titre facultatif, texte libre, nombre libre), un médaillon neutre par
- * repère, textes HERITAGE traduits, aucune variante non construite.
+ * repère, textes HERITAGE traduits.
  * jsdom ne fait aucune mise en page : l'allongement réel du décor est
  * vérifié par les captures de validation.
  */
@@ -30,9 +31,15 @@ afterEach(cleanup);
 
 const ROOT = path.resolve(import.meta.dirname, "../../../..");
 const MOBILE_LIGHT = TRADITIONS_V2_TOKENS.light!.mobile;
-/** SHA-256 du décor vierge Mobile Light remis par la PO
+const MOBILE_DARK = TRADITIONS_V2_TOKENS.dark!.mobile;
+/** SHA-256 des décors vierges remis par la PO
  * (`HERITAGE_TRADITIONS_02_DECORS_VIERGES.zip`, MANIFESTE.txt). */
 const PO_MOBILE_LIGHT_DECOR_SHA256 = "203dfe8eb18c82b3c4ecdf0d78c9d2ee2cb08ff097d0bef83a67e7c8f40357b5";
+const PO_MOBILE_DARK_DECOR_SHA256 = "bbea9d4b7c3c95ad278e2961da23e80954380ce854ff90fa67f058ff379c2389";
+const VARIANTS = [
+  ["light", MOBILE_LIGHT, PO_MOBILE_LIGHT_DECOR_SHA256],
+  ["dark", MOBILE_DARK, PO_MOBILE_DARK_DECOR_SHA256],
+] as const;
 
 function entry(n: number, title: string | null, text: string): TraditionEntry {
   return { id: `e${n}`, origin: "custom", suggestionId: null, title, text };
@@ -58,34 +65,44 @@ function publicFile(src: string) {
 }
 
 describe("TraditionsV2 — décor et dérivés", () => {
-  it("le décor runtime est le décor vierge de la PO, octet pour octet", () => {
-    expect(MOBILE_LIGHT.masterSha256).toBe(PO_MOBILE_LIGHT_DECOR_SHA256);
-    const digest = createHash("sha256").update(readFileSync(publicFile(MOBILE_LIGHT.masterSrc))).digest("hex");
-    expect(digest).toBe(PO_MOBILE_LIGHT_DECOR_SHA256);
-    expect(MOBILE_LIGHT.canvas).toEqual({ width: 941, height: 1671 });
+  it.each(VARIANTS)("%s : le décor runtime est le décor vierge de la PO, octet pour octet", (_, T, sha) => {
+    expect(T.masterSha256).toBe(sha);
+    const digest = createHash("sha256").update(readFileSync(publicFile(T.masterSrc))).digest("hex");
+    expect(digest).toBe(sha);
+    expect(T.canvas).toEqual({ width: 941, height: 1671 });
   });
 
-  it("chaque texture dérivée existe, et aucune n'est le décor", () => {
-    const derived = [MOBILE_LIGHT.paperTone, MOBILE_LIGHT.edgeStrip.src, ...MOBILE_LIGHT.paperGrains.map((g) => g.src)];
+  it.each(VARIANTS)("%s : chaque texture dérivée existe, dans le dossier de sa variante, et aucune n'est le décor", (variant, T) => {
+    const derived = [T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)];
     expect(new Set(derived).size).toBe(derived.length);
     for (const src of derived) {
       expect(existsSync(publicFile(src))).toBe(true);
-      expect(src).not.toBe(MOBILE_LIGHT.masterSrc);
-      expect(src).toContain("/traditions/v2/mobile/light/");
+      expect(src).not.toBe(T.masterSrc);
+      expect(src).toContain(`/traditions/v2/mobile/${variant}/`);
     }
   });
 
-  it("la coupe et son fondu tombent dans le Master, sous l'en-tête et au-dessus du pied", () => {
-    expect(MOBILE_LIGHT.cutY - MOBILE_LIGHT.fadePx).toBeGreaterThan(MOBILE_LIGHT.textTopCanvas);
-    expect(MOBILE_LIGHT.cutY + MOBILE_LIGHT.fadePx).toBeLessThan(MOBILE_LIGHT.canvas.height - MOBILE_LIGHT.footCanvas);
-    // La bande des bords est tirée au-dessus de la fin du fondu bas.
-    expect(MOBILE_LIGHT.cutY + MOBILE_LIGHT.fadePx - MOBILE_LIGHT.edgeStrip.heightCanvas).toBeGreaterThan(0);
+  it("aucun asset partagé entre Light et Dark : chaque variante a les siens", () => {
+    const assets = (T: typeof MOBILE_LIGHT) => [T.masterSrc, T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)];
+    const light = new Set(assets(MOBILE_LIGHT));
+    for (const src of assets(MOBILE_DARK)) expect(light.has(src)).toBe(false);
   });
 
-  it("seule la variante Light est construite : Dark ne rend rien (aucun repli sur Light)", () => {
-    expect(TRADITIONS_V2_TOKENS.dark).toBeNull();
-    const { container } = renderTraditions({ skinVariant: "dark" });
-    expect(container.querySelector('[data-testid="traditions-v2"]')).toBeNull();
+  it.each(VARIANTS)("%s : la coupe et son fondu tombent dans le Master, sous l'en-tête et au-dessus du pied", (_, T) => {
+    expect(T.cutY - T.fadePx).toBeGreaterThan(T.textTopCanvas);
+    expect(T.cutY + T.fadePx).toBeLessThan(T.canvas.height - T.footCanvas);
+    // La bande des bords est tirée au-dessus de la fin du fondu bas.
+    expect(T.cutY + T.fadePx - T.edgeStrip.heightCanvas).toBeGreaterThan(0);
+  });
+
+  it("chaque variante rend son propre décor, sans repli sur l'autre", () => {
+    for (const [variant, T] of VARIANTS) {
+      const { container, unmount } = renderTraditions({ skinVariant: variant });
+      const wrap = container.querySelector("[data-variant]") as HTMLElement;
+      expect(wrap.getAttribute("data-variant")).toBe(variant);
+      expect(wrap.style.getPropertyValue("--m-src")).toBe(`url(${T.masterSrc})`);
+      unmount();
+    }
   });
 
   it("le décor est purement décoratif ; pas de surface sans excédent mesuré", () => {
@@ -159,6 +176,37 @@ describe("TraditionsV2 — repères de la famille, tels quels", () => {
   });
 });
 
+describe("TraditionsV2 — composition propre à chaque Master", () => {
+  it("Light : un filet sous le surtitre, rameau au pied, pas de mention de coin", () => {
+    const { container } = renderTraditions();
+    expect(container.querySelector('[class*="surtitleRule"]')).toBeTruthy();
+    expect(container.querySelector('[class*="surtitleSideRule"]')).toBeNull();
+    expect(container.querySelectorAll('footer [data-ornament="rameau"]')).toHaveLength(1);
+    expect(container.querySelector('[data-ornament="coeur"]')).toBeNull();
+    expect(container.querySelector('[class*="cornerNote"]')).toBeNull();
+  });
+
+  it("Dark : filets de part et d'autre du surtitre, cœur au pied, mention « Des gestes qui ont du sens » et son cœur", () => {
+    const { container } = renderTraditions({ skinVariant: "dark" });
+    expect(container.querySelector('[class*="surtitleRule"]')).toBeNull();
+    expect(container.querySelectorAll('[class*="surtitleSideRule"]')).toHaveLength(2);
+    expect(container.querySelector('footer [data-ornament="rameau"]')).toBeNull();
+    expect(container.querySelectorAll('footer [data-ornament="coeur"]')).toHaveLength(1);
+    const note = container.querySelector('[class*="cornerText"]')!;
+    expect(note.textContent).toBe("Des gestes\nqui ont du sens");
+    expect(container.querySelectorAll('[class*="cornerNote"] [data-ornament="coeur"]')).toHaveLength(1);
+  });
+
+  it("Dark : mêmes feuillets dynamiques et médaillons neutres que le Light", () => {
+    const entries = Array.from({ length: 8 }, (_, i) => entry(i + 1, i % 2 ? null : `Repère ${i + 1}`, `Texte ${i + 1}`));
+    const { container } = renderTraditions({ skinVariant: "dark", traditions: traditions(...entries) });
+    expect(container.querySelectorAll("li")).toHaveLength(8);
+    const drawings = Array.from(container.querySelectorAll('[data-ornament="medaillon"] svg')).map((svg) => svg.innerHTML);
+    expect(drawings).toHaveLength(8);
+    expect(new Set(drawings).size).toBe(1);
+  });
+});
+
 describe("TraditionsV2 — textes HERITAGE et niveaux de titre", () => {
   it.each([
     ["fr", "Pour nous accompagner", "Traditions & repères", "Merci d’accompagner notre famille dans le respect de ses traditions."],
@@ -171,6 +219,15 @@ describe("TraditionsV2 — textes HERITAGE et niveaux de titre", () => {
     expect(screen.getByText(closing)).toBeTruthy();
     expect(container.querySelector("li p")!.textContent).toBe("Une pensée suffit.");
     expect(container.querySelector("[data-variant]")!.getAttribute("lang")).toBe(language);
+  });
+
+  it.each([
+    ["fr", "Des gestes\nqui ont du sens"],
+    ["en", "Meaningful\ngestures"],
+    ["es", "Gestos\ncon sentido"],
+  ] as const)("%s : mention du coin (Dark) traduite, coupure de ligne du Master conservée", (language, note) => {
+    const { container } = renderTraditions({ skinVariant: "dark", language });
+    expect(container.querySelector('[class*="cornerText"]')!.textContent).toBe(note);
   });
 
   it("niveaux de titre : page → h1 / h2 ; section → h2 / h3", () => {

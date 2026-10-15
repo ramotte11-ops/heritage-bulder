@@ -1,13 +1,19 @@
 import type { TraditionEntry, TraditionsContent } from "@/types/traditions";
 
 /**
- * Traditions & repères V2 — contenus de validation du pilote Mobile Light.
+ * Traditions & repères V2 — contenus de validation des pilotes Mobile Light
+ * et Mobile Dark.
  * Données de Builder ordinaires (même type que `content.traditions`), jamais
  * des textes inventés par le renderer.
  *
  * `reference` reprend mot pour mot les quatre repères du Master illustré :
  * ils servent seulement de référence visuelle de la PO (calage et
  * superposition) — aucun repère n'est imposé aux familles.
+ *
+ * `reference-en` et `reference-es` : des repères de démonstration RÉDIGÉS
+ * en anglais et en espagnol, comme une famille anglophone ou hispanophone
+ * les écrirait (décision QG) — jamais une traduction automatique des
+ * textes d'une famille, que le renderer n'opère pas.
  */
 
 export interface TraditionsV2PilotCase {
@@ -93,6 +99,30 @@ export const TRADITIONS_V2_PILOT_CASES: readonly TraditionsV2PilotCase[] = [
           "Une pensée",
           "Unenotetrèslonguesansaucunespacepourvérifierquelecontenunedébordejamaisdesonfeuilletmêmesurlesécranslesplusétroits.",
         ),
+      ],
+    },
+  },
+  {
+    id: "reference-en",
+    label: "Démonstration rédigée en anglais (4 repères)",
+    traditions: {
+      entries: [
+        entry(11, "Service & reflection", "Please arrive a few minutes early so that we can share a quiet moment together before the service."),
+        entry(12, "Flowers & tributes", "Flowers are welcome, as is any small token of remembrance. Your presence alone means a great deal to us."),
+        entry(13, "At the graveside", "Those who wish may join the family at the cemetery for a short gathering after the service."),
+        entry(14, "Other wishes", "We are grateful for every kind gesture, offered in keeping with Margaret’s wishes and those of her loved ones."),
+      ],
+    },
+  },
+  {
+    id: "reference-es",
+    label: "Démonstration rédigée en espagnol (4 repères)",
+    traditions: {
+      entries: [
+        entry(21, "Ceremonia y recogimiento", "Les rogamos llegar unos minutos antes para compartir juntos un momento de calma y recogimiento."),
+        entry(22, "Flores y detalles", "Si lo desean, pueden ofrecer flores o un pequeño recuerdo. Su presencia ya es para nosotros un gran consuelo."),
+        entry(23, "En el cementerio", "Quienes lo deseen podrán acompañar a la familia al cementerio después de la ceremonia."),
+        entry(24, "Otros deseos", "La familia agradece cada gesto de cariño, siempre en el respeto de los deseos de Carmen y de sus seres queridos."),
       ],
     },
   },

@@ -1,12 +1,15 @@
 /*
- * Traditions & repères V2 — pilote Mobile Light (P1). Moteur du Récit de
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
+ * un seul module : les règles de base sont celles du Light ; la section
+ * « Mobile Dark » en fin de fichier ne surcharge que ce que le Master Dark
+ * dessine autrement (matières, encres, ornements, rythme). Moteur du Récit de
  * vie V2 : toute géométrie est exprimée en px de canevas (941 de large)
  * rapportés à la largeur réelle du conteneur (cqw du .wrap). Les textes
  * suivent la même échelle avec un plancher en px CSS lisibles : à 941 px,
  * la composition reproduit le Master ; sur un téléphone, les textes gardent
  * une taille de lecture et la section s'allonge (papier central).
  *
- * Mesures : `MOBILE_LIGHT_MASTER_ILLUSTRE.png`, en px de canevas.
+ * Mesures : `MOBILE_{LIGHT,DARK}_MASTER_ILLUSTRE.png`, en px de canevas.
  */
 
 .wrap {
@@ -351,4 +354,173 @@
     letter-spacing: 0.12em;
     margin-right: -0.12em;
   }
+}
+
+/* ========================================================================
+ * Mobile Dark — `MOBILE_DARK_MASTER_ILLUSTRE.png`. Même composition que le
+ * Light (feuillets x 130–826, médaillon Ø 101 centré à x 217, filet à
+ * x 298, texte dès x 328, mêmes corps) ; feuille chocolat gaufrée, encres
+ * crème, ornements bronze, en-tête plus bas (surtitre à y 298).
+ * ===================================================================== */
+
+/* « — POUR NOUS ACCOMPAGNER — » : capitales x 289–651, y 298–309 ; filets
+   x 172–262 et 677–768 à y 303, à 26 px du texte. */
+.surtitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 26);
+  /* Toute la largeur de l'en-tête : le surtitre garde sa ligne unique tant
+     qu'elle tient, les filets se partagent le reste. */
+  align-self: stretch;
+}
+
+.surtitleSideRule {
+  display: block;
+  flex: 0 1 calc(var(--px) * 90);
+  min-width: calc(var(--px) * 24);
+  height: max(1px, calc(var(--px) * 1.6));
+  background: var(--rule);
+}
+
+.wrap[data-variant="dark"] .surtitle {
+  flex: 0 1 auto;
+  font-size: max(10px, calc(var(--px) * 19.3));
+  color: #d8be92;
+}
+
+/* « Traditions & repères » : x 210–737, capitale T y 347–391 (44 px). */
+.wrap[data-variant="dark"] .title {
+  margin-top: calc(var(--px) * 17);
+  font-weight: 600;
+}
+
+/* Rameau bronze : x 398–516, y 415–461 (tracé à 0,76 de celui du Light). */
+.wrap[data-variant="dark"] .sprig {
+  width: calc(var(--px) * 131);
+  height: calc(var(--px) * 61);
+  margin-top: calc(var(--px) * 4.5);
+  transform: translateX(calc(var(--px) * -14));
+}
+
+/* Introduction : quatre lignes, x 198–746, pas de 32. */
+.wrap[data-variant="dark"] .intro {
+  margin-top: calc(var(--px) * 13);
+  line-height: 1.08;
+}
+
+/* Feuillets : y 643–824, 836–1022, 1033–1225, 1235–1426 (intervalle 11). */
+.wrap[data-variant="dark"] .entries {
+  margin-top: calc(var(--px) * 36);
+  gap: calc(var(--px) * 11);
+}
+
+/* Papier du feuillet : cuir éclairci sur la feuille chocolat (Master :
+   intérieur #5f422b sur feuille #3e2716), liseré cuivré au bord déchiré,
+   ombre sombre. Le gaufrage du décor reste visible au travers. */
+.wrap[data-variant="dark"] .entryPaper {
+  border-radius: calc(var(--px) * 2);
+  background: rgb(160 115 80 / 0.38);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.6)) rgb(214 150 92 / 0.78),
+    inset 0 0 0 max(1px, calc(var(--px) * 3.2)) rgb(120 78 46 / 0.55),
+    inset 0 0 calc(var(--px) * 14) rgb(30 16 6 / 0.35);
+  filter: var(--deckle) drop-shadow(calc(var(--px) * -2) calc(var(--px) * 6) calc(var(--px) * 6) rgb(10 5 1 / 0.6));
+}
+
+/* Médaillon bronze : disque Ø 101, lumière en haut à gauche (#d9a982 →
+   #a8754a), pictogramme sombre. */
+.wrap[data-variant="dark"] .medallion {
+  background: radial-gradient(circle at 38% 32%, #e6bb8f 0, #cf9d6d 38%, #b07c50 72%, #8f5f3b 100%);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.4)) rgb(240 200 150 / 0.28),
+    inset calc(var(--px) * -3) calc(var(--px) * -4) calc(var(--px) * 8) rgb(70 40 18 / 0.45),
+    0 calc(var(--px) * 3) calc(var(--px) * 6) rgb(10 5 1 / 0.55);
+  color: #2b1a0e;
+}
+
+.wrap[data-variant="dark"] .entryDivider {
+  background: rgb(214 170 112 / 0.85);
+}
+
+.wrap[data-variant="dark"] .entryTitle {
+  color: var(--label);
+}
+
+.wrap[data-variant="dark"] .entryBody {
+  /* Plus clair que la médiane mesurée (#ded4c7) : l'EB Garamond 400 est
+     plus fin que le dessin du Master. */
+  color: #e8dfd2;
+}
+
+/* Pied : filets x 320–429 et 511–621 à y 1462, cœur x 457–485. */
+.wrap[data-variant="dark"] .footerOrnament {
+  gap: calc(var(--px) * 27);
+  transform: none;
+}
+
+.wrap[data-variant="dark"] .footerRule {
+  flex-basis: calc(var(--px) * 109);
+  background: var(--rule);
+}
+
+.footerHeart {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 28);
+  height: calc(var(--px) * 25);
+  color: #e9c48f;
+  overflow: visible;
+}
+
+/* Phrase manuscrite : deux lignes, x 238–709, y 1489–1569, pas de 44. */
+.wrap[data-variant="dark"] .closing {
+  margin-top: calc(var(--px) * 10);
+  max-width: calc(var(--px) * 490);
+  /* Le script du Master est plus large que La Belle Aurore à 32 :
+     34 px reproduisent sa largeur (x 238–709) ; pas de 44. */
+  font-size: max(15px, calc(var(--px) * 34));
+  line-height: 1.29;
+  color: #e4d6bd;
+}
+
+/* « Des gestes / qui ont du sens » : papier sombre du coin haut droit,
+   hors de la feuille ; deux lignes montant à −18°, x 717–912, y 57–165 ;
+   cœur à main levée x 837–869, y 127–177. Ancrée en haut du Master comme
+   le décor qui la porte. */
+.cornerNote {
+  position: absolute;
+  left: calc(var(--px) * var(--corner-left));
+  top: calc(var(--px) * var(--corner-top));
+  width: calc(var(--px) * var(--corner-width));
+  height: calc(var(--px) * 130);
+  color: #cdb89c;
+  pointer-events: none;
+}
+
+.cornerText {
+  position: absolute;
+  left: calc(var(--px) * 10);
+  top: calc(var(--px) * 31);
+  margin: 0;
+  width: max-content;
+  /* Ligne la plus longue du Master : 199 px de canevas. Une traduction
+     plus longue passe à la ligne plutôt que de sortir du papier sombre. */
+  max-width: calc(var(--px) * 215);
+  transform: rotate(var(--corner-rotate));
+  transform-origin: 0 50%;
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: max(11px, calc(var(--px) * 32));
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.cornerHeart {
+  position: absolute;
+  left: calc(var(--px) * 131);
+  top: calc(var(--px) * 73);
+  width: calc(var(--px) * 32);
+  height: calc(var(--px) * 50);
+  overflow: visible;
 }
