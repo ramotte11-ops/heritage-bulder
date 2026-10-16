@@ -56,7 +56,7 @@ describe("STEP_IDS / STEPS — structural guards on the UX-A config itself", () 
   it("matches the exact single-route order: common trunk, tribute sections, final trunk", () => {
     expect(STEP_IDS).toEqual([
       "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
+      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13",
       "P01", "P04", "V02", "V03", "V04",
     ]);
   });
