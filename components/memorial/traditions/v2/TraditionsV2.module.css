@@ -756,3 +756,119 @@
     height: calc(var(--px) * 54);
   }
 }
+
+/* ========================================================================
+ * Desktop Dark (P4) — `DESKTOP_DARK_MASTER_ILLUSTRE.png` (1671 × 941).
+ * Même bascule et même composition que le Desktop Light (bloc ci-dessus) ;
+ * matières, encres et ornements du Dark (bloc Mobile Dark) conservés. Ne
+ * surcharge que ce que le Master Desktop Dark dessine autrement. Mesures en
+ * px de canevas.
+ * ===================================================================== */
+
+@container (min-width: 1024px) {
+  /* « — POUR NOUS ACCOMPAGNER — » : capitales x 663–1005, y 163–173 ;
+     filets x 538–640 et 1030–1134 à y 168, à 23 px du texte. */
+  .wrap[data-variant="dark"][data-desktop] .surtitleRow {
+    gap: calc(var(--px) * 23);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .surtitleSideRule {
+    flex-basis: calc(var(--px) * 102);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .surtitle {
+    font-size: max(10px, calc(var(--px) * 17.5));
+  }
+
+  /* « Traditions & repères » : x 554–1116, y 203–268 (centré sur x 835). */
+  .wrap[data-variant="dark"][data-desktop] .title {
+    margin-top: calc(var(--px) * 19);
+    font-size: max(24px, calc(var(--px) * 70));
+    transform: none;
+  }
+
+  /* Rameau bronze : x 765–888, y 272–318. */
+  .wrap[data-variant="dark"][data-desktop] .sprig {
+    width: calc(var(--px) * 131);
+    height: calc(var(--px) * 61);
+    margin-top: calc(var(--px) * -6);
+    transform: translateX(calc(var(--px) * -10));
+  }
+
+  /* Introduction droite (pas d'italique sur ce Master) : deux lignes,
+     x 394–1272, pas de 29. */
+  .wrap[data-variant="dark"][data-desktop] .intro {
+    margin-top: calc(var(--px) * 2);
+    max-width: calc(var(--px) * 900);
+    font-family: var(--font-heritage-ceremony-serif), serif;
+    font-style: normal;
+    font-size: max(15px, calc(var(--px) * 26.5));
+    line-height: 1.1;
+  }
+
+  /* Feuillets : x 232–828 et 847–1450, rangées y 407–586 et 600–778. */
+  .wrap[data-variant="dark"][data-desktop] .entries {
+    margin-top: calc(var(--px) * 17);
+    column-gap: calc(var(--px) * 19);
+    row-gap: calc(var(--px) * 14);
+  }
+
+  /* Médaillon bronze Ø 101 centré à x 318 (86 après le bord) ; filet
+     vertical à x 398 ; texte dès x 428. */
+  /* « ACCOMPAGNEMENT AU CIMETIÈRE » (x 431–806) tient sur une ligne à
+     22 px du bord droit du feuillet : réserve droite 16, capitales
+     légèrement resserrées. */
+  .wrap[data-variant="dark"][data-desktop] .entry {
+    grid-template-columns: calc(var(--px) * 196) minmax(0, 1fr);
+    padding-right: calc(var(--px) * 16);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .entryTitle {
+    letter-spacing: 0.15em;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .medallion {
+    left: calc(var(--px) * 36);
+    width: calc(var(--px) * 101);
+    height: calc(var(--px) * 101);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .entryDivider {
+    left: calc(var(--px) * 166);
+  }
+
+  /* Pied : filets x 683–800 et 870–984, cœur x 822–849 (y 792–815) ;
+     phrase manuscrite deux lignes x 634–1042, y 828–892. */
+  .wrap[data-variant="dark"][data-desktop] .footerOrnament {
+    gap: calc(var(--px) * 22);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .footerRule {
+    flex-basis: calc(var(--px) * 115);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .footerHeart {
+    width: calc(var(--px) * 28);
+    height: calc(var(--px) * 25);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .closing {
+    margin-top: calc(var(--px) * 8);
+    max-width: calc(var(--px) * 470);
+    font-size: max(15px, calc(var(--px) * 31));
+    line-height: 1.15;
+  }
+
+  /* Mention du coin : dorée sur le papier sombre, x 1464–1648, y 35–130 ;
+     cœur x 1588–1630, y 108–170. */
+  .wrap[data-variant="dark"][data-desktop] .cornerNote {
+    color: #d9c19a;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .cornerHeart {
+    left: calc(var(--px) * 138);
+    top: calc(var(--px) * 96);
+    width: calc(var(--px) * 42);
+    height: calc(var(--px) * 62);
+  }
+}

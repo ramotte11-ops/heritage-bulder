@@ -40,10 +40,9 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light (P1) et Mobile Dark (P2), validés PO ; Desktop Light (P3,
- * pilote). Desktop Dark n'a pas encore de réglages (`desktop: null`) : il
- * garde la composition Mobile à toute largeur. Une variante sans réglages
- * (`null`) ne rend rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
+ * Mobile Light (P1) et Mobile Dark (P2), validés PO ; Desktop Light (P3) ;
+ * Desktop Dark (P4, pilote). Une variante sans réglages (`null`) ne rend
+ * rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
  * sur aucun registre de production : page pilote seulement.
  */
 
@@ -142,6 +141,7 @@ export interface TraditionsV2VariantTokens {
 const ROOT = "/assets/traditions/v2/mobile/light";
 const ROOT_DARK = "/assets/traditions/v2/mobile/dark";
 const ROOT_DESKTOP_LIGHT = "/assets/traditions/v2/desktop/light";
+const ROOT_DESKTOP_DARK = "/assets/traditions/v2/desktop/dark";
 
 /**
  * Mobile Light. Coupe Y = 938, fondu 40 px : les rangées 720–990 sont la
@@ -296,8 +296,64 @@ const DESKTOP_LIGHT: TraditionsV2DesktopTokens = {
   cornerNote: { leftCanvas: 1440, topCanvas: 100, widthCanvas: 230, rotateDeg: -18 },
 };
 
-/** Mobile Light (P1) et Mobile Dark (P2), validés ; Desktop Light (P3). */
+/**
+ * Desktop Dark (P4). Master `DESKTOP_DARK_MASTER_ILLUSTRE.png` (1671×941,
+ * SHA-256 c83de759…2ed8) ; décor `DESKTOP_DARK_DECOR_VIERGE.png` (1670×942),
+ * aligné sur le Master à 1 px près.
+ *
+ * Les bords de la feuille chocolat ne sont presque verticaux qu'entre les
+ * rangées 560 et 720 (gauche x ≈ 197, droite x ≈ 1495) : une seule coupe,
+ * Y = 620, fondu 30, commune aux deux zones ; chaque zone porte la bande de
+ * son propre bord (rangées 530–650 : liseré cuivré et papier clair à
+ * gauche, liseré cuivré seul à droite). Au-delà des bords, les papiers
+ * anciens en diagonale se répéteraient : la teinte y suffit. Sceau, bouquet
+ * et mention restent en haut ; fleurs floues des coins bas descendent avec
+ * le bas.
+ */
+const DESKTOP_DARK: TraditionsV2DesktopTokens = {
+  masterSrc: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-master.png`,
+  masterSha256: "83c1e431bdbb2e6b372001267190c0a0b0952b70be904b2dfa7223b563e10c98",
+  canvas: { width: 1670, height: 942 },
+  paperGrains: [
+    { src: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  zones: {
+    left: {
+      cutY: 620,
+      fadePx: 30,
+      paperTone: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-left-tone.png`,
+      edgeStrip: { src: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-left-edges.png`, heightCanvas: 120 },
+    },
+    right: {
+      cutY: 620,
+      fadePx: 30,
+      paperTone: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-right-tone.png`,
+      edgeStrip: { src: `${ROOT_DESKTOP_DARK}/traditions-desktop-dark-right-edges.png`, heightCanvas: 120 },
+    },
+  },
+  zoneSplitCanvas: 835,
+  zoneBlendCanvas: 240,
+  /** Master : capitales du surtitre à y 163. */
+  textTopCanvas: 158,
+  /** Master : bas de la phrase manuscrite à 892. */
+  footCanvas: 46,
+  /** Master : feuillets x 232–1450, deux colonnes. */
+  textLeftCanvas: 232,
+  textRightCanvas: 1450,
+  /** Master : surtitre, titre, rameau et pied centrés sur x ≈ 836. */
+  axisCanvas: 836,
+  /** Master : « Des gestes / qui ont du sens », x 1464–1648, y 35–130,
+   * doré sur le papier sombre du coin haut droit ; cœur x 1588–1630,
+   * y 108–170. */
+  cornerNote: { leftCanvas: 1450, topCanvas: 12, widthCanvas: 220, rotateDeg: -18 },
+};
+
+/** Mobile Light (P1) et Mobile Dark (P2), validés ; Desktop Light (P3) ;
+ * Desktop Dark (P4). */
 export const TRADITIONS_V2_TOKENS: Readonly<Record<SkinVariant, TraditionsV2VariantTokens | null>> = Object.freeze({
   light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
-  dark: { mobile: MOBILE_DARK, desktop: null },
+  dark: { mobile: MOBILE_DARK, desktop: DESKTOP_DARK },
 });

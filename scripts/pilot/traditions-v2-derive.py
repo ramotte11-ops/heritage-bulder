@@ -29,7 +29,7 @@ dans leurs propres colonnes ; le moteur les fond l'une dans l'autre dans
 le papier nu du centre. Les grains sont communs aux deux zones.
 
 Usage :
-  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light|mobile-dark|desktop-light> <decor.png> <dossier-de-sortie>
+  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light|mobile-dark|desktop-light|desktop-dark> <decor.png> <dossier-de-sortie>
 
 Le décor lui-même est copié octet pour octet à part (cp) ; ce script
 n'écrit que la teinte et les grains, et imprime les réglages.
@@ -161,6 +161,51 @@ VARIANTS = {
             "a": (420, 420, 460, 300),
             "b": (900, 560, 400, 200),
             "c": (1000, 260, 340, 120),
+        },
+    },
+    # Desktop Dark (1670×942) — feuille chocolat gaufrée nue de x 230 à
+    # 1490 entre les rangées 380 et 800 ; sceau et bouquet en haut à
+    # droite (jusqu'à 400), papiers anciens en diagonale de part et
+    # d'autre, fleurs floues aux deux coins bas. Les bords de la feuille ne
+    # sont presque verticaux qu'entre 560 et 720 (gauche x ≈ 197, droite
+    # x ≈ 1490–1500) : une seule coupe, 620, fondu 30, commune aux deux
+    # zones ; chaque zone ne porte que la bande de son propre bord. Au-delà
+    # des bords, les papiers en diagonale se répéteraient : la teinte y
+    # suffit.
+    "desktop-dark": {
+        "sha256": "83c1e431bdbb2e6b372001267190c0a0b0952b70be904b2dfa7223b563e10c98",
+        "zones": {
+            "left": {
+                "cut": 620,
+                "fade": 30,
+                "columns": (0, 835),
+                # Bord gauche : liseré cuivré et papier clair qui le borde
+                # (x 178–228) ; le coin de papier vert et les encoches
+                # sombres (x < 175) restent hors de la bande, qui se
+                # répéterait sinon en dents de scie. Bande haute (120
+                # rangées, 530–650) : période moins visible.
+                "edge_strip": {"height": 120, "left": (166, 178, 228, 250), "right": None},
+                # Les couches de grain éclaircissent la surface sombre
+                # (+6 / +4 / +2 niveaux mesurés) : compensation.
+                "tone_gain": (0.9, 0.86, 0.84),
+            },
+            "right": {
+                "cut": 620,
+                "fade": 30,
+                "columns": (835, 1670),
+                # Bord droit : liseré cuivré seul (x 1482–1506), bande de
+                # 120 rangées (530–650).
+                "edge_strip": {"height": 120, "left": None, "right": (1470, 1482, 1506, 1518)},
+                # Les couches de grain éclaircissent la surface sombre
+                # (+6 / +4 / +2 niveaux mesurés) : compensation.
+                "tone_gain": (0.9, 0.86, 0.84),
+            },
+        },
+        "grain_gain": 2.25,
+        "grain_zones": {
+            "a": (380, 420, 460, 300),
+            "b": (820, 600, 400, 180),
+            "c": (1000, 430, 340, 160),
         },
     },
 }

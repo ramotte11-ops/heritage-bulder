@@ -8,7 +8,7 @@ import type { TraditionEntry, TraditionsContent } from "@/types/traditions";
 
 /**
  * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
- * validés PO ; Desktop Light (P3).
+ * validés PO ; Desktop Light (P3) ; Desktop Dark (P4).
  * Contrats du renderer : un seul composant, décor authentique propre à
  * chaque variante (SHA-256), repères de la famille rendus tels quels
  * (titre facultatif, texte libre, nombre libre), un médaillon neutre par
@@ -39,6 +39,8 @@ const PO_MOBILE_LIGHT_DECOR_SHA256 = "203dfe8eb18c82b3c4ecdf0d78c9d2ee2cb08ff097
 const PO_MOBILE_DARK_DECOR_SHA256 = "bbea9d4b7c3c95ad278e2961da23e80954380ce854ff90fa67f058ff379c2389";
 const PO_DESKTOP_LIGHT_DECOR_SHA256 = "e21f17ca490a5d1a8a51e5850418ae6db28593fac8f0371dcb0673ebf7165566";
 const DESKTOP_LIGHT = TRADITIONS_V2_TOKENS.light!.desktop!;
+const PO_DESKTOP_DARK_DECOR_SHA256 = "83c1e431bdbb2e6b372001267190c0a0b0952b70be904b2dfa7223b563e10c98";
+const DESKTOP_DARK = TRADITIONS_V2_TOKENS.dark!.desktop!;
 const VARIANTS = [
   ["light", MOBILE_LIGHT, PO_MOBILE_LIGHT_DECOR_SHA256],
   ["dark", MOBILE_DARK, PO_MOBILE_DARK_DECOR_SHA256],
@@ -245,18 +247,13 @@ describe("TraditionsV2 — Desktop Light (P3)", () => {
     expect(DESKTOP_LIGHT.zoneSplitCanvas + DESKTOP_LIGHT.zoneBlendCanvas / 2).toBeLessThan(DESKTOP_LIGHT.textRightCanvas);
   });
 
-  it("Light : même DOM, pile de la zone droite et réglages Desktop présents ; Dark : aucun", () => {
+  it("Light : même DOM, pile de la zone droite et réglages Desktop présents", () => {
     const light = renderTraditions();
     expect(light.container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(true);
     expect(light.container.querySelectorAll('[data-zone="right"]')).toHaveLength(1);
     const section = light.container.querySelector('[data-testid="traditions-v2"]') as HTMLElement;
     expect(section.style.getPropertyValue("--d-m-src")).toBe(`url(${DESKTOP_LIGHT.masterSrc})`);
     expect(section.style.getPropertyValue("--d-edges-src-right")).toBe("none");
-    light.unmount();
-    expect(TRADITIONS_V2_TOKENS.dark!.desktop).toBeNull();
-    const dark = renderTraditions({ skinVariant: "dark" });
-    expect(dark.container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(false);
-    expect(dark.container.querySelector('[data-zone="right"]')).toBeNull();
   });
 
   it.each([1, 3, 5, 8])("%i repère(s) : mêmes feuillets et médaillons en Desktop (aucun plafond)", (count) => {
@@ -264,6 +261,54 @@ describe("TraditionsV2 — Desktop Light (P3)", () => {
     const { container } = renderTraditions({ traditions: traditions(...entries) });
     expect(container.querySelectorAll("li")).toHaveLength(count);
     expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(count);
+  });
+});
+
+describe("TraditionsV2 — Desktop Dark (P4)", () => {
+  it("décor Desktop Dark = décor vierge de la PO, octet pour octet", () => {
+    expect(DESKTOP_DARK.masterSha256).toBe(PO_DESKTOP_DARK_DECOR_SHA256);
+    const digest = createHash("sha256").update(readFileSync(publicFile(DESKTOP_DARK.masterSrc))).digest("hex");
+    expect(digest).toBe(PO_DESKTOP_DARK_DECOR_SHA256);
+    expect(DESKTOP_DARK.canvas).toEqual({ width: 1670, height: 942 });
+  });
+
+  it("dérivés propres au Desktop Dark, aucun partagé avec une autre variante", () => {
+    const { left, right } = DESKTOP_DARK.zones;
+    const derived = [left.paperTone, right.paperTone, left.edgeStrip!.src, right.edgeStrip!.src, ...DESKTOP_DARK.paperGrains.map((g) => g.src)];
+    expect(new Set(derived).size).toBe(derived.length);
+    const others = new Set(
+      [MOBILE_LIGHT, MOBILE_DARK].flatMap((T) => [T.masterSrc, T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)]).concat(
+        DESKTOP_LIGHT.masterSrc,
+        DESKTOP_LIGHT.zones.left.paperTone,
+        DESKTOP_LIGHT.zones.right.paperTone,
+        ...DESKTOP_LIGHT.paperGrains.map((g) => g.src),
+      ),
+    );
+    for (const src of derived) {
+      expect(existsSync(publicFile(src))).toBe(true);
+      expect(src).toContain("/traditions/v2/desktop/dark/");
+      expect(others.has(src)).toBe(false);
+    }
+  });
+
+  it("coupe commune aux deux zones, dans le canevas ; bandes sous la fin du fondu", () => {
+    for (const zone of [DESKTOP_DARK.zones.left, DESKTOP_DARK.zones.right]) {
+      expect(zone.cutY).toBe(620);
+      expect(zone.cutY + zone.fadePx).toBeLessThan(DESKTOP_DARK.canvas.height - DESKTOP_DARK.footCanvas);
+      expect(zone.cutY + zone.fadePx - zone.edgeStrip!.heightCanvas).toBeGreaterThan(0);
+    }
+  });
+
+  it("Dark : même DOM, réglages Desktop Dark ; la composition Dark (filets, cœur, mention) reste", () => {
+    const { container } = renderTraditions({ skinVariant: "dark" });
+    expect(container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(true);
+    expect(container.querySelectorAll('[data-zone="right"]')).toHaveLength(1);
+    const section = container.querySelector('[data-testid="traditions-v2"]') as HTMLElement;
+    expect(section.style.getPropertyValue("--d-m-src")).toBe(`url(${DESKTOP_DARK.masterSrc})`);
+    expect(container.querySelectorAll('[class*="surtitleSideRule"]')).toHaveLength(2);
+    expect(container.querySelectorAll('footer [data-ornament="coeur"]')).toHaveLength(1);
+    // Mention présente sur les deux Masters Dark : jamais réservée au Desktop.
+    expect(container.querySelector('[class*="cornerNote"]')!.hasAttribute("data-desktop-only")).toBe(false);
   });
 });
 
