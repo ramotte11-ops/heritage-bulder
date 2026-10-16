@@ -40,9 +40,10 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light (P1) et Mobile Dark (P2). Desktop Light et Desktop Dark
- * n'ont pas encore de réglages. Une variante sans réglages (`null`) ne
- * rend rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
+ * Mobile Light (P1) et Mobile Dark (P2), validés PO ; Desktop Light (P3,
+ * pilote). Desktop Dark n'a pas encore de réglages (`desktop: null`) : il
+ * garde la composition Mobile à toute largeur. Une variante sans réglages
+ * (`null`) ne rend rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
  * sur aucun registre de production : page pilote seulement.
  */
 
@@ -94,12 +95,53 @@ export interface TraditionsV2MobileTokens {
   cornerNote: { leftCanvas: number; topCanvas: number; widthCanvas: number; rotateDeg: number } | null;
 }
 
+/** Une zone du décor Desktop : sa coupe, sa teinte et, si le décor en
+ * offre une qui se répète sans motif, sa bande des bords. */
+export interface TraditionsV2DesktopZone {
+  cutY: number;
+  fadePx: number;
+  paperTone: string;
+  edgeStrip: { src: string; heightCanvas: number } | null;
+}
+
+/**
+ * Desktop (méthode de l'Avis de décès V2 Desktop) : à partir de 1024 px de
+ * largeur RÉELLE du conteneur, plafond 1448 px, même DOM et mêmes données
+ * que le Mobile ; seule la feuille de style bascule sur le Master Desktop.
+ * Aucune rangée du décor Desktop n'est calme sur toute sa largeur : deux
+ * zones (gauche, droite) ont chacune leur coupe, fondues l'une dans
+ * l'autre dans le papier nu du centre (`zoneSplitCanvas` ±
+ * `zoneBlendCanvas` / 2).
+ */
+export interface TraditionsV2DesktopTokens {
+  masterSrc: string;
+  masterSha256: string;
+  canvas: { width: number; height: number };
+  paperGrains: readonly { src: string; tileWidth: number; blend: string }[];
+  noiseBlend: string;
+  zones: { left: TraditionsV2DesktopZone; right: TraditionsV2DesktopZone };
+  zoneSplitCanvas: number;
+  zoneBlendCanvas: number;
+  textTopCanvas: number;
+  footCanvas: number;
+  /** Bande des feuillets (deux colonnes), en px de canevas. */
+  textLeftCanvas: number;
+  textRightCanvas: number;
+  axisCanvas: number;
+  /** Mention manuscrite du coin, si le Master Desktop la porte. */
+  cornerNote: { leftCanvas: number; topCanvas: number; widthCanvas: number; rotateDeg: number } | null;
+}
+
 export interface TraditionsV2VariantTokens {
   mobile: TraditionsV2MobileTokens;
+  /** `null` : pas de composition Desktop pour cette variante (le Mobile
+   * s'applique à toute largeur, comme avant). */
+  desktop: TraditionsV2DesktopTokens | null;
 }
 
 const ROOT = "/assets/traditions/v2/mobile/light";
 const ROOT_DARK = "/assets/traditions/v2/mobile/dark";
+const ROOT_DESKTOP_LIGHT = "/assets/traditions/v2/desktop/light";
 
 /**
  * Mobile Light. Coupe Y = 938, fondu 40 px : les rangées 720–990 sont la
@@ -195,8 +237,67 @@ const MOBILE_DARK: TraditionsV2MobileTokens = {
   cornerNote: { leftCanvas: 706, topCanvas: 54, widthCanvas: 220, rotateDeg: -20 },
 };
 
-/** Mobile Light (P1) et Mobile Dark (P2). */
+/**
+ * Desktop Light (P3). Master `DESKTOP_LIGHT_MASTER_ILLUSTRE.png` (1671×941,
+ * SHA-256 a42cd2ee…45fd) ; décor `DESKTOP_LIGHT_DECOR_VIERGE.png`
+ * (1670×941), aligné sur le Master à 1 px près.
+ *
+ * - Zone gauche (colonnes 120–830) : coupe Y = 626, fondu 36 : sous le
+ *   sceau et ses fleurs, là où le papier vert (x 130–215) et le bord de la
+ *   feuille (x ≈ 220) sont verticaux. Bande des bords : rangées 562–662.
+ * - Zone droite (colonnes 830–1560) : coupe Y = 310, fondu 26 : sous
+ *   l'aquarelle et la mention manuscrite, au-dessus du bouquet (rangées
+ *   340–890), qui descend avec le bas sans jamais être coupé. Pas de bande
+ *   des bords : le bord droit de la feuille tourne en diagonale au-dessus
+ *   de 300 (escalier des papiers dessous), puis le bouquet le recouvre ;
+ *   toute bande s'y répétait en motif visible. Teinte et grain portent
+ *   seuls l'extension ; dès x 1490, la teinte est celle du papier sous la
+ *   coupe (ni l'aquarelle ni l'ombre des papiers ne s'étirent).
+ * - Les deux zones se fondent dans le papier nu du centre, x 830 ± 120.
+ * - Grain : trois tuiles du papier central (460×300, 400×200, 340×120).
+ */
+const DESKTOP_LIGHT: TraditionsV2DesktopTokens = {
+  masterSrc: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-master.png`,
+  masterSha256: "e21f17ca490a5d1a8a51e5850418ae6db28593fac8f0371dcb0673ebf7165566",
+  canvas: { width: 1670, height: 941 },
+  paperGrains: [
+    { src: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  zones: {
+    left: {
+      cutY: 626,
+      fadePx: 36,
+      paperTone: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-left-tone.png`,
+      edgeStrip: { src: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-left-edges.png`, heightCanvas: 100 },
+    },
+    right: {
+      cutY: 310,
+      fadePx: 26,
+      paperTone: `${ROOT_DESKTOP_LIGHT}/traditions-desktop-light-right-tone.png`,
+      edgeStrip: null,
+    },
+  },
+  zoneSplitCanvas: 830,
+  zoneBlendCanvas: 240,
+  /** Master : capitales du surtitre à y 139. */
+  textTopCanvas: 134,
+  /** Master : bas de la phrase manuscrite à 899. */
+  footCanvas: 40,
+  /** Master : feuillets x 225–1468, deux colonnes. */
+  textLeftCanvas: 225,
+  textRightCanvas: 1468,
+  /** Master : surtitre, filet, rameau et pied centrés sur x ≈ 834. */
+  axisCanvas: 836,
+  /** Master : « Des gestes / qui ont du sens », x 1453–1640, y 115–240,
+   * doré sur l'aquarelle bleue ; cœur x 1563–1607, y 188–242. */
+  cornerNote: { leftCanvas: 1440, topCanvas: 100, widthCanvas: 230, rotateDeg: -18 },
+};
+
+/** Mobile Light (P1) et Mobile Dark (P2), validés ; Desktop Light (P3). */
 export const TRADITIONS_V2_TOKENS: Readonly<Record<SkinVariant, TraditionsV2VariantTokens | null>> = Object.freeze({
-  light: { mobile: MOBILE_LIGHT },
-  dark: { mobile: MOBILE_DARK },
+  light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
+  dark: { mobile: MOBILE_DARK, desktop: null },
 });

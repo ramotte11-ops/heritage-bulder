@@ -5,9 +5,13 @@ import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { TraditionsContent } from "@/types/traditions";
 import { translate } from "@/lib/i18n/translate";
-import { TRADITIONS_V2_TOKENS, type TraditionsV2MobileTokens } from "@/config/traditions-v2-tokens";
+import {
+  TRADITIONS_V2_TOKENS,
+  type TraditionsV2DesktopTokens,
+  type TraditionsV2MobileTokens,
+} from "@/config/traditions-v2-tokens";
 import { SkinScope } from "@/components/memorial/SkinScope";
-import { avisNameSerif, ebGaramond, laBelleAurore, playfairDisplay } from "@/components/builder/fonts";
+import { avisNameSerif, ebGaramond, ebGaramondItalic, laBelleAurore, playfairDisplay } from "@/components/builder/fonts";
 import { DeckleFilter, HandHeart, LineHeart, LineSprig, OliveSprig } from "./TraditionsV2Ornaments";
 import styles from "./TraditionsV2.module.css";
 
@@ -29,6 +33,14 @@ import styles from "./TraditionsV2.module.css";
  * sens » sont des textes système traduits (FR/EN/ES), jamais des données
  * de la famille.
  *
+ * Desktop (P3, Desktop Light) : à partir de 1024 px de largeur RÉELLE du
+ * conteneur (requête de conteneur, jamais le viewport), et seulement pour
+ * une variante qui a des réglages Desktop, la feuille de style bascule sur
+ * le Master Desktop (plafond 1448 px) : même DOM, mêmes données ;
+ * feuillets en deux colonnes. Le décor Desktop s'étend par deux zones
+ * (gauche, droite), chacune avec sa coupe : la seconde pile de décor n'est
+ * rendue que pour une telle variante, et masquée sous 1024 px.
+ *
  * Moteur du Récit de vie V2 : le Master entier à son ratio, le bas
  * authentique ancré en bas de section, et, quand le contenu dépasse la
  * hauteur du Master, une surface de papier CSS ouverte à la ligne de
@@ -47,13 +59,26 @@ export interface TraditionsV2Props {
 const COARSE_NOISE =
   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'><filter id='n' x='0' y='0'><feTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='3' stitchTiles='stitch' seed='11'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0' intercept='.22'/></feComponentTransfer></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")";
 
+type PaperGrains = TraditionsV2MobileTokens["paperGrains"];
+
+/** Couches de la surface de papier : grains, bruit grossier, teinte. */
+function paperLayers(grains: PaperGrains, noiseBlend: string, tone: string) {
+  return {
+    images: [...grains.map((g) => `url(${g.src})`), COARSE_NOISE, `url(${tone})`].join(", "),
+    sizes: [...grains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
+    repeat: [...grains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
+    blend: [...grains.map((g) => g.blend), noiseBlend, "normal"].join(", "),
+  };
+}
+
 function mobileVars(T: TraditionsV2MobileTokens): CSSProperties {
+  const paper = paperLayers(T.paperGrains, T.noiseBlend, T.paperTone);
   return {
     "--m-src": `url(${T.masterSrc})`,
-    "--paper-images": [...T.paperGrains.map((g) => `url(${g.src})`), COARSE_NOISE, `url(${T.paperTone})`].join(", "),
-    "--paper-sizes": [...T.paperGrains.map((g) => `calc(var(--px) * ${g.tileWidth}) auto`), "calc(var(--px) * 900) auto", "100% 100%"].join(", "),
-    "--paper-repeat": [...T.paperGrains.map(() => "repeat"), "repeat", "no-repeat"].join(", "),
-    "--paper-blend": [...T.paperGrains.map((g) => g.blend), T.noiseBlend, "normal"].join(", "),
+    "--paper-images": paper.images,
+    "--paper-sizes": paper.sizes,
+    "--paper-repeat": paper.repeat,
+    "--paper-blend": paper.blend,
     "--edges-src": `url(${T.edgeStrip.src})`,
     "--edges-h": T.edgeStrip.heightCanvas,
     "--canvas-w": T.canvas.width,
@@ -78,13 +103,59 @@ function mobileVars(T: TraditionsV2MobileTokens): CSSProperties {
   } as CSSProperties;
 }
 
+/** Bande des bords d'une zone Desktop ; sans bande, aucune image. */
+function edgeVars(zone: "left" | "right", strip: TraditionsV2DesktopTokens["zones"]["left"]["edgeStrip"]) {
+  return {
+    [`--d-edges-src-${zone}`]: strip !== null ? `url(${strip.src})` : "none",
+    [`--d-edges-h-${zone}`]: strip !== null ? strip.heightCanvas : 1,
+  };
+}
+
+/** Réglages Desktop, préfixés `--d-`, posés sur la section : la feuille
+ * de style ne les active qu'à partir de 1024 px ; sous ce seuil, ils n'ont
+ * aucun effet et le Mobile reste strictement inchangé. Les tailles de
+ * grain y sont résolues avec le `--px` Desktop de la section. */
+function desktopVars(D: TraditionsV2DesktopTokens): CSSProperties {
+  const left = paperLayers(D.paperGrains, D.noiseBlend, D.zones.left.paperTone);
+  const right = paperLayers(D.paperGrains, D.noiseBlend, D.zones.right.paperTone);
+  return {
+    "--d-m-src": `url(${D.masterSrc})`,
+    "--d-paper-images-left": left.images,
+    "--d-paper-images-right": right.images,
+    "--d-paper-sizes": left.sizes,
+    "--d-paper-repeat": left.repeat,
+    "--d-paper-blend": left.blend,
+    ...edgeVars("left", D.zones.left.edgeStrip),
+    ...edgeVars("right", D.zones.right.edgeStrip),
+    "--d-canvas-w": D.canvas.width,
+    "--d-canvas-h": D.canvas.height,
+    "--d-cut-left": D.zones.left.cutY,
+    "--d-fade-left": D.zones.left.fadePx,
+    "--d-cut-right": D.zones.right.cutY,
+    "--d-fade-right": D.zones.right.fadePx,
+    "--d-zone-split": D.zoneSplitCanvas,
+    "--d-zone-blend": D.zoneBlendCanvas,
+    "--d-text-top": D.textTopCanvas,
+    "--d-foot": D.footCanvas,
+    "--d-text-left": D.textLeftCanvas,
+    "--d-text-right": D.textRightCanvas,
+    "--d-axis": D.axisCanvas,
+    ...(D.cornerNote !== null && {
+      "--d-corner-left": D.cornerNote.leftCanvas,
+      "--d-corner-top": D.cornerNote.topCanvas,
+      "--d-corner-width": D.cornerNote.widthCanvas,
+      "--d-corner-rotate": `${D.cornerNote.rotateDeg}deg`,
+    }),
+  } as CSSProperties;
+}
+
 export function TraditionsV2({ skinVariant, ...props }: TraditionsV2Props) {
   const tokens = TRADITIONS_V2_TOKENS[skinVariant];
   // Une variante sans réglages ne se rabat jamais sur une autre.
   if (tokens === null) return null;
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
-      <TraditionsV2Layout {...props} variant={skinVariant} tokens={tokens.mobile} />
+      <TraditionsV2Layout {...props} variant={skinVariant} tokens={tokens.mobile} desktop={tokens.desktop} />
     </SkinScope>
   );
 }
@@ -95,7 +166,12 @@ function TraditionsV2Layout({
   headingLevel = "page",
   variant,
   tokens: T,
-}: Omit<TraditionsV2Props, "skinVariant"> & { variant: SkinVariant; tokens: TraditionsV2MobileTokens }) {
+  desktop: D,
+}: Omit<TraditionsV2Props, "skinVariant"> & {
+  variant: SkinVariant;
+  tokens: TraditionsV2MobileTokens;
+  desktop: TraditionsV2DesktopTokens | null;
+}) {
   const TitleTag = headingLevel === "section" ? "h2" : "h1";
   const EntryTitleTag = headingLevel === "section" ? "h3" : "h2";
   const deckleId = `traditions-deckle-${useId().replace(/:/g, "")}`;
@@ -108,7 +184,12 @@ function TraditionsV2Layout({
     if (section === null) return;
     const measure = () => {
       const { width, height } = section.getBoundingClientRect();
-      const masterHeight = (width * T.canvas.height) / T.canvas.width;
+      // Le canevas actif (Mobile ou Desktop) est celui que la feuille de
+      // style a retenu pour cette largeur de conteneur.
+      const style = getComputedStyle(section);
+      const canvasW = parseFloat(style.getPropertyValue("--canvas-w")) || T.canvas.width;
+      const canvasH = parseFloat(style.getPropertyValue("--canvas-h")) || T.canvas.height;
+      const masterHeight = (width * canvasH) / canvasW;
       setExtension(Math.max(0, Math.round((height - masterHeight) * 10) / 10));
     };
     measure();
@@ -120,11 +201,18 @@ function TraditionsV2Layout({
     return () => observer.disconnect();
   }, [T]);
 
+  // La mention du coin existe sur le Master Mobile de la variante (Dark),
+  // ou seulement sur son Master Desktop (Light) : rendue alors pour le
+  // Desktop seul.
+  const cornerNoteDesktopOnly = T.cornerNote === null && D !== null && D.cornerNote !== null;
+  const hasCornerNote = T.cornerNote !== null || cornerNoteDesktopOnly;
+
   return (
     <div
-      className={`${styles.wrap} ${ebGaramond.variable} ${avisNameSerif.variable} ${playfairDisplay.variable} ${laBelleAurore.variable}`}
+      className={`${styles.wrap} ${ebGaramond.variable} ${ebGaramondItalic.variable} ${avisNameSerif.variable} ${playfairDisplay.variable} ${laBelleAurore.variable}`}
       style={mobileVars(T)}
       data-variant={variant}
+      data-desktop={D !== null ? "" : undefined}
       lang={language}
     >
       <section
@@ -132,7 +220,13 @@ function TraditionsV2Layout({
         className={styles.section}
         data-testid="traditions-v2"
         data-extended={extension > 0.5}
-        style={{ "--ext": `${extension}px`, "--deckle": `url(#${deckleId})` } as CSSProperties}
+        style={
+          {
+            ...(D !== null ? desktopVars(D) : {}),
+            "--ext": `${extension}px`,
+            "--deckle": `url(#${deckleId})`,
+          } as CSSProperties
+        }
       >
         <DeckleFilter id={deckleId} />
         <div className={styles.master} aria-hidden="true" />
@@ -142,6 +236,20 @@ function TraditionsV2Layout({
             <div className={styles.paper} aria-hidden="true" />
             <div className={styles.edges} aria-hidden="true" />
           </>
+        )}
+        {/* Desktop : pile de la zone droite (sa propre coupe), fondue sur la
+            pile principale dans le papier nu du centre. Masquée en Mobile. */}
+        {D !== null && (
+          <div className={styles.zoneRight} data-zone="right" aria-hidden="true">
+            <div className={styles.master} />
+            <div className={styles.bottom} />
+            {extension > 0.5 && (
+              <>
+                <div className={styles.paper} />
+                <div className={styles.edges} />
+              </>
+            )}
+          </div>
         )}
 
         <div className={styles.content}>
@@ -165,8 +273,8 @@ function TraditionsV2Layout({
 
           {/* Mention manuscrite du coin haut droit (Dark) : placée hors du
               flux, lue après l'en-tête. */}
-          {T.cornerNote !== null && (
-            <div className={styles.cornerNote}>
+          {hasCornerNote && (
+            <div className={styles.cornerNote} data-desktop-only={cornerNoteDesktopOnly ? "" : undefined}>
               <p className={styles.cornerText}>{translate(language, "traditions.v2.cornerNote")}</p>
               <HandHeart className={styles.cornerHeart} />
             </div>

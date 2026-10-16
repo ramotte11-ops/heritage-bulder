@@ -66,6 +66,7 @@ export const TRADITIONS_V2_PILOT_CASES: readonly TraditionsV2PilotCase[] = [
   { id: "reference", label: "Référence Master (4 repères)", traditions: first(4) },
   { id: "one", label: "1 repère", traditions: first(1) },
   { id: "two", label: "2 repères", traditions: first(2) },
+  { id: "three", label: "3 repères (nombre impair, Desktop)", traditions: first(3) },
   { id: "six", label: "6 repères", traditions: first(6) },
   { id: "eight", label: "8 repères", traditions: first(8) },
   {

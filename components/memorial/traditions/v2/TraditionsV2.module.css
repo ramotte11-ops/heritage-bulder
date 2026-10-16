@@ -524,3 +524,235 @@
   height: calc(var(--px) * 50);
   overflow: visible;
 }
+
+/* ========================================================================
+ * Desktop Light (P3) — `DESKTOP_LIGHT_MASTER_ILLUSTRE.png` (1671 × 941).
+ * À partir de 1024 px de largeur RÉELLE du conteneur, et seulement pour une
+ * variante qui a des réglages Desktop (`data-desktop`) : Master Desktop
+ * (décor 1670 × 941) plafonné à 1448 px, même moteur de décor, en-tête
+ * centré et feuillets en deux colonnes. Sous ce seuil, aucune règle de ce
+ * bloc ne s'applique : les Mobile restent ceux validés. Mesures : Master
+ * Desktop Light, en px de canevas.
+ * ===================================================================== */
+
+.wrap[data-desktop] {
+  /* Plafond Desktop (méthode Avis V2) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+}
+
+/* Pile de la zone droite et mention réservée au Desktop : absentes du
+   Mobile. */
+.zoneRight,
+.cornerNote[data-desktop-only] {
+  display: none;
+}
+
+@container (min-width: 1024px) {
+  .wrap[data-desktop] .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images-left);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --edges-src: var(--d-edges-src-left);
+    --edges-h: var(--d-edges-h-left);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut-left);
+    --fade: var(--d-fade-left);
+    --text-top: var(--d-text-top);
+    --foot: var(--d-foot);
+    --text-left: var(--d-text-left);
+    --text-right: var(--d-text-right);
+    --axis: var(--d-axis);
+    --corner-left: var(--d-corner-left);
+    --corner-top: var(--d-corner-top);
+    --corner-width: var(--d-corner-width);
+    --corner-rotate: var(--d-corner-rotate);
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  /* Zone droite : sa propre coupe, sa teinte et sa bande des bords ; elle
+     recouvre la pile principale à partir du fondu vertical du centre
+     (papier nu entre les deux coupes). */
+  .wrap[data-desktop] .zoneRight {
+    --cut: var(--d-cut-right);
+    --fade: var(--d-fade-right);
+    --paper-images: var(--d-paper-images-right);
+    --edges-src: var(--d-edges-src-right);
+    --edges-h: var(--d-edges-h-right);
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+  }
+
+  /* En-tête : axe x 836, dans la feuille nue entre le sceau (x ≤ 300) et
+     le bouquet droit (x ≥ 1420). */
+  .wrap[data-desktop] .header {
+    align-self: center;
+    width: calc(var(--px) * 1000);
+    padding-inline: 0;
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  /* « POUR NOUS ACCOMPAGNER » : capitales x 660–1006, y 139–151. */
+  .wrap[data-desktop] .surtitle {
+    max-width: none;
+    font-size: max(10px, calc(var(--px) * 18.5));
+    letter-spacing: 0.27em;
+    margin-right: -0.27em;
+  }
+
+  /* Filet : x 785–882, y 170. */
+  .wrap[data-desktop] .surtitleRule {
+    width: calc(var(--px) * 97);
+    margin-top: calc(var(--px) * 14);
+    transform: none;
+  }
+
+  /* « Traditions & repères » : x 527–1161, capitale T y 206–261 (55 px) :
+     EB Garamond 600 à 78 px de canevas ; le Master le centre sur x 844,
+     8 px à droite de l'axe du surtitre. */
+  .wrap[data-desktop] .title {
+    margin-top: calc(var(--px) * 18);
+    max-width: calc(var(--px) * 900);
+    font-size: max(24px, calc(var(--px) * 78));
+    transform: translateX(calc(var(--px) * 8));
+  }
+
+  /* Rameau : x 762–897, y 274–327 (tracé à 0,87). */
+  .wrap[data-desktop] .sprig {
+    width: calc(var(--px) * 150);
+    height: calc(var(--px) * 70);
+    margin-top: calc(var(--px) * -15);
+    transform: translateX(calc(var(--px) * -4));
+  }
+
+  /* Introduction en italique : deux lignes, x 412–1274, pas de 28. */
+  .wrap[data-desktop] .intro {
+    margin-top: calc(var(--px) * -2);
+    max-width: calc(var(--px) * 880);
+    font-family: var(--font-heritage-recit-serif-italic), serif;
+    font-style: italic;
+    font-size: max(15px, calc(var(--px) * 27));
+    line-height: 1.04;
+  }
+
+  /* Feuillets : deux colonnes x 225–837 et 853–1468, rangées y 411–582 et
+     595–766 (écarts 15 et 13). Hauteur de rangée = le plus long des deux
+     feuillets ; un feuillet seul sur sa rangée (nombre impair) est centré,
+     à la largeur d'une colonne. */
+  .wrap[data-desktop] .entries {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: calc(var(--px) * 15);
+    row-gap: calc(var(--px) * 13);
+    margin-top: calc(var(--px) * 26);
+  }
+
+  .wrap[data-desktop] .entry:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: calc((100% - var(--px) * 15) / 2);
+  }
+
+  /* Feuillet : texte dès x 431 (199 après le bord), filet vertical à
+     x 396, médaillon Ø 105 centré à x 316. */
+  .wrap[data-desktop] .entry {
+    grid-template-columns: calc(var(--px) * 199) minmax(0, 1fr);
+    min-height: calc(var(--px) * 171);
+    /* Master : « ACCOMPAGNEMENT AU CIMETIÈRE » (x 431–798) tient sur une
+       ligne à 32 px du bord droit du feuillet. */
+    padding: calc(var(--px) * 25) calc(var(--px) * 28) calc(var(--px) * 22) 0;
+  }
+
+  .wrap[data-desktop] .medallion {
+    left: calc(var(--px) * 38);
+    width: calc(var(--px) * 105);
+    height: calc(var(--px) * 105);
+  }
+
+  .wrap[data-desktop] .entryDivider {
+    left: calc(var(--px) * 171);
+    top: calc(var(--px) * 29);
+    bottom: calc(var(--px) * 27);
+  }
+
+  /* Intitulé : capitales y 444–455, « FLEURS & ATTENTIONS » x 1038–1289 ;
+     filet x 431–466 à y 471. */
+  .wrap[data-desktop] .entryTitle {
+    font-size: max(10px, calc(var(--px) * 18));
+    letter-spacing: 0.16em;
+  }
+
+  .wrap[data-desktop] .entryRule {
+    width: calc(var(--px) * 35);
+    margin: calc(var(--px) * 14) 0 calc(var(--px) * 11);
+  }
+
+  /* Texte de la famille : pas de 25, EB Garamond 400 à 21 px de canevas. */
+  .wrap[data-desktop] .entryBody {
+    font-size: max(15px, calc(var(--px) * 21));
+    line-height: 1.19;
+  }
+
+  /* Pied : filets et rameau y 781–820 (x 682–987) ; phrase manuscrite deux
+     lignes x 607–1065, y 825–899, pas de 37. */
+  .wrap[data-desktop] .footer {
+    padding-top: calc(var(--px) * 12);
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  .wrap[data-desktop] .footerRule {
+    flex-basis: calc(var(--px) * 97);
+  }
+
+  .wrap[data-desktop] .footerSprig {
+    width: calc(var(--px) * 85);
+    height: calc(var(--px) * 40);
+  }
+
+  .wrap[data-desktop] .closing {
+    margin-top: calc(var(--px) * 4);
+    max-width: calc(var(--px) * 520);
+    font-size: max(15px, calc(var(--px) * 34));
+    line-height: 1.09;
+  }
+
+  /* « Des gestes / qui ont du sens » : doré sur l'aquarelle bleue du coin
+     haut droit, deux lignes montant à −18° (x 1453–1640, y 115–240) ;
+     cœur x 1563–1607, y 188–242. */
+  .wrap[data-desktop] .cornerNote {
+    display: block;
+    height: calc(var(--px) * 150);
+    color: #e3c08a;
+  }
+
+  .wrap[data-desktop] .cornerText {
+    left: calc(var(--px) * 18);
+    top: calc(var(--px) * 50);
+    max-width: calc(var(--px) * 230);
+    font-size: max(11px, calc(var(--px) * 30));
+    line-height: 1.4;
+  }
+
+  .wrap[data-desktop] .cornerHeart {
+    left: calc(var(--px) * 123);
+    top: calc(var(--px) * 88);
+    width: calc(var(--px) * 44);
+    height: calc(var(--px) * 54);
+  }
+}

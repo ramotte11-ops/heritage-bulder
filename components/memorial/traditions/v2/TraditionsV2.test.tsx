@@ -7,7 +7,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { TraditionEntry, TraditionsContent } from "@/types/traditions";
 
 /**
- * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2).
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
+ * validés PO ; Desktop Light (P3).
  * Contrats du renderer : un seul composant, décor authentique propre à
  * chaque variante (SHA-256), repères de la famille rendus tels quels
  * (titre facultatif, texte libre, nombre libre), un médaillon neutre par
@@ -36,6 +37,8 @@ const MOBILE_DARK = TRADITIONS_V2_TOKENS.dark!.mobile;
  * (`HERITAGE_TRADITIONS_02_DECORS_VIERGES.zip`, MANIFESTE.txt). */
 const PO_MOBILE_LIGHT_DECOR_SHA256 = "203dfe8eb18c82b3c4ecdf0d78c9d2ee2cb08ff097d0bef83a67e7c8f40357b5";
 const PO_MOBILE_DARK_DECOR_SHA256 = "bbea9d4b7c3c95ad278e2961da23e80954380ce854ff90fa67f058ff379c2389";
+const PO_DESKTOP_LIGHT_DECOR_SHA256 = "e21f17ca490a5d1a8a51e5850418ae6db28593fac8f0371dcb0673ebf7165566";
+const DESKTOP_LIGHT = TRADITIONS_V2_TOKENS.light!.desktop!;
 const VARIANTS = [
   ["light", MOBILE_LIGHT, PO_MOBILE_LIGHT_DECOR_SHA256],
   ["dark", MOBILE_DARK, PO_MOBILE_DARK_DECOR_SHA256],
@@ -177,13 +180,17 @@ describe("TraditionsV2 — repères de la famille, tels quels", () => {
 });
 
 describe("TraditionsV2 — composition propre à chaque Master", () => {
-  it("Light : un filet sous le surtitre, rameau au pied, pas de mention de coin", () => {
+  it("Light : un filet sous le surtitre, rameau au pied ; mention du coin réservée au Desktop", () => {
     const { container } = renderTraditions();
     expect(container.querySelector('[class*="surtitleRule"]')).toBeTruthy();
     expect(container.querySelector('[class*="surtitleSideRule"]')).toBeNull();
     expect(container.querySelectorAll('footer [data-ornament="rameau"]')).toHaveLength(1);
-    expect(container.querySelector('[data-ornament="coeur"]')).toBeNull();
-    expect(container.querySelector('[class*="cornerNote"]')).toBeNull();
+    expect(container.querySelector('footer [data-ornament="coeur"]')).toBeNull();
+    // Le Master Mobile Light ne la porte pas, le Master Desktop Light si :
+    // rendue, mais marquée Desktop seul (masquée sous 1024 px).
+    const note = container.querySelector('[class*="cornerNote"]')!;
+    expect(note.hasAttribute("data-desktop-only")).toBe(true);
+    expect(note.querySelector('[class*="cornerText"]')!.textContent).toBe("Des gestes\nqui ont du sens");
   });
 
   it("Dark : filets de part et d'autre du surtitre, cœur au pied, mention « Des gestes qui ont du sens » et son cœur", () => {
@@ -204,6 +211,59 @@ describe("TraditionsV2 — composition propre à chaque Master", () => {
     const drawings = Array.from(container.querySelectorAll('[data-ornament="medaillon"] svg')).map((svg) => svg.innerHTML);
     expect(drawings).toHaveLength(8);
     expect(new Set(drawings).size).toBe(1);
+  });
+});
+
+describe("TraditionsV2 — Desktop Light (P3)", () => {
+  it("décor Desktop = décor vierge de la PO, octet pour octet", () => {
+    expect(DESKTOP_LIGHT.masterSha256).toBe(PO_DESKTOP_LIGHT_DECOR_SHA256);
+    const digest = createHash("sha256").update(readFileSync(publicFile(DESKTOP_LIGHT.masterSrc))).digest("hex");
+    expect(digest).toBe(PO_DESKTOP_LIGHT_DECOR_SHA256);
+    expect(DESKTOP_LIGHT.canvas).toEqual({ width: 1670, height: 941 });
+  });
+
+  it("chaque dérivé Desktop existe dans son dossier ; la zone droite n'a pas de bande des bords", () => {
+    const { left, right } = DESKTOP_LIGHT.zones;
+    const derived = [left.paperTone, right.paperTone, left.edgeStrip!.src, ...DESKTOP_LIGHT.paperGrains.map((g) => g.src)];
+    expect(new Set(derived).size).toBe(derived.length);
+    for (const src of derived) {
+      expect(existsSync(publicFile(src))).toBe(true);
+      expect(src).toContain("/traditions/v2/desktop/light/");
+      expect(src).not.toBe(DESKTOP_LIGHT.masterSrc);
+    }
+    expect(right.edgeStrip).toBeNull();
+  });
+
+  it("deux zones : coupes et fondus dans le canevas, fondu des zones dans la feuille nue", () => {
+    const H = DESKTOP_LIGHT.canvas.height;
+    for (const zone of [DESKTOP_LIGHT.zones.left, DESKTOP_LIGHT.zones.right]) {
+      expect(zone.cutY - zone.fadePx).toBeGreaterThan(0);
+      expect(zone.cutY + zone.fadePx).toBeLessThan(H - DESKTOP_LIGHT.footCanvas);
+      if (zone.edgeStrip !== null) expect(zone.cutY + zone.fadePx - zone.edgeStrip.heightCanvas).toBeGreaterThan(0);
+    }
+    expect(DESKTOP_LIGHT.zoneSplitCanvas - DESKTOP_LIGHT.zoneBlendCanvas / 2).toBeGreaterThan(DESKTOP_LIGHT.textLeftCanvas);
+    expect(DESKTOP_LIGHT.zoneSplitCanvas + DESKTOP_LIGHT.zoneBlendCanvas / 2).toBeLessThan(DESKTOP_LIGHT.textRightCanvas);
+  });
+
+  it("Light : même DOM, pile de la zone droite et réglages Desktop présents ; Dark : aucun", () => {
+    const light = renderTraditions();
+    expect(light.container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(true);
+    expect(light.container.querySelectorAll('[data-zone="right"]')).toHaveLength(1);
+    const section = light.container.querySelector('[data-testid="traditions-v2"]') as HTMLElement;
+    expect(section.style.getPropertyValue("--d-m-src")).toBe(`url(${DESKTOP_LIGHT.masterSrc})`);
+    expect(section.style.getPropertyValue("--d-edges-src-right")).toBe("none");
+    light.unmount();
+    expect(TRADITIONS_V2_TOKENS.dark!.desktop).toBeNull();
+    const dark = renderTraditions({ skinVariant: "dark" });
+    expect(dark.container.querySelector("[data-variant]")!.hasAttribute("data-desktop")).toBe(false);
+    expect(dark.container.querySelector('[data-zone="right"]')).toBeNull();
+  });
+
+  it.each([1, 3, 5, 8])("%i repère(s) : mêmes feuillets et médaillons en Desktop (aucun plafond)", (count) => {
+    const entries = Array.from({ length: count }, (_, i) => entry(i + 1, i === 0 ? null : `Repère ${i + 1}`, `Texte ${i + 1}`));
+    const { container } = renderTraditions({ traditions: traditions(...entries) });
+    expect(container.querySelectorAll("li")).toHaveLength(count);
+    expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(count);
   });
 });
 

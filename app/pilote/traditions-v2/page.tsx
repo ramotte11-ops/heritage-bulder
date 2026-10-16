@@ -7,11 +7,13 @@ import { avisNameSerif, cormorantGaramond, ebGaramond, laBelleAurore, playfairDi
 
 /**
  * Traditions & repères V2 : banc d'essai LOCAL des pilotes Mobile Light
- * (P1) et Mobile Dark (P2), pour les captures de validation PO/QG. Inaccessible en production
+ * (P1), Mobile Dark (P2) et Desktop Light (P3, à partir de `w=1024`), pour
+ * les captures de validation PO/QG. Inaccessible en production
  * (`notFound`) ; n'appartient à aucun parcours et n'est branché sur aucun
  * registre de rendu. `w` fixe la largeur du CONTENEUR.
  *
  *   /pilote/traditions-v2?case=reference&lang=fr&w=941&variant=dark
+ *   /pilote/traditions-v2?case=three&w=1280   (Desktop Light)
  *   /pilote/traditions-v2?fonts=1   (polices déjà chargées, pour le titre
  *                                   et la phrase manuscrite)
  */

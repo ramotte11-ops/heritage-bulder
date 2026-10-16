@@ -22,8 +22,14 @@ puis dérive, avec la méthode du Récit de vie V2 et de l'Avis de décès V2 :
      prennent le relais). Posée en bas de la surface, elle continue
      exactement le bas authentique ; au raccord haut, le fondu l'absorbe.
 
+Desktop (P3) : aucune rangée n'est calme sur toute la largeur du décor
+Desktop ; comme l'Avis de décès V2 Desktop, deux zones (gauche, droite)
+ont chacune leur coupe, leur teinte et leur bande des bords, cherchées
+dans leurs propres colonnes ; le moteur les fond l'une dans l'autre dans
+le papier nu du centre. Les grains sont communs aux deux zones.
+
 Usage :
-  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light|mobile-dark> <decor.png> <dossier-de-sortie>
+  python3 -I scripts/pilot/traditions-v2-derive.py <mobile-light|mobile-dark|desktop-light> <decor.png> <dossier-de-sortie>
 
 Le décor lui-même est copié octet pour octet à part (cp) ; ce script
 n'écrit que la teinte et les grains, et imprime les réglages.
@@ -103,6 +109,60 @@ VARIANTS = {
             "c": (430, 760, 340, 340),
         },
     },
+    # Desktop Light (1670×941) — grande feuille ivoire nue de x 300 à 1400
+    # entre les rangées 200 et 800. Aucune rangée calme sur toute la
+    # largeur : bouquet droit des rangées 330 à 890, sceau et fleurs à
+    # gauche jusqu'à 690. Deux zones fondues au centre (x 830 ± 120) :
+    #   - gauche (colonnes 120–830) : coupe sous le sceau, dans la bande où
+    #     le papier vert et le bord de la feuille sont verticaux ; le sceau
+    #     reste en haut, feuillage flou et coins de papier en bas ;
+    #   - droite (colonnes 830–1560) : coupe au-dessus du bouquet, sous
+    #     l'aquarelle ; aquarelle et mention manuscrite restent en haut, le
+    #     bouquet descend avec le bas (jamais coupé).
+    "desktop-light": {
+        "sha256": "e21f17ca490a5d1a8a51e5850418ae6db28593fac8f0371dcb0673ebf7165566",
+        "zones": {
+            "left": {
+                "fade": 36,
+                "search": (590, 700),
+                "columns": (120, 830),
+                # Opaque sur le papier vert, le bord de la feuille et les
+                # papiers dessous (x 128–300) ; à gauche de 118, tige et
+                # fleurette se répéteraient : la teinte y suffit.
+                "edge_strip": {"height": 100, "left": (112, 128, 300, 340), "right": None},
+                "tone_gain": (1.0, 1.0, 1.0),
+            },
+            "right": {
+                # Le bord droit de la feuille tourne en diagonale au-dessus
+                # de la rangée 300 (les coins des papiers dessous y font un
+                # escalier), n'est vertical qu'entre 300 et 340, puis le
+                # bouquet le recouvre jusqu'à 890 : aucune bande authentique
+                # ne s'y répète sans motif visible (échelle tous les 36 px à
+                # l'essai). Pas de bande des bords dans cette zone : teinte
+                # et grain portent seuls le papier de l'extension. Coupe
+                # imposée à 310, fondu 26 : sous l'aquarelle, au-dessus des
+                # premières fleurs.
+                "cut": 310,
+                "fade": 26,
+                "columns": (830, 1560),
+                "edge_strip": None,
+                # Dès le bord droit (x ≥ 1490, fondu depuis 1440), la
+                # teinte est celle du papier sous la coupe : ni l'aquarelle
+                # bleue ni l'ombre des papiers en escalier ne s'étirent en
+                # voile le long de la surface.
+                "tone_below_from": (1440, 1490),
+                # Les couches de grain éclaircissent la surface (+1 à +4
+                # niveaux mesurés au raccord) : compensation.
+                "tone_gain": (0.995, 0.989, 0.98),
+            },
+        },
+        "grain_gain": 3.0,
+        "grain_zones": {
+            "a": (420, 420, 460, 300),
+            "b": (900, 560, 400, 200),
+            "c": (1000, 260, 340, 120),
+        },
+    },
 }
 
 
@@ -119,9 +179,11 @@ def gaussian_1d(values: np.ndarray, sigma: float) -> np.ndarray:
     return np.stack([np.convolve(padded[:, c], k, mode="valid") for c in range(values.shape[1])], axis=1)
 
 
-def find_cut(img: Image.Image, fade: int, search: tuple[int, int]) -> tuple[int, float]:
+def find_cut(img: Image.Image, fade: int, search: tuple[int, int], columns: tuple[int, int] | None = None) -> tuple[int, float]:
     lum = img.convert("L")
     sharp = np.abs(np.asarray(lum, dtype=float) - np.asarray(lum.filter(ImageFilter.GaussianBlur(3)), dtype=float)) > 14
+    if columns is not None:
+        sharp = sharp[:, columns[0] : columns[1]]
     per_row = sharp.sum(axis=1)
     best = None
     for y in range(search[0] + fade, search[1] - fade):
@@ -135,8 +197,22 @@ def profile(rgb: np.ndarray, start: int) -> np.ndarray:
     return gaussian_1d(np.median(rgb[start : start + PROFILE_ROWS], axis=0), PROFILE_SIGMA)
 
 
-def tone(rgb: np.ndarray, cut: int, fade: int, gain: tuple[float, float, float], left: dict | None = None) -> Image.Image:
+def tone(
+    rgb: np.ndarray,
+    cut: int,
+    fade: int,
+    gain: tuple[float, float, float],
+    left: dict | None = None,
+    below_from: tuple[int, int] | None = None,
+) -> Image.Image:
     rows = np.stack([profile(rgb, cut - fade - PROFILE_ROWS), profile(rgb, cut + fade)])
+    if below_from is not None:
+        # Au-delà de x1 (fondu depuis x0), la teinte du dessous seulement :
+        # ce qui est au-dessus de la coupe (aquarelle) ne s'étire pas.
+        x0, x1 = below_from
+        xs = np.arange(rgb.shape[1], dtype=float)
+        w = np.clip((xs - x0) / (x1 - x0), 0, 1)[:, None]
+        rows[0] = rows[0] * (1 - w) + rows[1] * w
     if left is not None:
         y0, y1 = left["rows"]
         dark = gaussian_1d(np.quantile(rgb[y0:y1], left["quantile"], axis=0), PROFILE_SIGMA)
@@ -172,25 +248,35 @@ def edge_strip(img: Image.Image, cut: int, fade: int, cfg: dict) -> Image.Image:
     end = cut + fade
     start = end - height
     rgb = np.asarray(img, dtype=float)
+    # Une bande courte (bord droit Desktop, 36 rangées) se fond sur la
+    # moitié de sa hauteur au plus.
+    ov = min(OVERLAP, height // 2)
     band = rgb[start:end].copy()
-    after = rgb[end : end + OVERLAP]
-    ramp = np.linspace(0, 1, OVERLAP)[:, None, None]
-    band[:OVERLAP] = band[:OVERLAP] * ramp + after * (1 - ramp)
+    after = rgb[end : end + ov]
+    ramp = np.linspace(0, 1, ov)[:, None, None]
+    band[:ov] = band[:ov] * ramp + after * (1 - ramp)
     width = band.shape[1]
     xs = np.arange(width, dtype=float)
-    (a0, a1, l0, l1), right = cfg["left"], cfg["right"]
-    left = np.minimum(np.clip((xs - a0) / (a1 - a0), 0, 1), np.clip((l1 - xs) / (l1 - l0), 0, 1))
-    # Côté droit : (r0, r1) opaque jusqu'au bord ; (r0, r1, r2, r3) borné.
-    r0, r1 = right[:2]
-    rising = np.clip((xs - r0) / (r1 - r0), 0, 1)
-    if len(right) == 4:
-        rising = np.minimum(rising, np.clip((right[3] - xs) / (right[3] - right[2]), 0, 1))
+    # Côté gauche : (a0, a1, l0, l1) borné ; côté droit : (r0, r1) opaque
+    # jusqu'au bord, ou (r0, r1, r2, r3) borné. `None` : aucun (zones
+    # Desktop, qui ne portent qu'un bord chacune).
+    left = np.zeros_like(xs)
+    if cfg["left"] is not None:
+        a0, a1, l0, l1 = cfg["left"]
+        left = np.minimum(np.clip((xs - a0) / (a1 - a0), 0, 1), np.clip((l1 - xs) / (l1 - l0), 0, 1))
+    rising = np.zeros_like(xs)
+    if cfg["right"] is not None:
+        right = cfg["right"]
+        r0, r1 = right[:2]
+        rising = np.clip((xs - r0) / (r1 - r0), 0, 1)
+        if len(right) == 4:
+            rising = np.minimum(rising, np.clip((right[3] - xs) / (right[3] - right[2]), 0, 1))
     alpha = left + rising
     if "veil" in cfg:
         until, (v0, v1) = cfg["veil"]["until"], cfg["veil"]["lum"]
         lum = np.asarray(img.filter(ImageFilter.GaussianBlur(4)), dtype=float).mean(axis=2)
         soft = lum[start:end].copy()
-        soft[:OVERLAP] = soft[:OVERLAP] * ramp[:, :, 0] + lum[end : end + OVERLAP] * (1 - ramp[:, :, 0])
+        soft[:ov] = soft[:ov] * ramp[:, :, 0] + lum[end : end + ov] * (1 - ramp[:, :, 0])
         veil = np.clip((soft - v0) / (v1 - v0), 0, 1) * (xs < until)[None, :]
         alpha = np.clip(alpha, 0, 1)[None, :] * (1 - veil)
     alpha = np.broadcast_to(np.clip(alpha, 0, 1), band.shape[:2])
@@ -206,6 +292,29 @@ def main() -> None:
         sys.exit(f"SHA-256 inattendu : {digest}")
     img = Image.open(src).convert("RGB")
     rgb = np.asarray(img, dtype=float)
+    if "zones" in v:
+        print(f"variante {variant} — canvas {img.width}x{img.height}, {len(v['zones'])} zones")
+        for zname, z in v["zones"].items():
+            if "cut" in z:
+                # Coupe imposée : la seule fenêtre où le bord de la feuille
+                # est vertical est plus étroite que la recherche.
+                cut = z["cut"]
+                print(f"zone {zname} : cutY {cut} imposée (fondu {z['fade']})")
+            else:
+                cut, score = find_cut(img, z["fade"], z["search"], z["columns"])
+                print(f"zone {zname} : cutY {cut} (fondu {z['fade']}, colonnes {z['columns']}, détail net moyen {score:.1f} px/rangée)")
+            path = f"{out}/traditions-{variant}-{zname}-tone.png"
+            tone(rgb, cut, z["fade"], z["tone_gain"], z.get("tone_left"), z.get("tone_below_from")).save(path, optimize=True)
+            print(f"tone {path}")
+            if z["edge_strip"] is None:
+                print("edges : aucune bande pour cette zone")
+                continue
+            strip = edge_strip(img, cut, z["fade"], z["edge_strip"])
+            path = f"{out}/traditions-{variant}-{zname}-edges.png"
+            strip.save(path, optimize=True)
+            print(f"edges {strip.width}x{strip.height} (rangées {cut + z['fade'] - strip.height}–{cut + z['fade']}) -> {path}")
+        write_grains(img, v, variant, out)
+        return
     cut, score = find_cut(img, v["fade"], v["search"])
     print(f"variante {variant} — canvas {img.width}x{img.height}")
     print(f"cutY {cut} (fondu {v['fade']}, détail net moyen {score:.1f} px/rangée)")
@@ -217,6 +326,10 @@ def main() -> None:
         path = f"{out}/traditions-{variant}-edges.png"
         strip.save(path, optimize=True)
         print(f"edges {strip.width}x{strip.height} (rangées {cut + v['fade'] - strip.height}–{cut + v['fade']}) -> {path}")
+    write_grains(img, v, variant, out)
+
+
+def write_grains(img: Image.Image, v: dict, variant: str, out: str) -> None:
     for name, zone in v["grain_zones"].items():
         tile = grain_tile(img, zone, v["grain_gain"])
         path = f"{out}/traditions-{variant}-grain-{name}.png"
