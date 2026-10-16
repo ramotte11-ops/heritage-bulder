@@ -10,6 +10,8 @@ import {
 } from "@/lib/builder/qg-runtime-demo";
 import { readHero } from "@/lib/memorial/hero";
 import { addTraditionEntry, readTraditions, writeTraditions } from "@/lib/memorial/traditions";
+import { updateGallery } from "@/lib/memorial/gallery-content";
+import { setSectionVisibility } from "@/lib/memorial/section-visibility";
 import { resolveHeroFlowState } from "@/lib/builder/guided-flow/hero-step";
 import { isPreviewUnlocked } from "@/lib/builder/guided-flow/preview-lock";
 import { commitA03, writeAnnouncementText } from "@/lib/builder/guided-flow/death-notice-step";
@@ -205,11 +207,58 @@ describe("story (Récit de vie)", () => {
 });
 
 // ---------------------------------------------------------------------
-// 6. Traditions — collected, no renderer
+// 6. Traditions — drawn by TraditionsV2 (M1)
 // ---------------------------------------------------------------------
 
 describe("traditions", () => {
-  it("is noRenderer once A09 is resolved with an entry — never renderable", () => {
+  /** A00 = yes, A04 = no, A09 continued with one repère. */
+  function withOneEntry(base: MemorialContent = ceremonyNo()): MemorialContent {
+    const added = addTraditionEntry(readTraditions(base), {
+      id: "t1",
+      origin: "custom",
+      suggestionId: null,
+      title: null,
+      text: "Une bougie allumée chaque soir.",
+    });
+    if (!added.ok) throw new Error("fixture: tradition entry refused");
+    return ok(commitA09(writeTraditions(base, added.traditions)));
+  }
+
+  function withGallery(content: MemorialContent): MemorialContent {
+    const items = [1, 2].map((n) => ({ mediaId: `0000000${n}-0000-4000-8000-00000000000${n}`, caption: null }));
+    const written = updateGallery(content, { items });
+    if (!written.ok) throw new Error(written.reason);
+    return written.content;
+  }
+
+  it("is renderable through TraditionsV2 once A09 is resolved with an entry", () => {
+    const composition = compose(withOneEntry());
+    expect(stateOf(composition, "traditions")).toBe("renderable");
+    expect(composition.sections.find((s) => s.sectionId === "traditions")).toMatchObject({
+      selection: "applicable",
+      ready: true,
+      rendererKey: "TraditionsV2",
+      hiddenByFamily: false,
+    });
+    expect(composition.renderable).toContain("traditions");
+  });
+
+  it.each(["light", "dark"] as const)("%s: the same renderer for both variants", (skinVariant) => {
+    const composition = compose(withOneEntry(), { skinVariant });
+    expect(composition.sections.find((s) => s.sectionId === "traditions")?.rendererKey).toBe("TraditionsV2");
+    expect(composition.renderable).toContain("traditions");
+  });
+
+  it("keeps the canonical order: Récit de vie → Traditions → Galerie, with nothing in between", () => {
+    const content = withGallery(ok(skipPersonSheet(withOneEntry())));
+    expect(compose(content).renderable).toEqual(["hero", "deathNotice", "story", "traditions", "gallery"]);
+  });
+
+  it("absent sections leave no gap: without the Récit, Traditions follows the Avis directly", () => {
+    expect(compose(withOneEntry()).renderable).toEqual(["hero", "deathNotice", "traditions"]);
+  });
+
+  it("is pending while A09 is not treated yet, even with an entry already written", () => {
     const added = addTraditionEntry(readTraditions(ceremonyNo()), {
       id: "t1",
       origin: "custom",
@@ -218,13 +267,43 @@ describe("traditions", () => {
       text: "Une bougie allumée chaque soir.",
     });
     if (!added.ok) throw new Error("fixture: tradition entry refused");
-    const content = ok(commitA09(writeTraditions(ceremonyNo(), added.traditions)));
-    expect(stateOf(compose(content), "traditions")).toBe("noRenderer");
+    const content = writeTraditions(ceremonyNo(), added.traditions);
+    expect(stateOf(compose(content), "traditions")).toBe("pending");
     expect(compose(content).renderable).not.toContain("traditions");
   });
 
-  it("stays optional when A09 was skipped with nothing entered", () => {
+  it("stays optional — never rendered — when A09 was skipped with nothing entered", () => {
     expect(stateOf(compose(throughA09Skipped()), "traditions")).toBe("optional");
+    expect(compose(throughA09Skipped()).renderable).not.toContain("traditions");
+  });
+
+  it("stays optional when every entry was removed after A09", () => {
+    const content = writeTraditions(withOneEntry(), { entries: [] });
+    expect(stateOf(compose(content), "traditions")).toBe("optional");
+  });
+
+  it("hidden by the family: out of the flow, not archived, content untouched", () => {
+    const content = withOneEntry();
+    const hidden = setSectionVisibility(content, "traditions", false, "intemporel");
+    if (!hidden.ok) throw new Error("fixture: traditions not hideable");
+    const composition = compose(hidden.content);
+    expect(stateOf(composition, "traditions")).toBe("hidden");
+    expect(composition.renderable).not.toContain("traditions");
+    expect(composition.archived).not.toContain("traditions");
+    expect((hidden.content as { traditions: unknown }).traditions).toEqual((content as { traditions: unknown }).traditions);
+  });
+
+  it("has no renderer for any other skin (fail closed)", () => {
+    const composition = compose(withOneEntry(), { skin: "musulman" });
+    expect(stateOf(composition, "traditions")).toBe("noRenderer");
+  });
+
+  it("A00 unchanged (M1): still not relevant without a death notice, entries kept", () => {
+    for (const record of [A00_NO, A00_LATER]) {
+      const content = withA00(withOneEntry(), record);
+      expect(stateOf(compose(content), "traditions")).toBe("notRelevant");
+      expect(readTraditions(content).entries).toHaveLength(1);
+    }
   });
 });
 

@@ -37,8 +37,8 @@ import type { SectionId } from "./sections";
  * B02-L2 — one single HERITAGE route: there is no per-editorial-context
  * order. Whether the death notice, traditions and condolences show is
  * decided by A00 inside section-selection, not by this list; a section
- * without a renderer (traditions, video, testimonials, condolences) is
- * listed here but never drawn (`noRenderer`).
+ * without a renderer (video, testimonials, condolences) is listed here
+ * but never drawn (`noRenderer`).
  */
 export const MEMORIAL_SECTION_ORDER: readonly SectionId[] = [
   "hero",
