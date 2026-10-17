@@ -492,6 +492,13 @@ export const TRANSLATION_KEYS = [
   "traditions.v2.intro",
   "traditions.v2.closing",
   "traditions.v2.cornerNote",
+  // Cérémonie Intemporel V2 (pilote C1) — textes HERITAGE fixes ; le titre et
+  // les intitulés des cartouches reprennent ceremony.sectionTitle / zone*.
+  "ceremony.v2.surtitle",
+  "ceremony.v2.intro",
+  "ceremony.v2.programme",
+  "ceremony.v2.mapLink",
+  "ceremony.v2.closing",
   "recit.person",
   "recit.loved",
   "recit.legacy",
