@@ -1,0 +1,15 @@
+.preview {
+  min-width: 20rem;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.unavailable {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  color: #615c54;
+  background: #f5f3ee;
+  text-align: center;
+}
