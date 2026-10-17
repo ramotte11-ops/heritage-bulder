@@ -6,6 +6,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { HeroIntemporelProps } from "@/components/memorial/hero/HeroIntemporel";
 import type { DeathNoticeIntemporelProps } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import type { CeremonyIntemporelProps } from "@/components/memorial/ceremony/CeremonyIntemporel";
+import type { CeremonyV2Props } from "@/components/memorial/ceremony/v2/CeremonyV2";
 import type { RecitDeVieIntemporelProps } from "@/components/memorial/life-story/RecitDeVieIntemporel";
 import type { RecitDeVieV2Props } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import type { TraditionsV2Props } from "@/components/memorial/traditions/v2/TraditionsV2";
@@ -47,6 +48,7 @@ export interface RendererPropsMap {
   HeroIntemporel: HeroIntemporelProps;
   DeathNoticeIntemporel: DeathNoticeIntemporelProps;
   CeremonyIntemporel: CeremonyIntemporelProps;
+  CeremonyV2: CeremonyV2Props;
   RecitDeVieIntemporel: RecitDeVieIntemporelProps;
   RecitDeVieV2: RecitDeVieV2Props;
   TraditionsV2: TraditionsV2Props;
@@ -152,6 +154,25 @@ export const adaptCeremonyIntemporel: RendererAdapter<"CeremonyIntemporel"> = as
   return {
     ok: true,
     props: { content: context.content, language: context.language, skinVariant: context.skinVariant },
+  };
+};
+
+/** C5 — the same fail-closed Ceremony read, adapted to V2's direct
+ * `ceremony` contract. Desktop Dark remains identifiable as provisional
+ * through the renderer's unchanged token status. */
+export const adaptCeremonyV2: RendererAdapter<"CeremonyV2"> = async (context) => {
+  if (context.skin !== "intemporel") return refuse("skinMismatch");
+  const inspected = inspectCeremony(context.content);
+  if (inspected.status !== "valid") return refuse("contentUnreadable");
+
+  return {
+    ok: true,
+    props: {
+      ceremony: inspected.ceremony,
+      language: context.language,
+      skinVariant: context.skinVariant,
+      headingLevel: "section",
+    },
   };
 };
 
@@ -301,6 +322,7 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   HeroIntemporel: adaptHeroIntemporel,
   DeathNoticeIntemporel: adaptDeathNoticeIntemporel,
   CeremonyIntemporel: adaptCeremonyIntemporel,
+  CeremonyV2: adaptCeremonyV2,
   RecitDeVieIntemporel: adaptRecitDeVieIntemporel,
   RecitDeVieV2: adaptRecitDeVieV2,
   TraditionsV2: adaptTraditionsV2,

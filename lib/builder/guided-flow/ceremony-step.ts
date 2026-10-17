@@ -164,18 +164,26 @@ export function needsA07(content: MemorialContent): boolean {
   return !isStepResolved(content, "A07");
 }
 
-/** A08 (note pratique facultative) — mirrors `needsA07`, one step down;
- * the last of the four. */
+/** A08 (note pratique facultative) — follows A14 in the C5 route. */
 export function needsA08(content: MemorialContent): boolean {
   if (needsA07(content)) return false;
   if (!isCeremonyPlanned(content)) return false;
+  if (!isA14Resolved(content)) return false;
   return !isStepResolved(content, "A08");
 }
 
-/** The whole ceremony block (A04, and A05-A08 when A04 = yes) is behind
+/** The whole ceremony block (A04, and A05-A08 plus A14 when A04 = yes) is behind
  * the family — what A09 and the A10-A12 sheet wait for. */
 export function isCeremonyBlockResolved(content: MemorialContent): boolean {
-  return !needsA04(content) && !needsA05(content) && !needsA06(content) && !needsA07(content) && !needsA08(content);
+  return (
+    !needsA04(content) &&
+    !needsA05(content) &&
+    !needsA06(content) &&
+    !needsA07(content) &&
+    !needsA14(content) &&
+    (!isCeremonyPlanned(content) || isA14Resolved(content)) &&
+    !needsA08(content)
+  );
 }
 
 // ---------------------------------------------------------------------
@@ -371,13 +379,9 @@ export function skipA08(content: MemorialContent): CeremonyFieldWriteResult {
 // ---------------------------------------------------------------------
 // A14 — « Le déroulement de la cérémonie » (Cérémonie V2, B2).
 //
-// Built, NOT routed: `human-steps.ts` declares A14 never applicable
-// (`isA14InRoute`), app/builder/[memorialId]/page.tsx never evaluates
-// `needsA14`, and « Mon parcours » (journey.ts) holds no A14 screen —
-// the family cannot reach it until the CeremonyV2 renderer shows the
-// déroulement. GO C5 opens it between A07 and A08: page gate after
-// `needsA07`, `needsA08` chained on `needsA14`, journey screen
-// `ceremonyProgramme`, `isA14InRoute` → `isA04AnsweredYes`.
+// C5 routes it between A07 and A08: `human-steps.ts` makes it applicable
+// when A04 = "yes", the Builder evaluates this gate after A07, A08 is
+// chained on this gate, and « Mon parcours » exposes `ceremonyProgramme`.
 //
 // Same two outcomes as A05-A08: `commitA14` requires at least one
 // confirmed moment; `skipA14` never touches `content.ceremony`.
@@ -411,9 +415,8 @@ export function isA14Resolved(content: MemorialContent): boolean {
   return isStepResolved(content, "A14");
 }
 
-/** A14's gate, ready for GO C5 — deliberately NOT evaluated by the
- * Builder route yet (see this section's header). Mirrors `needsA08`: A07
- * behind the family, A04 answered "yes", A14 not treated yet. */
+/** A14's route gate: A07 behind the family, A04 answered "yes", A14 not
+ * treated yet. */
 export function needsA14(content: MemorialContent): boolean {
   if (needsA07(content)) return false;
   if (!isCeremonyPlanned(content)) return false;

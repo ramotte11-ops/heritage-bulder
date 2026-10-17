@@ -298,6 +298,7 @@ export const TRANSLATION_KEYS = [
   "journey.screen.ceremonyDateTime",
   "journey.screen.ceremonyVenue",
   "journey.screen.ceremonyAddress",
+  "journey.screen.ceremonyProgramme",
   "journey.screen.ceremonyNote",
   "journey.screen.traditions",
   "journey.screen.personSheet",

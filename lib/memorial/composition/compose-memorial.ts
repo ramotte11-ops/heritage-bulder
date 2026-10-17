@@ -25,6 +25,7 @@ import {
   needsA06,
   needsA07,
   needsA08,
+  needsA14,
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { isA09Resolved } from "@/lib/builder/guided-flow/traditions-step";
 import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-step";
@@ -147,7 +148,7 @@ type ReadinessRule = (content: MemorialContent) => boolean;
  * - deathNotice: A03 verified for the CURRENT content (`isA03Complete`
  *   compares its fingerprint): editing A01/A02 after A03 takes the
  *   section back to `pending` until re-verified.
- * - ceremony: A04 answered AND A05–A08 resolved. `!needsA04` is required
+ * - ceremony: A04 answered AND A05–A08 plus A14 resolved. `!needsA04` is required
  *   as well as `isA04Complete`: `needsA04` is also true on a corrupted
  *   Ceremony, and each `needsA0x` returns `false` BEFORE its step is
  *   reachable — so `!needsA05…A08` alone would read "resolved" too early.
@@ -168,6 +169,7 @@ export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule
     !needsA05(content) &&
     !needsA06(content) &&
     !needsA07(content) &&
+    !needsA14(content) &&
     !needsA08(content),
   story: isPersonSheetResolved,
   traditions: isA09Resolved,

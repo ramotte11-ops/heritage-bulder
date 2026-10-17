@@ -11,6 +11,7 @@ import {
   skipA06,
   skipA07,
   skipA08,
+  skipA14,
   writeCeremonyDate,
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { addTraditionsEntry, commitA09, skipA09 } from "@/lib/builder/guided-flow/traditions-step";
@@ -50,13 +51,14 @@ export function throughA03(): MemorialContent {
   return ok(commitA03(throughA02()));
 }
 
-/** + A04 "yes" and A05–A08 resolved — A09 not treated yet. */
+/** + A04 "yes" and A05–A08 plus A14 resolved — A09 not treated yet. */
 function throughA08WithCeremony(): MemorialContent {
   let content = ok(commitA04(throughA03(), "yes"));
   content = ok(writeCeremonyDate(content, "2026-10-02"));
   content = ok(commitA05(content));
   content = ok(skipA06(content));
   content = ok(skipA07(content));
+  content = ok(skipA14(content));
   return ok(skipA08(content));
 }
 

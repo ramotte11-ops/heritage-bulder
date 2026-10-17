@@ -4,6 +4,7 @@ import type { RendererPropsMap } from "@/lib/memorial/assembly/renderer-adapters
 import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
 import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import { CeremonyIntemporel } from "@/components/memorial/ceremony/CeremonyIntemporel";
+import { CeremonyV2 } from "@/components/memorial/ceremony/v2/CeremonyV2";
 import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
 import { RecitDeVieV2 } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import { TraditionsV2 } from "@/components/memorial/traditions/v2/TraditionsV2";
@@ -20,6 +21,7 @@ export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<R
   HeroIntemporel,
   DeathNoticeIntemporel,
   CeremonyIntemporel,
+  CeremonyV2,
   RecitDeVieIntemporel,
   RecitDeVieV2,
   TraditionsV2,

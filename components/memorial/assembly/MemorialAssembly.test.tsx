@@ -45,6 +45,7 @@ const { RENDERER_COMPONENTS } = await import("./renderer-registry");
 const { HeroIntemporel } = await import("@/components/memorial/hero/HeroIntemporel");
 const { DeathNoticeIntemporel } = await import("@/components/memorial/death-notice/DeathNoticeIntemporel");
 const { CeremonyIntemporel } = await import("@/components/memorial/ceremony/CeremonyIntemporel");
+const { CeremonyV2 } = await import("@/components/memorial/ceremony/v2/CeremonyV2");
 const { RecitDeVieIntemporel } = await import("@/components/memorial/life-story/RecitDeVieIntemporel");
 const { RecitDeVieV2 } = await import("@/components/memorial/life-story/v2/RecitDeVieV2");
 const { TraditionsV2 } = await import("@/components/memorial/traditions/v2/TraditionsV2");
@@ -93,7 +94,7 @@ describe("MemorialAssembly — the real renderers, in the composition's order", 
     expect(block("deathNotice").querySelector('img[src*="a03-scene-top.png"]')).toBeTruthy();
     expect(block("story").querySelector('[data-testid="recit-de-vie-v2"]')).toBeTruthy();
     expect(block("story").textContent).toContain(FIXTURE_PERSON_WORDS);
-    expect(block("ceremony").querySelector('[data-testid="ceremony-intemporel"]')).toBeTruthy();
+    expect(block("ceremony").querySelector('[data-testid="ceremony-v2"]')).toBeTruthy();
   });
 
   it("the Hero shows the resolved photo URL", async () => {
@@ -141,10 +142,10 @@ describe("MemorialAssembly — fail closed (QG D1)", () => {
   });
 
   it("a failed non-Hero section leaves no trace — no placeholder, no other renderer", async () => {
-    adapters.CeremonyIntemporel = async () => ({ ok: false, reason: "contentUnreadable" });
+    adapters.CeremonyV2 = async () => ({ ok: false, reason: "contentUnreadable" });
     const { container } = await renderAssembly(fullAnnouncement());
     expect(sectionIds(container)).toEqual(["hero", "deathNotice", "story"]);
-    expect(container.querySelector('[data-testid="ceremony-intemporel"]')).toBeNull();
+    expect(container.querySelector('[data-testid="ceremony-v2"]')).toBeNull();
   });
 
   it("Hero-only Memorial renders the Hero alone", async () => {
@@ -159,6 +160,7 @@ describe("renderer registry", () => {
     expect(RENDERER_COMPONENTS.HeroIntemporel).toBe(HeroIntemporel);
     expect(RENDERER_COMPONENTS.DeathNoticeIntemporel).toBe(DeathNoticeIntemporel);
     expect(RENDERER_COMPONENTS.CeremonyIntemporel).toBe(CeremonyIntemporel);
+    expect(RENDERER_COMPONENTS.CeremonyV2).toBe(CeremonyV2);
     expect(RENDERER_COMPONENTS.RecitDeVieIntemporel).toBe(RecitDeVieIntemporel);
     expect(RENDERER_COMPONENTS.RecitDeVieV2).toBe(RecitDeVieV2);
     expect(RENDERER_COMPONENTS.TraditionsV2).toBe(TraditionsV2);

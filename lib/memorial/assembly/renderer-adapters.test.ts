@@ -5,6 +5,7 @@ import type { RendererKey } from "@/config/memorial-section-renderers";
 import {
   RENDERER_ADAPTERS,
   adaptCeremonyIntemporel,
+  adaptCeremonyV2,
   adaptDeathNoticeIntemporel,
   adaptHeroIntemporel,
   adaptRecitDeVieIntemporel,
@@ -124,6 +125,27 @@ describe("adaptCeremonyIntemporel", () => {
       ok: false,
       reason: "contentUnreadable",
     });
+  });
+});
+
+describe("adaptCeremonyV2", () => {
+  it("passes the inspected ceremony directly with section heading semantics", async () => {
+    const content = fullAnnouncement();
+    const result = await adaptCeremonyV2(context(content));
+    expect(result).toEqual({
+      ok: true,
+      props: {
+        ceremony: content.ceremony,
+        language: "fr",
+        skinVariant: "light",
+        headingLevel: "section",
+      },
+    });
+  });
+
+  it("refuses corrupted or absent ceremony data", async () => {
+    expect(await adaptCeremonyV2(context({ ...fullAnnouncement(), ceremony: "garbage" } as unknown as MemorialContent))).toEqual({ ok: false, reason: "contentUnreadable" });
+    expect(await adaptCeremonyV2(context({ ...fullAnnouncement(), ceremony: undefined }))).toEqual({ ok: false, reason: "contentUnreadable" });
   });
 });
 

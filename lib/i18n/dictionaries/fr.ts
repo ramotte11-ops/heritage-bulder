@@ -98,6 +98,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "journey.screen.ceremonyDateTime": "Date et heure",
   "journey.screen.ceremonyVenue": "Le lieu",
   "journey.screen.ceremonyAddress": "L'adresse",
+  "journey.screen.ceremonyProgramme": "Le déroulement de la cérémonie",
   "journey.screen.ceremonyNote": "Informations pratiques",
   "journey.screen.traditions": "Traditions & repères",
   "journey.screen.personSheet": "Quelques mots sur la personne",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
-import { commitA04, skipA05, skipA06, skipA07, skipA08 } from "./ceremony-step";
+import { commitA04, skipA05, skipA06, skipA07, skipA08, skipA14 } from "./ceremony-step";
 import { commitA01 } from "./death-notice-step";
 import { humanFlowDefinition } from "./human-steps";
 import { applicableSteps, firstIncompleteStep } from "./engine";
@@ -55,6 +55,7 @@ function ceremonyBranchResolvedYes(): MemorialContent {
   content = requireOk(skipA05(content));
   content = requireOk(skipA06(content));
   content = requireOk(skipA07(content));
+  content = requireOk(skipA14(content));
   content = requireOk(skipA08(content));
   return content;
 }
@@ -154,6 +155,7 @@ describe("Route integration — A09 sits exactly between the Ceremony block and 
       A05: { status: "skipped" as const },
       A06: { status: "skipped" as const },
       A07: { status: "skipped" as const },
+      A14: { status: "skipped" as const },
       A08: { status: "skipped" as const },
     };
     expect(firstIncompleteStep(flow, state)?.id).toBe("A09");

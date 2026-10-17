@@ -99,6 +99,7 @@ export const en: Record<TranslationKey, string> = {
   "journey.screen.ceremonyDateTime": "Date and time",
   "journey.screen.ceremonyVenue": "The venue",
   "journey.screen.ceremonyAddress": "The address",
+  "journey.screen.ceremonyProgramme": "The order of the ceremony",
   "journey.screen.ceremonyNote": "Practical information",
   "journey.screen.traditions": "Traditions & customs",
   "journey.screen.personSheet": "A few words about the person",

@@ -22,6 +22,7 @@ import {
   skipA06,
   skipA07,
   skipA08,
+  skipA14,
   writeCeremonyDate,
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { commitA09, skipA09 } from "@/lib/builder/guided-flow/traditions-step";
@@ -66,6 +67,7 @@ function withCeremonyYesResolved(): MemorialContent {
   content = ok(commitA05(content));
   content = ok(skipA06(content));
   content = ok(skipA07(content));
+  content = ok(skipA14(content));
   return ok(skipA08(content));
 }
 
@@ -463,7 +465,7 @@ describe("real parcours (announcement, through A12, ceremony yes)", () => {
     expect(composition.sections.filter((s) => s.state === "renderable").map((s) => s.rendererKey)).toEqual([
       "HeroIntemporel",
       "DeathNoticeIntemporel",
-      "CeremonyIntemporel",
+      "CeremonyV2",
       "RecitDeVieV2",
     ]);
     expect(stateOf(composition, "gallery")).toBe("optional");

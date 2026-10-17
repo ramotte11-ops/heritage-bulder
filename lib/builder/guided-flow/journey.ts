@@ -16,10 +16,12 @@ import { isAnnouncementChosen, needsA00, readAnnouncementChoice } from "./announ
 import { isA01Complete, isA02Resolved, isA03Complete, needsA01, needsA02, needsA03 } from "./death-notice-step";
 import {
   isA04Complete,
+  isA14Resolved,
   needsA04,
   needsA05,
   needsA06,
   needsA07,
+  needsA14,
   needsA08,
   readCeremonyMomentAnswer,
 } from "./ceremony-step";
@@ -104,6 +106,7 @@ export const JOURNEY_SCREEN_IDS = [
   "ceremonyDateTime",
   "ceremonyVenue",
   "ceremonyAddress",
+  "ceremonyProgramme",
   "ceremonyNote",
   "traditions",
   "personSheet",
@@ -182,6 +185,7 @@ export const JOURNEY_SCREENS: readonly JourneyScreenDefinition[] = [
   { id: "ceremonyDateTime", section: "ceremony", needs: needsA05, resolved: recordResolved("A05"), applicable: ceremonyPlanned },
   { id: "ceremonyVenue", section: "ceremony", needs: needsA06, resolved: recordResolved("A06"), applicable: ceremonyPlanned },
   { id: "ceremonyAddress", section: "ceremony", needs: needsA07, resolved: recordResolved("A07"), applicable: ceremonyPlanned },
+  { id: "ceremonyProgramme", section: "ceremony", needs: needsA14, resolved: isA14Resolved, applicable: ceremonyPlanned },
   { id: "ceremonyNote", section: "ceremony", needs: needsA08, resolved: recordResolved("A08"), applicable: ceremonyPlanned },
   { id: "traditions", section: "traditions", needs: needsA09, resolved: isA09Resolved, applicable: announcement },
   { id: "personSheet", section: "personSheet", needs: needsPersonSheet, resolved: isPersonSheetResolved, applicable: always },

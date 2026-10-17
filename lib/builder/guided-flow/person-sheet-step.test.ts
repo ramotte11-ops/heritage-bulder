@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
-import { commitA04, skipA05, skipA06, skipA07, skipA08 } from "./ceremony-step";
+import { commitA04, skipA05, skipA06, skipA07, skipA08, skipA14 } from "./ceremony-step";
 import { addTraditionsEntry, commitA09, skipA09 } from "./traditions-step";
 import { humanFlowDefinition } from "./human-steps";
 import { applicableSteps, firstIncompleteStep } from "./engine";
@@ -59,6 +59,7 @@ function a09ResolvedThroughCeremonyYes(): MemorialContent {
   content = requireOk(skipA05(content));
   content = requireOk(skipA06(content));
   content = requireOk(skipA07(content));
+  content = requireOk(skipA14(content));
   content = requireOk(skipA08(content));
   content = requireOk(skipA09(content));
   return content;
@@ -137,6 +138,8 @@ describe("needsPersonSheet — B02-L2: without a death notice, the sheet follows
     content = requireOk(skipA05(content));
     content = requireOk(skipA06(content));
     content = requireOk(skipA07(content));
+    expect(needsPersonSheet(content)).toBe(false);
+    content = requireOk(skipA14(content));
     expect(needsPersonSheet(content)).toBe(false);
     content = requireOk(skipA08(content));
     expect(needsPersonSheet(content)).toBe(true);

@@ -41,9 +41,8 @@ export const STEP_IDS = [
   "A05",
   "A06",
   "A07",
-  // A14 — « Le déroulement de la cérémonie » (Cérémonie V2, B2): declared
-  // at its validated place between A07 and A08, never applicable yet
-  // (see `isA14InRoute` below).
+  // A14 — « Le déroulement de la cérémonie » (Cérémonie V2), at its
+  // validated place between A07 and A08.
   "A14",
   "A08",
   "A09",
@@ -85,16 +84,11 @@ export type A04Answer = (typeof A04_ANSWERS)[number];
 const isA04AnsweredYes = (state: HumanFlowState): boolean => state.A04?.answer === "yes";
 
 /**
- * Cérémonie V2 (B2) — A14 « Le déroulement de la cérémonie » is built
- * (components/builder/CeremonyProgrammeStep.tsx) but NOT part of the
- * route: it must stay unreachable until the CeremonyV2 renderer can show
- * it. Never applicable, so the route, the progress and
- * `firstIncompleteStep` are exactly what they were before A14 existed.
- * Its insertion (GO C5) replaces this predicate with `isA04AnsweredYes`
- * and opens the page gate between A07 and A08
- * (lib/builder/guided-flow/ceremony-step.ts, `needsA14`).
+ * C5 — A14 « Le déroulement de la cérémonie » follows the same route
+ * condition as A05-A08: it exists only when A04 was answered "yes".
+ * Historical content is preserved when that answer later changes.
  */
-export const isA14InRoute = (): boolean => false;
+export const isA14InRoute = isA04AnsweredYes;
 
 /**
  * A00's own answer values: "yes" | "no" | "later". "yes"/"no" are
