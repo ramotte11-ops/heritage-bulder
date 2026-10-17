@@ -416,6 +416,31 @@ export const TRANSLATION_KEYS = [
   "ceremony.zoneDateTime",
   "ceremony.zonePlace",
   "ceremony.zonePractical",
+  // Cérémonie V2 (B2) — A14 « Le déroulement de la cérémonie ».
+  "ceremony.programmeTitle",
+  "ceremony.programmeSubtitle",
+  "ceremony.programmeListLabel",
+  "ceremony.programmeAddAction",
+  "ceremony.programmeTimeLabel",
+  "ceremony.programmeLabelLabel",
+  "ceremony.programmeLabelPlaceholder",
+  "ceremony.programmeDetailLabel",
+  "ceremony.programmeDetailPlaceholder",
+  "ceremony.programmeConfirmAdd",
+  "ceremony.programmeEditAction",
+  "ceremony.programmeRemoveAction",
+  "ceremony.programmeMoveUp",
+  "ceremony.programmeMoveDown",
+  "ceremony.programmeEditNamed",
+  "ceremony.programmeRemoveNamed",
+  "ceremony.programmeMoveUpNamed",
+  "ceremony.programmeMoveDownNamed",
+  "ceremony.programmeMoved",
+  "ceremony.programmeRemoved",
+  "ceremony.programmeTimeIncomplete",
+  "ceremony.programmePendingHint",
+  "ceremony.programmeDamaged",
+  "ceremony.programmeRepairAction",
   // Mission 042 — A09 (Traditions & repères).
   "traditions.title",
   "traditions.subtitle",
@@ -458,6 +483,24 @@ export const TRANSLATION_KEYS = [
   "recit.v2.a10",
   "recit.v2.a11",
   "recit.v2.a12",
+  // Traditions & repères V2 (pilotes Mobile Light et Dark) — textes HERITAGE
+  // fixes des Masters (décision PO) : surtitre, titre, introduction, phrase
+  // manuscrite finale et mention du coin (Dark). Jamais des données de la
+  // famille.
+  "traditions.v2.surtitle",
+  "traditions.v2.title",
+  "traditions.v2.intro",
+  "traditions.v2.closing",
+  "traditions.v2.cornerNote",
+  // Cérémonie Intemporel V2 (pilote C1) — textes HERITAGE fixes ; le titre et
+  // les intitulés des cartouches reprennent ceremony.sectionTitle / zone*.
+  "ceremony.v2.surtitle",
+  "ceremony.v2.intro",
+  "ceremony.v2.programme",
+  "ceremony.v2.mapLink",
+  "ceremony.v2.closing",
+  // Mention manuscrite du coin, Master Desktop Light seulement (pilote C3).
+  "ceremony.v2.cornerNote",
   "recit.person",
   "recit.loved",
   "recit.legacy",

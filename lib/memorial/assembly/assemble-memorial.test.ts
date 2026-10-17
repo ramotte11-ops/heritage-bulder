@@ -5,6 +5,7 @@ import { RENDERER_KEYS } from "@/config/memorial-section-renderers";
 import { readHero } from "@/lib/memorial/hero";
 import { readDeathNotice } from "@/lib/memorial/death-notice";
 import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
+import { setSectionVisibility } from "@/lib/memorial/section-visibility";
 import { assembleMemorial, type AssembleMemorialInput } from "./assemble-memorial";
 import { RENDERER_ADAPTERS } from "./renderer-adapters";
 import {
@@ -12,6 +13,7 @@ import {
   FIXTURE_READ_URL,
   fullAnnouncement,
   fullAnnouncementEmptyRecit,
+  fullAnnouncementWithTraditions,
   recordingResolver,
   throughA02,
   throughA03,
@@ -55,7 +57,7 @@ describe("consumes composeMemorial", () => {
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
 
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(ids(assembled.sections)).toEqual(assembled.composition.renderable);
     for (const section of assembled.sections) {
       const composed = assembled.composition.sections.find((s) => s.sectionId === section.sectionId);
@@ -103,7 +105,7 @@ describe("consumes composeMemorial", () => {
       resolveMedia: recordingResolver().resolve,
     });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
 
     const heroOnly = await assembleMemorial(input(withA00(throughA02())), {
       resolveMedia: recordingResolver().resolve,
@@ -250,7 +252,7 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
   it("a renderer key with no adapter is a failure (noAdapter), never another renderer", async () => {
     delete adapters.DeathNoticeIntemporel;
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "story", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
     expect(assembled.failures).toEqual([{ sectionId: "deathNotice", rendererKey: "DeathNoticeIntemporel", reason: "noAdapter" }]);
   });
 
@@ -301,5 +303,59 @@ describe("total and pure", () => {
 
   it("has exactly one adapter per renderer key", () => {
     expect(Object.keys(RENDERER_ADAPTERS).sort()).toEqual([...RENDERER_KEYS].sort());
+  });
+});
+
+// ---------------------------------------------------------------------
+// Traditions & repères V2 (M1)
+// ---------------------------------------------------------------------
+
+describe("Traditions V2 — assembled between the Récit and the Galerie", () => {
+  it("assembles Traditions right after the Récit, through TraditionsV2, at section level", async () => {
+    const assembled = await assembleMemorial(input(fullAnnouncementWithTraditions()), { resolveMedia: recordingResolver().resolve });
+    expect(assembled.status).toBe("assembled");
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions"]);
+    const traditions = assembled.sections.find((section) => section.sectionId === "traditions");
+    expect(traditions?.rendererKey).toBe("TraditionsV2");
+    expect(traditions?.rendererKey === "TraditionsV2" && traditions.props.headingLevel).toBe("section");
+    expect(assembled.failures).toEqual([]);
+  });
+
+  it("asks the media resolver nothing for Traditions (its décor is the validated static assets)", async () => {
+    const resolver = recordingResolver();
+    await assembleMemorial(input(fullAnnouncementWithTraditions()), { resolveMedia: resolver.resolve });
+    expect(resolver.calls.map((call) => call.purpose)).toEqual(["hero"]);
+  });
+
+  it("no repère (A09 skipped): no Traditions section, no failure, no gap", async () => {
+    const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(assembled.failures).toEqual([]);
+  });
+
+  it("hidden by the family: absent from the flow and from the archives", async () => {
+    const hidden = setSectionVisibility(fullAnnouncementWithTraditions(), "traditions", false, "intemporel");
+    if (!hidden.ok) throw new Error("fixture: traditions not hideable");
+    const assembled = await assembleMemorial(input(hidden.content), { resolveMedia: recordingResolver().resolve });
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(ids(assembled.archivedSections)).toEqual([]);
+  });
+
+  it("an adapter refusal omits Traditions alone and records it — the Memorial stays assembled", async () => {
+    adapters.TraditionsV2 = async () => ({ ok: false, reason: "contentUnreadable" });
+    const assembled = await assembleMemorial(input(fullAnnouncementWithTraditions()), { resolveMedia: recordingResolver().resolve });
+    expect(assembled.status).toBe("assembled");
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(assembled.failures).toEqual([{ sectionId: "traditions", rendererKey: "TraditionsV2", reason: "contentUnreadable" }]);
+  });
+
+  it("A00 unchanged (M1): no death notice → no Traditions, the rest unchanged", async () => {
+    const base = fullAnnouncementWithTraditions();
+    const noNotice = {
+      ...base,
+      guidedFlow: { ...(base as { guidedFlow?: object }).guidedFlow, A00: { status: "completed", answer: "no" } },
+    } as MemorialContent;
+    const assembled = await assembleMemorial(input(noNotice), { resolveMedia: recordingResolver().resolve });
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
   });
 });

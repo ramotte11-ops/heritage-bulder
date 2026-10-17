@@ -62,7 +62,7 @@ describe("saveSectionVisibilityAction", () => {
 
   it.each([
     ["the Hero", "hero", false],
-    ["a section without a renderer yet (traditions)", "traditions", false],
+    ["a section without a renderer yet (condolences)", "condolences", false],
   ])("refuses %s — and writes nothing", async (_label, sectionId, visible) => {
     await expect(saveSectionVisibilityAction("authorized-id", sectionId, visible)).rejects.toThrow();
     expect(saveDraftContent).not.toHaveBeenCalled();

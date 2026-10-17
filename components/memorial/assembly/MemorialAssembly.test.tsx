@@ -9,7 +9,9 @@ import {
   FIXTURE_DISPLAY_NAME,
   FIXTURE_PERSON_WORDS,
   FIXTURE_READ_URL,
+  FIXTURE_TRADITION_ENTRIES,
   fullAnnouncement,
+  fullAnnouncementWithTraditions,
   recordingResolver,
   throughA02,
 } from "@/lib/memorial/assembly/test-fixtures";
@@ -45,6 +47,8 @@ const { DeathNoticeIntemporel } = await import("@/components/memorial/death-noti
 const { CeremonyIntemporel } = await import("@/components/memorial/ceremony/CeremonyIntemporel");
 const { RecitDeVieIntemporel } = await import("@/components/memorial/life-story/RecitDeVieIntemporel");
 const { RecitDeVieV2 } = await import("@/components/memorial/life-story/v2/RecitDeVieV2");
+const { TraditionsV2 } = await import("@/components/memorial/traditions/v2/TraditionsV2");
+const { TRADITIONS_V2_TOKENS } = await import("@/config/traditions-v2-tokens");
 
 const adapters = RENDERER_ADAPTERS as unknown as Record<string, unknown>;
 const originalAdapters = { ...adapters };
@@ -72,7 +76,7 @@ function sectionIds(container: HTMLElement): (string | null)[] {
 describe("MemorialAssembly — the real renderers, in the composition's order", () => {
   it("renders every assembled section, in order, each in its own neutral block", async () => {
     const { container, assembled } = await renderAssembly(fullAnnouncement());
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(sectionIds(container)).toEqual(assembled.composition.renderable);
 
     for (const block of Array.from(container.querySelectorAll("[data-memorial-section]"))) {
@@ -157,6 +161,7 @@ describe("renderer registry", () => {
     expect(RENDERER_COMPONENTS.CeremonyIntemporel).toBe(CeremonyIntemporel);
     expect(RENDERER_COMPONENTS.RecitDeVieIntemporel).toBe(RecitDeVieIntemporel);
     expect(RENDERER_COMPONENTS.RecitDeVieV2).toBe(RecitDeVieV2);
+    expect(RENDERER_COMPONENTS.TraditionsV2).toBe(TraditionsV2);
   });
 });
 
@@ -197,5 +202,77 @@ describe("MemorialAssembly — « Gérer les rubriques visibles »: hidden secti
     });
     const { container } = render(<MemorialAssembly assembled={assembled} />);
     expect(container.querySelector("summary")?.textContent).toBe("View the ceremony details");
+  });
+});
+
+describe("MemorialAssembly — Traditions & repères V2 (M1), the real validated renderer", () => {
+  async function renderWith(content: MemorialContent, overrides: Partial<AssembleMemorialInput> = {}) {
+    const assembled = await assembleMemorial(input(content, overrides), { resolveMedia: recordingResolver().resolve });
+    return render(<MemorialAssembly assembled={assembled} />);
+  }
+
+  it("sits right after the Récit, in its own neutral block", async () => {
+    const { container } = await renderWith(fullAnnouncementWithTraditions());
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions"]);
+    const block = container.querySelector('[data-memorial-section="traditions"]') as HTMLElement;
+    expect(block.getAttribute("class")).toBeNull();
+    expect(block.getAttribute("style")).toBeNull();
+    expect(block.querySelector('[data-testid="traditions-v2"]')).toBeTruthy();
+  });
+
+  it("the family's repères, in their order, titles and texts unchanged", async () => {
+    const { container } = await renderWith(fullAnnouncementWithTraditions());
+    const block = container.querySelector('[data-memorial-section="traditions"]') as HTMLElement;
+    const entries = Array.from(block.querySelectorAll("[data-entry]"));
+    expect(entries.map((entry) => entry.getAttribute("data-entry"))).toEqual(FIXTURE_TRADITION_ENTRIES.map((e) => e.id));
+    expect(entries.map((entry) => entry.querySelector("p")?.textContent)).toEqual(FIXTURE_TRADITION_ENTRIES.map((e) => e.text));
+    expect(entries[0].querySelector("h3")?.textContent).toBe("Une bougie");
+    expect(entries[1].querySelector("h3")).toBeNull();
+  });
+
+  it("keeps the Hero's name the only <h1>: Traditions at section level (<h2>, repères <h3>)", async () => {
+    const { container } = await renderWith(fullAnnouncementWithTraditions());
+    expect(container.querySelectorAll("h1")).toHaveLength(1);
+    const block = container.querySelector('[data-memorial-section="traditions"]') as HTMLElement;
+    expect(block.querySelector("h1")).toBeNull();
+    expect(block.querySelector("h2")?.textContent).toBe("Traditions & repères");
+  });
+
+  it.each([
+    ["light", "fr", "Traditions & repères"],
+    ["dark", "fr", "Traditions & repères"],
+    ["light", "en", "Traditions & personal notes"],
+    ["dark", "es", "Tradiciones y detalles"],
+  ] as const)(
+    "%s / %s: the variant's own Mobile and Desktop décor, the memorial's language",
+    async (skinVariant, language, title) => {
+      const { container } = await renderWith(fullAnnouncementWithTraditions(), { skinVariant, language });
+      const block = container.querySelector('[data-memorial-section="traditions"]') as HTMLElement;
+      const wrap = block.querySelector("[data-variant]") as HTMLElement;
+      expect(wrap.getAttribute("data-variant")).toBe(skinVariant);
+      expect(wrap.getAttribute("lang")).toBe(language);
+      // Desktop tokens present: the stylesheet switches to the Desktop Master at ≥ 1024 px of container.
+      expect(wrap.hasAttribute("data-desktop")).toBe(true);
+      const tokens = TRADITIONS_V2_TOKENS[skinVariant]!;
+      expect(wrap.getAttribute("style")).toContain(tokens.mobile.masterSrc);
+      const section = block.querySelector('[data-testid="traditions-v2"]') as HTMLElement;
+      expect(section.getAttribute("style")).toContain(tokens.desktop!.masterSrc);
+      expect(block.querySelector("h2")?.textContent).toBe(title);
+      expect(block.querySelector("[data-heritage-skin]")?.getAttribute("data-heritage-skin")).toBe("intemporel");
+    },
+  );
+
+  it("hidden by the family: no Traditions block, no archive link for it", async () => {
+    const hidden = setSectionVisibility(fullAnnouncementWithTraditions(), "traditions", false, "intemporel");
+    if (!hidden.ok) throw new Error("fixture");
+    const { container } = await renderWith(hidden.content);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(container.querySelector('[data-testid="traditions-v2"]')).toBeNull();
+    expect(container.querySelector("[data-memorial-archives]")).toBeNull();
+  });
+
+  it("no repère: no Traditions block at all — never the HERITAGE frame alone", async () => {
+    const { container } = await renderWith(fullAnnouncement());
+    expect(container.querySelector('[data-testid="traditions-v2"]')).toBeNull();
   });
 });

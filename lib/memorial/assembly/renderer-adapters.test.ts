@@ -9,13 +9,16 @@ import {
   adaptHeroIntemporel,
   adaptRecitDeVieIntemporel,
   adaptRecitDeVieV2,
+  adaptTraditionsV2,
   type AdapterContext,
 } from "./renderer-adapters";
 import type { ResolvedMedia } from "./media-resolver";
 import {
   FIXTURE_HERO_MEDIA_ID,
   FIXTURE_READ_URL,
+  FIXTURE_TRADITION_ENTRIES,
   fullAnnouncement,
+  fullAnnouncementWithTraditions,
   fullAnnouncementEmptyRecit,
   recordingResolver,
 } from "./test-fixtures";
@@ -166,4 +169,57 @@ describe("adaptRecitDeVieV2", () => {
       expect(await adaptRecitDeVieV2(context(content))).toEqual({ ok: false, reason: "contentUnreadable" });
     },
   );
+});
+
+describe("adaptTraditionsV2", () => {
+  it("hands the renderer the family's repères as is, at section level (QG D3)", async () => {
+    const result = await adaptTraditionsV2(context(fullAnnouncementWithTraditions()));
+    expect(result).toEqual({
+      ok: true,
+      props: {
+        traditions: { entries: FIXTURE_TRADITION_ENTRIES.map((entry) => ({ ...entry })) },
+        language: "fr",
+        skinVariant: "light",
+        headingLevel: "section",
+      },
+    });
+  });
+
+  it.each([
+    ["light", "fr"],
+    ["light", "en"],
+    ["dark", "es"],
+    ["dark", "fr"],
+  ] as const)("%s / %s: the memorial's own variant and language, never another", async (skinVariant, language) => {
+    const result = await adaptTraditionsV2(context(fullAnnouncementWithTraditions(), { skinVariant, language }));
+    expect(result.ok && result.props).toMatchObject({ skinVariant, language });
+  });
+
+  it("only the four renderer props — never the rest of the memorial's content", async () => {
+    const result = await adaptTraditionsV2(context(fullAnnouncementWithTraditions()));
+    expect(result.ok && Object.keys(result.props).sort()).toEqual(["headingLevel", "language", "skinVariant", "traditions"]);
+  });
+
+  it("refuses any other skin", async () => {
+    expect(await adaptTraditionsV2(context(fullAnnouncementWithTraditions(), { skin: "juif" }))).toEqual({
+      ok: false,
+      reason: "skinMismatch",
+    });
+  });
+
+  it.each<[string, (c: MemorialContent) => MemorialContent]>([
+    ["no traditions at all", (c) => ({ ...c, traditions: undefined })],
+    ["an empty list", (c) => ({ ...c, traditions: { entries: [] } })],
+    ["a corrupted list", (c) => ({ ...c, traditions: { entries: "garbage" } }) as unknown as MemorialContent],
+    ["an unknown key", (c) => ({ ...c, traditions: { entries: [], extra: 1 } })],
+    [
+      "a blank repère",
+      (c) => ({ ...c, traditions: { entries: [{ id: "x", origin: "custom", suggestionId: null, title: null, text: "  " }] } }),
+    ],
+  ])("%s → contentUnreadable (never the HERITAGE frame alone)", async (_label, patch) => {
+    expect(await adaptTraditionsV2(context(patch(fullAnnouncementWithTraditions())))).toEqual({
+      ok: false,
+      reason: "contentUnreadable",
+    });
+  });
 });

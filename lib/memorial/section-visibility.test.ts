@@ -49,9 +49,9 @@ describe("the model", () => {
   it("the Hero can never be hidden; a section without a renderer cannot either (yet)", () => {
     expect(isHideableSection("hero", "intemporel")).toBe(false);
     expect(setSectionVisibility(fullAnnouncement(), "hero", false, "intemporel")).toEqual({ ok: false, reason: "notHideable" });
-    expect(isHideableSection("traditions", "intemporel")).toBe(false);
+    expect(isHideableSection("condolences", "intemporel")).toBe(false);
     expect(isHideableSection("ceremony", null)).toBe(false);
-    for (const id of ["deathNotice", "ceremony", "story", "gallery"] as const) {
+    for (const id of ["deathNotice", "ceremony", "story", "traditions", "gallery"] as const) {
       expect(isHideableSection(id, "intemporel")).toBe(true);
     }
   });
@@ -154,7 +154,7 @@ describe("the assembly", () => {
       { skin: "intemporel", skinVariant: "light", language: "fr", content: fullAnnouncement() },
       { resolveMedia: recordingResolver().resolve },
     );
-    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(assembled.archivedSections).toEqual([]);
   });
 });
@@ -162,7 +162,7 @@ describe("the assembly", () => {
 describe("the rows of « Gérer les rubriques visibles »", () => {
   it("lists the memorial's own hideable sections — never the Hero, never one that does not apply", () => {
     const rows = resolveVisibilityEntries(compose(hide(fullAnnouncement(), "ceremony")));
-    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "story", "ceremony"]);
+    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "ceremony", "story"]);
     expect(rows.find((r) => r.sectionId === "ceremony")).toEqual({ sectionId: "ceremony", hidden: true, ready: true, archivable: true });
     expect(rows.find((r) => r.sectionId === "story")?.archivable).toBe(false);
 
@@ -186,8 +186,9 @@ describe("every section that can ever be hidden or archived has its words, in th
         expect(dictionary[`memorial.archive.${id}` as keyof typeof dictionary], id).toBeTruthy();
       }
     }
-    // The registry is what makes a section hideable: when Traditions gets
-    // its renderer it joins with no other change.
-    expect(Object.keys(SECTION_RENDERERS)).not.toContain("traditions");
+    // The registry is what makes a section hideable: Traditions joined
+    // with its renderer (M1), with no other change — and is not archivable.
+    expect(Object.keys(SECTION_RENDERERS)).toContain("traditions");
+    expect(ARCHIVABLE_SECTIONS).not.toContain("traditions");
   });
 });

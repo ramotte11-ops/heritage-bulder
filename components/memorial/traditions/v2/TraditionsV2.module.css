@@ -1,0 +1,874 @@
+/*
+ * Traditions & repères V2 — pilotes Mobile Light (P1) et Mobile Dark (P2),
+ * un seul module : les règles de base sont celles du Light ; la section
+ * « Mobile Dark » en fin de fichier ne surcharge que ce que le Master Dark
+ * dessine autrement (matières, encres, ornements, rythme). Moteur du Récit de
+ * vie V2 : toute géométrie est exprimée en px de canevas (941 de large)
+ * rapportés à la largeur réelle du conteneur (cqw du .wrap). Les textes
+ * suivent la même échelle avec un plancher en px CSS lisibles : à 941 px,
+ * la composition reproduit le Master ; sur un téléphone, les textes gardent
+ * une taille de lecture et la section s'allonge (papier central).
+ *
+ * Mesures : `MOBILE_{LIGHT,DARK}_MASTER_ILLUSTRE.png`, en px de canevas.
+ */
+
+.wrap {
+  container-type: inline-size;
+  width: 100%;
+  margin-inline: auto;
+  /* hauteur du Master à la largeur rendue */
+  --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+  --px: calc(100cqw / var(--canvas-w)); /* 1 px de canevas */
+}
+
+.section {
+  position: relative;
+  isolation: isolate;
+  color: var(--ink);
+}
+
+/* Le Master entier, à son ratio naturel, ancré en haut. */
+.master {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--mh);
+  background: var(--m-src) top / 100% auto no-repeat;
+  z-index: 0;
+}
+
+/* Le bas authentique [cut − fade : H], ancré au bas de la section. */
+.bottom {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--px) * (var(--canvas-h) - var(--cut) + var(--fade)));
+  background: var(--m-src) bottom / 100% auto no-repeat;
+  z-index: 1;
+}
+
+/* Section étendue : le Master ne montre plus que [0 : cut + fade]. */
+.section[data-extended="true"] .master {
+  height: calc(var(--px) * (var(--cut) + var(--fade)));
+}
+
+/* Le papier central, seulement quand le contenu dépasse le Master : de la
+   hauteur exacte de l'excédent, plus un fondu à chaque raccord. */
+.paper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background-image: var(--paper-images);
+  background-size: var(--paper-sizes);
+  background-repeat: var(--paper-repeat);
+  background-blend-mode: var(--paper-blend);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+/* Bords de la grande feuille dans la surface : bande tirée du décor,
+   répétée vers le haut depuis le bas de la surface, même fondu que le
+   papier aux deux raccords. */
+.edges {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--px) * (var(--cut) - var(--fade)));
+  height: calc(var(--ext) + var(--px) * var(--fade) * 2);
+  z-index: 2;
+  background: var(--edges-src) left bottom / 100% calc(var(--px) * var(--edges-h)) repeat-y;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--px) * var(--fade)), #000 calc(100% - var(--px) * var(--fade)), transparent 100%);
+  pointer-events: none;
+}
+
+/* Filtre SVG du bord des feuillets : présent dans le DOM, sans place. */
+.filterDefs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--mh);
+  box-sizing: border-box;
+  padding: calc(var(--px) * var(--text-top)) 0 calc(var(--px) * var(--foot));
+}
+
+/* --- En-tête : surtitre, filet, titre, rameau, introduction ------------- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* Axe du Master (x ≈ 471) ; bande x 150–790, hors du bouquet droit. */
+  padding-inline: calc(var(--px) * 150) calc(var(--px) * (var(--canvas-w) - 792));
+}
+
+/* « POUR NOUS ACCOMPAGNER » : capitales x 296–624, y 217–228. Le bouquet
+   commence à x 684 à cette hauteur : jamais plus large que 426 px de
+   canevas autour de l'axe (deux lignes plutôt que de le recouvrir). */
+.surtitle {
+  margin: 0;
+  max-width: calc(var(--px) * 426);
+  text-wrap: balance;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(10px, calc(var(--px) * 17.5));
+  line-height: 1.2;
+  letter-spacing: 0.27em;
+  margin-right: -0.27em;
+  text-transform: uppercase;
+  color: #444239;
+}
+
+/* Filet du surtitre : x 393–522, y 255. */
+.surtitleRule {
+  display: block;
+  width: calc(var(--px) * 129);
+  height: max(1px, calc(var(--px) * 1.6));
+  margin-top: calc(var(--px) * 22);
+  background: rgb(80 76 66 / 0.85);
+  transform: translateX(calc(var(--px) * -13));
+}
+
+/* « Traditions & repères » : x 210–732, capitale T y 290–334 (44 px) —
+   EB Garamond 600 à 62,3 px reproduit largeur et hauteur du Master. */
+.title {
+  margin: calc(var(--px) * 18) 0 0;
+  /* Jamais au-delà de sa largeur du Master : le bouquet et le sceau
+     commencent à x ≈ 720 ; sur les écrans étroits, le titre passe sur deux
+     lignes équilibrées plutôt que de les recouvrir. */
+  max-width: calc(var(--px) * 524);
+  font-family: var(--font-heritage-avis-name), serif;
+  font-weight: 600;
+  font-size: max(24px, calc(var(--px) * 64));
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+/* Rameau d'olivier : x 376–548, y 352–432 (SVG 172 × 80). */
+.sprig {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 172);
+  height: calc(var(--px) * 80);
+  margin-top: calc(var(--px) * 3);
+  overflow: visible;
+  transform: translateX(calc(var(--px) * -9));
+}
+
+/* Introduction : quatre lignes centrées, x 199–749, pas de 33 ;
+   EB Garamond 400 à 29,7 px reproduit la longueur des lignes du Master. */
+.intro {
+  margin: calc(var(--px) * 16) 0 0;
+  max-width: calc(var(--px) * 556);
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 29.7));
+  line-height: 1.111;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* --- Feuillets : une colonne, un par repère de la famille ---------------- */
+
+.entries {
+  list-style: none;
+  margin: calc(var(--px) * 33) 0 0;
+  padding: 0 calc(var(--px) * (var(--canvas-w) - var(--text-right))) 0 calc(var(--px) * var(--text-left));
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--px) * 18);
+}
+
+/* Feuillet : x 128–819 ; texte dès x 324 ; filet vertical à x 294. */
+.entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--px) * 196) minmax(0, 1fr);
+  min-height: calc(var(--px) * 150);
+  padding: calc(var(--px) * 33) calc(var(--px) * 29) calc(var(--px) * 24) 0;
+  box-sizing: border-box;
+}
+
+/* Papier du feuillet : un voile clair qui laisse voir le grain du décor
+   (Master : intérieur #f2e5d6 sur papier #f1e2d2), liseré de lumière,
+   bord irrégulier (déplacement SVG) et ombre portée vers le bas à gauche
+   (#e3cdb5 sous le bord, sur ~16 px). */
+.entryPaper {
+  position: absolute;
+  inset: 0;
+  border-radius: calc(var(--px) * 3);
+  background: rgb(255 249 240 / 0.24);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.8)) rgb(255 252 246 / 0.72),
+    inset 0 0 calc(var(--px) * 10) rgb(255 250 242 / 0.3);
+  filter: var(--deckle) drop-shadow(calc(var(--px) * -3) calc(var(--px) * 6) calc(var(--px) * 4) rgb(105 70 38 / 0.45));
+}
+
+/* Médaillon : disque Ø 103 (#e4d5bf) centré à x 216, au milieu du
+   feuillet ; rameau au trait neutre. */
+.medallion {
+  position: absolute;
+  left: calc(var(--px) * 36.5);
+  top: 50%;
+  width: calc(var(--px) * 103);
+  height: calc(var(--px) * 103);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle at 50% 50%, #e6d8c3 0, #e3d4be 70%, #e0d0b9 100%);
+  color: #3b3424;
+}
+
+/* Pictogramme : environ la moitié du disque, comme ceux du Master. */
+.medallionIcon {
+  position: absolute;
+  inset: 12%;
+  width: 76%;
+  height: 76%;
+}
+
+/* Filet vertical : x 294, de 31 px sous le haut à 24 px du bas. */
+.entryDivider {
+  position: absolute;
+  left: calc(var(--px) * 166);
+  top: calc(var(--px) * 31);
+  bottom: calc(var(--px) * 24);
+  width: max(1px, calc(var(--px) * 1.6));
+  background: rgb(140 130 112 / 0.85);
+}
+
+.entryText {
+  grid-column: 2;
+  min-width: 0;
+  position: relative;
+}
+
+/* Intitulé : capitales espacées, y 654–666. */
+.entryTitle {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(10px, calc(var(--px) * 18.5));
+  line-height: 1.25;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #2f2e2a;
+  overflow-wrap: break-word;
+}
+
+/* Filet d'intitulé : x 323–366, y 683–684. */
+.entryRule {
+  display: block;
+  width: calc(var(--px) * 44);
+  height: max(1px, calc(var(--px) * 1.6));
+  margin: calc(var(--px) * 15) 0 calc(var(--px) * 7);
+  background: var(--rule);
+}
+
+/* Texte de la famille : pas de 27, x 324–790 ; EB Garamond 400 à 25 px
+   reproduit la longueur des lignes du Master. */
+.entryBody {
+  margin: 0;
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 24));
+  line-height: 1.125;
+  letter-spacing: 0.015em;
+  /* Plus sombre que la médiane mesurée (#2b2923) : l'EB Garamond 400 est
+     plus fin que le dessin du Master. */
+  color: #1d1b16;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* --- Pied : filets, rameau, phrase manuscrite --------------------------- */
+
+.footer {
+  /* Avec peu de repères, le pied reste à sa place du Master. */
+  margin-top: auto;
+  padding-top: calc(var(--px) * 19);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Filets x 322–415 et 522–617 à y 1450 ; rameau x 431–508. */
+.footerOrnament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 12);
+  transform: translateX(calc(var(--px) * -1));
+}
+
+.footerRule {
+  display: block;
+  flex: 0 0 calc(var(--px) * 94);
+  height: max(1px, calc(var(--px) * 1.6));
+  background: rgb(80 76 66 / 0.8);
+}
+
+.footerSprig {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 82);
+  height: calc(var(--px) * 38);
+  overflow: visible;
+  transform: rotate(-14deg);
+  /* Au pied, le Master dessine le rameau plus sombre et plus net. */
+  filter: brightness(0.82) contrast(1.15);
+}
+
+/* Phrase manuscrite : deux lignes, x 238–710, y 1484–1579. La feuille
+   centrale se resserre vers le bas (papier nu x 236–746 à la rangée 1560,
+   282–700 à 1575) : 440 px de canevas au plus, lignes équilibrées. */
+.closing {
+  margin: calc(var(--px) * 8) 0 0;
+  max-width: calc(var(--px) * 440);
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: max(15px, calc(var(--px) * 32));
+  line-height: 1.22;
+  color: #3e3a31;
+  text-wrap: balance;
+}
+
+/* Écrans étroits : le surtitre, à son plancher de lisibilité, resserre
+   ses capitales (la casse et le corps restent ceux du Master). */
+@container (max-width: 519.98px) {
+  .surtitle {
+    letter-spacing: 0.12em;
+    margin-right: -0.12em;
+  }
+}
+
+/* ========================================================================
+ * Mobile Dark — `MOBILE_DARK_MASTER_ILLUSTRE.png`. Même composition que le
+ * Light (feuillets x 130–826, médaillon Ø 101 centré à x 217, filet à
+ * x 298, texte dès x 328, mêmes corps) ; feuille chocolat gaufrée, encres
+ * crème, ornements bronze, en-tête plus bas (surtitre à y 298).
+ * ===================================================================== */
+
+/* « — POUR NOUS ACCOMPAGNER — » : capitales x 289–651, y 298–309 ; filets
+   x 172–262 et 677–768 à y 303, à 26 px du texte. */
+.surtitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--px) * 26);
+  /* Toute la largeur de l'en-tête : le surtitre garde sa ligne unique tant
+     qu'elle tient, les filets se partagent le reste. */
+  align-self: stretch;
+}
+
+.surtitleSideRule {
+  display: block;
+  flex: 0 1 calc(var(--px) * 90);
+  min-width: calc(var(--px) * 24);
+  height: max(1px, calc(var(--px) * 1.6));
+  background: var(--rule);
+}
+
+.wrap[data-variant="dark"] .surtitle {
+  flex: 0 1 auto;
+  font-size: max(10px, calc(var(--px) * 19.3));
+  color: #d8be92;
+}
+
+/* « Traditions & repères » : x 210–737, capitale T y 347–391 (44 px). */
+.wrap[data-variant="dark"] .title {
+  margin-top: calc(var(--px) * 17);
+  font-weight: 600;
+}
+
+/* Rameau bronze : x 398–516, y 415–461 (tracé à 0,76 de celui du Light). */
+.wrap[data-variant="dark"] .sprig {
+  width: calc(var(--px) * 131);
+  height: calc(var(--px) * 61);
+  margin-top: calc(var(--px) * 4.5);
+  transform: translateX(calc(var(--px) * -14));
+}
+
+/* Introduction : quatre lignes, x 198–746, pas de 32. */
+.wrap[data-variant="dark"] .intro {
+  margin-top: calc(var(--px) * 13);
+  line-height: 1.08;
+}
+
+/* Feuillets : y 643–824, 836–1022, 1033–1225, 1235–1426 (intervalle 11). */
+.wrap[data-variant="dark"] .entries {
+  margin-top: calc(var(--px) * 36);
+  gap: calc(var(--px) * 11);
+}
+
+/* Papier du feuillet : cuir éclairci sur la feuille chocolat (Master :
+   intérieur #5f422b sur feuille #3e2716), liseré cuivré au bord déchiré,
+   ombre sombre. Le gaufrage du décor reste visible au travers. */
+.wrap[data-variant="dark"] .entryPaper {
+  border-radius: calc(var(--px) * 2);
+  background: rgb(160 115 80 / 0.38);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.6)) rgb(214 150 92 / 0.78),
+    inset 0 0 0 max(1px, calc(var(--px) * 3.2)) rgb(120 78 46 / 0.55),
+    inset 0 0 calc(var(--px) * 14) rgb(30 16 6 / 0.35);
+  filter: var(--deckle) drop-shadow(calc(var(--px) * -2) calc(var(--px) * 6) calc(var(--px) * 6) rgb(10 5 1 / 0.6));
+}
+
+/* Médaillon bronze : disque Ø 101, lumière en haut à gauche (#d9a982 →
+   #a8754a), pictogramme sombre. */
+.wrap[data-variant="dark"] .medallion {
+  background: radial-gradient(circle at 38% 32%, #e6bb8f 0, #cf9d6d 38%, #b07c50 72%, #8f5f3b 100%);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.4)) rgb(240 200 150 / 0.28),
+    inset calc(var(--px) * -3) calc(var(--px) * -4) calc(var(--px) * 8) rgb(70 40 18 / 0.45),
+    0 calc(var(--px) * 3) calc(var(--px) * 6) rgb(10 5 1 / 0.55);
+  color: #2b1a0e;
+}
+
+.wrap[data-variant="dark"] .entryDivider {
+  background: rgb(214 170 112 / 0.85);
+}
+
+.wrap[data-variant="dark"] .entryTitle {
+  color: var(--label);
+}
+
+.wrap[data-variant="dark"] .entryBody {
+  /* Plus clair que la médiane mesurée (#ded4c7) : l'EB Garamond 400 est
+     plus fin que le dessin du Master. */
+  color: #e8dfd2;
+}
+
+/* Pied : filets x 320–429 et 511–621 à y 1462, cœur x 457–485. */
+.wrap[data-variant="dark"] .footerOrnament {
+  gap: calc(var(--px) * 27);
+  transform: none;
+}
+
+.wrap[data-variant="dark"] .footerRule {
+  flex-basis: calc(var(--px) * 109);
+  background: var(--rule);
+}
+
+.footerHeart {
+  display: block;
+  flex: none;
+  width: calc(var(--px) * 28);
+  height: calc(var(--px) * 25);
+  color: #e9c48f;
+  overflow: visible;
+}
+
+/* Phrase manuscrite : deux lignes, x 238–709, y 1489–1569, pas de 44. */
+.wrap[data-variant="dark"] .closing {
+  margin-top: calc(var(--px) * 10);
+  max-width: calc(var(--px) * 490);
+  /* Le script du Master est plus large que La Belle Aurore à 32 :
+     34 px reproduisent sa largeur (x 238–709) ; pas de 44. */
+  font-size: max(15px, calc(var(--px) * 34));
+  line-height: 1.29;
+  color: #e4d6bd;
+}
+
+/* « Des gestes / qui ont du sens » : papier sombre du coin haut droit,
+   hors de la feuille ; deux lignes montant à −18°, x 717–912, y 57–165 ;
+   cœur à main levée x 837–869, y 127–177. Ancrée en haut du Master comme
+   le décor qui la porte. */
+.cornerNote {
+  position: absolute;
+  left: calc(var(--px) * var(--corner-left));
+  top: calc(var(--px) * var(--corner-top));
+  width: calc(var(--px) * var(--corner-width));
+  height: calc(var(--px) * 130);
+  color: #cdb89c;
+  pointer-events: none;
+}
+
+.cornerText {
+  position: absolute;
+  left: calc(var(--px) * 10);
+  top: calc(var(--px) * 31);
+  margin: 0;
+  width: max-content;
+  /* Ligne la plus longue du Master : 199 px de canevas. Une traduction
+     plus longue passe à la ligne plutôt que de sortir du papier sombre. */
+  max-width: calc(var(--px) * 215);
+  transform: rotate(var(--corner-rotate));
+  transform-origin: 0 50%;
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: max(11px, calc(var(--px) * 32));
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.cornerHeart {
+  position: absolute;
+  left: calc(var(--px) * 131);
+  top: calc(var(--px) * 73);
+  width: calc(var(--px) * 32);
+  height: calc(var(--px) * 50);
+  overflow: visible;
+}
+
+/* ========================================================================
+ * Desktop Light (P3) — `DESKTOP_LIGHT_MASTER_ILLUSTRE.png` (1671 × 941).
+ * À partir de 1024 px de largeur RÉELLE du conteneur, et seulement pour une
+ * variante qui a des réglages Desktop (`data-desktop`) : Master Desktop
+ * (décor 1670 × 941) plafonné à 1448 px, même moteur de décor, en-tête
+ * centré et feuillets en deux colonnes. Sous ce seuil, aucune règle de ce
+ * bloc ne s'applique : les Mobile restent ceux validés. Mesures : Master
+ * Desktop Light, en px de canevas.
+ * ===================================================================== */
+
+.wrap[data-desktop] {
+  /* Plafond Desktop (méthode Avis V2) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+}
+
+/* Pile de la zone droite et mention réservée au Desktop : absentes du
+   Mobile. */
+.zoneRight,
+.cornerNote[data-desktop-only] {
+  display: none;
+}
+
+@container (min-width: 1024px) {
+  .wrap[data-desktop] .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images-left);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --edges-src: var(--d-edges-src-left);
+    --edges-h: var(--d-edges-h-left);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut-left);
+    --fade: var(--d-fade-left);
+    --text-top: var(--d-text-top);
+    --foot: var(--d-foot);
+    --text-left: var(--d-text-left);
+    --text-right: var(--d-text-right);
+    --axis: var(--d-axis);
+    --corner-left: var(--d-corner-left);
+    --corner-top: var(--d-corner-top);
+    --corner-width: var(--d-corner-width);
+    --corner-rotate: var(--d-corner-rotate);
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  /* Zone droite : sa propre coupe, sa teinte et sa bande des bords ; elle
+     recouvre la pile principale à partir du fondu vertical du centre
+     (papier nu entre les deux coupes). */
+  .wrap[data-desktop] .zoneRight {
+    --cut: var(--d-cut-right);
+    --fade: var(--d-fade-right);
+    --paper-images: var(--d-paper-images-right);
+    --edges-src: var(--d-edges-src-right);
+    --edges-h: var(--d-edges-h-right);
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+  }
+
+  /* En-tête : axe x 836, dans la feuille nue entre le sceau (x ≤ 300) et
+     le bouquet droit (x ≥ 1420). */
+  .wrap[data-desktop] .header {
+    align-self: center;
+    width: calc(var(--px) * 1000);
+    padding-inline: 0;
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  /* « POUR NOUS ACCOMPAGNER » : capitales x 660–1006, y 139–151. */
+  .wrap[data-desktop] .surtitle {
+    max-width: none;
+    font-size: max(10px, calc(var(--px) * 18.5));
+    letter-spacing: 0.27em;
+    margin-right: -0.27em;
+  }
+
+  /* Filet : x 785–882, y 170. */
+  .wrap[data-desktop] .surtitleRule {
+    width: calc(var(--px) * 97);
+    margin-top: calc(var(--px) * 14);
+    transform: none;
+  }
+
+  /* « Traditions & repères » : x 527–1161, capitale T y 206–261 (55 px) :
+     EB Garamond 600 à 78 px de canevas ; le Master le centre sur x 844,
+     8 px à droite de l'axe du surtitre. */
+  .wrap[data-desktop] .title {
+    margin-top: calc(var(--px) * 18);
+    max-width: calc(var(--px) * 900);
+    font-size: max(24px, calc(var(--px) * 78));
+    transform: translateX(calc(var(--px) * 8));
+  }
+
+  /* Rameau : x 762–897, y 274–327 (tracé à 0,87). */
+  .wrap[data-desktop] .sprig {
+    width: calc(var(--px) * 150);
+    height: calc(var(--px) * 70);
+    margin-top: calc(var(--px) * -15);
+    transform: translateX(calc(var(--px) * -4));
+  }
+
+  /* Introduction en italique : deux lignes, x 412–1274, pas de 28. */
+  .wrap[data-desktop] .intro {
+    margin-top: calc(var(--px) * -2);
+    max-width: calc(var(--px) * 880);
+    font-family: var(--font-heritage-recit-serif-italic), serif;
+    font-style: italic;
+    font-size: max(15px, calc(var(--px) * 27));
+    line-height: 1.04;
+  }
+
+  /* Feuillets : deux colonnes x 225–837 et 853–1468, rangées y 411–582 et
+     595–766 (écarts 15 et 13). Hauteur de rangée = le plus long des deux
+     feuillets ; un feuillet seul sur sa rangée (nombre impair) est centré,
+     à la largeur d'une colonne. */
+  .wrap[data-desktop] .entries {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: calc(var(--px) * 15);
+    row-gap: calc(var(--px) * 13);
+    margin-top: calc(var(--px) * 26);
+  }
+
+  .wrap[data-desktop] .entry:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: calc((100% - var(--px) * 15) / 2);
+  }
+
+  /* Feuillet : texte dès x 431 (199 après le bord), filet vertical à
+     x 396, médaillon Ø 105 centré à x 316. */
+  .wrap[data-desktop] .entry {
+    grid-template-columns: calc(var(--px) * 199) minmax(0, 1fr);
+    min-height: calc(var(--px) * 171);
+    /* Master : « ACCOMPAGNEMENT AU CIMETIÈRE » (x 431–798) tient sur une
+       ligne à 32 px du bord droit du feuillet. */
+    padding: calc(var(--px) * 25) calc(var(--px) * 28) calc(var(--px) * 22) 0;
+  }
+
+  .wrap[data-desktop] .medallion {
+    left: calc(var(--px) * 38);
+    width: calc(var(--px) * 105);
+    height: calc(var(--px) * 105);
+  }
+
+  .wrap[data-desktop] .entryDivider {
+    left: calc(var(--px) * 171);
+    top: calc(var(--px) * 29);
+    bottom: calc(var(--px) * 27);
+  }
+
+  /* Intitulé : capitales y 444–455, « FLEURS & ATTENTIONS » x 1038–1289 ;
+     filet x 431–466 à y 471. */
+  .wrap[data-desktop] .entryTitle {
+    font-size: max(10px, calc(var(--px) * 18));
+    letter-spacing: 0.16em;
+  }
+
+  .wrap[data-desktop] .entryRule {
+    width: calc(var(--px) * 35);
+    margin: calc(var(--px) * 14) 0 calc(var(--px) * 11);
+  }
+
+  /* Texte de la famille : pas de 25, EB Garamond 400 à 21 px de canevas. */
+  .wrap[data-desktop] .entryBody {
+    font-size: max(15px, calc(var(--px) * 21));
+    line-height: 1.19;
+  }
+
+  /* Pied : filets et rameau y 781–820 (x 682–987) ; phrase manuscrite deux
+     lignes x 607–1065, y 825–899, pas de 37. */
+  .wrap[data-desktop] .footer {
+    padding-top: calc(var(--px) * 12);
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  .wrap[data-desktop] .footerRule {
+    flex-basis: calc(var(--px) * 97);
+  }
+
+  .wrap[data-desktop] .footerSprig {
+    width: calc(var(--px) * 85);
+    height: calc(var(--px) * 40);
+  }
+
+  .wrap[data-desktop] .closing {
+    margin-top: calc(var(--px) * 4);
+    max-width: calc(var(--px) * 520);
+    font-size: max(15px, calc(var(--px) * 34));
+    line-height: 1.09;
+  }
+
+  /* « Des gestes / qui ont du sens » : doré sur l'aquarelle bleue du coin
+     haut droit, deux lignes montant à −18° (x 1453–1640, y 115–240) ;
+     cœur x 1563–1607, y 188–242. */
+  .wrap[data-desktop] .cornerNote {
+    display: block;
+    height: calc(var(--px) * 150);
+    color: #e3c08a;
+  }
+
+  .wrap[data-desktop] .cornerText {
+    left: calc(var(--px) * 18);
+    top: calc(var(--px) * 50);
+    max-width: calc(var(--px) * 230);
+    font-size: max(11px, calc(var(--px) * 30));
+    line-height: 1.4;
+  }
+
+  .wrap[data-desktop] .cornerHeart {
+    left: calc(var(--px) * 123);
+    top: calc(var(--px) * 88);
+    width: calc(var(--px) * 44);
+    height: calc(var(--px) * 54);
+  }
+}
+
+/* ========================================================================
+ * Desktop Dark (P4) — `DESKTOP_DARK_MASTER_ILLUSTRE.png` (1671 × 941).
+ * Même bascule et même composition que le Desktop Light (bloc ci-dessus) ;
+ * matières, encres et ornements du Dark (bloc Mobile Dark) conservés. Ne
+ * surcharge que ce que le Master Desktop Dark dessine autrement. Mesures en
+ * px de canevas.
+ * ===================================================================== */
+
+@container (min-width: 1024px) {
+  /* « — POUR NOUS ACCOMPAGNER — » : capitales x 663–1005, y 163–173 ;
+     filets x 538–640 et 1030–1134 à y 168, à 23 px du texte. */
+  .wrap[data-variant="dark"][data-desktop] .surtitleRow {
+    gap: calc(var(--px) * 23);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .surtitleSideRule {
+    flex-basis: calc(var(--px) * 102);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .surtitle {
+    font-size: max(10px, calc(var(--px) * 17.5));
+  }
+
+  /* « Traditions & repères » : x 554–1116, y 203–268 (centré sur x 835). */
+  .wrap[data-variant="dark"][data-desktop] .title {
+    margin-top: calc(var(--px) * 19);
+    font-size: max(24px, calc(var(--px) * 70));
+    transform: none;
+  }
+
+  /* Rameau bronze : x 765–888, y 272–318. */
+  .wrap[data-variant="dark"][data-desktop] .sprig {
+    width: calc(var(--px) * 131);
+    height: calc(var(--px) * 61);
+    margin-top: calc(var(--px) * -6);
+    transform: translateX(calc(var(--px) * -10));
+  }
+
+  /* Introduction droite (pas d'italique sur ce Master) : deux lignes,
+     x 394–1272, pas de 29. */
+  .wrap[data-variant="dark"][data-desktop] .intro {
+    margin-top: calc(var(--px) * 2);
+    max-width: calc(var(--px) * 900);
+    font-family: var(--font-heritage-ceremony-serif), serif;
+    font-style: normal;
+    font-size: max(15px, calc(var(--px) * 26.5));
+    line-height: 1.1;
+  }
+
+  /* Feuillets : x 232–828 et 847–1450, rangées y 407–586 et 600–778. */
+  .wrap[data-variant="dark"][data-desktop] .entries {
+    margin-top: calc(var(--px) * 17);
+    column-gap: calc(var(--px) * 19);
+    row-gap: calc(var(--px) * 14);
+  }
+
+  /* Médaillon bronze Ø 101 centré à x 318 (86 après le bord) ; filet
+     vertical à x 398 ; texte dès x 428. */
+  /* « ACCOMPAGNEMENT AU CIMETIÈRE » (x 431–806) tient sur une ligne à
+     22 px du bord droit du feuillet : réserve droite 16, capitales
+     légèrement resserrées. */
+  .wrap[data-variant="dark"][data-desktop] .entry {
+    grid-template-columns: calc(var(--px) * 196) minmax(0, 1fr);
+    padding-right: calc(var(--px) * 16);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .entryTitle {
+    letter-spacing: 0.15em;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .medallion {
+    left: calc(var(--px) * 36);
+    width: calc(var(--px) * 101);
+    height: calc(var(--px) * 101);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .entryDivider {
+    left: calc(var(--px) * 166);
+  }
+
+  /* Pied : filets x 683–800 et 870–984, cœur x 822–849 (y 792–815) ;
+     phrase manuscrite deux lignes x 634–1042, y 828–892. */
+  .wrap[data-variant="dark"][data-desktop] .footerOrnament {
+    gap: calc(var(--px) * 22);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .footerRule {
+    flex-basis: calc(var(--px) * 115);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .footerHeart {
+    width: calc(var(--px) * 28);
+    height: calc(var(--px) * 25);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .closing {
+    margin-top: calc(var(--px) * 8);
+    max-width: calc(var(--px) * 470);
+    font-size: max(15px, calc(var(--px) * 31));
+    line-height: 1.15;
+  }
+
+  /* Mention du coin : dorée sur le papier sombre, x 1464–1648, y 35–130 ;
+     cœur x 1588–1630, y 108–170. */
+  .wrap[data-variant="dark"][data-desktop] .cornerNote {
+    color: #d9c19a;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .cornerHeart {
+    left: calc(var(--px) * 138);
+    top: calc(var(--px) * 96);
+    width: calc(var(--px) * 42);
+    height: calc(var(--px) * 62);
+  }
+}

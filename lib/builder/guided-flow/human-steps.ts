@@ -41,6 +41,10 @@ export const STEP_IDS = [
   "A05",
   "A06",
   "A07",
+  // A14 — « Le déroulement de la cérémonie » (Cérémonie V2, B2): declared
+  // at its validated place between A07 and A08, never applicable yet
+  // (see `isA14InRoute` below).
+  "A14",
   "A08",
   "A09",
   "A10",
@@ -79,6 +83,18 @@ export const A04_ANSWERS = ["yes", "undecided", "no"] as const;
 export type A04Answer = (typeof A04_ANSWERS)[number];
 
 const isA04AnsweredYes = (state: HumanFlowState): boolean => state.A04?.answer === "yes";
+
+/**
+ * Cérémonie V2 (B2) — A14 « Le déroulement de la cérémonie » is built
+ * (components/builder/CeremonyProgrammeStep.tsx) but NOT part of the
+ * route: it must stay unreachable until the CeremonyV2 renderer can show
+ * it. Never applicable, so the route, the progress and
+ * `firstIncompleteStep` are exactly what they were before A14 existed.
+ * Its insertion (GO C5) replaces this predicate with `isA04AnsweredYes`
+ * and opens the page gate between A07 and A08
+ * (lib/builder/guided-flow/ceremony-step.ts, `needsA14`).
+ */
+export const isA14InRoute = (): boolean => false;
 
 /**
  * A00's own answer values: "yes" | "no" | "later". "yes"/"no" are
@@ -165,6 +181,7 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "A05", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   { id: "A06", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   { id: "A07", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
+  { id: "A14", group: "announcement", required: false, skippable: true, isApplicable: isA14InRoute },
   { id: "A08", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   // A09 (Traditions & repères) belongs with the death notice (PO
   // doctrine): applicable only when A00 = yes. Entries already written
