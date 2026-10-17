@@ -392,12 +392,65 @@ describe("CeremonyV2 — Desktop Light (C3)", () => {
     expect(corner.querySelector('[data-ornament="coeur"]')!.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("une variante sans réglages Desktop (Dark) ne bascule jamais : ni Master Desktop, ni zone droite, ni mention", () => {
-    expect(CEREMONY_V2_TOKENS.dark!.desktop).toBeNull();
+  it("Desktop Light est la variante validée (C3)", () => {
+    expect(DESKTOP_LIGHT.status).toBe("validated");
+    const { container } = renderCeremony();
+    expect(container.querySelector("[data-variant]")!.getAttribute("data-desktop-status")).toBe("validated");
+  });
+});
+
+describe("CeremonyV2 — Desktop Dark (C4, provisoire)", () => {
+  const DESKTOP_DARK = CEREMONY_V2_TOKENS.dark!.desktop!;
+  const OFFICIAL_DESKTOP_DARK_SHA256 = "22cf955b2820a8f5f240a4c7cf2c936bfe2fef76873dd8b9d56666b84bc37359";
+  const assets = (D: typeof DESKTOP_DARK) => [
+    D.masterSrc,
+    D.zones.left.paperTone,
+    D.zones.right.paperTone,
+    ...[D.zones.left.edgeStrip, D.zones.right.edgeStrip].flatMap((e) => (e !== null ? [e.src] : [])),
+    ...D.paperGrains.map((g) => g.src),
+  ];
+
+  it("explicitement provisoire : jamais confondu avec un Master validé", () => {
+    expect(DESKTOP_DARK.status).toBe("provisional");
     const { container } = renderCeremony({ skinVariant: "dark" });
-    expect(container.querySelector("[data-desktop]")).toBeNull();
-    expect(container.querySelector('[data-zone="right"]')).toBeNull();
+    const wrap = container.querySelector("[data-variant]")!;
+    expect(wrap.getAttribute("data-desktop-status")).toBe("provisional");
+  });
+
+  it("décor runtime : le Master vierge officiel Desktop Dark, octet pour octet", () => {
+    expect(DESKTOP_DARK.masterSha256).toBe(OFFICIAL_DESKTOP_DARK_SHA256);
+    const digest = createHash("sha256").update(readFileSync(path.join(ROOT, "public", DESKTOP_DARK.masterSrc))).digest("hex");
+    expect(digest).toBe(OFFICIAL_DESKTOP_DARK_SHA256);
+    expect(DESKTOP_DARK.canvas).toEqual({ width: 1670, height: 941 });
+  });
+
+  it("ses assets existent dans son propre dossier, sans partage avec les trois autres variantes", () => {
+    for (const src of assets(DESKTOP_DARK)) {
+      expect(src.startsWith("/assets/ceremony/v2/desktop/dark/")).toBe(true);
+      expect(existsSync(path.join(ROOT, "public", src))).toBe(true);
+    }
+    const others = new Set([
+      ...assets(CEREMONY_V2_TOKENS.light!.desktop!),
+      ...[MOBILE_LIGHT, MOBILE_DARK].flatMap((T) => [T.masterSrc, T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)]),
+    ]);
+    expect(assets(DESKTOP_DARK).some((src) => others.has(src))).toBe(false);
+  });
+
+  it("coupes dans le Master ; même DOM et mêmes cartouches ; zone droite décorative ; pas de mention du coin", () => {
+    for (const zone of [DESKTOP_DARK.zones.left, DESKTOP_DARK.zones.right]) {
+      expect(zone.cutY - zone.fadePx).toBeGreaterThan(DESKTOP_DARK.textTopCanvas);
+      expect(zone.cutY + zone.fadePx).toBeLessThan(DESKTOP_DARK.canvas.height - DESKTOP_DARK.footCanvas);
+    }
+    const { container } = renderCeremony({ skinVariant: "dark" });
+    expect(container.querySelector("[data-desktop]")).not.toBeNull();
+    expect(screen.getByTestId("ceremony-v2").style.getPropertyValue("--d-m-src")).toBe(`url(${DESKTOP_DARK.masterSrc})`);
+    expect(container.querySelector('[data-zone="right"]')!.getAttribute("aria-hidden")).toBe("true");
     expect(container.querySelector("[data-desktop-only]")).toBeNull();
-    expect(screen.getByTestId("ceremony-v2").style.getPropertyValue("--d-m-src")).toBe("");
+    expect([...container.querySelectorAll("article")].map((a) => a.getAttribute("data-card"))).toEqual([
+      "dateTime",
+      "place",
+      "programme",
+      "practical",
+    ]);
   });
 });

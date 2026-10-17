@@ -41,8 +41,8 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light (C1, validé PO), Mobile Dark (C2, validé PO) et Desktop
- * Light (C3, pilote). Une variante sans réglages (`null`) ne rend rien et
+ * Mobile Light (C1), Mobile Dark (C2) et Desktop Light (C3), validés PO ;
+ * Desktop Dark (C4) provisoire (technique seulement, artistique OPEN). Une variante sans réglages (`null`) ne rend rien et
  * ne se rabat jamais sur une autre ; une variante sans réglages Desktop
  * (`desktop: null`) garde sa composition Mobile à toute largeur. Ce
  * renderer n'est branché sur aucun registre de production : page pilote
@@ -113,6 +113,10 @@ export interface CeremonyV2DesktopTokens {
   axisCanvas: number;
   /** Mention manuscrite du coin haut droit, si le Master la porte. */
   cornerNote: { leftCanvas: number; topCanvas: number; widthCanvas: number; rotateDeg: number } | null;
+  /** `"validated"` : calé sur le Master illustré et validé par la PO.
+   * `"provisional"` : socle technique seulement, finition artistique
+   * à reprendre (rendu exposé en `data-desktop-status`). */
+  status: "validated" | "provisional";
 }
 
 export interface CeremonyV2VariantTokens {
@@ -262,9 +266,47 @@ const DESKTOP_LIGHT: CeremonyV2DesktopTokens = {
   /** Master : « Des gestes / qui ont du sens » et son cœur, x 1453–1637,
    * y 108–242, lignes montant à −17°. */
   cornerNote: { leftCanvas: 1440, topCanvas: 90, widthCanvas: 220, rotateDeg: -17 },
+  status: "validated",
+};
+
+const ROOT_DESKTOP_DARK = "/assets/ceremony/v2/desktop/dark";
+
+/**
+ * Desktop Dark (C4) — PROVISOIRE : socle technique seulement, finition
+ * artistique OPEN. Décor runtime : `CEREMONIE_DESKTOP_DARK_RUNTIME_VIERGE.png`
+ * (1670×941) du ZIP officiel, copié octet pour octet. Les dérivés (deux
+ * zones, coupes trouvées automatiquement : gauche 672 / fondu 30, droite
+ * 234 / fondu 26, sans bande des bords) et TOUTE la géométrie ci-dessous
+ * sont repris du Desktop Light en attendant le relevé sur le Master
+ * illustré Desktop Dark : rien n'y est encore calé. Pas de mention du
+ * coin tant que le Master Dark n'a pas été relevé.
+ */
+const DESKTOP_DARK: CeremonyV2DesktopTokens = {
+  masterSrc: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-master.png`,
+  masterSha256: "22cf955b2820a8f5f240a4c7cf2c936bfe2fef76873dd8b9d56666b84bc37359",
+  paperGrains: [
+    { src: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  canvas: { width: 1670, height: 941 },
+  zones: {
+    left: { cutY: 672, fadePx: 30, paperTone: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-left-tone.png`, edgeStrip: null },
+    right: { cutY: 234, fadePx: 26, paperTone: `${ROOT_DESKTOP_DARK}/ceremony-desktop-dark-right-tone.png`, edgeStrip: null },
+  },
+  zoneSplitCanvas: 830,
+  zoneBlendCanvas: 240,
+  textTopCanvas: 119,
+  footCanvas: 14,
+  cardsLeftCanvas: 272,
+  cardsRightCanvas: 1424,
+  axisCanvas: 836,
+  cornerNote: null,
+  status: "provisional",
 };
 
 export const CEREMONY_V2_TOKENS: Record<SkinVariant, CeremonyV2VariantTokens | null> = {
   light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
-  dark: { mobile: MOBILE_DARK, desktop: null },
+  dark: { mobile: MOBILE_DARK, desktop: DESKTOP_DARK },
 };

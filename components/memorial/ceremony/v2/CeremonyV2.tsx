@@ -243,6 +243,7 @@ function CeremonyV2Layout({
       style={mobileVars(T)}
       data-variant={variant}
       data-desktop={D !== null ? "" : undefined}
+      data-desktop-status={D !== null ? D.status : undefined}
       lang={language}
     >
       <section

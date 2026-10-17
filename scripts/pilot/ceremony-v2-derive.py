@@ -176,6 +176,26 @@ VARIANTS = {
             "c": (1000, 260, 340, 120),
         },
     },
+    # Desktop Dark (1670×941) — PROVISOIRE (C4 technique, finition
+    # artistique reportée) : feuille chocolat nue de x 220 à 1490 ; sceau et
+    # bouquet en haut à gauche, bouquet à droite dès la rangée 380, fleurs
+    # floues aux coins bas. Deux zones, coupes cherchées automatiquement
+    # (détail net minimal) dans leurs colonnes, sans bande des bords ni
+    # correction de teinte : à reprendre sur le Master illustré Desktop
+    # Dark.
+    "desktop-dark": {
+        "sha256": "22cf955b2820a8f5f240a4c7cf2c936bfe2fef76873dd8b9d56666b84bc37359",
+        "zones": {
+            "left": {"fade": 30, "search": (560, 760), "columns": (120, 830), "sides": ((0, 120),), "edge_strip": None, "tone_gain": (1.0, 1.0, 1.0)},
+            "right": {"fade": 26, "search": (200, 380), "columns": (830, 1560), "sides": ((1560, None),), "edge_strip": None, "tone_gain": (1.0, 1.0, 1.0)},
+        },
+        "grain_gain": 2.4,
+        "grain_zones": {
+            "a": (400, 300, 460, 300),
+            "b": (900, 500, 400, 200),
+            "c": (1000, 200, 340, 120),
+        },
+    },
 }
 
 

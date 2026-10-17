@@ -1338,3 +1338,32 @@
     transform: translateX(calc(var(--px) * -6));
   }
 }
+
+/* ========================================================================
+ * Desktop Dark (C4) — PROVISOIRE : géométrie du Desktop Light, matières du
+ * Mobile Dark. Ce bloc ne fait que neutraliser les règles Mobile Dark qui
+ * l'emporteraient sur la grille Desktop, et rend aux cartouches le cuir
+ * chocolat. Finition artistique à reprendre sur le Master illustré
+ * Desktop Dark.
+ * ===================================================================== */
+
+@container (min-width: 1024px) {
+  .wrap[data-variant="dark"][data-desktop] .cardPaper {
+    background-color: #49301a;
+    background-image: var(--grain-images);
+    background-size: var(--grain-sizes);
+    background-blend-mode: overlay;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .rowCard[data-card="practical"] {
+    grid-template-columns: calc(var(--px) * 197) auto minmax(0, 1fr);
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .rowCard[data-card="practical"] .rowBody {
+    padding-top: 0;
+  }
+
+  .wrap[data-variant="dark"][data-desktop] .rowCard[data-card="practical"] .cardLabel {
+    font-size: max(10px, calc(var(--px) * 15.2));
+  }
+}
