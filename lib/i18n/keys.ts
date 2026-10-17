@@ -499,6 +499,8 @@ export const TRANSLATION_KEYS = [
   "ceremony.v2.programme",
   "ceremony.v2.mapLink",
   "ceremony.v2.closing",
+  // Mention manuscrite du coin, Master Desktop Light seulement (pilote C3).
+  "ceremony.v2.cornerNote",
   "recit.person",
   "recit.loved",
   "recit.legacy",

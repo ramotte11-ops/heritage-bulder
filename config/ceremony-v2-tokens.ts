@@ -41,10 +41,12 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light (C1, validé PO) et Mobile Dark (C2, pilote). Une variante
- * sans réglages (`null`) ne rend rien et ne se rabat jamais sur une
- * autre. Ce renderer n'est branché sur aucun registre de production :
- * page pilote seulement.
+ * Mobile Light (C1, validé PO), Mobile Dark (C2, validé PO) et Desktop
+ * Light (C3, pilote). Une variante sans réglages (`null`) ne rend rien et
+ * ne se rabat jamais sur une autre ; une variante sans réglages Desktop
+ * (`desktop: null`) garde sa composition Mobile à toute largeur. Ce
+ * renderer n'est branché sur aucun registre de production : page pilote
+ * seulement.
  */
 
 export interface CeremonyV2MobileTokens {
@@ -79,8 +81,43 @@ export interface CeremonyV2MobileTokens {
     | { title: "titleDark"; date: "dateDark"; footer: "footerDark" };
 }
 
+/** Une zone du décor Desktop : sa coupe, sa teinte et, s'il y a lieu, sa
+ * bande des bords. */
+export interface CeremonyV2DesktopZone {
+  cutY: number;
+  fadePx: number;
+  paperTone: string;
+  edgeStrip: { src: string; heightCanvas: number } | null;
+}
+
+/**
+ * Réglages Desktop d'une variante : son propre Master (paysage), ses deux
+ * zones de décor et sa géométrie, relevée sur son Master illustré
+ * Desktop — jamais un agrandissement du Mobile.
+ */
+export interface CeremonyV2DesktopTokens {
+  masterSrc: string;
+  masterSha256: string;
+  paperGrains: readonly { src: string; tileWidth: number; blend: string }[];
+  noiseBlend: string;
+  canvas: { width: number; height: number };
+  /** Deux zones (gauche, droite), chacune avec sa coupe, fondues l'une
+   * dans l'autre autour de `zoneSplitCanvas` sur `zoneBlendCanvas`. */
+  zones: { left: CeremonyV2DesktopZone; right: CeremonyV2DesktopZone };
+  zoneSplitCanvas: number;
+  zoneBlendCanvas: number;
+  textTopCanvas: number;
+  footCanvas: number;
+  cardsLeftCanvas: number;
+  cardsRightCanvas: number;
+  axisCanvas: number;
+  /** Mention manuscrite du coin haut droit, si le Master la porte. */
+  cornerNote: { leftCanvas: number; topCanvas: number; widthCanvas: number; rotateDeg: number } | null;
+}
+
 export interface CeremonyV2VariantTokens {
   mobile: CeremonyV2MobileTokens;
+  desktop: CeremonyV2DesktopTokens | null;
 }
 
 const ROOT = "/assets/ceremony/v2/mobile/light";
@@ -170,7 +207,64 @@ const MOBILE_DARK: CeremonyV2MobileTokens = {
   sprigShapes: { title: "titleDark", date: "dateDark", footer: "footerDark" },
 };
 
+const ROOT_DESKTOP = "/assets/ceremony/v2/desktop/light";
+
+/**
+ * Desktop Light (C3). Autorité : le Master illustré Desktop Light
+ * (1672×941, ramené à 1670×941 pour la mesure : agrandissement uniforme du
+ * décor vierge, aligné à 0 px près). Décor runtime :
+ * `CEREMONIE_DESKTOP_LIGHT_RUNTIME_VIERGE.png` (1670×941), copié octet pour
+ * octet. Composition paysage : en-tête centré sur x ≈ 836, quatre
+ * cartouches en deux colonnes (x 272–828 et 844–1424), médaillon à gauche
+ * de chaque cartouche, pied centré, mention manuscrite sur l'aquarelle du
+ * coin haut droit.
+ *
+ * Décor étendu en deux zones (méthode de Traditions V2 Desktop) :
+ *   - gauche, coupe Y = 728, fondu 30 : sous le papier vert du sceau, au-
+ *     dessus du feuillage flou du coin bas gauche (fenêtre 690–780, détail
+ *     net minimal dans les colonnes 120–830) ;
+ *   - droite, coupe imposée Y = 310, fondu 26 : sous l'aquarelle, au-
+ *     dessus du bouquet droit (rangées 340–870), qui n'est jamais tranché.
+ * Aucune bande des bords : à ces hauteurs, les bords de la feuille sont
+ * en diagonale ou trop courts pour se répéter sans dents de scie ; teinte
+ * et grain portent seuls la surface. Teintes : médianes des 50 rangées de
+ * part et d'autre de chaque raccord, lissées σ = 22 px ; à gauche de la
+ * feuille (x < 240), papier beige du collage (quantile clair des rangées
+ * 600–900) au lieu du fondu papier vert → feuillage flou ; à droite, teinte
+ * du dessous dès x 1490. Grain : trois tuiles de la feuille nue (460×300,
+ * 400×200, 340×120), moins de 0,01 % de pixels nets.
+ */
+const DESKTOP_LIGHT: CeremonyV2DesktopTokens = {
+  masterSrc: `${ROOT_DESKTOP}/ceremony-desktop-light-master.png`,
+  masterSha256: "cdfc36d81e903d4452b9852775901055c68faac899bb3a14d2cb4dfbd3e45c16",
+  paperGrains: [
+    { src: `${ROOT_DESKTOP}/ceremony-desktop-light-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DESKTOP}/ceremony-desktop-light-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DESKTOP}/ceremony-desktop-light-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  canvas: { width: 1670, height: 941 },
+  zones: {
+    left: { cutY: 728, fadePx: 30, paperTone: `${ROOT_DESKTOP}/ceremony-desktop-light-left-tone.png`, edgeStrip: null },
+    right: { cutY: 310, fadePx: 26, paperTone: `${ROOT_DESKTOP}/ceremony-desktop-light-right-tone.png`, edgeStrip: null },
+  },
+  zoneSplitCanvas: 830,
+  zoneBlendCanvas: 240,
+  /** Master : capitales du surtitre à y 124. */
+  textTopCanvas: 119,
+  /** Master : bas du rameau du pied à 917. */
+  footCanvas: 14,
+  /** Master : cartouches x 272–828 et 844–1424. */
+  cardsLeftCanvas: 272,
+  cardsRightCanvas: 1424,
+  /** Master : surtitre, titre et cœur du pied centrés sur x ≈ 836. */
+  axisCanvas: 836,
+  /** Master : « Des gestes / qui ont du sens » et son cœur, x 1453–1637,
+   * y 108–242, lignes montant à −17°. */
+  cornerNote: { leftCanvas: 1440, topCanvas: 90, widthCanvas: 220, rotateDeg: -17 },
+};
+
 export const CEREMONY_V2_TOKENS: Record<SkinVariant, CeremonyV2VariantTokens | null> = {
-  light: { mobile: MOBILE_LIGHT },
-  dark: { mobile: MOBILE_DARK },
+  light: { mobile: MOBILE_LIGHT, desktop: DESKTOP_LIGHT },
+  dark: { mobile: MOBILE_DARK, desktop: null },
 };

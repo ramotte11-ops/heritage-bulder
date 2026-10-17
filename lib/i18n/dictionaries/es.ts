@@ -286,6 +286,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "ceremony.v2.programme": "El desarrollo",
   "ceremony.v2.mapLink": "Ver en el mapa",
   "ceremony.v2.closing": "Unidos en su memoria",
+  "ceremony.v2.cornerNote": "Gestos\ncon sentido",
   "recit.person": "LA PERSONA QUE ERA",
   "recit.loved": "LO QUE AMABA",
   "recit.legacy": "LO QUE DEJA",

@@ -7,7 +7,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import type { CeremonyContent, CeremonyMoment } from "@/types/ceremony";
 
 /**
- * Cérémonie Intemporel V2 — pilote C1 Mobile Light.
+ * Cérémonie Intemporel V2 — pilotes C1 Mobile Light, C2 Mobile Dark et
+ * C3 Desktop Light.
  * Contrats du renderer : décor authentique (SHA-256 du ZIP officiel),
  * cartouches présents seulement pour les blocs renseignés (aucun
  * emplacement fantôme), déroulement B1 rendu dans l'ordre de la famille,
@@ -315,5 +316,88 @@ describe("CeremonyV2 — Mobile Dark (C2)", () => {
     renderCeremony({ skinVariant: "dark", language });
     expect(screen.getByText(surtitle)).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeTruthy();
+  });
+});
+
+describe("CeremonyV2 — Desktop Light (C3)", () => {
+  const DESKTOP_LIGHT = CEREMONY_V2_TOKENS.light!.desktop!;
+  const OFFICIAL_DESKTOP_LIGHT_SHA256 = "cdfc36d81e903d4452b9852775901055c68faac899bb3a14d2cb4dfbd3e45c16";
+  const desktopAssets = () => [
+    DESKTOP_LIGHT.zones.left.paperTone,
+    DESKTOP_LIGHT.zones.right.paperTone,
+    ...[DESKTOP_LIGHT.zones.left.edgeStrip, DESKTOP_LIGHT.zones.right.edgeStrip].flatMap((s) => (s !== null ? [s.src] : [])),
+    ...DESKTOP_LIGHT.paperGrains.map((g) => g.src),
+  ];
+
+  it("le décor runtime Desktop est le Master vierge officiel, octet pour octet", () => {
+    expect(DESKTOP_LIGHT.masterSha256).toBe(OFFICIAL_DESKTOP_LIGHT_SHA256);
+    const digest = createHash("sha256").update(readFileSync(path.join(ROOT, "public", DESKTOP_LIGHT.masterSrc))).digest("hex");
+    expect(digest).toBe(OFFICIAL_DESKTOP_LIGHT_SHA256);
+    expect(DESKTOP_LIGHT.canvas).toEqual({ width: 1670, height: 941 });
+  });
+
+  it("ses dérivés existent dans son propre dossier ; aucun n'est le décor ni un asset Mobile", () => {
+    for (const src of [DESKTOP_LIGHT.masterSrc, ...desktopAssets()]) {
+      expect(src.startsWith("/assets/ceremony/v2/desktop/light/")).toBe(true);
+      expect(existsSync(path.join(ROOT, "public", src))).toBe(true);
+    }
+    expect(new Set(desktopAssets()).has(DESKTOP_LIGHT.masterSrc)).toBe(false);
+    const mobile = new Set([MOBILE_LIGHT, MOBILE_DARK].flatMap((T) => [T.masterSrc, T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)]));
+    expect([DESKTOP_LIGHT.masterSrc, ...desktopAssets()].some((src) => mobile.has(src))).toBe(false);
+  });
+
+  it("chaque zone coupe dans le Master, sous l'en-tête et au-dessus du pied ; fondu des zones dans le canevas", () => {
+    for (const zone of [DESKTOP_LIGHT.zones.left, DESKTOP_LIGHT.zones.right]) {
+      expect(zone.cutY - zone.fadePx).toBeGreaterThan(DESKTOP_LIGHT.textTopCanvas);
+      expect(zone.cutY + zone.fadePx).toBeLessThan(DESKTOP_LIGHT.canvas.height - DESKTOP_LIGHT.footCanvas);
+    }
+    expect(DESKTOP_LIGHT.zoneSplitCanvas - DESKTOP_LIGHT.zoneBlendCanvas / 2).toBeGreaterThan(0);
+    expect(DESKTOP_LIGHT.zoneSplitCanvas + DESKTOP_LIGHT.zoneBlendCanvas / 2).toBeLessThan(DESKTOP_LIGHT.canvas.width);
+  });
+
+  it("réglages Desktop posés sur la section (actifs seulement dès 1024 px de conteneur) ; même DOM et mêmes cartouches", () => {
+    const { container } = renderCeremony();
+    const wrap = container.querySelector("[data-variant]") as HTMLElement;
+    expect(wrap.hasAttribute("data-desktop")).toBe(true);
+    // Le Mobile garde ses propres réglages sur le conteneur.
+    expect(wrap.style.getPropertyValue("--m-src")).toBe(`url(${MOBILE_LIGHT.masterSrc})`);
+    const section = screen.getByTestId("ceremony-v2");
+    expect(section.style.getPropertyValue("--d-m-src")).toBe(`url(${DESKTOP_LIGHT.masterSrc})`);
+    expect(section.style.getPropertyValue("--d-cut-left")).toBe(String(DESKTOP_LIGHT.zones.left.cutY));
+    expect(section.style.getPropertyValue("--d-cut-right")).toBe(String(DESKTOP_LIGHT.zones.right.cutY));
+    expect([...container.querySelectorAll("article")].map((a) => a.getAttribute("data-card"))).toEqual([
+      "dateTime",
+      "place",
+      "programme",
+      "practical",
+    ]);
+  });
+
+  it("pile de la zone droite décorative, sans surface tant qu'aucun excédent n'est mesuré", () => {
+    const { container } = renderCeremony();
+    const zone = container.querySelector('[data-zone="right"]')!;
+    expect(zone.getAttribute("aria-hidden")).toBe("true");
+    expect(zone.querySelectorAll('[class*="master"], [class*="bottom"]')).toHaveLength(2);
+    expect(zone.querySelectorAll('[class*="paper"]')).toHaveLength(0);
+  });
+
+  it.each([
+    ["fr", "Des gestes\nqui ont du sens"],
+    ["en", "Meaningful\ngestures"],
+    ["es", "Gestos\ncon sentido"],
+  ] as const)("%s : mention manuscrite du coin traduite, réservée au Desktop", (language, note) => {
+    const { container } = renderCeremony({ language });
+    const corner = container.querySelector("[data-desktop-only]")!;
+    expect(corner.querySelector("p")!.textContent).toBe(note);
+    expect(corner.querySelector('[data-ornament="coeur"]')!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("une variante sans réglages Desktop (Dark) ne bascule jamais : ni Master Desktop, ni zone droite, ni mention", () => {
+    expect(CEREMONY_V2_TOKENS.dark!.desktop).toBeNull();
+    const { container } = renderCeremony({ skinVariant: "dark" });
+    expect(container.querySelector("[data-desktop]")).toBeNull();
+    expect(container.querySelector('[data-zone="right"]')).toBeNull();
+    expect(container.querySelector("[data-desktop-only]")).toBeNull();
+    expect(screen.getByTestId("ceremony-v2").style.getPropertyValue("--d-m-src")).toBe("");
   });
 });

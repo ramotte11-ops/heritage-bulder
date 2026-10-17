@@ -292,6 +292,24 @@ export function LineHeart({ className }: { className: string }) {
   );
 }
 
+/** Cœur à main levée de la mention du coin (Master Desktop Light :
+ * x 1561–1603, y 190–242) : lobe droit plus haut, pointe prolongée d'un
+ * court trait (SVG 44 × 54). */
+export function CornerHeart({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 44 54" aria-hidden="true" focusable="false" data-ornament="coeur">
+      <path
+        d="M24.5 47.5 C 15 40.5 3.5 30.5 2.2 18 C 1.6 11 5.5 7.4 10.5 7.6 C 15 7.8 18.6 10 21 13.4 C 24 7.2 29 1.6 35 1.6 C 40 1.6 42.6 5.2 42.2 11 C 41.6 20.5 33.5 33.5 24.5 47.5 L 21.6 52.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Filtre de bord irrégulier des cartouches (déplacement SVG), un par
  * section ; référencé par le CSS via `--deckle`. */
 export function DeckleFilter({ id }: { id: string }) {

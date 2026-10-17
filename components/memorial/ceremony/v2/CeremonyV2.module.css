@@ -912,3 +912,429 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ========================================================================
+ * Desktop Light (C3) — Master illustré Desktop Light (1672×941 ramené à
+ * 1670×941). À partir de 1024 px de largeur RÉELLE du conteneur, et
+ * seulement pour une variante qui a des réglages Desktop
+ * (`data-desktop`) : Master Desktop plafonné à 1448 px, même moteur de
+ * décor (deux zones), en-tête centré, quatre cartouches en deux colonnes,
+ * médaillon à gauche de chaque cartouche. Sous ce seuil, aucune règle de
+ * ce bloc ne s'applique : les Mobile restent ceux validés. Mesures : Master
+ * Desktop Light, en px de canevas.
+ * ===================================================================== */
+
+.wrap[data-desktop] {
+  /* Plafond Desktop (méthode Traditions V2) ; sans effet sous 1448 px. */
+  max-width: 1448px;
+}
+
+/* Pile de la zone droite et mention du coin : propres au Desktop. */
+.zoneRight,
+.cornerNote[data-desktop-only] {
+  display: none;
+}
+
+.cornerNote {
+  position: absolute;
+  left: calc(var(--px) * var(--corner-left));
+  top: calc(var(--px) * var(--corner-top));
+  width: calc(var(--px) * var(--corner-width));
+  height: calc(var(--px) * 160);
+  color: #eddcb5;
+  pointer-events: none;
+}
+
+.cornerText {
+  position: absolute;
+  left: calc(var(--px) * 17);
+  top: calc(var(--px) * 48);
+  margin: 0;
+  width: max-content;
+  /* Ligne la plus longue du Master : 175 px de canevas. Une traduction
+     plus longue passe à la ligne plutôt que de sortir de l'aquarelle. */
+  max-width: calc(var(--px) * 200);
+  transform: rotate(var(--corner-rotate));
+  transform-origin: 0 50%;
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: max(11px, calc(var(--px) * 29));
+  line-height: 1.3;
+  white-space: pre-line;
+}
+
+.cornerHeart {
+  position: absolute;
+  left: calc(var(--px) * 120);
+  top: calc(var(--px) * 99);
+  width: calc(var(--px) * 44);
+  height: calc(var(--px) * 54);
+  overflow: visible;
+}
+
+@container (min-width: 1024px) {
+  .wrap[data-desktop] .section {
+    --m-src: var(--d-m-src);
+    --paper-images: var(--d-paper-images-left);
+    --paper-sizes: var(--d-paper-sizes);
+    --paper-repeat: var(--d-paper-repeat);
+    --paper-blend: var(--d-paper-blend);
+    --grain-images: var(--d-grain-images);
+    --grain-sizes: var(--d-grain-sizes);
+    --edges-src: var(--d-edges-src-left);
+    --edges-h: var(--d-edges-h-left);
+    --canvas-w: var(--d-canvas-w);
+    --canvas-h: var(--d-canvas-h);
+    --cut: var(--d-cut-left);
+    --fade: var(--d-fade-left);
+    --text-top: var(--d-text-top);
+    --foot: var(--d-foot);
+    --cards-left: var(--d-cards-left);
+    --cards-right: var(--d-cards-right);
+    --axis: var(--d-axis);
+    --corner-left: var(--d-corner-left);
+    --corner-top: var(--d-corner-top);
+    --corner-width: var(--d-corner-width);
+    --corner-rotate: var(--d-corner-rotate);
+    --mh: calc(100cqw * var(--canvas-h) / var(--canvas-w));
+    --px: calc(100cqw / var(--canvas-w));
+  }
+
+  /* Zone droite : sa propre coupe et sa teinte ; elle recouvre la pile
+     principale à partir du fondu vertical du centre (papier nu entre les
+     deux coupes). */
+  .wrap[data-desktop] .zoneRight {
+    --cut: var(--d-cut-right);
+    --fade: var(--d-fade-right);
+    --paper-images: var(--d-paper-images-right);
+    --edges-src: var(--d-edges-src-right);
+    --edges-h: var(--d-edges-h-right);
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent calc(var(--px) * (var(--d-zone-split) - var(--d-zone-blend) / 2)),
+      #000 calc(var(--px) * (var(--d-zone-split) + var(--d-zone-blend) / 2))
+    );
+  }
+
+  .wrap[data-desktop] .cornerNote {
+    display: block;
+  }
+
+  /* En-tête : axe x 836, dans la feuille nue entre le sceau et son
+     bouquet (x ≤ 440) et le bouquet droit (x ≥ 1430). */
+  .wrap[data-desktop] .header {
+    align-self: center;
+    width: calc(var(--px) * 900);
+    padding-inline: 0;
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  /* « — EN SON HONNEUR — » : capitales x 713–958, y 124–137 ; filets
+     x 602–685 et 985–1067 à y 131. */
+  .wrap[data-desktop] .surtitleRow {
+    gap: calc(var(--px) * 25);
+  }
+
+  .wrap[data-desktop] .surtitle {
+    font-size: max(10px, calc(var(--px) * 19.5));
+  }
+
+  .wrap[data-desktop] .surtitleRule {
+    flex-basis: calc(var(--px) * 85);
+  }
+
+  /* « Cérémonie » : x 680–995, y 154–214 — plus serré que le Mobile. */
+  .wrap[data-desktop] .title {
+    margin-top: calc(var(--px) * -6);
+    max-width: calc(var(--px) * 640);
+    font-size: max(30px, calc(var(--px) * 84));
+    letter-spacing: -0.07em;
+  }
+
+  /* Rameau : x 778–889, y 224–273. */
+  .wrap[data-desktop] .titleSprig {
+    width: calc(var(--px) * 125);
+    height: calc(var(--px) * 60);
+    margin-top: calc(var(--px) * -8);
+    transform: none;
+  }
+
+  /* Introduction : deux lignes x 644–1027 et 664–1003, pas de 36. */
+  .wrap[data-desktop] .intro {
+    margin-top: calc(var(--px) * -9);
+    max-width: calc(var(--px) * 430);
+    font-size: max(15px, calc(var(--px) * 33.7));
+    line-height: 0.95;
+  }
+
+  /* Cartouches : colonnes x 272–828 et 844–1424 (intervalle 16), rangées
+     y 348–542 et 556–786 (intervalle 14). Hauteur de rangée = le plus long
+     des deux cartouches ; un cartouche seul sur sa rangée est centré, à la
+     largeur d'une colonne. */
+  .wrap[data-desktop] .cards {
+    display: grid;
+    grid-template-columns: minmax(0, 556fr) minmax(0, 580fr);
+    column-gap: calc(var(--px) * 16);
+    row-gap: calc(var(--px) * 14);
+    margin-top: calc(var(--px) * 12);
+  }
+
+  .wrap[data-desktop] .topRow {
+    display: contents;
+  }
+
+  .wrap[data-desktop] .topRow[data-count="1"] > .card,
+  .wrap[data-desktop] .cards > .rowCard:only-of-type {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: calc((100% - var(--px) * 16) / 2);
+  }
+
+  /* Cartouche : médaillon Ø 91 à 41 du bord (y + 33), filet vertical à
+     x 163 (du haut + 28 au bas − 31), texte dès x 197, aligné en haut :
+     capitales de l'intitulé à + 27 (rangée du haut), + 20 (déroulement),
+     + 34 (informations pratiques, plus bas sur le Master). */
+  .wrap[data-desktop] .card {
+    display: grid;
+    grid-template-columns: calc(var(--px) * 197) auto minmax(0, 1fr);
+    align-content: start;
+    text-align: left;
+    min-height: calc(var(--px) * 194);
+    padding: calc(var(--px) * 25) calc(var(--px) * 20) calc(var(--px) * 8) 0;
+  }
+
+  .wrap[data-desktop] .rowCard {
+    min-height: calc(var(--px) * 230);
+    padding-top: calc(var(--px) * 22.5);
+  }
+
+  /* « LE DÉROULEMENT » : capitales y 579–593, filet à y 609. */
+  .wrap[data-desktop] .rowCard[data-card="programme"] .cardRule {
+    margin-top: calc(var(--px) * 10);
+  }
+
+  /* Tout le texte dans la colonne de droite (le papier et le médaillon
+     sont hors flux) ; `:where` laisse l'heure et le rameau se placer. */
+  .wrap[data-desktop] .card > :where(:not(.cardPaper, .medallion)) {
+    grid-column: 2 / -1;
+  }
+
+  .wrap[data-desktop] .card::after {
+    content: "";
+    position: absolute;
+    left: calc(var(--px) * 163);
+    top: calc(var(--px) * 28);
+    bottom: calc(var(--px) * 31);
+    width: max(1px, calc(var(--px) * 1.6));
+    background: var(--rule);
+  }
+
+  /* Papier des cartouches : plus lisse sur le Master Desktop (écart-type
+     ≈ 2 niveaux), de teinte #f7e0c9 ; le grain y est voilé. */
+  .wrap[data-desktop] .cardPaper {
+    background-color: #f7e0c9;
+    background-image: linear-gradient(rgb(247 224 201 / 0.62), rgb(247 224 201 / 0.62)), var(--grain-images);
+    background-size: auto, var(--grain-sizes);
+    background-blend-mode: normal, overlay, overlay, overlay;
+  }
+
+  .wrap[data-desktop] .medallionIcon {
+    left: 22%;
+    top: 22%;
+    width: 56%;
+    height: 56%;
+  }
+
+  .wrap[data-desktop] .medallionIconWide {
+    left: 18%;
+    top: 22%;
+    width: 64%;
+    height: 56%;
+  }
+
+  .wrap[data-desktop] .medallion,
+  .wrap[data-desktop] .rowCard .medallion,
+  .wrap[data-desktop] .rowCard[data-card="practical"] .medallion {
+    position: absolute;
+    left: calc(var(--px) * 41);
+    top: calc(var(--px) * 33);
+    width: calc(var(--px) * 91);
+    height: calc(var(--px) * 91);
+    margin: 0;
+  }
+
+  /* Intitulés : capitales y 376–387 (« DATE ET HEURE » x 468–642) ; filet
+     40 × 1,6, 16 sous les capitales. */
+  .wrap[data-desktop] .cardLabel,
+  .wrap[data-desktop] .rowCard .cardLabel,
+  .wrap[data-desktop] .topCard .cardLabel {
+    margin: 0;
+    font-size: max(10px, calc(var(--px) * 15.2));
+  }
+
+  .wrap[data-desktop] .cardRule,
+  .wrap[data-desktop] .topCard .cardRule,
+  .wrap[data-desktop] .rowCard .cardRule {
+    width: calc(var(--px) * 40);
+    margin-top: calc(var(--px) * 13);
+  }
+
+  .wrap[data-desktop] .rowBody {
+    padding-top: 0;
+  }
+
+  /* « Samedi 21 octobre 2023 » : x 468–737, y 426–447. */
+  .wrap[data-desktop] .date {
+    margin-top: calc(var(--px) * 16);
+    font-size: max(15px, calc(var(--px) * 29.7));
+  }
+
+  /* « 14 h 00 » : x 470–610, y 465–498 ; rameau à sa droite (x 621–716,
+     y 478–520). */
+  .wrap[data-desktop] .time {
+    grid-column: 2;
+    font-size: max(22px, calc(var(--px) * 48));
+  }
+
+  .wrap[data-desktop] .dateSprig {
+    grid-column: 3;
+    align-self: start;
+    width: calc(var(--px) * 116);
+    height: calc(var(--px) * 61);
+    /* Hors de la hauteur de la rangée : le rameau descend sous l'heure. */
+    margin: calc(var(--px) * 12) 0 calc(var(--px) * -34);
+  }
+
+  /* Sans heure, le rameau reste sous la date. */
+  .wrap[data-desktop] .date + .dateSprig {
+    grid-column: 2 / -1;
+    margin: calc(var(--px) * 4) 0 0;
+  }
+
+  /* Lieu : « Église Saint-Joseph » x 1042–1268, y 411–444 ; adresse pas
+     de 30 ; « Voir sur la carte → » x 1043–1206, souligné y 533. */
+  .wrap[data-desktop] .placeBody {
+    margin-top: calc(var(--px) * 4);
+  }
+
+  .wrap[data-desktop] .venue {
+    font-size: max(16px, calc(var(--px) * 32));
+  }
+
+  .wrap[data-desktop] .address {
+    margin-top: 0;
+    font-size: max(15px, calc(var(--px) * 23.8));
+    line-height: 1.13;
+  }
+
+  .wrap[data-desktop] .mapLink {
+    gap: calc(var(--px) * 10);
+    margin-top: calc(var(--px) * 5);
+    font-size: max(15px, calc(var(--px) * 23));
+  }
+
+  .wrap[data-desktop] .mapLinkText {
+    text-underline-offset: calc(var(--px) * 7);
+  }
+
+  .wrap[data-desktop] .mapLinkArrow {
+    width: calc(var(--px) * 22);
+    height: calc(var(--px) * 13);
+  }
+
+  /* Déroulement : points x 469–481 (Ø 12), heures x 515–577, intitulés
+     dès x 614 ; pas de 33. */
+  .wrap[data-desktop] .timeline {
+    margin-top: calc(var(--px) * 15);
+    grid-template-columns: calc(var(--px) * 46) minmax(calc(var(--px) * 99), max-content) minmax(0, 1fr);
+    row-gap: calc(var(--px) * 9);
+    --dot: calc(var(--px) * 12.5);
+    --dot-x: calc(var(--px) * 1);
+    --row-first-line: max(19px, calc(var(--px) * 24.5));
+  }
+
+  .wrap[data-desktop] .timeline[data-timed="false"] {
+    grid-template-columns: calc(var(--px) * 46) minmax(0, 1fr);
+  }
+
+  .wrap[data-desktop] .moment:not(:last-child)::before {
+    height: calc(100% + var(--px) * 9);
+    width: max(1px, calc(var(--px) * 2.4));
+    left: calc(var(--dot-x) + var(--dot) / 2 - var(--px) * 1.2);
+  }
+
+  .wrap[data-desktop] .momentTime {
+    font-size: max(15px, calc(var(--px) * 20.5));
+  }
+
+  .wrap[data-desktop] .momentLabel {
+    font-size: max(15px, calc(var(--px) * 21.2));
+  }
+
+  .wrap[data-desktop] .momentDetail {
+    font-size: max(14px, calc(var(--px) * 19.4));
+  }
+
+  /* Informations pratiques : x 1042, pas de 24, paragraphes + 5. */
+  .wrap[data-desktop] .rowCard[data-card="practical"] {
+    padding-top: calc(var(--px) * 33);
+    padding-right: calc(var(--px) * 20);
+    padding-bottom: calc(var(--px) * 8);
+  }
+
+  .wrap[data-desktop] .practical {
+    font-size: max(15px, calc(var(--px) * 20.8));
+    line-height: 1.16;
+  }
+
+  .wrap[data-desktop] .rowCard .cardRule + .practical {
+    margin-top: calc(var(--px) * 16);
+  }
+
+  .wrap[data-desktop] .practical + .practical {
+    margin-top: calc(var(--px) * 5);
+  }
+
+  /* Pied : filets x 680–794 et 873–1008 à y 815, cœur x 819–849 ;
+     « Tous unis dans sa mémoire » x 655–1009, y 838–894 ; rameau x 770–882,
+     y 868–917. */
+  .wrap[data-desktop] .footer {
+    padding-top: calc(var(--px) * 14);
+    transform: translateX(calc(var(--px) * (var(--axis) - var(--canvas-w) / 2)));
+  }
+
+  .wrap[data-desktop] .footerOrnament {
+    gap: calc(var(--px) * 25);
+  }
+
+  .wrap[data-desktop] .footerRule {
+    flex-basis: calc(var(--px) * 134);
+  }
+
+  .wrap[data-desktop] .footerHeart {
+    width: calc(var(--px) * 33);
+    height: calc(var(--px) * 31);
+  }
+
+  .wrap[data-desktop] .closing {
+    margin-top: calc(var(--px) * 3);
+    font-size: max(16px, calc(var(--px) * 32.2));
+  }
+
+  .wrap[data-desktop] .footerSprig {
+    width: calc(var(--px) * 123);
+    height: calc(var(--px) * 62);
+    margin-top: calc(var(--px) * -10);
+    transform: translateX(calc(var(--px) * -6));
+  }
+}

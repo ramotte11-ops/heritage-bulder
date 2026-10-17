@@ -286,6 +286,7 @@ export const en: Record<TranslationKey, string> = {
   "ceremony.v2.programme": "Order of the ceremony",
   "ceremony.v2.mapLink": "View on the map",
   "ceremony.v2.closing": "United in remembrance",
+  "ceremony.v2.cornerNote": "Meaningful\ngestures",
   "recit.person": "THE PERSON THEY WERE",
   "recit.loved": "WHAT THEY LOVED",
   "recit.legacy": "WHAT THEY LEAVE BEHIND",

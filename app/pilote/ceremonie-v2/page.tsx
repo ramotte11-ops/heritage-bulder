@@ -5,17 +5,19 @@ import { CeremonyV2, type CeremonyV2TopLayout } from "@/components/memorial/cere
 import { CEREMONY_V2_PILOT_CASES } from "@/components/memorial/ceremony/v2/pilot-fixtures";
 
 /**
- * Cérémonie Intemporel V2 : banc d'essai LOCAL des pilotes C1 Mobile Light
- * et C2 Mobile Dark (`variant=dark`), pour les captures de validation
- * PO/QG. Inaccessible en production
+ * Cérémonie Intemporel V2 : banc d'essai LOCAL des pilotes C1 Mobile Light,
+ * C2 Mobile Dark (`variant=dark`) et C3 Desktop Light, pour les captures
+ * de validation PO/QG. Inaccessible en production
  * (`notFound`) ; n'appartient à aucun parcours, n'est branché ni au
- * Builder ni à la Preview. `w` fixe la largeur du CONTENEUR ; `top`
- * force la composition des deux cartouches du haut (`pair` / `stack`),
- * sinon `auto`.
+ * Builder ni à la Preview. `w` fixe la largeur du CONTENEUR (à partir de
+ * 1024, une variante qui a des réglages Desktop bascule sur son Master
+ * Desktop, plafonné à 1448) ; `top` force la composition des deux
+ * cartouches du haut en Mobile (`pair` / `stack`), sinon `auto`.
  *
  *   /pilote/ceremonie-v2?case=reference&lang=fr&w=941
  *   /pilote/ceremonie-v2?case=long&w=390&top=pair
  *   /pilote/ceremonie-v2?case=reference&w=941&variant=dark
+ *   /pilote/ceremonie-v2?case=reference&w=1448
  */
 
 const LANGUAGES: readonly Language[] = ["fr", "en", "es"];
