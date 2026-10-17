@@ -14,7 +14,7 @@ import { guidedFlowProgress, type StepRecord } from "./engine";
 import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
 import { humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
-import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "./ceremony-step";
+import { needsA04, needsA05, needsA06, needsA07, needsA08, needsA14 } from "./ceremony-step";
 import { isAnnouncementChosen } from "./announcement-choice-step";
 
 /**
@@ -43,7 +43,7 @@ import { isAnnouncementChosen } from "./announcement-choice-step";
  * being genuinely behind the family
  *
  * `needsA09` reuses `needsA04`/`needsA05`/`needsA06`/`needsA07`/
- * `needsA08` (`ceremony-step.ts`) verbatim, and reads only their boolean
+ * `needsA14`/`needsA08` (`ceremony-step.ts`) verbatim, and reads only their boolean
  * OUTCOME — never a single Ceremony field (`date`, `venueName`, ...) and
  * never `readCeremony`/`inspectCeremony` directly. This is what makes
  * "A09 doit rester accessible même si A04 = no ou undecided" true by
@@ -51,7 +51,8 @@ import { isAnnouncementChosen } from "./announcement-choice-step";
  * applicable" the moment A04 isn't "yes" (their own doctrine,
  * `ceremony-step.ts`), so `needsA09` falls through to A09 immediately
  * after A04 is resolved for "no"/"undecided", and only after A05-A08
- * are ALL resolved when A04 was "yes" — precisely `A04 -> [A05-A08 si
+ * plus A14 are ALL resolved when A04 was "yes" — precisely `A04 -> [A05-A07,
+ * A14, A08 si
  * applicable] -> A09`.
  *
  * ## A09 — a real, explicit `StepRecord`, never derived
@@ -122,6 +123,7 @@ export function needsA09(content: MemorialContent): boolean {
   if (needsA05(content)) return false;
   if (needsA06(content)) return false;
   if (needsA07(content)) return false;
+  if (needsA14(content)) return false;
   if (needsA08(content)) return false;
   return !isA09Resolved(content);
 }

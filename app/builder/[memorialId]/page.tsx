@@ -22,6 +22,7 @@ import { CeremonyMomentStep } from "@/components/builder/CeremonyMomentStep";
 import { CeremonyDateTimeStep } from "@/components/builder/CeremonyDateTimeStep";
 import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
 import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
+import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
@@ -43,7 +44,7 @@ import {
 import { needsWelcome } from "@/lib/builder/guided-flow/welcome-step";
 import { isAnnouncementChosen, needsA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { needsA01, needsA02, needsA03 } from "@/lib/builder/guided-flow/death-notice-step";
-import { needsA04, needsA05, needsA06, needsA07, needsA08 } from "@/lib/builder/guided-flow/ceremony-step";
+import { needsA04, needsA05, needsA06, needsA07, needsA08, needsA14 } from "@/lib/builder/guided-flow/ceremony-step";
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
@@ -624,6 +625,13 @@ export default async function BuilderMemorialPage({
           ),
           available: previewAvailable(content),
         };
+      case "ceremonyProgramme":
+        return {
+          element: (
+            <CeremonyProgrammeStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+          ),
+          available: previewAvailable(content),
+        };
       case "ceremonyNote":
         return {
           element: (
@@ -875,6 +883,13 @@ export default async function BuilderMemorialPage({
 
   if (needsA07(heroReconciledContent)) {
     return (await showCurrent("ceremonyAddress", heroReconciledContent))!;
+  }
+
+  // C5 — A14: the ordered programme, after the address/access step and
+  // before the final practical note. It is optional and persists through
+  // the same draft action as every other Guided Flow screen.
+  if (needsA14(heroReconciledContent)) {
+    return (await showCurrent("ceremonyProgramme", heroReconciledContent))!;
   }
 
   if (needsA08(heroReconciledContent)) {

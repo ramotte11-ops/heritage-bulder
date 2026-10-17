@@ -115,11 +115,11 @@ describe("a partially filled draft", () => {
     expect(statuses(ok(commitA00(later, "yes"))).announcementText).toBe("done");
   });
 
-  it("A04 = no hides A05-A08 (never presented as required); undecided A04 keeps them upcoming", () => {
+  it("A04 = no hides A05-A08 and A14; undecided A04 keeps them upcoming", () => {
     const base = ok(commitA00(throughA03(), "yes"));
     expect(statuses(base).ceremonyDateTime).toBe("upcoming");
     const no = ok(commitA04(base, "no"));
-    for (const id of ["ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyNote"] as const) {
+    for (const id of ["ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyProgramme", "ceremonyNote"] as const) {
       expect(statuses(no)[id]).toBe("hidden");
     }
     expect(statuses(no).ceremonyMoment).toBe("done");

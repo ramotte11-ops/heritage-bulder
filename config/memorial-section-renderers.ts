@@ -25,6 +25,11 @@ import type { Skin } from "./skins";
  *    validated variants (Mobile/Desktop × Light/Dark), drawn as is from
  *    `components/memorial/traditions/v2/`. Whether it applies is still
  *    decided by section-selection (A00, the family's own entries).
+ *  - `ceremony` → `CeremonyV2`: the C5 renderer. Mobile Light/Dark and
+ *    Desktop Light are validated; the existing Desktop Dark tokens stay
+ *    explicitly `provisional` and are used as the transitional continuity
+ *    rendering without any new artistic decision. V1 stays registered for
+ *    rollback.
  *  - `gallery` → `GalleryIntemporel` (dettes D2–D4): the product host of
  *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
  *  - `testimonials`, `condolences`, `video`, `memoryMessage`: no renderer
@@ -39,6 +44,7 @@ export const RENDERER_KEYS = [
   "HeroIntemporel",
   "DeathNoticeIntemporel",
   "CeremonyIntemporel",
+  "CeremonyV2",
   "RecitDeVieIntemporel",
   "RecitDeVieV2",
   "TraditionsV2",
@@ -52,7 +58,7 @@ export const SECTION_RENDERERS: Readonly<
 > = {
   hero: { intemporel: "HeroIntemporel" },
   deathNotice: { intemporel: "DeathNoticeIntemporel" },
-  ceremony: { intemporel: "CeremonyIntemporel" },
+  ceremony: { intemporel: "CeremonyV2" },
   story: { intemporel: "RecitDeVieV2" },
   traditions: { intemporel: "TraditionsV2" },
   gallery: { intemporel: "GalleryIntemporel" },

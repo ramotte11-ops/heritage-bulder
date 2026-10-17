@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
-import { applicableSteps, firstIncompleteStep, guidedFlowProgress } from "./engine";
+import { applicableSteps } from "./engine";
 import { humanFlowDefinition, isA14InRoute, STEPS, type HumanFlowState } from "./human-steps";
 import { readGuidedFlowState } from "./flow-state";
 import { JOURNEY_SCREEN_IDS, JOURNEY_SCREENS } from "./journey";
@@ -26,8 +26,7 @@ import {
 
 /**
  * Cérémonie V2 (B2) — A14 « Le déroulement de la cérémonie »: the step
- * functions, and the guards proving A14 is built but NOT part of the
- * active route (its insertion is GO C5's).
+ * functions and its C5 insertion in the active route.
  */
 
 function ok(result: { ok: true; content: MemorialContent } | { ok: false; reason: string }): MemorialContent {
@@ -225,7 +224,7 @@ describe("A14 — Continuer / Passer", () => {
   });
 });
 
-describe("A14 — gate prepared for GO C5", () => {
+describe("A14 — C5 gate", () => {
   it("is ready once A07 is behind a family who planned a ceremony, until A14 is treated", () => {
     expect(needsA14(PLANNED)).toBe(false);
     expect(needsA14(AFTER_A07)).toBe(true);
@@ -234,47 +233,37 @@ describe("A14 — gate prepared for GO C5", () => {
   });
 });
 
-describe("A14 — NOT in the active route (B2: built, never reachable)", () => {
+describe("A14 — active route", () => {
   const flow = humanFlowDefinition();
-  const STATES: HumanFlowState[] = [
-    {},
-    { A04: { status: "completed", answer: "yes" } },
-    { A04: { status: "completed", answer: "yes" }, A14: { status: "completed" } },
-    { A00: { status: "completed", answer: "yes" }, A04: { status: "completed", answer: "no" } },
-  ];
+  const YES: HumanFlowState = { A04: { status: "completed", answer: "yes" } };
+  const NO: HumanFlowState = { A04: { status: "completed", answer: "no" } };
 
-  it("is declared between A07 and A08, never applicable", () => {
+  it("is declared between A07 and A08 and applies exactly when A04 = yes", () => {
     const ids = STEPS.map((step) => step.id);
     expect(ids.indexOf("A14")).toBe(ids.indexOf("A07") + 1);
     expect(ids.indexOf("A08")).toBe(ids.indexOf("A14") + 1);
-    expect(isA14InRoute()).toBe(false);
-    for (const state of STATES) {
-      expect(applicableSteps(flow, state).map((s) => s.id)).not.toContain("A14");
-    }
+    expect(isA14InRoute(YES)).toBe(true);
+    expect(isA14InRoute(NO)).toBe(false);
+    expect(applicableSteps(flow, YES).map((s) => s.id)).toContain("A14");
+    expect(applicableSteps(flow, NO).map((s) => s.id)).not.toContain("A14");
   });
 
-  it("leaves the route, the progress and the resume point exactly as without A14", () => {
-    const withoutA14 = { ...flow, steps: flow.steps.filter((step) => step.id !== "A14") };
-    for (const state of STATES) {
-      expect(applicableSteps(flow, state)).toEqual(applicableSteps(withoutA14, state));
-      expect(guidedFlowProgress(flow, state)).toBe(guidedFlowProgress(withoutA14, state));
-      expect(firstIncompleteStep(flow, state)).toEqual(firstIncompleteStep(withoutA14, state));
-    }
+  it("A08 waits for A14", () => {
+    expect(needsA08(AFTER_A07)).toBe(false);
+    expect(needsA08(ok(skipA14(AFTER_A07)))).toBe(true);
   });
 
-  it("A08 still follows A07 directly in the Builder gates", () => {
-    expect(needsA08(AFTER_A07)).toBe(true);
+  it("« Mon parcours » exposes A14 between A07 and A08", () => {
+    const ids = JOURNEY_SCREEN_IDS as readonly string[];
+    expect(ids.indexOf("ceremonyProgramme")).toBe(ids.indexOf("ceremonyAddress") + 1);
+    expect(ids.indexOf("ceremonyNote")).toBe(ids.indexOf("ceremonyProgramme") + 1);
+    expect(JOURNEY_SCREENS.map((screen) => screen.id)).toContain("ceremonyProgramme");
   });
 
-  it("« Mon parcours » holds no A14 screen", () => {
-    expect(JOURNEY_SCREEN_IDS as readonly string[]).not.toContain("ceremonyProgramme");
-    expect(JOURNEY_SCREENS.map((screen) => screen.id) as string[]).not.toContain("ceremonyProgramme");
-  });
-
-  it("the Builder route neither evaluates needsA14 nor renders the A14 screen", () => {
+  it("the Builder route evaluates needsA14 and renders the A14 screen", () => {
     const page = readFileSync(join(process.cwd(), "app/builder/[memorialId]/page.tsx"), "utf8");
-    expect(page).not.toContain("needsA14");
-    expect(page).not.toContain("CeremonyProgrammeStep");
+    expect(page).toContain("needsA14");
+    expect(page).toContain("CeremonyProgrammeStep");
   });
 });
 

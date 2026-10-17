@@ -13,6 +13,11 @@ describe("SECTION_RENDERERS", () => {
     expect(RENDERER_KEYS).toContain("RecitDeVieIntemporel");
   });
 
+  it("links ceremony to V2 while keeping V1 registered for rollback", () => {
+    expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyV2");
+    expect(RENDERER_KEYS).toContain("CeremonyIntemporel");
+  });
+
   it("links traditions to Traditions & repères V2 (M1)", () => {
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
   });
@@ -20,7 +25,7 @@ describe("SECTION_RENDERERS", () => {
   it("maps the six existing Intemporel renderers and nothing else", () => {
     expect(resolveSectionRenderer("hero", "intemporel")).toBe("HeroIntemporel");
     expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeIntemporel");
-    expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyIntemporel");
+    expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyV2");
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
     expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
     for (const section of ["testimonials", "condolences", "video", "memoryMessage"] as const) {
@@ -42,6 +47,7 @@ describe("SECTION_RENDERERS", () => {
       HeroIntemporel: "hero",
       DeathNoticeIntemporel: "death-notice",
       CeremonyIntemporel: "ceremony",
+      CeremonyV2: "ceremony/v2",
       RecitDeVieIntemporel: "life-story",
       RecitDeVieV2: "life-story/v2",
       TraditionsV2: "traditions/v2",
@@ -50,10 +56,9 @@ describe("SECTION_RENDERERS", () => {
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);
     }
-    // Every key is wired to a section, except the V1 Récit kept only as the
-    // rollback target of the `story` row.
+    // Every key is wired to a section, except the two V1 rollback targets.
     const used = Object.values(SECTION_RENDERERS).flatMap((bySkin) => Object.values(bySkin ?? {}));
-    const rollbackOnly = ["RecitDeVieIntemporel"];
+    const rollbackOnly = ["CeremonyIntemporel", "RecitDeVieIntemporel"];
     expect([...new Set(used)].sort()).toEqual(RENDERER_KEYS.filter((key) => !rollbackOnly.includes(key)).sort());
   });
 });

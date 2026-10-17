@@ -16,6 +16,7 @@ import { CeremonyMomentStep } from "@/components/builder/CeremonyMomentStep";
 import { CeremonyDateTimeStep } from "@/components/builder/CeremonyDateTimeStep";
 import { CeremonyVenueStep } from "@/components/builder/CeremonyVenueStep";
 import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
+import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
@@ -325,6 +326,8 @@ export default function QgRuntimeDemoPage() {
         return { label: "A06 — lieu", screen: <CeremonyVenueStep language={LANGUAGE} content={content} persist={persist} />};
       case "ceremonyAddress":
         return { label: "A07 — adresse", screen: <CeremonyAddressStep language={LANGUAGE} content={content} persist={persist} />};
+      case "ceremonyProgramme":
+        return { label: "A14 — déroulement de la cérémonie", screen: <CeremonyProgrammeStep language={LANGUAGE} content={content} persist={persist} />};
       case "ceremonyNote":
         return { label: "A08 — informations pratiques", screen: <CeremonyNoteStep language={LANGUAGE} content={content} persist={persist} />};
       case "traditions":

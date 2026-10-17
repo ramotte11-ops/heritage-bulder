@@ -157,6 +157,9 @@ vi.mock("@/components/builder/CeremonyVenueStep", () => ({ CeremonyVenueStep }))
 const { CeremonyAddressStep } = vi.hoisted(() => ({ CeremonyAddressStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/CeremonyAddressStep", () => ({ CeremonyAddressStep }));
 
+const { CeremonyProgrammeStep } = vi.hoisted(() => ({ CeremonyProgrammeStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/CeremonyProgrammeStep", () => ({ CeremonyProgrammeStep }));
+
 const { CeremonyNoteStep } = vi.hoisted(() => ({ CeremonyNoteStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/CeremonyNoteStep", () => ({ CeremonyNoteStep }));
 
@@ -2484,7 +2487,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(BuilderShell).not.toHaveBeenCalled();
     });
 
-    it("renders CeremonyNoteStep (A08) once A07 is resolved", async () => {
+    it("renders CeremonyProgrammeStep (A14) once A07 is resolved", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2503,9 +2506,25 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(CeremonyNoteStep);
+      expect(result.type).toBe(CeremonyProgrammeStep);
       expect(CeremonyAddressStep).not.toHaveBeenCalled();
       expect(BuilderShell).not.toHaveBeenCalled();
+    });
+
+    it("renders CeremonyNoteStep (A08) once A14 is resolved", async () => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: MEMORIAL_ID });
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: CONFIGURED_MEMORIAL,
+        draft: draftWithA04Yes({
+          A05: { status: "skipped" }, A06: { status: "skipped" }, A07: { status: "skipped" }, A14: { status: "skipped" },
+        }),
+      });
+
+      const result = await callPage();
+      expect(result.type).toBe(CeremonyNoteStep);
+      expect(CeremonyProgrammeStep).not.toHaveBeenCalled();
     });
 
     it("renders TraditionsStep (A09), not BuilderShell, once A04-A08 are all resolved — Mission 042/043 sit right after this block", async () => {
@@ -2522,6 +2541,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A05: { status: "skipped" },
           A06: { status: "skipped" },
           A07: { status: "skipped" },
+          A14: { status: "skipped" },
           A08: { status: "completed" },
         }),
       });
@@ -2630,6 +2650,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A05: { status: "skipped" },
           A06: { status: "skipped" },
           A07: { status: "skipped" },
+          A14: { status: "skipped" },
           A08: { status: "skipped" },
         }),
       });
@@ -2708,6 +2729,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A05: { status: "skipped" },
           A06: { status: "skipped" },
           A07: { status: "skipped" },
+          A14: { status: "skipped" },
           A08: { status: "completed" },
           A09: { status: "skipped" },
         }),
@@ -2740,6 +2762,7 @@ describe("BuilderMemorialPage — granted access", () => {
             A05: { status: "skipped" },
             A06: { status: "skipped" },
             A07: { status: "skipped" },
+            A14: { status: "skipped" },
             A08: { status: "completed" },
           }),
         });
@@ -2841,6 +2864,7 @@ describe("BuilderMemorialPage — granted access", () => {
             A05: { status: "skipped" },
             A06: { status: "skipped" },
             A07: { status: "skipped" },
+            A14: { status: "skipped" },
             A08: { status: "completed" },
             A09: { status: "skipped" },
             A10: { status: "skipped" },
@@ -2872,6 +2896,7 @@ describe("BuilderMemorialPage — granted access", () => {
             A05: { status: "skipped" },
             A06: { status: "skipped" },
             A07: { status: "skipped" },
+            A14: { status: "skipped" },
             A08: { status: "completed" },
             A09: { status: "skipped" },
             A10: { status: "skipped" },
@@ -2902,6 +2927,7 @@ describe("BuilderMemorialPage — granted access", () => {
             A05: { status: "skipped" },
             A06: { status: "skipped" },
             A07: { status: "skipped" },
+            A14: { status: "skipped" },
             A08: { status: "completed" },
             A09: { status: "skipped" },
             A10: { status: "completed" },
@@ -2929,6 +2955,7 @@ describe("BuilderMemorialPage — granted access", () => {
             A05: { status: "skipped" },
             A06: { status: "skipped" },
             A07: { status: "skipped" },
+            A14: { status: "skipped" },
             A08: { status: "completed" },
             A09: { status: "skipped" },
             A10: { status: "skipped" },
@@ -3053,6 +3080,7 @@ describe("BuilderMemorialPage — granted access", () => {
       ceremonyDateTime: CeremonyDateTimeStep,
       ceremonyVenue: CeremonyVenueStep,
       ceremonyAddress: CeremonyAddressStep,
+      ceremonyProgramme: CeremonyProgrammeStep,
       ceremonyNote: CeremonyNoteStep,
       traditions: TraditionsStep,
       personSheet: PersonSheetStep,

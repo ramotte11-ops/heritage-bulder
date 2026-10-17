@@ -21,6 +21,7 @@ import {
   skipA06,
   skipA07,
   skipA08,
+  skipA14,
   writeCeremonyAccess,
   writeCeremonyAddress,
   writeCeremonyDate,
@@ -66,6 +67,12 @@ function a06Skipped(content: MemorialContent = a05Skipped()): MemorialContent {
 function a07Skipped(content: MemorialContent = a06Skipped()): MemorialContent {
   const skipped = skipA07(content);
   if (!skipped.ok) throw new Error("test fixture: skipA07 unexpectedly failed");
+  return skipped.content;
+}
+
+function a14Skipped(content: MemorialContent = a07Skipped()): MemorialContent {
+  const skipped = skipA14(content);
+  if (!skipped.ok) throw new Error("test fixture: skipA14 unexpectedly failed");
   return skipped.content;
 }
 
@@ -287,13 +294,17 @@ describe("A07 — adresse ou accès + CTA → completed", () => {
 // A08 — note pratique facultative
 // ---------------------------------------------------------------------
 
-describe("A08 — gated behind A07, never before", () => {
+describe("A08 — gated behind A14, never before", () => {
   it("A07 not yet resolved — A08 not shown", () => {
     expect(needsA08(a06Skipped())).toBe(false);
   });
 
-  it("A07 skipped — A08 now needed", () => {
-    expect(needsA08(a07Skipped())).toBe(true);
+  it("A07 skipped — A14 comes next, not A08", () => {
+    expect(needsA08(a07Skipped())).toBe(false);
+  });
+
+  it("A14 skipped — A08 now needed", () => {
+    expect(needsA08(a14Skipped())).toBe(true);
   });
 });
 
@@ -303,14 +314,14 @@ describe("A08 — note + CTA → completed; sans note → refusé (QG review, m�
   });
 
   it("commitA08 succeeds once a note is present", () => {
-    const withNote = writeCeremonyNote(a07Skipped(), "Recueillement à partir de 14h.");
+    const withNote = writeCeremonyNote(a14Skipped(), "Recueillement à partir de 14h.");
     expect(withNote.ok).toBe(true);
     if (!withNote.ok) return;
     expect(commitA08(withNote.content).ok).toBe(true);
   });
 
   it("skipA08 never touches note, and needs no note to be used", () => {
-    const skipped = skipA08(a07Skipped());
+    const skipped = skipA08(a14Skipped());
     expect(skipped.ok).toBe(true);
     if (!skipped.ok) return;
     expect(needsA08(skipped.content)).toBe(false);
@@ -344,6 +355,7 @@ describe("Progression — full ceremony branch, A04=yes through A08, human-steps
       A05: { status: "skipped" as const },
       A06: { status: "completed" as const },
       A07: { status: "skipped" as const },
+      A14: { status: "skipped" as const },
       A08: { status: "completed" as const },
     };
     expect(firstIncompleteStep(flow, state)?.id).toBe("A09");

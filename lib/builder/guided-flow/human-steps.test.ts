@@ -31,7 +31,7 @@ const ANNOUNCEMENT_ORDER_NO_A04: StepId[] = [
 
 const ANNOUNCEMENT_ORDER_A04_YES: StepId[] = [
   "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-  "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13",
+  "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
@@ -124,27 +124,27 @@ describe("Single route — exact, before A04 is answered", () => {
   });
 });
 
-describe("Announcement route — A04 conditional branch (A05-A08)", () => {
+describe("Announcement route — A04 conditional branch (A05-A08 and A14)", () => {
   const flow = humanFlowDefinition();
 
   it("excludes A05-A08 when A04 is not yet answered", () => {
     const ids = applicableSteps(flow, {}).map((s) => s.id);
-    for (const conditional of ["A05", "A06", "A07", "A08"]) expect(ids).not.toContain(conditional);
+    for (const conditional of ["A05", "A06", "A07", "A14", "A08"]) expect(ids).not.toContain(conditional);
   });
 
   it("excludes A05-A08 when A04 = no", () => {
     const state: HumanFlowState = { A04: { status: "completed", answer: "no" } };
     const ids = applicableSteps(flow, state).map((s) => s.id);
-    for (const conditional of ["A05", "A06", "A07", "A08"]) expect(ids).not.toContain(conditional);
+    for (const conditional of ["A05", "A06", "A07", "A14", "A08"]) expect(ids).not.toContain(conditional);
   });
 
   it("excludes A05-A08 when A04 = undecided", () => {
     const state: HumanFlowState = { A04: { status: "completed", answer: "undecided" } };
     const ids = applicableSteps(flow, state).map((s) => s.id);
-    for (const conditional of ["A05", "A06", "A07", "A08"]) expect(ids).not.toContain(conditional);
+    for (const conditional of ["A05", "A06", "A07", "A14", "A08"]) expect(ids).not.toContain(conditional);
   });
 
-  it("includes A05-A08, in order, exactly when A04 = yes", () => {
+  it("includes A05-A07, A14 then A08 exactly when A04 = yes", () => {
     const state: HumanFlowState = { ...A00_YES, A04: { status: "completed", answer: "yes" } };
     expect(applicableSteps(flow, state).map((s) => s.id)).toEqual(ANNOUNCEMENT_ORDER_A04_YES);
   });

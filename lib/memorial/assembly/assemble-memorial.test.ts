@@ -153,13 +153,18 @@ describe("renderer props", () => {
     });
   });
 
-  it("Cérémonie and Récit: the content itself, language and variant", async () => {
+  it("Cérémonie V2 receives the inspected matter; Récit receives the content", async () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
-    for (const key of ["CeremonyIntemporel", "RecitDeVieV2"] as const) {
-      const section = assembled.sections.find((s) => s.rendererKey === key);
-      expect(section?.props).toEqual({ content, language: "fr", skinVariant: "light" });
-    }
+    const ceremony = assembled.sections.find((s) => s.rendererKey === "CeremonyV2");
+    expect(ceremony?.props).toEqual({
+      ceremony: content.ceremony,
+      language: "fr",
+      skinVariant: "light",
+      headingLevel: "section",
+    });
+    const story = assembled.sections.find((s) => s.rendererKey === "RecitDeVieV2");
+    expect(story?.props).toEqual({ content, language: "fr", skinVariant: "light" });
   });
 });
 
@@ -230,13 +235,13 @@ describe("fail closed — the Hero is structural (QG D1)", () => {
 
 describe("fail closed — a non-Hero section is omitted and recorded", () => {
   it("an adapter refusal omits that section only", async () => {
-    adapters.CeremonyIntemporel = async () => ({ ok: false, reason: "contentUnreadable" });
+    adapters.CeremonyV2 = async () => ({ ok: false, reason: "contentUnreadable" });
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
 
     expect(assembled.status).toBe("assembled");
     expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "story"]);
     expect(assembled.failures).toEqual([
-      { sectionId: "ceremony", rendererKey: "CeremonyIntemporel", reason: "contentUnreadable" },
+      { sectionId: "ceremony", rendererKey: "CeremonyV2", reason: "contentUnreadable" },
     ]);
   });
 
@@ -257,7 +262,7 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
   });
 
   it("a non-Hero failure alongside a Hero failure still leaves the Memorial unavailable", async () => {
-    adapters.CeremonyIntemporel = async () => ({ ok: false, reason: "contentUnreadable" });
+    adapters.CeremonyV2 = async () => ({ ok: false, reason: "contentUnreadable" });
     const assembled = await assembleMemorial(input(fullAnnouncement()), {
       resolveMedia: recordingResolver(() => null).resolve,
     });
