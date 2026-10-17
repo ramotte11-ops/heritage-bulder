@@ -32,7 +32,7 @@ describe("Founder Atelier fixture", () => {
     const hero = assembled.sections.find((section) => section.rendererKey === "HeroIntemporel");
     const gallery = assembled.sections.find((section) => section.rendererKey === "GalleryIntemporel");
 
-    expect(hero?.rendererKey === "HeroIntemporel" && hero.props.photo.readUrl).toMatch(/^data:image\/svg\+xml/);
+    expect(hero?.rendererKey === "HeroIntemporel" && hero.props.photo?.readUrl).toMatch(/^data:image\/svg\+xml/);
     expect(gallery?.rendererKey === "GalleryIntemporel" && gallery.props.media).toHaveLength(7);
     expect(gallery?.rendererKey === "GalleryIntemporel" && gallery.props.media.every(({ src }) => src.startsWith("/pilot/"))).toBe(true);
   });
