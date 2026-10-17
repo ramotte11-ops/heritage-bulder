@@ -373,3 +373,135 @@ Principe, sur un seul fichier décor positionné par CSS :
 4. QA standard du § 2.7, plus le dump DOM/styles de non-régression des variantes déjà validées.
 5. **Branchement réel** (registre, adaptateur, A04) seulement sur GO distinct, avec QA d'intégration des raccords Avis → Cérémonie → Récit.
 6. Archiver les planches validées dans `docs/validation/ceremonie-v2/` et versionner les outils de QA, sur GO, pour ne plus dépendre du dossier temporaire.
+
+## 7. Cérémonie V2 — État au 17 octobre 2026
+
+Passation Opus → Codex. Tout ce qui suit est vérifié dans le dépôt au
+commit `fae904fed8004f69cc967a6558b5fd2cb33d60fd`.
+
+### 7.1 Commits (dans l'ordre, chacun parent du suivant)
+
+| Étape | Commit | Contenu | Statut |
+|---|---|---|---|
+| B1 | `72be4e5bcfbc482a945a9d8123aae460e11ff2f0` | Modèle de données du déroulement facultatif (`types/ceremony.ts`, `lib/memorial/ceremony.ts`) | CLOSED |
+| B2 | `a42fc2d08860c9eca319573bf07ff3dfb49aca6f` | Écran Builder A14 « Le déroulement de la cérémonie », **construit mais hors parcours** (`isA14InRoute`) | CLOSED |
+| C1 | `371f2d9a6960543a4920ffafc4b306c21d04a517` | Pilote Mobile Light | CLOSED, validé PO |
+| C2 | `4d17f0b7c074ec46706b400a38f3154ca3398d10` | Pilote Mobile Dark | CLOSED, validé PO |
+| C3 | `72faa9cc7883d380afa021a1bbdea41171c561f8` | Pilote Desktop Light | CLOSED, validé PO |
+| C4 | `fae904fed8004f69cc967a6558b5fd2cb33d60fd` | `wip(ceremony): scaffold desktop dark v2` | **TECHNIQUE PROVISOIRE — ARTISTIQUE OPEN** |
+| C5 | — | Intégration Builder / Preview / registre | **NON ENGAGÉ** |
+
+### 7.2 Branches
+
+- `claude/optimistic-thompson-q7cnvj` : B1 → C3, tête `72faa9c`. Branche
+  historique, **à ne plus modifier**.
+- `claude/ceremony-v2-c4-desktop-dark` : créée depuis `72faa9c` ; porte le
+  commit WIP C4 puis ce commit documentaire. Contient donc tout B1 → C3.
+- Aucune PR, aucun merge vers `main`, aucun déploiement. La relation avec
+  `main` n'a pas été réévaluée depuis le début de B1 : la vérifier
+  (`git fetch origin main`, `git merge-base`) avant toute consolidation.
+
+### 7.3 Les quatre variantes
+
+| Variante | Réglages | Statut |
+|---|---|---|
+| Mobile Light | `MOBILE_LIGHT` | validée PO — intouchable |
+| Mobile Dark | `MOBILE_DARK` | validée PO — intouchable |
+| Desktop Light | `DESKTOP_LIGHT`, `status: "validated"` | validée PO — intouchable |
+| Desktop Dark | `DESKTOP_DARK`, `status: "provisional"` | socle technique seulement |
+
+Le statut Desktop est exposé dans le DOM (`data-desktop-status` sur le
+conteneur) et vérifié par les tests.
+
+### 7.4 Fichiers et points d'entrée
+
+- `components/memorial/ceremony/v2/CeremonyV2.tsx` : composant unique ;
+  `CeremonyV2({ ceremony, language, skinVariant, headingLevel, topLayout })`.
+  Renvoie `null` pour une variante sans réglages. Variables `--m-*` (Mobile, sur
+  le conteneur) et `--d-*` (Desktop, sur la section) ; pile `zoneRight`
+  (seconde zone de décor Desktop) ; mention du coin `data-desktop-only`.
+- `components/memorial/ceremony/v2/CeremonyV2.module.css` : règles Light
+  d'abord, puis blocs de fin de fichier : Mobile Dark
+  (`[data-variant="dark"]`), Desktop (`@container (min-width: 1024px)` sur
+  `.wrap[data-desktop]`, plafond 1448 px), Desktop Dark provisoire.
+- `config/ceremony-v2-tokens.ts` : `CEREMONY_V2_TOKENS` (Mobile + Desktop
+  par variante, SHA des décors, coupes, géométrie en px de canevas).
+- `components/memorial/ceremony/v2/CeremonyV2Ornaments.tsx` : rameaux,
+  pictogrammes, cœurs, filtre de bord (SVG reconstruits, aucun PNG V1).
+- `components/memorial/ceremony/v2/format.ts` : heure localisée, lien
+  OpenStreetMap (seulement avec une adresse).
+- `scripts/pilot/ceremony-v2-derive.py` : dérivés reproductibles
+  (`mobile-light | mobile-dark | desktop-light | desktop-dark`).
+- `public/assets/ceremony/v2/{mobile,desktop}/{light,dark}/` : décor vierge
+  officiel copié octet pour octet (`*-master.png`) et dérivés. **Zone
+  protégée** : ne jamais supprimer ni régénérer à la main.
+- Page pilote locale (404 en production) : `app/pilote/ceremonie-v2/page.tsx`,
+  paramètres `case`, `lang`, `w` (largeur du conteneur), `top`,
+  `variant=dark`. Jeux de données : `pilot-fixtures.ts`.
+- Clé i18n ajoutée en C3 : `ceremony.v2.cornerNote` (FR/EN/ES).
+
+### 7.5 QA obtenue
+
+- Validations obligatoires (`npm ci`, `lint`, `test`, `next typegen`,
+  `tsc --noEmit`, `build`) : exit 0 avant chaque commit C1–C4 ; 3961 tests
+  au commit C4 ; 3 avertissements de lint préexistants, hors périmètre.
+- Tests ciblés `CeremonyV2.test.tsx` : 58.
+- C3 : matrice Desktop 351 rendus (9 cas × FR/EN/ES × 13 largeurs) sans
+  anomalie ; matrices Mobile Light et Dark 729 + 729 rendus sans anomalie ;
+  non-régression DOM + styles calculés (72 cas) sans différence ; écart
+  au Master illustré ≤ 3–4 px de canevas au format natif.
+- C4 : 108 rendus Desktop Dark sans anomalie ; Mobile Light/Dark : 0
+  différence DOM/styles ; Desktop Light identique au pixel à la capture C3.
+- Les scripts de QA et les planches sont restés dans le dossier temporaire
+  de session ; ils ne sont **pas versionnés** et seront à reconstruire
+  (méthode § 2.7 : matrice de débordement, dump DOM/styles, mesure à
+  l'encre).
+
+### 7.6 Précautions de reprise pour Codex
+
+- Ne modifier aucune règle des trois variantes validées ; tout ajout en
+  bloc CSS de fin de fichier, ciblé par `[data-variant]` / `[data-desktop]`.
+- L'ordre du CSS compte : le bloc Desktop Dark neutralise des règles Mobile
+  Dark plus spécifiques que la grille Desktop. Toute nouvelle règle Mobile
+  Dark sur les cartouches doit être vérifiée à partir de 1024 px.
+- Prouver la non-régression par le dump DOM + styles calculés, pas
+  seulement par les pixels ; normaliser les identifiants `useId` dans la
+  comparaison.
+- Un dérivé se régénère par le script, jamais à la main ; les sorties des
+  variantes validées doivent rester identiques à l'octet.
+- Pas de force-push, rebase ni reset sur les branches ci-dessus.
+
+### 7.7 Desktop Dark : reprise artistique à faire
+
+Tout est provisoire : la géométrie (positions, tailles, intervalles) est
+copiée du Desktop Light. À faire, sur le **Master illustré Desktop Dark**
+(et non sur le décor vierge) :
+
+1. Relever la composition (en-tête, quatre cartouches, pied) et caler
+   `DESKTOP_DARK` et un bloc CSS Desktop Dark dédié.
+2. Choisir les coupes des deux zones (aujourd'hui trouvées automatiquement,
+   gauche 672 / droite 234), avec teintes de côté et, si possible, bandes des
+   bords : le décor étendu montre des bandes verticales étirées sur les
+   côtés.
+3. Rameaux, médaillons, typographies, mention du coin éventuelle
+   (aujourd'hui `cornerNote: null`).
+4. Planches Master / rendu / superposition, extension, FR/EN/ES ; puis
+   passer `status` à `"validated"` après validation PO.
+
+### 7.8 C5 (intégration) — prérequis, non réalisée
+
+- Desktop Dark validé artistiquement.
+- Décision QG sur le remplacement de la Cérémonie V1 (renderer actuel
+  conservé pour retour arrière) et branchement en une ligne de registre.
+- Activation de l'écran A14 dans le parcours Builder (B2 l'a construit hors
+  parcours) et passage de `programme` dans l'adaptateur et la Preview.
+- QA d'intégration : Preview du Builder (conteneur étroit), raccords
+  Avis → Cérémonie → Récit pour chaque thème, contenus réels.
+
+### 7.9 Interdiction
+
+**Le Desktop Dark provisoire ne doit être activé pour aucun client.** Tant
+que `CEREMONY_V2_TOKENS.dark.desktop.status` vaut `"provisional"`, aucun
+branchement Builder, Preview ou production de la Cérémonie V2 en thème Dark
+ne doit l'exposer à partir de 1024 px. Le contrôle à prévoir est un garde
+explicite sur `status`, ou `desktop: null` le temps de la reprise.
