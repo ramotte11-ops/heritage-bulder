@@ -59,7 +59,7 @@ interface SprigShape {
 }
 
 /** Rameaux relevés sur le Master (voir l'en-tête du fichier). */
-const SPRIGS: Record<"title" | "date" | "footer", SprigShape> = {
+const SPRIGS: Record<"title" | "date" | "footer" | "titleDark" | "dateDark" | "footerDark", SprigShape> = {
   // Sous le titre : trois feuilles dessus, deux dessous (175 × 84).
   title: {
     viewBox: "0 0 175 84",
@@ -103,27 +103,101 @@ const SPRIGS: Record<"title" | "date" | "footer", SprigShape> = {
       { base: [100, 34], tip: [134, 44], half: 6 },
     ],
   },
+  // Mobile Dark (C2), relevés sur le Master illustré Dark : feuilles plus
+  // allongées et plus couchées que celles du Light.
+  // Sous le titre (x 390–560, y 280–350) : trois feuilles dessus, deux
+  // dessous (170 × 70).
+  titleDark: {
+    viewBox: "0 0 170 70",
+    stem: "M11 47.5 C 40 46 75 41 107.5 32",
+    stemWidth: 2.4,
+    leaves: [
+      { base: [35, 44], tip: [62, 16], half: 7 },
+      { base: [69, 39], tip: [101, 7.5], half: 7.5 },
+      { base: [107.5, 32], tip: [156, 12.5], half: 8.5 },
+      { base: [45, 47.5], tip: [82, 65.5], half: 7 },
+      { base: [86, 40], tip: [132, 55], half: 7.5 },
+    ],
+  },
+  // Sous l'heure (x 238–342, y 710–764) : trois feuilles de chaque côté
+  // (104 × 54).
+  dateDark: {
+    viewBox: "0 0 104 54",
+    stem: "M7.5 31 C 30 30.5 50 28 70 23.5",
+    stemWidth: 1.8,
+    leaves: [
+      { base: [25, 28], tip: [45, 11], half: 5 },
+      { base: [45, 27], tip: [67, 8], half: 5 },
+      { base: [70, 23.5], tip: [97, 12], half: 5.5 },
+      { base: [27.5, 32], tip: [50, 46], half: 5 },
+      { base: [50, 30], tip: [76, 41], half: 5 },
+      { base: [67, 27], tip: [90, 32.5], half: 4.5 },
+    ],
+  },
+  // Au pied (x 410–555, y 1458–1526) : trois feuilles de chaque côté
+  // (145 × 68).
+  footerDark: {
+    viewBox: "0 0 145 68",
+    stem: "M11 39 C 40 38.5 72 36 100 31",
+    stemWidth: 2.2,
+    leaves: [
+      { base: [34, 37.5], tip: [64, 12], half: 6.5 },
+      { base: [65, 34], tip: [92.5, 7.5], half: 6.5 },
+      { base: [96, 30.5], tip: [122.5, 7], half: 6.5 },
+      { base: [41, 41], tip: [77.5, 62], half: 6.5 },
+      { base: [75, 37.5], tip: [112.5, 54.5], half: 6.5 },
+      { base: [100, 32], tip: [135, 39], half: 6 },
+    ],
+  },
 };
 
-/** Rameau d'olivier : feuillage gris-vert du Master, halo clair sur le
- * papier ivoire. */
-export function OliveSprig({ className, shape }: { className: string; shape: keyof typeof SPRIGS }) {
+/** Teintes des rameaux : feuillage gris-vert et halo ivoire (Light) ;
+ * bronze doré relevé sur le Master Dark (#d6aa72 au plus clair, tige
+ * #a57b4a), ombre brune sur le cuir. */
+const SPRIG_TONES = {
+  olive: {
+    stops: ["#2f3025", "#525343", "#7c7b65", "#4b4c3c", "#2a2b22"],
+    stem: "#2f3027",
+    halo: { color: "#fff8ec", opacity: 0.95 },
+  },
+  bronze: {
+    stops: ["#6e4a2a", "#a37444", "#d6aa72", "#9a6c3e", "#5e3f22"],
+    stem: "#a57b4a",
+    halo: { color: "#1a0f07", opacity: 0.5 },
+  },
+} as const;
+
+export type SprigTone = keyof typeof SPRIG_TONES;
+export type SprigShapeName = keyof typeof SPRIGS;
+
+/** Rameau d'olivier : feuillage gris-vert et halo clair sur le papier
+ * ivoire (Light), bronze doré sur le cuir (Dark). */
+export function OliveSprig({
+  className,
+  shape,
+  tone = "olive",
+}: {
+  className: string;
+  shape: SprigShapeName;
+  tone?: SprigTone;
+}) {
   const id = useId().replace(/:/g, "");
   const s = SPRIGS[shape];
+  const t = SPRIG_TONES[tone];
   return (
     <svg className={className} viewBox={s.viewBox} aria-hidden="true" focusable="false" data-ornament="rameau">
       <defs>
         <linearGradient id={`${id}-leaf`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2f3025" />
-          <stop offset="0.38" stopColor="#525343" />
-          <stop offset="0.52" stopColor="#7c7b65" />
-          <stop offset="0.66" stopColor="#4b4c3c" />
-          <stop offset="1" stopColor="#2a2b22" />
+          <stop offset="0" stopColor={t.stops[0]} />
+          <stop offset="0.38" stopColor={t.stops[1]} />
+          <stop offset="0.52" stopColor={t.stops[2]} />
+          <stop offset="0.66" stopColor={t.stops[3]} />
+          <stop offset="1" stopColor={t.stops[4]} />
         </linearGradient>
         <filter id={`${id}-halo`} x="-20%" y="-30%" width="140%" height="160%">
           <feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="grown" />
           <feGaussianBlur in="grown" stdDeviation="0.9" result="soft" />
-          <feFlood floodColor="#fff8ec" floodOpacity="0.95" />
+          <feFlood floodColor={t.halo.color} floodOpacity={t.halo.opacity} />
           <feComposite in2="soft" operator="in" result="halo" />
           <feMerge>
             <feMergeNode in="halo" />
@@ -132,7 +206,7 @@ export function OliveSprig({ className, shape }: { className: string; shape: key
         </filter>
       </defs>
       <g filter={`url(#${id}-halo)`}>
-        <path d={s.stem} fill="none" stroke="#2f3027" strokeWidth={s.stemWidth} strokeLinecap="round" />
+        <path d={s.stem} fill="none" stroke={t.stem} strokeWidth={s.stemWidth} strokeLinecap="round" />
         {s.leaves.map((leaf, index) => (
           <path key={index} d={leafPath(leaf)} fill={`url(#${id}-leaf)`} />
         ))}

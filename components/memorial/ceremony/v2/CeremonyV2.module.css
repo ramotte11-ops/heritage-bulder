@@ -649,3 +649,266 @@
     margin-right: -0.16em;
   }
 }
+
+/* ========================================================================
+ * Mobile Dark (C2) — Master illustré Mobile Dark (941×1672 ramené à
+ * 941×1671). Même DOM et mêmes données que le Light ; ce bloc ne
+ * surcharge que ce que le Master Dark dessine autrement : encres crème
+ * et or sur cuir chocolat, cartouches en cuir gaufré à liseré or et
+ * intervalles presque noirs, médaillons cuivre, rameaux bronze, premier
+ * point de la frise en anneau, et sa propre géométrie (tout est plus
+ * haut, frise et informations pratiques plus à gauche). Aucune règle du
+ * Light n'est modifiée.
+ * ===================================================================== */
+
+.wrap[data-variant="dark"] {
+  --ink: #f6e5d3;
+  --ink-body: #e6ddd0;
+  --label: #e1d4c6;
+  --rule: rgb(196 166 132 / 0.9);
+  --brown: #e8b47c;
+  --brown-soft: #e2bd8b;
+  --picto: #140702;
+}
+
+/* Le Master Dark pose chaque texte en léger relief : ombre sombre portée
+   vers le bas. */
+.wrap[data-variant="dark"] .section {
+  text-shadow: 0 calc(var(--px) * 1.5) calc(var(--px) * 2) rgb(8 4 1 / 0.6);
+}
+
+/* « — EN SON HONNEUR — » : capitales x 352–593, y 162–173 ; filets
+   x 237–323 et 623–713 à y 169. */
+.wrap[data-variant="dark"] .surtitle {
+  font-size: max(10px, calc(var(--px) * 19.1));
+  color: #d6c8bc;
+}
+
+/* « Cérémonie » : x 296–658, capitale C y 206–269 — crème. */
+.wrap[data-variant="dark"] .title {
+  margin-top: calc(var(--px) * 8);
+  font-size: max(30px, calc(var(--px) * 84));
+}
+
+/* Rameau bronze : x 390–560, y 280–350 (SVG 170 × 70). */
+.wrap[data-variant="dark"] .titleSprig {
+  width: calc(var(--px) * 170);
+  height: calc(var(--px) * 70);
+  margin-top: calc(var(--px) * 0);
+  transform: none;
+}
+
+/* Introduction : x 286–665 et 302–646, pas de 36. */
+.wrap[data-variant="dark"] .intro {
+  margin-top: calc(var(--px) * 0);
+  font-size: max(15px, calc(var(--px) * 33.4));
+  line-height: 1.08;
+  color: #ddd3c8;
+}
+
+/* Cartouches : x 107–467 et 480–843, dès y 447 ; intervalles de 13 à 14,
+   presque noirs. */
+.wrap[data-variant="dark"] .cards {
+  margin-top: calc(var(--px) * 27);
+}
+
+.wrap[data-variant="dark"] .topRow {
+  grid-template-columns: minmax(0, 360fr) minmax(0, 363fr);
+}
+
+.wrap[data-variant="dark"] .topRow[data-count="1"],
+.wrap[data-variant="dark"] .section[data-top-layout="stack"] .topRow {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Cuir du cartouche : opaque, de la teinte mesurée dans les cartouches du
+   Master (#49301a, plus clair que la feuille chocolat), gaufré par les
+   tuiles de grain de la feuille ; liseré or, bord irrégulier, ombre
+   presque noire dans les intervalles. */
+.wrap[data-variant="dark"] .cardPaper {
+  background-color: #49301a;
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.6)) rgb(222 178 122 / 0.75),
+    inset 0 0 calc(var(--px) * 10) rgb(20 10 4 / 0.35);
+  filter: var(--deckle) drop-shadow(0 calc(var(--px) * 5) calc(var(--px) * 4) rgb(4 2 0 / 0.9))
+    drop-shadow(0 0 calc(var(--px) * 5) rgb(4 2 0 / 0.95));
+}
+
+/* Médaillon cuivre : disque Ø 85 (#a96d3e, reflets #b67a48), ombre
+   sombre autour ; pictogramme presque noir. */
+.wrap[data-variant="dark"] .medallion {
+  width: calc(var(--px) * 85);
+  height: calc(var(--px) * 85);
+  background: radial-gradient(circle at 38% 32%, #bb7f4c 0, #aa6e3f 55%, #93592f 100%);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--px) * 1.2)) rgb(84 48 22 / 0.55),
+    inset 0 calc(var(--px) * -3) calc(var(--px) * 5) rgb(40 20 6 / 0.3),
+    0 calc(var(--px) * 2) calc(var(--px) * 6) rgb(0 0 0 / 0.55);
+}
+
+/* Date et heure, lieu : médaillon à 20 du haut, intitulé, filet, textes
+   (Master : intitulé y 570, filet 598, date 618–639, heure 657–693,
+   rameau 718–756 ; lieu : intitulé 565, nom 601–636, adresse au pas de
+   36, lien 728–747). */
+.wrap[data-variant="dark"] .topCard {
+  padding-top: calc(var(--px) * 20);
+  padding-bottom: calc(var(--px) * 20);
+}
+
+.wrap[data-variant="dark"] .topCard .cardLabel {
+  margin-top: calc(var(--px) * 15);
+  font-size: max(10px, calc(var(--px) * 15.3));
+}
+
+.wrap[data-variant="dark"] .time {
+  font-size: max(22px, calc(var(--px) * 52));
+  color: #f0c08a;
+}
+
+.wrap[data-variant="dark"] .dateSprig {
+  width: calc(var(--px) * 104);
+  height: calc(var(--px) * 54);
+}
+
+.wrap[data-variant="dark"] .venue {
+  color: #e9e0d4;
+}
+
+.wrap[data-variant="dark"] .address {
+  line-height: 1.38;
+  color: #ddd3c5;
+}
+
+.wrap[data-variant="dark"] .mapLink {
+  color: #d9b580;
+}
+
+/* Déroulement et informations pratiques : médaillon centré x ≈ 186–189,
+   texte dès x 282–283. */
+.wrap[data-variant="dark"] .rowCard {
+  grid-template-columns: calc(var(--px) * 175) minmax(0, 1fr);
+  padding-top: calc(var(--px) * 21);
+}
+
+.wrap[data-variant="dark"] .rowCard .medallion {
+  margin-left: calc(var(--px) * 36);
+}
+
+.wrap[data-variant="dark"] .rowCard .cardLabel {
+  font-size: max(10px, calc(var(--px) * 17.4));
+}
+
+.wrap[data-variant="dark"] .rowBody {
+  padding-top: calc(var(--px) * 6);
+}
+
+.wrap[data-variant="dark"] .rowCard[data-card="practical"] {
+  grid-template-columns: calc(var(--px) * 176) minmax(0, 1fr);
+  padding-top: calc(var(--px) * 19);
+}
+
+.wrap[data-variant="dark"] .rowCard[data-card="practical"] .medallion {
+  margin-left: calc(var(--px) * 38);
+}
+
+.wrap[data-variant="dark"] .rowCard[data-card="practical"] .cardLabel {
+  font-size: max(10px, calc(var(--px) * 16.9));
+}
+
+/* Informations pratiques : intitulé y 1158, filet 1187, texte dès 1209. */
+.wrap[data-variant="dark"] .rowCard[data-card="practical"] .rowBody {
+  padding-top: calc(var(--px) * 15);
+}
+
+.wrap[data-variant="dark"] .rowCard[data-card="practical"] .cardRule {
+  margin-top: calc(var(--px) * 13);
+}
+
+.wrap[data-variant="dark"] .rowCard .cardRule + .practical {
+  margin-top: calc(var(--px) * 15);
+}
+
+/* Frise : points or Ø 15 dès x 284 (le premier en anneau), heures or dès
+   x 340, intitulés crème dès x 463 ; pas de 47,7 ; trait or de 2. */
+.wrap[data-variant="dark"] .timeline {
+  grid-template-columns: calc(var(--px) * 58) minmax(calc(var(--px) * 123), max-content) minmax(0, 1fr);
+  row-gap: calc(var(--px) * 14);
+  --dot: calc(var(--px) * 15);
+  --dot-x: calc(var(--px) * 2);
+  --row-first-line: max(19px, calc(var(--px) * 33.7));
+}
+
+.wrap[data-variant="dark"] .timeline[data-timed="false"] {
+  grid-template-columns: calc(var(--px) * 58) minmax(0, 1fr);
+}
+
+.wrap[data-variant="dark"] .moment:not(:last-child)::before {
+  left: calc(var(--dot-x) + var(--dot) / 2 - var(--px) * 1);
+  width: max(1px, calc(var(--px) * 2));
+  height: calc(100% + var(--px) * 14);
+  background: #e6bc90;
+}
+
+.wrap[data-variant="dark"] .momentDot {
+  background: #e0a670;
+}
+
+.wrap[data-variant="dark"] .moment:first-child .momentDot {
+  box-sizing: border-box;
+  border: max(1.5px, calc(var(--px) * 2.4)) solid #e6b884;
+  background: #3e2815;
+}
+
+.wrap[data-variant="dark"] .momentTime {
+  font-size: max(15px, calc(var(--px) * 24));
+  color: #e4c08e;
+}
+
+.wrap[data-variant="dark"] .momentLabel {
+  font-size: max(15px, calc(var(--px) * 25.5));
+  color: #e2d8cd;
+}
+
+.wrap[data-variant="dark"] .momentDetail {
+  color: #dcbb8c;
+}
+
+/* Informations pratiques : x 283–747, pas de 30. */
+.wrap[data-variant="dark"] .practical {
+  font-size: max(15px, calc(var(--px) * 27.2));
+  line-height: 1.11;
+  color: #ddd2c6;
+}
+
+/* Pied : filets x 286–426 et 516–655 à y 1394, cœur or x 455–488,
+   phrase x 282–658, rameau bronze x 410–555 (SVG 145 × 68). */
+.wrap[data-variant="dark"] .footer {
+  padding-top: calc(var(--px) * 16);
+}
+
+.wrap[data-variant="dark"] .footerRule {
+  background: rgb(190 160 122 / 0.85);
+}
+
+.wrap[data-variant="dark"] .footerHeart {
+  color: #ecc994;
+}
+
+.wrap[data-variant="dark"] .closing {
+  margin-top: calc(var(--px) * 15);
+  font-size: max(16px, calc(var(--px) * 34.1));
+  color: #e8d6b4;
+}
+
+.wrap[data-variant="dark"] .footerSprig {
+  height: calc(var(--px) * 68);
+  margin-top: calc(var(--px) * -5);
+}
+
+/* Règle PO des cartouches du haut (C1), conservée en Dark : empilés sous
+   430 px de conteneur. */
+@container (max-width: 429.98px) {
+  .wrap[data-variant="dark"] .section[data-top-layout="auto"] .topRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

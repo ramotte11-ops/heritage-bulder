@@ -41,9 +41,10 @@ import type { SkinVariant } from "@/config/skins";
  *
  * ## Périmètre
  *
- * Mobile Light seulement. Une variante sans réglages (`null`) ne rend
- * rien et ne se rabat jamais sur une autre. Ce renderer n'est branché
- * sur aucun registre de production : page pilote seulement.
+ * Mobile Light (C1, validé PO) et Mobile Dark (C2, pilote). Une variante
+ * sans réglages (`null`) ne rend rien et ne se rabat jamais sur une
+ * autre. Ce renderer n'est branché sur aucun registre de production :
+ * page pilote seulement.
  */
 
 export interface CeremonyV2MobileTokens {
@@ -70,6 +71,12 @@ export interface CeremonyV2MobileTokens {
   cardsRightCanvas: number;
   /** Axe de l'en-tête et du pied. */
   axisCanvas: number;
+  /** Rameaux : teinte (feuillage gris-vert du Light, bronze du Dark) et
+   * jeu de tracés relevés sur le Master de la variante. */
+  sprigTone: "olive" | "bronze";
+  sprigShapes:
+    | { title: "title"; date: "date"; footer: "footer" }
+    | { title: "titleDark"; date: "dateDark"; footer: "footerDark" };
 }
 
 export interface CeremonyV2VariantTokens {
@@ -112,9 +119,58 @@ const MOBILE_LIGHT: CeremonyV2MobileTokens = {
   cardsRightCanvas: 846,
   /** Master : titre, introduction et pied centrés sur x ≈ 474. */
   axisCanvas: 474,
+  sprigTone: "olive",
+  sprigShapes: { title: "title", date: "date", footer: "footer" },
+};
+
+const ROOT_DARK = "/assets/ceremony/v2/mobile/dark";
+
+/**
+ * Mobile Dark (C2). Master illustré Dark (941×1672, ramené à 941×1671 :
+ * agrandissement uniforme du décor vierge, aligné à 0 px près). Même
+ * composition que le Light, mais sa propre géométrie : tout est plus
+ * haut (cartouches dès y 447, pied à 1394), la frise du déroulement et
+ * le texte des informations pratiques commencent plus à gauche, la
+ * feuille chocolat se termine plus haut (réserve basse 152).
+ *
+ * Coupe Y = 813, fondu 40 px : juste sous l'intervalle entre les
+ * cartouches du haut et le déroulement ; fenêtre 760–920 où les profils
+ * de part et d'autre du raccord se suivent le mieux aux deux bords
+ * (papier vert et coins beiges à gauche, papiers beiges en diagonale à
+ * droite). Teinte : médianes des rangées 723–773 et 853–903, lissées
+ * σ = 22 px. Bande des bords : rangées 633–853 (L = 220), liserés seuls.
+ * Grain : trois tuiles de la feuille chocolat (460×420, 400×300,
+ * 340×160).
+ */
+const MOBILE_DARK: CeremonyV2MobileTokens = {
+  masterSrc: `${ROOT_DARK}/ceremony-mobile-dark-master.png`,
+  masterSha256: "37da7b45d008c2ea673f55af16216d02664439fe6c1205b898c98f0f79f5bb75",
+  paperGrains: [
+    { src: `${ROOT_DARK}/ceremony-mobile-dark-grain-a.png`, tileWidth: 460, blend: "overlay" },
+    { src: `${ROOT_DARK}/ceremony-mobile-dark-grain-b.png`, tileWidth: 400, blend: "overlay" },
+    { src: `${ROOT_DARK}/ceremony-mobile-dark-grain-c.png`, tileWidth: 340, blend: "overlay" },
+  ],
+  noiseBlend: "soft-light",
+  paperTone: `${ROOT_DARK}/ceremony-mobile-dark-tone.png`,
+  edgeStrip: { src: `${ROOT_DARK}/ceremony-mobile-dark-edges.png`, heightCanvas: 220 },
+  canvas: { width: 941, height: 1671 },
+  cutY: 813,
+  fadePx: 40,
+  /** Master : capitales du surtitre à y 162. */
+  textTopCanvas: 157,
+  /** Master : bas du rameau du pied à 1519 ; la feuille chocolat finit en
+   * pointe vers 1540. */
+  footCanvas: 143,
+  /** Master : cartouches x 107–843. */
+  cardsLeftCanvas: 107,
+  cardsRightCanvas: 843,
+  /** Master : titre et pied centrés sur x ≈ 474. */
+  axisCanvas: 474,
+  sprigTone: "bronze",
+  sprigShapes: { title: "titleDark", date: "dateDark", footer: "footerDark" },
 };
 
 export const CEREMONY_V2_TOKENS: Record<SkinVariant, CeremonyV2VariantTokens | null> = {
   light: { mobile: MOBILE_LIGHT },
-  dark: null,
+  dark: { mobile: MOBILE_DARK },
 };

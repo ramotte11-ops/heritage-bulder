@@ -32,8 +32,14 @@ afterEach(cleanup);
 
 const ROOT = path.resolve(import.meta.dirname, "../../../..");
 const MOBILE_LIGHT = CEREMONY_V2_TOKENS.light!.mobile;
-/** SHA-256 de `CEREMONIE_MOBILE_LIGHT_RUNTIME_VIERGE.png` (ZIP officiel). */
+const MOBILE_DARK = CEREMONY_V2_TOKENS.dark!.mobile;
+/** SHA-256 des Masters runtime vierges du ZIP officiel. */
 const OFFICIAL_MOBILE_LIGHT_SHA256 = "254a036942b2a1102bf03a5bc308190b88ece96b1c1ec44b4331a508b7bca002";
+const OFFICIAL_MOBILE_DARK_SHA256 = "37da7b45d008c2ea673f55af16216d02664439fe6c1205b898c98f0f79f5bb75";
+const VARIANTS = [
+  ["light", MOBILE_LIGHT, OFFICIAL_MOBILE_LIGHT_SHA256],
+  ["dark", MOBILE_DARK, OFFICIAL_MOBILE_DARK_SHA256],
+] as const;
 
 function moment(n: number, time: string | null, label: string, detail: string | null = null): CeremonyMoment {
   return { id: `m${n}`, time, label, detail };
@@ -60,32 +66,44 @@ function card(container: HTMLElement, name: string) {
 }
 
 describe("CeremonyV2 — décor et dérivés", () => {
-  it("le décor runtime est le Master vierge officiel, octet pour octet", () => {
-    expect(MOBILE_LIGHT.masterSha256).toBe(OFFICIAL_MOBILE_LIGHT_SHA256);
-    const digest = createHash("sha256").update(readFileSync(path.join(ROOT, "public", MOBILE_LIGHT.masterSrc))).digest("hex");
-    expect(digest).toBe(OFFICIAL_MOBILE_LIGHT_SHA256);
-    expect(MOBILE_LIGHT.canvas).toEqual({ width: 941, height: 1671 });
+  it.each(VARIANTS)("%s : le décor runtime est le Master vierge officiel, octet pour octet", (_, T, sha) => {
+    expect(T.masterSha256).toBe(sha);
+    const digest = createHash("sha256").update(readFileSync(path.join(ROOT, "public", T.masterSrc))).digest("hex");
+    expect(digest).toBe(sha);
+    expect(T.canvas).toEqual({ width: 941, height: 1671 });
   });
 
-  it("chaque dérivé existe dans le dossier de la variante, et aucun n'est le décor", () => {
-    const derived = [MOBILE_LIGHT.paperTone, MOBILE_LIGHT.edgeStrip.src, ...MOBILE_LIGHT.paperGrains.map((g) => g.src)];
-    for (const src of [MOBILE_LIGHT.masterSrc, ...derived]) {
-      expect(src.startsWith("/assets/ceremony/v2/mobile/light/")).toBe(true);
+  it.each(VARIANTS)("%s : chaque dérivé existe dans le dossier de la variante, et aucun n'est le décor", (variant, T) => {
+    const derived = [T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)];
+    for (const src of [T.masterSrc, ...derived]) {
+      expect(src.startsWith(`/assets/ceremony/v2/mobile/${variant}/`)).toBe(true);
       expect(existsSync(path.join(ROOT, "public", src))).toBe(true);
     }
-    expect(new Set(derived).has(MOBILE_LIGHT.masterSrc)).toBe(false);
+    expect(new Set(derived).has(T.masterSrc)).toBe(false);
   });
 
-  it("la coupe et son fondu tombent dans le Master, entre les cartouches du haut et le pied", () => {
-    const T = MOBILE_LIGHT;
+  it("aucun asset partagé entre Light et Dark : chaque variante a les siens", () => {
+    const assets = (T: typeof MOBILE_LIGHT) => [T.masterSrc, T.paperTone, T.edgeStrip.src, ...T.paperGrains.map((g) => g.src)];
+    const light = new Set(assets(MOBILE_LIGHT));
+    expect(assets(MOBILE_DARK).some((src) => light.has(src))).toBe(false);
+    expect(MOBILE_DARK.masterSha256).not.toBe(MOBILE_LIGHT.masterSha256);
+  });
+
+  it.each(VARIANTS)("%s : la coupe et son fondu tombent dans le Master, entre les cartouches du haut et le pied", (_, T) => {
     expect(T.cutY - T.fadePx).toBeGreaterThan(T.textTopCanvas);
     expect(T.cutY + T.fadePx).toBeLessThan(T.canvas.height - T.footCanvas);
     expect(T.edgeStrip.heightCanvas).toBeLessThan(T.cutY + T.fadePx);
   });
 
-  it("aucune variante sans réglages : le Dark (C2) ne rend rien et ne se rabat jamais sur le Light", () => {
+  it("chaque variante rend son propre décor, sans repli sur l'autre", () => {
     const { container } = render(<CeremonyV2 ceremony={FULL} language="fr" skinVariant="dark" />);
-    expect(container.innerHTML).toBe("");
+    const wrap = container.firstElementChild!.querySelector("[data-variant]")!;
+    expect(wrap.getAttribute("data-variant")).toBe("dark");
+    expect((wrap as HTMLElement).style.getPropertyValue("--m-src")).toBe(`url(${MOBILE_DARK.masterSrc})`);
+    cleanup();
+    const light = render(<CeremonyV2 ceremony={FULL} language="fr" skinVariant="light" />);
+    const lightWrap = light.container.querySelector("[data-variant]") as HTMLElement;
+    expect(lightWrap.style.getPropertyValue("--m-src")).toBe(`url(${MOBILE_LIGHT.masterSrc})`);
   });
 
   it("le décor est purement décoratif ; pas de surface sans excédent mesuré", () => {
@@ -253,5 +271,49 @@ describe("CeremonyV2 — heures et lien de carte", () => {
       `https://www.openstreetmap.org/search?query=${encodeURIComponent("Église, 1 rue A, Lyon")}`,
     );
     expect(ceremonyMapUrl(null, "1 rue A")).toBe(`https://www.openstreetmap.org/search?query=${encodeURIComponent("1 rue A")}`);
+  });
+});
+
+describe("CeremonyV2 — Mobile Dark (C2)", () => {
+  it("même DOM et mêmes données que le Light : quatre cartouches, quatre médaillons", () => {
+    const { container } = renderCeremony({ skinVariant: "dark" });
+    expect([...container.querySelectorAll("article")].map((a) => a.getAttribute("data-card"))).toEqual([
+      "dateTime",
+      "place",
+      "programme",
+      "practical",
+    ]);
+    expect(container.querySelectorAll('[data-ornament="medaillon"]')).toHaveLength(4);
+    expect(container.querySelectorAll("ol > li")).toHaveLength(3);
+  });
+
+  it("sans déroulement ni adresse : ni cartouche fantôme ni lien de carte", () => {
+    const ceremony: CeremonyContent = { ...FULL, address: null };
+    delete ceremony.programme;
+    const { container } = renderCeremony({ skinVariant: "dark", ceremony });
+    expect(container.querySelector('[data-card="programme"]')).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("rameaux bronze relevés sur le Master Dark (jamais les tracés ni la teinte du Light)", () => {
+    expect(MOBILE_DARK.sprigTone).toBe("bronze");
+    expect(MOBILE_DARK.sprigShapes).toEqual({ title: "titleDark", date: "dateDark", footer: "footerDark" });
+    expect(MOBILE_LIGHT.sprigTone).toBe("olive");
+    const dark = renderCeremony({ skinVariant: "dark" });
+    const darkSprig = dark.container.querySelector('[data-ornament="rameau"]')!;
+    expect(darkSprig.getAttribute("viewBox")).toBe("0 0 170 70");
+    cleanup();
+    const light = renderCeremony();
+    expect(light.container.querySelector('[data-ornament="rameau"]')!.getAttribute("viewBox")).toBe("0 0 175 84");
+  });
+
+  it.each([
+    ["fr", "En son honneur", "Cérémonie"],
+    ["en", "In their honour", "Ceremony"],
+    ["es", "En su honor", "Ceremonia"],
+  ] as const)("%s : textes HERITAGE traduits en Dark aussi", (language, surtitle, title) => {
+    renderCeremony({ skinVariant: "dark", language });
+    expect(screen.getByText(surtitle)).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: title })).toBeTruthy();
   });
 });

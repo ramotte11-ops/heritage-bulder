@@ -14,11 +14,12 @@ import { CalendarIcon, DeckleFilter, GatheringIcon, InfoIcon, LineHeart, OliveSp
 import styles from "./CeremonyV2.module.css";
 
 /**
- * Cérémonie Intemporel V2 — pilote C1 Mobile Light, GO QG. Un seul
- * composant pour toutes les variantes à venir : leurs différences seront
- * des réglages (`config/ceremony-v2-tokens.ts`) et des blocs CSS de fin de
- * fichier. Non branché sur le registre de production : page pilote
- * seulement (`/pilote/ceremonie-v2`).
+ * Cérémonie Intemporel V2 — pilotes C1 Mobile Light (validé PO) et C2
+ * Mobile Dark, GO QG. Un seul composant pour toutes les variantes : leurs
+ * différences sont des réglages (`config/ceremony-v2-tokens.ts` : décor,
+ * coupe, rameaux) et des blocs CSS de fin de fichier (`[data-variant]`).
+ * Non branché sur le registre de production : page pilote seulement
+ * (`/pilote/ceremonie-v2`).
  *
  * Données : `content.ceremony` tel quel (types/ceremony.ts), y compris le
  * déroulement `programme` (B1). Chaque cartouche n'existe que si l'un de
@@ -175,7 +176,7 @@ function CeremonyV2Layout({
               <span className={styles.surtitleRule} aria-hidden="true" />
             </div>
             <TitleTag className={styles.title}>{translate(language, "ceremony.sectionTitle")}</TitleTag>
-            <OliveSprig className={styles.titleSprig} shape="title" />
+            <OliveSprig className={styles.titleSprig} shape={T.sprigShapes.title} tone={T.sprigTone} />
             <p className={styles.intro}>{translate(language, "ceremony.v2.intro")}</p>
           </header>
 
@@ -200,7 +201,7 @@ function CeremonyV2Layout({
                         <time dateTime={ceremony.time}>{formatCeremonyClock(ceremony.time, language)}</time>
                       </p>
                     )}
-                    <OliveSprig className={styles.dateSprig} shape="date" />
+                    <OliveSprig className={styles.dateSprig} shape={T.sprigShapes.date} tone={T.sprigTone} />
                   </article>
                 )}
                 {hasPlace && (
@@ -287,7 +288,7 @@ function CeremonyV2Layout({
               <span className={styles.footerRule} />
             </div>
             <p className={styles.closing}>{translate(language, "ceremony.v2.closing")}</p>
-            <OliveSprig className={styles.footerSprig} shape="footer" />
+            <OliveSprig className={styles.footerSprig} shape={T.sprigShapes.footer} tone={T.sprigTone} />
           </footer>
         </div>
       </section>

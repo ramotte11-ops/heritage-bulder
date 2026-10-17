@@ -19,7 +19,7 @@ SHA-256, puis dérive, avec la méthode éprouvée sur Traditions V2
      suivent, opaques sur le seul liseré.
 
 Usage :
-  python3 -I scripts/pilot/ceremony-v2-derive.py mobile-light <decor.png> <dossier-de-sortie>
+  python3 -I scripts/pilot/ceremony-v2-derive.py <mobile-light|mobile-dark> <decor.png> <dossier-de-sortie>
 
 Le décor lui-même est copié octet pour octet à part (cp) ; ce script
 n'écrit que la teinte, les grains et la bande des bords, et imprime les
@@ -80,6 +80,39 @@ VARIANTS = {
             "c": (420, 300, 340, 160),
         },
     },
+    # Mobile Dark (941×1671) — grande feuille chocolat nue de x 112 à 838
+    # entre les rangées 130 et 1480, liseré or pointillé à gauche
+    # (x 105–109), bord droit diffus (x ≈ 840–846) contre des papiers
+    # beiges en diagonale. Côtés : bouquet et papiers beiges à gauche
+    # (rangées 290–600), papier vert et coins beiges (600–950), bouquet bas
+    # gauche dès 960 ; à droite, papiers beiges en diagonale de 400 à 950
+    # puis bouquet flou dès 930. Recherche dans 760–920, entre les
+    # cartouches du haut et le déroulement, sous le premier coin beige
+    # gauche et au-dessus du bouquet bas.
+    "mobile-dark": {
+        "sha256": "37da7b45d008c2ea673f55af16216d02664439fe6c1205b898c98f0f79f5bb75",
+        "fade": 40,
+        "search": (760, 920),
+        # Bande des bords : liseré or gauche seul (x 105–109, fondus 102→105
+        # et 109→112) et bord droit (x 840–845, fondus 837→840 et 845→848).
+        # Au-delà, papiers beiges et vert se répéteraient : la teinte et le
+        # grain y suffisent.
+        "edge_strip": {"height": 220, "left": (102, 105, 109, 112), "right": (837, 840, 845, 848)},
+        # Hors des deux liserés, les profils médians sont des papiers
+        # beiges : étirés sur toute la surface, ils dessineraient des
+        # colonnes claires et floues. Teinte prise au quantile 0,3 des
+        # rangées 600–1100 (le papier sombre entre les éléments du
+        # collage, méthode de Traditions Mobile Dark), fondue vers le profil
+        # ordinaire de 100 à 112 et de 848 à 860.
+        "tone_sides": {"left": (100, 112), "right": (848, 860), "rows": (600, 1100), "quantile": 0.3},
+        "grain_gain": 2.4,
+        "tone_gain": (1.0, 1.0, 1.0),
+        "grain_zones": {
+            "a": (200, 640, 460, 420),
+            "b": (180, 1000, 400, 300),
+            "c": (300, 450, 340, 160),
+        },
+    },
 }
 
 
@@ -122,7 +155,14 @@ def profile(rgb: np.ndarray, start: int) -> np.ndarray:
     return gaussian_1d(np.median(rgb[start : start + PROFILE_ROWS], axis=0), PROFILE_SIGMA)
 
 
-def tone(rgb: np.ndarray, cut: int, fade: int, gain: tuple[float, float, float], below: dict | None = None) -> Image.Image:
+def tone(
+    rgb: np.ndarray,
+    cut: int,
+    fade: int,
+    gain: tuple[float, float, float],
+    below: dict | None = None,
+    sides: dict | None = None,
+) -> Image.Image:
     rows = np.stack([profile(rgb, cut - fade - PROFILE_ROWS), profile(rgb, cut + fade)])
     if below is not None:
         # Aux bords extérieurs, la teinte du dessous seulement : ce qui est
@@ -132,6 +172,16 @@ def tone(rgb: np.ndarray, cut: int, fade: int, gain: tuple[float, float, float],
         r0, r1 = below["right"]
         w = np.maximum(np.clip((l1 - xs) / (l1 - l0), 0, 1), np.clip((xs - r0) / (r1 - r0), 0, 1))[:, None]
         rows[0] = rows[0] * (1 - w) + rows[1] * w
+    if sides is not None:
+        # Aux bords extérieurs, une teinte sombre commune aux deux rangées :
+        # le quantile bas d'une large plage, jamais un papier clair étiré.
+        y0, y1 = sides["rows"]
+        dark = gaussian_1d(np.quantile(rgb[y0:y1], sides["quantile"], axis=0), PROFILE_SIGMA)
+        xs = np.arange(rgb.shape[1], dtype=float)
+        l0, l1 = sides["left"]
+        r0, r1 = sides["right"]
+        w = np.maximum(np.clip((l1 - xs) / (l1 - l0), 0, 1), np.clip((xs - r0) / (r1 - r0), 0, 1))[:, None]
+        rows = rows * (1 - w) + dark[None] * w
     rows = rows * np.array(gain)
     return Image.fromarray(np.clip(np.round(rows), 0, 255).astype(np.uint8), "RGB")
 
@@ -192,7 +242,7 @@ def main() -> None:
     print(f"variante {variant} — canvas {img.width}x{img.height}")
     print(f"cutY {cut} (fondu {v['fade']}, détail net moyen {detail:.1f} px/rangée, écart des profils aux bords {sides:.1f})")
     tone_path = f"{out}/ceremony-{variant}-tone.png"
-    tone(rgb, cut, v["fade"], v["tone_gain"], v.get("tone_below")).save(tone_path, optimize=True)
+    tone(rgb, cut, v["fade"], v["tone_gain"], v.get("tone_below"), v.get("tone_sides")).save(tone_path, optimize=True)
     print(f"tone {tone_path}")
     strip = edge_strip(img, cut, v["fade"], v["edge_strip"])
     path = f"{out}/ceremony-{variant}-edges.png"
