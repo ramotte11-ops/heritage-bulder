@@ -1,5 +1,5 @@
 import type { MemorialContent } from "@/types/memorial";
-import { EMPTY_CEREMONY_CONTENT, type CeremonyContent } from "@/types/ceremony";
+import { EMPTY_CEREMONY_CONTENT, type CeremonyContent, type CeremonyMoment } from "@/types/ceremony";
 
 /**
  * Mission 040 — parsing, normalization, validation, and draft integration
@@ -92,8 +92,9 @@ function parseTime(raw: unknown): Parsed<string | null> {
   return trimmed;
 }
 
-/** QG closure — the canonical model is CLOSED to the six keys named
- * below. Mirrors lib/memorial/death-notice.ts's own
+/** QG closure — the canonical model is CLOSED to the keys named below
+ * (the six A05-A08 fields, plus Cérémonie V2's facultative `programme`).
+ * Mirrors lib/memorial/death-notice.ts's own
  * `hasOnlyKnownKeys`/`DEATH_NOTICE_KEYS` discipline exactly. */
 function hasOnlyKnownKeys(raw: Record<string, unknown>, knownKeys: ReadonlySet<string>): boolean {
   return Object.keys(raw).every((key) => knownKeys.has(key));
@@ -106,6 +107,7 @@ const CEREMONY_KEYS: ReadonlySet<string> = new Set([
   "address",
   "access",
   "note",
+  "programme",
 ]);
 
 /** Which part of a `CeremonyContent` candidate failed. Not a
@@ -170,7 +172,8 @@ export function parseCeremonyContent(raw: unknown): CeremonyValidationResult {
   const note = parseOptionalText(raw.note);
   if (note === INVALID) return { ok: false, reason: "note" };
 
-  return { ok: true, ceremony: { date, time, venueName, address, access, note } };
+  // `programme` never invalidates the ceremony: see `inspectProgramme`.
+  return { ok: true, ceremony: withProgramme({ date, time, venueName, address, access, note }, inspectProgramme(raw.programme).moments) };
 }
 
 /** Validates a `CeremonyContent` a caller already built (e.g. via the
@@ -236,7 +239,16 @@ export function readCeremony(content: MemorialContent): CeremonyContent {
  * this function is ever composed with a write).
  */
 export function writeCeremony(content: MemorialContent, ceremony: CeremonyContent): MemorialContent {
-  return { ...content, ceremony };
+  const next = withProgramme(ceremony, ceremony.programme ?? []);
+  // A stored déroulement that holds an invalid moment is never rewritten
+  // from its readable subset: that would silently delete the invalid
+  // moment. It is kept verbatim until an explicit repair
+  // (`discardInvalidCeremonyMoments`). See « Le déroulement » below.
+  const stored = isPlainObject(content.ceremony) ? content.ceremony.programme : undefined;
+  if (!inspectProgramme(stored).intact) {
+    return { ...content, ceremony: { ...withProgramme(next, []), programme: stored } };
+  }
+  return { ...content, ceremony: next };
 }
 
 // ---------------------------------------------------------------------
@@ -265,4 +277,196 @@ export function setCeremonyAccess(ceremony: CeremonyContent, value: string | nul
 
 export function setCeremonyNote(ceremony: CeremonyContent, value: string | null): CeremonyContent {
   return { ...ceremony, note: value === null ? null : normalizeOptionalText(value) };
+}
+
+// ---------------------------------------------------------------------
+// Cérémonie V2 (B1) — « Le déroulement » (`programme`).
+// ---------------------------------------------------------------------
+//
+// ## Arbitrage : un moment invalide n'emporte ni la Cérémonie, ni les
+// autres moments
+//
+// Every other field of this model follows the house rule « une valeur
+// malformée rend l'ensemble corrompu » (and the ceremony's corrupted
+// status hides the whole section). Applied to a free-length list, that
+// rule would let ONE bad moment hide the date, the venue and every other
+// moment. The QG arbitration (GO B1) is therefore narrower, without
+// giving up the rule that matters most — nothing is ever silently
+// deleted:
+//
+//   - reading is tolerant PER MOMENT: a malformed moment (unknown key,
+//     blank label, bad time, duplicate id…) is skipped; every valid
+//     moment stays readable, in the family's order. A `programme` that
+//     is not an array reads as no moment at all. Neither case makes the
+//     ceremony `"corrupted"`;
+//   - writing is conservative: while the STORED `programme` holds
+//     anything unreadable, `writeCeremony` keeps it verbatim (the six
+//     fields still save normally), so the invalid moment and its valid
+//     neighbours survive any autosave; the readable subset only replaces
+//     it through the explicit `discardInvalidCeremonyMoments`, a family
+//     (or support) action — never a side effect;
+//   - an empty déroulement is never written: the `programme` key is
+//     omitted, so a ceremony without moments keeps its six-key shape.
+//
+// All writes go through the validated helpers below, so an invalid
+// stored moment can only come from a bug or a hand edit: this keeps that
+// rare case safe without a migration or a compatibility layer.
+
+const MOMENT_KEYS: ReadonlySet<string> = new Set(["id", "time", "label", "detail"]);
+
+/** One stored moment, or `INVALID`. Same field rules as the six fields
+ * above: peripheral whitespace trimmed, blanks-only optional text →
+ * `null`, time as A05's `"HH:MM"`; `label` is required and non-blank. */
+function parseMoment(raw: unknown): Parsed<CeremonyMoment> {
+  if (!isPlainObject(raw) || !hasOnlyKnownKeys(raw, MOMENT_KEYS)) return INVALID;
+  if (typeof raw.id !== "string" || raw.id.trim() === "") return INVALID;
+  const time = parseTime(raw.time);
+  if (time === INVALID) return INVALID;
+  if (typeof raw.label !== "string") return INVALID;
+  const label = normalizeOptionalText(raw.label);
+  if (label === null) return INVALID;
+  const detail = parseOptionalText(raw.detail);
+  if (detail === INVALID) return INVALID;
+  return { id: raw.id, time, label, detail };
+}
+
+interface ProgrammeInspection {
+  /** Every readable moment, in stored order. A repeated `id` keeps its
+   * first occurrence only. */
+  moments: CeremonyMoment[];
+  /** `true` when the stored value is absent, or an array whose every
+   * element is a readable moment with a unique id. */
+  intact: boolean;
+}
+
+function inspectProgramme(raw: unknown): ProgrammeInspection {
+  if (raw === null || raw === undefined) return { moments: [], intact: true };
+  if (!Array.isArray(raw)) return { moments: [], intact: false };
+  const moments: CeremonyMoment[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const moment = parseMoment(item);
+    if (moment === INVALID || seen.has(moment.id)) continue;
+    seen.add(moment.id);
+    moments.push(moment);
+  }
+  return { moments, intact: moments.length === raw.length };
+}
+
+/** `ceremony` with `programme` set to `moments` — or WITHOUT the key
+ * when there is none (never an empty list). */
+function withProgramme(ceremony: CeremonyContent, moments: readonly CeremonyMoment[]): CeremonyContent {
+  const { programme: _previous, ...rest } = ceremony;
+  void _previous;
+  return moments.length === 0 ? (rest as CeremonyContent) : { ...rest, programme: moments };
+}
+
+/** The déroulement, in the family's order; `[]` when there is none. */
+export function readCeremonyProgramme(ceremony: CeremonyContent): readonly CeremonyMoment[] {
+  return ceremony.programme ?? [];
+}
+
+/** `false` when the draft's stored `programme` holds something
+ * unreadable: until an explicit `discardInvalidCeremonyMoments`, edits to
+ * the déroulement must be refused (B2), since `writeCeremony` keeps the
+ * stored value verbatim. */
+export function isCeremonyProgrammeIntact(content: MemorialContent): boolean {
+  return inspectProgramme(isPlainObject(content.ceremony) ? content.ceremony.programme : undefined).intact;
+}
+
+/** Explicit repair: replaces a damaged stored `programme` by its readable
+ * moments (or removes the key when none is readable). Never called
+ * implicitly. A corrupted ceremony (one of the six fields) is returned
+ * unchanged. */
+export function discardInvalidCeremonyMoments(content: MemorialContent): MemorialContent {
+  const inspected = inspectCeremony(content);
+  if (inspected.status !== "valid") return content;
+  return { ...content, ceremony: withProgramme(inspected.ceremony, inspected.ceremony.programme ?? []) };
+}
+
+export type CeremonyMomentWriteReason = "id" | "duplicateId" | "time" | "label" | "detail";
+
+export type CeremonyMomentWriteResult =
+  | { ok: true; ceremony: CeremonyContent }
+  | { ok: false; reason: CeremonyMomentWriteReason };
+
+export interface NewCeremonyMomentInput {
+  /** Minted by the caller — never by this module (no clock, no random
+   * source here, same discipline as lib/memorial/traditions.ts). */
+  id: string;
+  time: string | null;
+  label: string;
+  detail: string | null;
+}
+
+function normalizeMomentTime(value: string | null): Parsed<string | null> {
+  return parseTime(value);
+}
+
+/** Appends a moment at the end of the déroulement. */
+export function addCeremonyMoment(ceremony: CeremonyContent, input: NewCeremonyMomentInput): CeremonyMomentWriteResult {
+  if (input.id.trim() === "") return { ok: false, reason: "id" };
+  const moments = readCeremonyProgramme(ceremony);
+  if (moments.some((moment) => moment.id === input.id)) return { ok: false, reason: "duplicateId" };
+  const time = normalizeMomentTime(input.time);
+  if (time === INVALID) return { ok: false, reason: "time" };
+  const label = normalizeOptionalText(input.label);
+  if (label === null) return { ok: false, reason: "label" };
+  const detail = input.detail === null ? null : normalizeOptionalText(input.detail);
+  return { ok: true, ceremony: withProgramme(ceremony, [...moments, { id: input.id, time, label, detail }]) };
+}
+
+/** Edits one moment in place (its position never changes). Only the
+ * fields named in `changes` are touched. */
+export function updateCeremonyMoment(
+  ceremony: CeremonyContent,
+  id: string,
+  changes: { time?: string | null; label?: string; detail?: string | null },
+): CeremonyMomentWriteResult {
+  const moments = readCeremonyProgramme(ceremony);
+  const index = moments.findIndex((moment) => moment.id === id);
+  if (index === -1) return { ok: false, reason: "id" };
+  const current = moments[index];
+
+  let time = current.time;
+  if (changes.time !== undefined) {
+    const next = normalizeMomentTime(changes.time);
+    if (next === INVALID) return { ok: false, reason: "time" };
+    time = next;
+  }
+  let label = current.label;
+  if (changes.label !== undefined) {
+    const next = normalizeOptionalText(changes.label);
+    if (next === null) return { ok: false, reason: "label" };
+    label = next;
+  }
+  let detail = current.detail;
+  if (changes.detail !== undefined) {
+    detail = changes.detail === null ? null : normalizeOptionalText(changes.detail);
+  }
+
+  const next = moments.slice();
+  next[index] = { id: current.id, time, label, detail };
+  return { ok: true, ceremony: withProgramme(ceremony, next) };
+}
+
+/** Removes one moment. Removing an id that does not exist is a harmless
+ * no-op; removing the last moment removes the `programme` key. */
+export function removeCeremonyMoment(ceremony: CeremonyContent, id: string): CeremonyContent {
+  return withProgramme(
+    ceremony,
+    readCeremonyProgramme(ceremony).filter((moment) => moment.id !== id),
+  );
+}
+
+/** Moves one moment one place up (earlier) or down (later), swapping it
+ * with its neighbour. Unknown id, or already first/last: unchanged. */
+export function moveCeremonyMoment(ceremony: CeremonyContent, id: string, direction: "up" | "down"): CeremonyContent {
+  const moments = readCeremonyProgramme(ceremony);
+  const index = moments.findIndex((moment) => moment.id === id);
+  const target = direction === "up" ? index - 1 : index + 1;
+  if (index === -1 || target < 0 || target >= moments.length) return ceremony;
+  const next = moments.slice();
+  [next[index], next[target]] = [next[target], next[index]];
+  return withProgramme(ceremony, next);
 }

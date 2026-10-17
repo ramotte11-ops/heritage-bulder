@@ -116,3 +116,19 @@ export const ebGaramondItalic = EB_Garamond({
   variable: "--font-heritage-recit-serif-italic",
   display: "swap",
 });
+
+/**
+ * Avis de décès V2 (phase 1, pilote) — le nom du défunt. La maquette
+ * Mobile Light le compose dans un Garamond gras ; ce n'est pas une
+ * nouvelle famille : c'est une graisse supplémentaire d'une famille déjà
+ * chargée ici, retenue par superposition avec la maquette (voir le
+ * rapport de phase 1). Export distinct, comme `ebGaramondItalic`, pour
+ * que les appelants existants gardent exactement les fichiers qu'ils
+ * chargent aujourd'hui.
+ */
+export const avisNameSerif = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["600"],
+  variable: "--font-heritage-avis-name",
+  display: "swap",
+});

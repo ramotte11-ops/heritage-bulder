@@ -13,7 +13,7 @@ import {
   skipA08,
   writeCeremonyDate,
 } from "@/lib/builder/guided-flow/ceremony-step";
-import { skipA09 } from "@/lib/builder/guided-flow/traditions-step";
+import { addTraditionsEntry, commitA09, skipA09 } from "@/lib/builder/guided-flow/traditions-step";
 import {
   commitPersonSheet,
   skipPersonSheet,
@@ -50,19 +50,40 @@ export function throughA03(): MemorialContent {
   return ok(commitA03(throughA02()));
 }
 
-/** + A04 "yes" and A05–A08 resolved, A09 skipped — the sheet pending. */
-function throughA09WithCeremony(): MemorialContent {
+/** + A04 "yes" and A05–A08 resolved — A09 not treated yet. */
+function throughA08WithCeremony(): MemorialContent {
   let content = ok(commitA04(throughA03(), "yes"));
   content = ok(writeCeremonyDate(content, "2026-10-02"));
   content = ok(commitA05(content));
   content = ok(skipA06(content));
   content = ok(skipA07(content));
-  content = ok(skipA08(content));
-  return ok(skipA09(content));
+  return ok(skipA08(content));
 }
 
-/** Every built section renderable: Hero, Avis, Récit (with the
- * family's own A10 text), Cérémonie. */
+/** + A09 skipped — the sheet pending. */
+function throughA09WithCeremony(): MemorialContent {
+  return ok(skipA09(throughA08WithCeremony()));
+}
+
+/** Two repères confirmed at A09 (one titled, one not), in this order. */
+export const FIXTURE_TRADITION_ENTRIES = [
+  { id: "t-fixture-1", origin: "custom", suggestionId: null, title: "Une bougie", text: "Allumer une bougie le soir." },
+  { id: "t-fixture-2", origin: "custom", suggestionId: null, title: null, text: "Pas de fleurs, un mot pour la famille." },
+] as const;
+
+/** Every built section renderable, Traditions included: A09 continued
+ * with `FIXTURE_TRADITION_ENTRIES`, then the sheet with the family's A10
+ * text. */
+export function fullAnnouncementWithTraditions(): MemorialContent {
+  let content = throughA08WithCeremony();
+  for (const entry of FIXTURE_TRADITION_ENTRIES) content = ok(addTraditionsEntry(content, { ...entry }));
+  content = ok(commitA09(content));
+  content = ok(writePersonWordsFieldText(content, FIXTURE_PERSON_WORDS));
+  return ok(commitPersonSheet(content));
+}
+
+/** Every built section renderable: Hero, Avis, Cérémonie, Récit (with the
+ * family's own A10 text). */
 export function fullAnnouncement(): MemorialContent {
   const content = ok(writePersonWordsFieldText(throughA09WithCeremony(), FIXTURE_PERSON_WORDS));
   return ok(commitPersonSheet(content));

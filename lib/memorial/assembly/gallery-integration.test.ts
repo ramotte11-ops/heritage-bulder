@@ -221,7 +221,7 @@ describe("assembleMemorial — the Gallery is one more section of the one pipeli
     const without = await assemble(base, {});
     const withIt = await assemble(withGallery(base, items(7)), galleryRows(7));
     expect(withIt.status).toBe("assembled");
-    expect(withIt.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "story", "ceremony", "gallery"]);
+    expect(withIt.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story", "gallery"]);
     const gallery = withIt.sections.find((s) => s.sectionId === "gallery")!;
     expect(gallery.rendererKey).toBe("GalleryIntemporel");
     // every other section: same renderer, same props as without a Gallery. The Récit receives the
@@ -237,7 +237,7 @@ describe("assembleMemorial — the Gallery is one more section of the one pipeli
     const base = fullAnnouncement();
     const result = await assemble(withGallery(base, items(3)), galleryRows(3, { 1: { width: null }, 2: { purpose: "hero" } }));
     expect(result.status).toBe("assembled");
-    expect(result.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "story", "ceremony"]);
+    expect(result.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(result.failures).toContainEqual({ sectionId: "gallery", rendererKey: "GalleryIntemporel", reason: "mediaUnavailable" });
   });
 });

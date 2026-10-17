@@ -1,7 +1,14 @@
 import type { MemorialContent } from "@/types/memorial";
-import type { CeremonyContent } from "@/types/ceremony";
+import type { CeremonyContent, CeremonyMoment } from "@/types/ceremony";
 import {
+  addCeremonyMoment,
+  discardInvalidCeremonyMoments,
   inspectCeremony,
+  isCeremonyProgrammeIntact,
+  moveCeremonyMoment,
+  readCeremonyProgramme,
+  removeCeremonyMoment,
+  updateCeremonyMoment,
   setCeremonyAccess,
   setCeremonyAddress,
   setCeremonyDate,
@@ -9,7 +16,9 @@ import {
   setCeremonyTime,
   setCeremonyVenueName,
   writeCeremony,
+  type CeremonyMomentWriteReason,
   type CeremonyValidationReason,
+  type NewCeremonyMomentInput,
 } from "@/lib/memorial/ceremony";
 import { readHero } from "@/lib/memorial/hero";
 import { guidedFlowProgress, type StepRecord } from "./engine";
@@ -124,7 +133,7 @@ function isCeremonyPlanned(content: MemorialContent): boolean {
   return readCeremonyMomentAnswer(content) === "yes";
 }
 
-function isStepResolved(content: MemorialContent, stepId: "A05" | "A06" | "A07" | "A08"): boolean {
+function isStepResolved(content: MemorialContent, stepId: "A05" | "A06" | "A07" | "A08" | "A14"): boolean {
   const status = readGuidedFlowState(content)[stepId]?.status;
   return status === "completed" || status === "skipped";
 }
@@ -187,7 +196,16 @@ export type CeremonyFieldWriteResult =
   | { ok: true; content: MemorialContent }
   | {
       ok: false;
-      reason: "corrupted" | CeremonyValidationReason | "dateTime" | "venueName" | "addressAccess" | "answer";
+      reason:
+        | "corrupted"
+        | CeremonyValidationReason
+        | "dateTime"
+        | "venueName"
+        | "addressAccess"
+        | "answer"
+        | CeremonyMomentWriteReason
+        | "programme"
+        | "programmeDamaged";
     };
 
 export function writeCeremonyDate(content: MemorialContent, value: string | null): CeremonyFieldWriteResult {
@@ -347,5 +365,134 @@ export function skipA08(content: MemorialContent): CeremonyFieldWriteResult {
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
 
   const nextFlow = { ...readGuidedFlowState(content), A08: { status: "skipped" } as StepRecord };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+// ---------------------------------------------------------------------
+// A14 — « Le déroulement de la cérémonie » (Cérémonie V2, B2).
+//
+// Built, NOT routed: `human-steps.ts` declares A14 never applicable
+// (`isA14InRoute`), app/builder/[memorialId]/page.tsx never evaluates
+// `needsA14`, and « Mon parcours » (journey.ts) holds no A14 screen —
+// the family cannot reach it until the CeremonyV2 renderer shows the
+// déroulement. GO C5 opens it between A07 and A08: page gate after
+// `needsA07`, `needsA08` chained on `needsA14`, journey screen
+// `ceremonyProgramme`, `isA14InRoute` → `isA04AnsweredYes`.
+//
+// Same two outcomes as A05-A08: `commitA14` requires at least one
+// confirmed moment; `skipA14` never touches `content.ceremony`.
+//
+// Moment writes follow B1's arbitrage (lib/memorial/ceremony.ts, « Le
+// déroulement »): while the stored déroulement holds an unreadable
+// moment, `writeCeremony` keeps it verbatim — so every edit here is
+// REFUSED (`"programmeDamaged"`) rather than silently not applied, until
+// the family explicitly removes the unreadable moments
+// (`repairCeremonyProgramme`).
+// ---------------------------------------------------------------------
+
+export type CeremonyProgrammeEditState =
+  | { status: "ready"; moments: readonly CeremonyMoment[]; intact: boolean }
+  | { status: "corrupted" };
+
+/** The one read A14 uses to seed its list: the confirmed moments, in the
+ * family's order, and whether the stored déroulement is fully readable. */
+export function readCeremonyProgrammeForEditing(content: MemorialContent): CeremonyProgrammeEditState {
+  const inspected = inspectCeremony(content);
+  if (inspected.status === "corrupted") return { status: "corrupted" };
+  return {
+    status: "ready",
+    moments: readCeremonyProgramme(inspected.ceremony),
+    intact: isCeremonyProgrammeIntact(content),
+  };
+}
+
+/** A14's real persisted outcome — treated once, whichever way. */
+export function isA14Resolved(content: MemorialContent): boolean {
+  return isStepResolved(content, "A14");
+}
+
+/** A14's gate, ready for GO C5 — deliberately NOT evaluated by the
+ * Builder route yet (see this section's header). Mirrors `needsA08`: A07
+ * behind the family, A04 answered "yes", A14 not treated yet. */
+export function needsA14(content: MemorialContent): boolean {
+  if (needsA07(content)) return false;
+  if (!isCeremonyPlanned(content)) return false;
+  return !isA14Resolved(content);
+}
+
+function programmeWrite(
+  content: MemorialContent,
+  apply: (ceremony: CeremonyContent) => { ok: true; ceremony: CeremonyContent } | { ok: false; reason: CeremonyMomentWriteReason },
+): CeremonyFieldWriteResult {
+  const inspected = inspectCeremony(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (!isCeremonyProgrammeIntact(content)) return { ok: false, reason: "programmeDamaged" };
+  const result = apply(inspected.ceremony);
+  if (!result.ok) return result;
+  return { ok: true, content: writeCeremony(content, result.ceremony) };
+}
+
+/** Appends one moment the family has just confirmed. Never called for a
+ * moment still being written — that one lives only in the screen's own
+ * local state. */
+export function addCeremonyProgrammeMoment(
+  content: MemorialContent,
+  input: NewCeremonyMomentInput,
+): CeremonyFieldWriteResult {
+  return programmeWrite(content, (ceremony) => addCeremonyMoment(ceremony, input));
+}
+
+/** Edits one confirmed moment in place — never its id nor its position. */
+export function updateCeremonyProgrammeMoment(
+  content: MemorialContent,
+  id: string,
+  changes: { time?: string | null; label?: string; detail?: string | null },
+): CeremonyFieldWriteResult {
+  return programmeWrite(content, (ceremony) => updateCeremonyMoment(ceremony, id, changes));
+}
+
+/** Removes one moment; an id that no longer exists is a harmless no-op. */
+export function removeCeremonyProgrammeMoment(content: MemorialContent, id: string): CeremonyFieldWriteResult {
+  return programmeWrite(content, (ceremony) => ({ ok: true, ceremony: removeCeremonyMoment(ceremony, id) }));
+}
+
+/** Moves one moment one place earlier ("up") or later ("down"). At
+ * either end, or for an unknown id, the content is returned unchanged. */
+export function moveCeremonyProgrammeMoment(
+  content: MemorialContent,
+  id: string,
+  direction: "up" | "down",
+): CeremonyFieldWriteResult {
+  return programmeWrite(content, (ceremony) => ({ ok: true, ceremony: moveCeremonyMoment(ceremony, id, direction) }));
+}
+
+/** The family's explicit « retirer les moments illisibles »: keeps the
+ * readable moments in order, drops the rest. The only path that ever
+ * discards a stored moment the family did not remove one by one. */
+export function repairCeremonyProgramme(content: MemorialContent): CeremonyFieldWriteResult {
+  const inspected = inspectCeremony(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  return { ok: true, content: discardInvalidCeremonyMoments(content) };
+}
+
+/** A14's own "Continuer" — at least one confirmed moment, and a fully
+ * readable déroulement (the family has seen everything that will show). */
+export function commitA14(content: MemorialContent): CeremonyFieldWriteResult {
+  const inspected = inspectCeremony(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+  if (!isCeremonyProgrammeIntact(content)) return { ok: false, reason: "programmeDamaged" };
+  if (readCeremonyProgramme(inspected.ceremony).length === 0) return { ok: false, reason: "programme" };
+
+  const nextFlow = { ...readGuidedFlowState(content), A14: { status: "completed" } as StepRecord };
+  return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
+}
+
+/** A14's own "Passer cette étape" — never touches `content.ceremony`
+ * (moments already confirmed are kept), only A14's own `StepRecord`. */
+export function skipA14(content: MemorialContent): CeremonyFieldWriteResult {
+  const inspected = inspectCeremony(content);
+  if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
+
+  const nextFlow = { ...readGuidedFlowState(content), A14: { status: "skipped" } as StepRecord };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }

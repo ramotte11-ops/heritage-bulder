@@ -13,12 +13,17 @@ describe("SECTION_RENDERERS", () => {
     expect(RENDERER_KEYS).toContain("RecitDeVieIntemporel");
   });
 
-  it("maps the five existing Intemporel renderers and nothing else", () => {
+  it("links traditions to Traditions & repères V2 (M1)", () => {
+    expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
+  });
+
+  it("maps the six existing Intemporel renderers and nothing else", () => {
     expect(resolveSectionRenderer("hero", "intemporel")).toBe("HeroIntemporel");
     expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeIntemporel");
     expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyIntemporel");
+    expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
     expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
-    for (const section of ["traditions", "testimonials", "condolences", "video", "memoryMessage"] as const) {
+    for (const section of ["testimonials", "condolences", "video", "memoryMessage"] as const) {
       expect(resolveSectionRenderer(section, "intemporel")).toBeNull();
     }
   });
@@ -26,6 +31,7 @@ describe("SECTION_RENDERERS", () => {
   it("never falls back to another skin's renderer", () => {
     for (const skin of SKINS.filter((s) => s !== "intemporel")) {
       expect(resolveSectionRenderer("hero", skin)).toBeNull();
+      expect(resolveSectionRenderer("traditions", skin)).toBeNull();
     }
     expect(resolveSectionRenderer("hero", null)).toBeNull();
   });
@@ -38,6 +44,7 @@ describe("SECTION_RENDERERS", () => {
       CeremonyIntemporel: "ceremony",
       RecitDeVieIntemporel: "life-story",
       RecitDeVieV2: "life-story/v2",
+      TraditionsV2: "traditions/v2",
       GalleryIntemporel: "gallery",
     };
     for (const key of RENDERER_KEYS) {

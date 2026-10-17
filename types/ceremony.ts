@@ -72,9 +72,41 @@ export interface CeremonyContent {
   access: string | null;
   /** One facultative practical note — A08. */
   note: string | null;
+  /**
+   * Cérémonie V2 (B1) — « Le déroulement » : the moments of the
+   * ceremony, in the order the family chose (A14, built later). The key
+   * is ABSENT whenever there is no moment — never an empty list: a draft
+   * without a déroulement keeps exactly the six-key shape above (see
+   * lib/memorial/ceremony.ts, `writeCeremony`).
+   */
+  programme?: readonly CeremonyMoment[];
 }
 
-/** `CeremonyContent` with every field absent — A04-A08 fully skipped,
+/**
+ * Cérémonie V2 (B1) — one moment of « Le déroulement ». Family text,
+ * verbatim, never translated; no example moment is ever created by
+ * HERITAGE itself.
+ *
+ * Same index-signature device as `CeremonyContent` (TypeScript only);
+ * the strict boundary is lib/memorial/ceremony.ts's moment parser: any
+ * key beyond the four below makes THIS moment invalid.
+ */
+export interface CeremonyMoment {
+  [key: string]: unknown;
+  /** Stable identity, unique within one `programme` — minted by the
+   * caller (a Client Component) when the family confirms the moment,
+   * never derived from its text, never reused after removal. */
+  id: string;
+  /** Facultative 24h clock time, `"HH:MM"` — same format as A05's
+   * `time`. */
+  time: string | null;
+  /** The moment itself (« Accueil des proches ») — required, non-blank. */
+  label: string;
+  /** Facultative precision (« Salle paroissiale »). */
+  detail: string | null;
+}
+
+/** `CeremonyContent` with every field absent (and no `programme` key) — A04-A08 fully skipped,
  * `A04` answered "no"/"undecided", or not yet visited. */
 export const EMPTY_CEREMONY_CONTENT: CeremonyContent = {
   date: null,

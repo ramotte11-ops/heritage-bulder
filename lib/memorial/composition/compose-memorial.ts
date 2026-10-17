@@ -154,8 +154,8 @@ type ReadinessRule = (content: MemorialContent) => boolean;
  *   (Whether the section applies at all is A04 = "yes", decided by
  *   section-selection, not here.)
  * - story: the A10–A12 sheet resolved (QG decision above).
- * - traditions: A09 resolved — it will surface as `noRenderer` until a
- *   renderer exists.
+ * - traditions: A09 resolved — drawn by `TraditionsV2` (M1) once it also
+ *   has at least one confirmed repère (section-selection's content signal).
  * - gallery (dettes D2–D4): a valid `content.gallery` whose photograph
  *   count selects an A13 Gallery state (2+ photographs) — `hasGalleryMatter`.
  */

@@ -21,10 +21,14 @@ import type { Skin } from "./skins";
  *    and Desktop, LIGHT = bleu pétrole / DARK = ivoire-champagne). The V1
  *    renderer `RecitDeVieIntemporel` stays registered: switching this one
  *    line back to it is the whole rollback.
+ *  - `traditions` → `TraditionsV2` (M1): Traditions & repères V2, the four
+ *    validated variants (Mobile/Desktop × Light/Dark), drawn as is from
+ *    `components/memorial/traditions/v2/`. Whether it applies is still
+ *    decided by section-selection (A00, the family's own entries).
  *  - `gallery` → `GalleryIntemporel` (dettes D2–D4): the product host of
  *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
- *  - `traditions`, `testimonials`, `condolences`, `video`,
- *    `memoryMessage`: no renderer exists yet — deliberately absent.
+ *  - `testimonials`, `condolences`, `video`, `memoryMessage`: no renderer
+ *    exists yet — deliberately absent.
  *
  * Known duplication, not resolved here: `DeathNoticePreviewStep`'s own
  * internal `A03_BUILT_SKINS` (A03 Reveal) states the same fact as the
@@ -37,6 +41,7 @@ export const RENDERER_KEYS = [
   "CeremonyIntemporel",
   "RecitDeVieIntemporel",
   "RecitDeVieV2",
+  "TraditionsV2",
   "GalleryIntemporel",
 ] as const;
 
@@ -49,6 +54,7 @@ export const SECTION_RENDERERS: Readonly<
   deathNotice: { intemporel: "DeathNoticeIntemporel" },
   ceremony: { intemporel: "CeremonyIntemporel" },
   story: { intemporel: "RecitDeVieV2" },
+  traditions: { intemporel: "TraditionsV2" },
   gallery: { intemporel: "GalleryIntemporel" },
 };
 

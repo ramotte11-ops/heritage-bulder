@@ -8,6 +8,7 @@ import type { DeathNoticeIntemporelProps } from "@/components/memorial/death-not
 import type { CeremonyIntemporelProps } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import type { RecitDeVieIntemporelProps } from "@/components/memorial/life-story/RecitDeVieIntemporel";
 import type { RecitDeVieV2Props } from "@/components/memorial/life-story/v2/RecitDeVieV2";
+import type { TraditionsV2Props } from "@/components/memorial/traditions/v2/TraditionsV2";
 import type { GalleryIntemporelProps } from "@/components/memorial/gallery/GalleryIntemporel";
 import { inspectHero, isHeroContentComplete } from "@/lib/memorial/hero";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
@@ -15,6 +16,7 @@ import { inspectCeremony } from "@/lib/memorial/ceremony";
 import { inspectPersonWords } from "@/lib/memorial/person-words";
 import { inspectLovedThings } from "@/lib/memorial/loved-things";
 import { inspectLegacy } from "@/lib/memorial/legacy";
+import { inspectTraditions } from "@/lib/memorial/traditions";
 import { inspectGallery } from "@/lib/memorial/gallery-content";
 import { translateWith } from "@/lib/i18n/translate";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
@@ -37,7 +39,7 @@ import type { MediaResolver } from "./media-resolver";
  * a false rendering. A refusal is never softened: no placeholder, no
  * `photo={null}`, no other skin.
  *
- * The four renderers hard-code `SkinScope skin="intemporel"`, so each
+ * Every renderer hard-codes `SkinScope skin="intemporel"`, so each
  * adapter also refuses any other skin.
  */
 
@@ -47,6 +49,7 @@ export interface RendererPropsMap {
   CeremonyIntemporel: CeremonyIntemporelProps;
   RecitDeVieIntemporel: RecitDeVieIntemporelProps;
   RecitDeVieV2: RecitDeVieV2Props;
+  TraditionsV2: TraditionsV2Props;
   GalleryIntemporel: GalleryIntemporelProps;
 }
 
@@ -179,6 +182,36 @@ export const adaptRecitDeVieIntemporel: RendererAdapter<"RecitDeVieIntemporel"> 
 export const adaptRecitDeVieV2: RendererAdapter<"RecitDeVieV2"> = async (context) => adaptLifeStory(context);
 
 /**
+ * Traditions & repères V2 (M1) — the family's confirmed repères
+ * (`content.traditions`, written at A09), handed to the validated
+ * renderer as is: their order, titles and texts are never touched.
+ *
+ * Re-checked through `inspectTraditions`, never `readTraditions` (which
+ * collapses a corrupted value to an empty list): a corrupted value is
+ * refused, and so is a list with no repère — the section would then be
+ * the HERITAGE header and footer alone, never a validated rendering.
+ * The Hero's name is the Memorial's only <h1> (QG D3): `section` level.
+ */
+export const adaptTraditionsV2: RendererAdapter<"TraditionsV2"> = async (context) => {
+  if (context.skin !== "intemporel") return refuse("skinMismatch");
+
+  const traditions = inspectTraditions(context.content);
+  if (traditions.status !== "valid" || traditions.traditions.entries.length === 0) {
+    return refuse("contentUnreadable");
+  }
+
+  return {
+    ok: true,
+    props: {
+      traditions: traditions.traditions,
+      language: context.language,
+      skinVariant: context.skinVariant,
+      headingLevel: "section",
+    },
+  };
+};
+
+/**
  * Dettes D2–D4 — the Gallery's HERITAGE title and subtitle, owned by the
  * Gallery adapter (QG decision: HERITAGE text, never family content,
  * never stored in `content.gallery`).
@@ -270,5 +303,6 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   CeremonyIntemporel: adaptCeremonyIntemporel,
   RecitDeVieIntemporel: adaptRecitDeVieIntemporel,
   RecitDeVieV2: adaptRecitDeVieV2,
+  TraditionsV2: adaptTraditionsV2,
   GalleryIntemporel: adaptGalleryIntemporel,
 };

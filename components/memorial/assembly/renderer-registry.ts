@@ -6,6 +6,7 @@ import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathN
 import { CeremonyIntemporel } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
 import { RecitDeVieV2 } from "@/components/memorial/life-story/v2/RecitDeVieV2";
+import { TraditionsV2 } from "@/components/memorial/traditions/v2/TraditionsV2";
 import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntemporel";
 
 /**
@@ -21,5 +22,6 @@ export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<R
   CeremonyIntemporel,
   RecitDeVieIntemporel,
   RecitDeVieV2,
+  TraditionsV2,
   GalleryIntemporel,
 };
