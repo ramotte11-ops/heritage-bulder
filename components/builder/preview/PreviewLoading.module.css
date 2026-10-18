@@ -1,0 +1,181 @@
+/* Reused from PR #52: the approved ivory-and-bronze keepsake album. */
+.veil {
+  --album-ivory: #efe6d2;
+  --album-page: #faf6ec;
+  --album-bronze: #8a6a45;
+
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgb(246 241 231 / 0.78);
+  cursor: progress;
+  animation: veil-in var(--heritage-motion-fast) ease-out both;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.75rem 2rem 1.5rem;
+  background: var(--heritage-surface-card);
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  text-align: center;
+}
+
+.text {
+  margin: 0;
+  font-family: var(--heritage-font-family-serif);
+  font-size: 1.0625rem;
+  font-style: italic;
+  color: var(--heritage-text-secondary);
+}
+
+.album {
+  position: relative;
+  width: 6.5rem;
+  height: 4.5rem;
+  perspective: 26rem;
+}
+
+.album::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: calc(50% - 1px);
+  width: 2px;
+  z-index: 4;
+  background: var(--album-bronze);
+  border-radius: 1px;
+}
+
+.board,
+.leaf,
+.cover {
+  position: absolute;
+  left: 50%;
+  transform-origin: left center;
+}
+
+.board {
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: var(--album-ivory);
+  border: 1px solid var(--album-bronze);
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+}
+
+.leaf {
+  top: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  background: var(--album-page);
+  border: 1px solid var(--heritage-border-soft);
+  border-left: none;
+  border-radius: 0 2px 2px 0;
+  opacity: 0;
+  animation: leaf-turn 2.6s ease-in-out infinite both;
+}
+
+.leafOne {
+  z-index: 1;
+  animation-delay: 1s;
+}
+
+.leafTwo {
+  z-index: 2;
+  animation-delay: 2.3s;
+}
+
+.cover {
+  top: 0;
+  z-index: 3;
+  width: 50%;
+  height: 100%;
+  background: var(--album-ivory);
+  border: 1px solid var(--album-bronze);
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+  outline: 1px solid var(--album-bronze);
+  outline-offset: -6px;
+  animation: cover-open 0.9s ease-out 0.1s both;
+}
+
+.cover::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 3px);
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  background: var(--album-bronze);
+  transform: rotate(45deg);
+}
+
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cover-open {
+  from {
+    transform: rotateY(0deg);
+    z-index: 3;
+  }
+  to {
+    transform: rotateY(-178deg);
+    z-index: 0;
+  }
+}
+
+@keyframes leaf-turn {
+  0% {
+    transform: rotateY(0deg);
+    opacity: 0;
+  }
+  10% {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+  55% {
+    transform: rotateY(-176deg);
+    opacity: 1;
+  }
+  85% {
+    transform: rotateY(-176deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateY(-176deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .veil,
+  .cover,
+  .leaf {
+    animation: none;
+  }
+
+  .cover {
+    z-index: 0;
+    transform: rotateY(-178deg);
+  }
+
+  .leafOne {
+    opacity: 1;
+  }
+}

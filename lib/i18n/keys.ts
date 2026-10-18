@@ -211,6 +211,7 @@ export const TRANSLATION_KEYS = [
   "common.back",
   "common.cancel",
   "common.save",
+  "common.pleaseWait",
   "nav.home",
   "errors.generic",
   "errors.notFound",
@@ -238,6 +239,7 @@ export const TRANSLATION_KEYS = [
   "preview.backToCreation",
   "preview.changeAmbiance",
   "preview.unavailable",
+  "preview.loading",
   // B03 — « Mon parcours » (sommaire permanent et révision des réponses).
   "journey.open",
   "journey.title",

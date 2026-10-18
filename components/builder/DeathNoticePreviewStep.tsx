@@ -19,6 +19,7 @@ import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathN
 import { BuilderScreen } from "./BuilderScreen";
 import { BuilderScreenNav } from "./journey/BuilderScreenNav";
 import { inter, playfairDisplay } from "./fonts";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
 import styles from "./DeathNoticePreviewStep.module.css";
@@ -112,8 +113,9 @@ export function DeathNoticePreviewStep({
   persist,
 }: DeathNoticePreviewStepProps) {
   const stepDone = useStepDone();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"announcement" | "precisions" | "continue" | null>(null);
   const [submitError, setSubmitError] = useState(false);
+  const isSubmitting = pendingAction !== null;
 
   const heroRead = readHeroForEditing(content);
   const deathNoticeRead = readDeathNoticeForEditing(content);
@@ -146,12 +148,12 @@ export function DeathNoticePreviewStep({
   async function handleEditAnnouncement() {
     if (isSubmitting) return;
     setSubmitError(false);
-    setIsSubmitting(true);
+    setPendingAction("announcement");
 
     const reopened = reopenA01(content);
     if (!reopened.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -159,7 +161,7 @@ export function DeathNoticePreviewStep({
       await persist(reopened.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -169,12 +171,12 @@ export function DeathNoticePreviewStep({
   async function handleEditPrecisions() {
     if (isSubmitting) return;
     setSubmitError(false);
-    setIsSubmitting(true);
+    setPendingAction("precisions");
 
     const reopened = reopenA02(content);
     if (!reopened.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -182,7 +184,7 @@ export function DeathNoticePreviewStep({
       await persist(reopened.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -192,12 +194,12 @@ export function DeathNoticePreviewStep({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(false);
-    setIsSubmitting(true);
+    setPendingAction("continue");
 
     const committed = commitA03(content);
     if (!committed.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -205,7 +207,7 @@ export function DeathNoticePreviewStep({
       await persist(committed.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -237,22 +239,39 @@ export function DeathNoticePreviewStep({
             type="button"
             className={styles.editLink}
             disabled={isSubmitting}
+            aria-busy={pendingAction === "announcement" || undefined}
             onClick={() => void handleEditAnnouncement()}
           >
-            {translate(language, "deathNotice.editAnnouncement")}
+            <PendingActionLabel
+              pending={pendingAction === "announcement"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "deathNotice.editAnnouncement")}
+            </PendingActionLabel>
           </button>
           <button
             type="button"
             className={styles.editLink}
             disabled={isSubmitting}
+            aria-busy={pendingAction === "precisions" || undefined}
             onClick={() => void handleEditPrecisions()}
           >
-            {translate(language, "deathNotice.editPrecisions")}
+            <PendingActionLabel
+              pending={pendingAction === "precisions"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "deathNotice.editPrecisions")}
+            </PendingActionLabel>
           </button>
         </div>
 
         <div className={styles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={isSubmitting}>
+          <PrimaryButton
+            type="submit"
+            disabled={isSubmitting}
+            pending={pendingAction === "continue"}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "common.continue")}
           </PrimaryButton>
         </div>

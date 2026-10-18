@@ -24,7 +24,7 @@ export function PreviewEntry() {
         type="button"
         className={styles.entryButton}
         aria-busy={busy}
-        aria-disabled={busy}
+        disabled={busy}
         onClick={open}
       >
         {translate(language, "preview.view")}

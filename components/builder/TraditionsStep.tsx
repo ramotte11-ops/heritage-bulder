@@ -20,6 +20,7 @@ import {
 } from "@/lib/builder/guided-flow/traditions-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./TraditionsStep.module.css";
@@ -101,12 +102,12 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
     (composer !== null && (composer.title.trim() !== "" || composer.text.trim() !== "")) || editing !== null,
   );
   const [submitError, setSubmitError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
   const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readTraditionsForEditing(content);
-  const controlsDisabled = isSubmitting;
+  const controlsDisabled = pendingAction !== null;
   const suggestions = resolveAvailableTraditionSuggestions({ skin });
 
   function confirmComposer() {
@@ -148,7 +149,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
       return true;
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return false;
     }
   }
@@ -157,13 +158,13 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
     event.preventDefault();
     if (read.status !== "ready") return;
 
-    setIsSubmitting(true);
+    setPendingAction("continue");
     if (!(await drainAutosave())) return;
 
     const committed = commitA09(content);
     if (!committed.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -171,7 +172,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
       await persist(committed.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -181,13 +182,13 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
   async function handleSkip() {
     if (read.status !== "ready" || controlsDisabled) return;
 
-    setIsSubmitting(true);
+    setPendingAction("skip");
     if (!(await drainAutosave())) return;
 
     const skipped = skipA09(content);
     if (!skipped.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -195,7 +196,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
       await persist(skipped.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -375,7 +376,12 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled || !hasEntry}>
+            <PrimaryButton
+              type="submit"
+              disabled={controlsDisabled || !hasEntry}
+              pending={pendingAction === "continue"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
@@ -384,9 +390,15 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
             type="button"
             className={styles.skipLink}
             disabled={controlsDisabled}
+            aria-busy={pendingAction === "skip" || undefined}
             onClick={() => void handleSkip()}
           >
-            {translate(language, "traditions.skip")}
+            <PendingActionLabel
+              pending={pendingAction === "skip"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "traditions.skip")}
+            </PendingActionLabel>
           </button>
         </div>
 

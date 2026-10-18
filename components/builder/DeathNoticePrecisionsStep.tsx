@@ -17,6 +17,7 @@ import {
 } from "@/lib/builder/guided-flow/death-notice-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./DeathNoticePrecisionsStep.module.css";
@@ -91,12 +92,12 @@ export function DeathNoticePrecisionsStep({
   const [content, setContent] = useState(initialContent);
   const [openedFields, setOpenedFields] = useState<ReadonlySet<DeathNoticePrecisionField>>(() => new Set());
   const [submitError, setSubmitError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
   const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readDeathNoticeForEditing(content);
-  const controlsDisabled = isSubmitting;
+  const controlsDisabled = pendingAction !== null;
 
   function openField(field: DeathNoticePrecisionField) {
     if (controlsDisabled) return;
@@ -114,7 +115,7 @@ export function DeathNoticePrecisionsStep({
       return true;
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return false;
     }
   }
@@ -123,13 +124,13 @@ export function DeathNoticePrecisionsStep({
     event.preventDefault();
     if (read.status !== "ready") return;
 
-    setIsSubmitting(true);
+    setPendingAction("continue");
     if (!(await drainAutosave())) return;
 
     const committed = commitA02(content);
     if (!committed.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -137,7 +138,7 @@ export function DeathNoticePrecisionsStep({
       await persist(committed.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -147,13 +148,13 @@ export function DeathNoticePrecisionsStep({
   async function handleSkip() {
     if (read.status !== "ready" || controlsDisabled) return;
 
-    setIsSubmitting(true);
+    setPendingAction("skip");
     if (!(await drainAutosave())) return;
 
     const skipped = skipA02(content);
     if (!skipped.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -161,7 +162,7 @@ export function DeathNoticePrecisionsStep({
       await persist(skipped.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -230,7 +231,12 @@ export function DeathNoticePrecisionsStep({
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled || !hasAnyPrecision}>
+            <PrimaryButton
+              type="submit"
+              disabled={controlsDisabled || !hasAnyPrecision}
+              pending={pendingAction === "continue"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
@@ -239,9 +245,15 @@ export function DeathNoticePrecisionsStep({
             type="button"
             className={styles.skipLink}
             disabled={controlsDisabled}
+            aria-busy={pendingAction === "skip" || undefined}
             onClick={() => void handleSkip()}
           >
-            {translate(language, "deathNotice.precisionsSkip")}
+            <PendingActionLabel
+              pending={pendingAction === "skip"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "deathNotice.precisionsSkip")}
+            </PendingActionLabel>
           </button>
         </div>
 

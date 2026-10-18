@@ -21,6 +21,7 @@ import {
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./CeremonyProgrammeStep.module.css";
@@ -100,7 +101,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
   const [nativeBlocked, setNativeBlocked] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [submitError, setSubmitError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +131,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
 
   const draftOpen = composer !== null || editing !== null;
   const intact = read.status === "ready" && read.intact;
-  const controlsDisabled = isSubmitting;
+  const controlsDisabled = pendingAction !== null;
   const listActionsDisabled = controlsDisabled || draftOpen || !intact;
 
   function registerAction(key: string) {
@@ -243,19 +244,19 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
       return true;
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return false;
     }
   }
 
-  async function leave(write: typeof commitA14) {
-    setIsSubmitting(true);
+  async function leave(write: typeof commitA14, action: "continue" | "skip") {
+    setPendingAction(action);
     if (!(await drainAutosave())) return;
 
     const written = write(content);
     if (!written.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -263,7 +264,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
       await persist(written.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -273,12 +274,12 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
   async function handleContinue(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (read.status !== "ready" || controlsDisabled || blockedByUnconfirmedInput()) return;
-    await leave(commitA14);
+    await leave(commitA14, "continue");
   }
 
   async function handleSkip() {
     if (read.status !== "ready" || controlsDisabled || blockedByUnconfirmedInput()) return;
-    await leave(skipA14);
+    await leave(skipA14, "skip");
   }
 
   if (read.status !== "ready") {
@@ -457,7 +458,12 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
           {showPendingHint && <p className={styles.hint}>{translate(language, "ceremony.programmePendingHint")}</p>}
 
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled || pending || !intact || moments.length === 0}>
+            <PrimaryButton
+              type="submit"
+              disabled={controlsDisabled || pending || !intact || moments.length === 0}
+              pending={pendingAction === "continue"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
@@ -466,9 +472,15 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
             type="button"
             className={styles.skipLink}
             disabled={controlsDisabled || pending}
+            aria-busy={pendingAction === "skip" || undefined}
             onClick={() => void handleSkip()}
           >
-            {translate(language, "ceremony.skip")}
+            <PendingActionLabel
+              pending={pendingAction === "skip"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "ceremony.skip")}
+            </PendingActionLabel>
           </button>
         </div>
 

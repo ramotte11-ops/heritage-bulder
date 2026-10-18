@@ -23,6 +23,7 @@ import {
 } from "@/lib/builder/guided-flow/life-story-limit";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./PersonSheetStep.module.css";
@@ -130,12 +131,12 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
   const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readPersonSheetForEditing(content);
-  const controlsDisabled = isSubmitting;
+  const controlsDisabled = pendingAction !== null;
 
   function handlePersonWordsChange(value: string) {
     const result = writePersonWordsFieldText(content, value);
@@ -158,7 +159,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
       return true;
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return false;
     }
   }
@@ -167,13 +168,13 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
     event.preventDefault();
     if (read.status !== "ready") return;
 
-    setIsSubmitting(true);
+    setPendingAction("continue");
     if (!(await drainAutosave())) return;
 
     const committed = commitPersonSheet(content);
     if (!committed.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -181,7 +182,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
       await persist(committed.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -191,13 +192,13 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
   async function handleSkip() {
     if (read.status !== "ready" || controlsDisabled) return;
 
-    setIsSubmitting(true);
+    setPendingAction("skip");
     if (!(await drainAutosave())) return;
 
     const skipped = skipPersonSheet(content);
     if (!skipped.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -205,7 +206,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
       await persist(skipped.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -267,7 +268,12 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled || nothingEntered}>
+            <PrimaryButton
+              type="submit"
+              disabled={controlsDisabled || nothingEntered}
+              pending={pendingAction === "continue"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
@@ -276,9 +282,15 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
             type="button"
             className={styles.skipLink}
             disabled={controlsDisabled}
+            aria-busy={pendingAction === "skip" || undefined}
             onClick={() => void handleSkip()}
           >
-            {translate(language, "personSheet.skip")}
+            <PendingActionLabel
+              pending={pendingAction === "skip"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "personSheet.skip")}
+            </PendingActionLabel>
           </button>
         </div>
 

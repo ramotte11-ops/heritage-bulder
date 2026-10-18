@@ -90,7 +90,12 @@ export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
 
         <form action={formAction} className={styles.form}>
           <div className={styles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={isPending}>
+            <PrimaryButton
+              type="submit"
+              disabled={isPending}
+              pending={isPending}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "welcome.cta")}
             </PrimaryButton>
           </div>

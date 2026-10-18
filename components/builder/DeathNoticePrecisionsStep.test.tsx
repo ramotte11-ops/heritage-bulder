@@ -137,6 +137,22 @@ describe("DeathNoticePrecisionsStep — chaque précision individuelle", () => {
 });
 
 describe("DeathNoticePrecisionsStep — passer → skipped, rien inventé, rien ajouté", () => {
+  it("shows feedback on Passer itself and blocks both outcomes while the write is pending", async () => {
+    let release: (value: { updatedAt: string }) => void = () => {};
+    const persist = vi.fn(() => new Promise<{ updatedAt: string }>((resolve) => (release = resolve)));
+    render(<DeathNoticePrecisionsStep {...baseProps({ persist })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Passer cette étape" }));
+
+    const pending = await screen.findByRole("button", { name: "Un instant…" });
+    expect(pending).toHaveProperty("disabled", true);
+    expect(pending.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("button", { name: "Continuer" })).toHaveProperty("disabled", true);
+
+    release({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+  });
+
   it("clicking Passer cette étape with nothing entered marks A02 skipped, precisions untouched", async () => {
     const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
     render(<DeathNoticePrecisionsStep {...baseProps({ persist })} />);

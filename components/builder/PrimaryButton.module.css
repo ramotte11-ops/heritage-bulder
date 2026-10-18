@@ -22,6 +22,12 @@
   cursor: not-allowed;
 }
 
+.button[data-pending="true"]:disabled {
+  background: var(--heritage-accent-primary);
+  color: var(--heritage-surface-card);
+  cursor: progress;
+}
+
 .button:not(:disabled):hover {
   background: var(--heritage-accent-primary-hover);
 }

@@ -15,6 +15,7 @@ import { commitA13, galleryStepProgress, readGalleryForEditing, skipA13 } from "
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { GalleryWorkshop } from "./GalleryWorkshop";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./GalleryStep.module.css";
@@ -60,30 +61,31 @@ export function GalleryStep({
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
   const [workshopBusy, setWorkshopBusy] = useState(false);
 
   const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
 
   const read = readGalleryForEditing(content);
+  const isSubmitting = pendingAction !== null;
   const controlsDisabled = isSubmitting || workshopBusy;
 
-  async function resolveStep(write: typeof commitA13) {
+  async function resolveStep(write: typeof commitA13, action: "continue" | "skip") {
     if (read.status !== "ready" || controlsDisabled) return;
     setSubmitError(false);
-    setIsSubmitting(true);
+    setPendingAction(action);
     try {
       await flush();
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
     const resolved = write(content);
     if (!resolved.ok) {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -91,7 +93,7 @@ export function GalleryStep({
       await persist(resolved.content);
     } catch {
       setSubmitError(true);
-      setIsSubmitting(false);
+      setPendingAction(null);
       return;
     }
 
@@ -122,7 +124,7 @@ export function GalleryStep({
         className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
-          void resolveStep(commitA13);
+          void resolveStep(commitA13, "continue");
         }}
       >
         <GalleryWorkshop
@@ -141,13 +143,29 @@ export function GalleryStep({
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={controlsDisabled}>
+            <PrimaryButton
+              type="submit"
+              disabled={controlsDisabled}
+              pending={pendingAction === "continue"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
 
-          <button type="button" className={styles.skipLink} disabled={controlsDisabled} onClick={() => void resolveStep(skipA13)}>
-            {translate(language, "galleryStep.skip")}
+          <button
+            type="button"
+            className={styles.skipLink}
+            disabled={controlsDisabled}
+            aria-busy={pendingAction === "skip" || undefined}
+            onClick={() => void resolveStep(skipA13, "skip")}
+          >
+            <PendingActionLabel
+              pending={pendingAction === "skip"}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "galleryStep.skip")}
+            </PendingActionLabel>
           </button>
         </div>
 

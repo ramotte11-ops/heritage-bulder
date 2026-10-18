@@ -223,7 +223,12 @@ export function HeroIdentityStep({
         />
 
         <div className={screenStyles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={isSubmitting}>
+          <PrimaryButton
+            type="submit"
+            disabled={isSubmitting}
+            pending={isSubmitting}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "common.continue")}
           </PrimaryButton>
         </div>
