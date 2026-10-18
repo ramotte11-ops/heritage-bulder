@@ -1,9 +1,11 @@
 "use server";
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
-import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
+import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
+import { changedConfigurationMutation } from "@/lib/memorial/edit-mutations";
+import { commitAuthorizedConfigurationEdit } from "@/lib/memorial/persist-edit";
 
 /**
  * Mission 035 (QG-authorized, section 18 audit) — T08's one write onto
@@ -24,10 +26,9 @@ import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
  *
  * Re-authorized on EVERY call (never once at render time, never trusting
  * a decision an earlier render made), the id used is `access.memorialId`
- * (the verified one, never the raw argument), the Supabase client is
- * session-scoped and built per call so `memorials_update_own` plus the
- * new column-level grant are a real second lock, and a refusal REJECTS —
- * never a fabricated success. `skinVariant` arrives as a plain `string`
+ * (the verified one, never the raw argument), the lifecycle is re-read
+ * server-side, and Security V1 is applied before the atomic write. A
+ * refusal REJECTS — never a fabricated success. `skinVariant` arrives as a plain `string`
  * and is re-validated here (`resolveSkinVariantRuntime` — the ONE place
  * a raw value becomes a checked `SkinVariant`, lib/memorial/skin-runtime.ts)
  * before anything else runs: a Server Action's argument crosses a
@@ -46,10 +47,8 @@ import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
  * `commitPageE` (lib/builder/guided-flow/hero-step.ts) + `saveDraftAction`
  * once it resolves — never before, and never if it rejects.
  *
- * `skin_variant` is never re-closed after publication by this action or
- * by the migration it depends on (Mission 035 section 7 — "Light/Dark
- * reste réversible après publication"): there is no `status` check here
- * of any kind, deliberately.
+ * Security V1 supersedes Mission 035's earlier post-publication note:
+ * ambiance is part of the Hero and is now refused after first publication.
  */
 export async function saveSkinVariantAction(memorialId: string, skinVariant: string): Promise<void> {
   const resolved = resolveSkinVariantRuntime(skinVariant);
@@ -67,8 +66,16 @@ export async function saveSkinVariantAction(memorialId: string, skinVariant: str
   }
 
   const supabase = await createServerSupabaseClient();
-  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
+  const editRepository = createSupabaseMemorialEditRepository(supabase);
+  const snapshot = await editRepository.load(access.memorialId);
+  if (snapshot === null) throw new Error("Hero ambiance save refused.");
 
-  // access.memorialId — the authorized id, never the raw argument.
-  return memorialConfigRepository.saveSkinVariant(access.memorialId, resolved.variant);
+  return commitAuthorizedConfigurationEdit({
+    repository: editRepository,
+    access,
+    snapshot,
+    target: "skinVariant",
+    value: resolved.variant,
+    mutations: changedConfigurationMutation("skinVariant", snapshot.skinVariant, resolved.variant),
+  });
 }

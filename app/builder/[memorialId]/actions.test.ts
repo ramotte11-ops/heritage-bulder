@@ -54,11 +54,48 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
   SupabaseMemorialConfigRepository,
 }));
 
+const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
+  createSupabaseMemorialEditRepository: vi.fn(),
+}));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+}));
+
+createSupabaseMemorialEditRepository.mockImplementation((client) => {
+  // Keep the historical repository-boundary assertions meaningful while
+  // adapting them to Security V1's centralized persistence envelope.
+  new SupabaseDraftRepository(client);
+  new SupabaseMemorialConfigRepository(client);
+  return {
+    load: async (memorialId: string) => {
+      const stored = await getDraftContent(memorialId);
+      return {
+        status: "draft",
+        firstPublishedAt: null,
+        language: null,
+        skin: "intemporel",
+        skinVariant: "light",
+        draft: {
+          content: stored?.content ?? {},
+          updatedAt: stored?.updatedAt ?? "2026-01-01T00:00:00.000Z",
+          revision: 0,
+        },
+      };
+    },
+    commitDraft: async (input: { memorialId: string; content: unknown }) => ({
+      ...(await saveDraftContent(input.memorialId, input.content)),
+      revision: 1,
+    }),
+    commitConfiguration: async (input: { memorialId: string; value: string }) =>
+      saveLanguage(input.memorialId, input.value),
+  };
+});
+
 // Imported after the mocks above are registered.
 const { saveDraftAction, saveLanguageAction } = await import("./actions");
 
 const MEMORIAL_ID = "memorial-abc";
-const CONTENT = { hero: { title: "Edited by the family" } };
+const CONTENT = { hero: { displayName: "Edited by the family" } };
 
 function granted(memorialId = MEMORIAL_ID) {
   return { status: "granted", ownerId: "owner-a", memorialId };

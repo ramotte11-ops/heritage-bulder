@@ -35,6 +35,32 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
   SupabaseMemorialConfigRepository,
 }));
 
+const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
+  createSupabaseMemorialEditRepository: vi.fn(),
+}));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+}));
+
+createSupabaseMemorialEditRepository.mockImplementation((client) => {
+  new SupabaseMemorialConfigRepository(client);
+  return {
+    load: vi.fn().mockResolvedValue({
+      status: "draft",
+      firstPublishedAt: null,
+      language: "fr",
+      skin: "intemporel",
+      // Deliberately null in this compatibility adapter so both canonical
+      // variants exercise a real change; production snapshots are typed.
+      skinVariant: null,
+      draft: { content: {}, updatedAt: "2026-01-01T00:00:00.000Z", revision: 0 },
+    }),
+    commitDraft: vi.fn(),
+    commitConfiguration: async (input: { memorialId: string; value: string }) =>
+      saveSkinVariant(input.memorialId, input.value),
+  };
+});
+
 // Imported after the mocks above are registered.
 const { saveSkinVariantAction } = await import("./hero-reveal-actions");
 

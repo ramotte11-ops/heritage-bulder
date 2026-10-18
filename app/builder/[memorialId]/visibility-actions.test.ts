@@ -31,6 +31,36 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
   }),
 }));
 
+const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
+  createSupabaseMemorialEditRepository: vi.fn(),
+}));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+}));
+
+createSupabaseMemorialEditRepository.mockImplementation(() => ({
+  load: async (memorialId: string) => {
+    const [draft, config] = await Promise.all([
+      getDraftContent(memorialId),
+      findConfigById(memorialId),
+    ]);
+    if (!draft || !config) return null;
+    return {
+      status: "draft",
+      firstPublishedAt: null,
+      language: "fr",
+      skin: config.skin,
+      skinVariant: "light",
+      draft: { ...draft, revision: 0 },
+    };
+  },
+  commitDraft: async (input: { memorialId: string; content: unknown }) => ({
+    ...(await saveDraftContent(input.memorialId, input.content)),
+    revision: 1,
+  }),
+  commitConfiguration: vi.fn(),
+}));
+
 const { saveSectionVisibilityAction } = await import("./visibility-actions");
 
 const DRAFT = fullAnnouncement();

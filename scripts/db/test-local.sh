@@ -2185,6 +2185,85 @@ $DB -c "delete from owners where id in ('$M030_OWNER_A','$M030_OWNER_B');" >/dev
 
 
 
+# --- Security V1 lot 2: atomic memorial edit persistence ---------------
+
+echo ""
+echo "== Security V1 lot 2: CAS, publication race and append-only audit =="
+
+S2_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'security-v1-lot2@example.test') returning id;")
+S2_OTHER_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'security-v1-lot2-other@example.test') returning id;")
+S2_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+S2_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$S2_OWNER','$S2_ENT','person','announcement','intemporel','light','fr','security-v1-lot2','editing',now() - interval '1 day') returning id;")
+
+S2_RESULT=$(svc "select updated_at is not null, revision from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',0,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Correction\"}}','content.saved',array['content.personWords.text']);")
+check "atomic content save increments revision exactly once" "t|1" "$S2_RESULT"
+check "post-publication save appends one audit event" "1" "$($DB -t -A -c "select count(*) from memorial_edit_audit_events where memorial_id='$S2_MEM' and operation='content.saved' and mutation_targets=array['content.personWords.text'];")"
+check "audit stores structural paths, not memorial text" "0" "$($DB -t -A -c "select count(*) from memorial_edit_audit_events where memorial_id='$S2_MEM' and array_to_string(mutation_targets,',') like '%Correction%';")"
+
+svc_expect_error \
+  "a stale autosave revision is rejected" \
+  "select * from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',0,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Stale\"}}','content.saved',array['content.personWords.text']);" \
+  "memorial draft changed"
+check "the stale autosave did not overwrite the winner" "Correction" "$($DB -t -A -c "select content->'personWords'->>'text' from memorial_drafts where memorial_id='$S2_MEM';")"
+
+svc_expect_error \
+  "the RPC repeats ownership instead of trusting the Server Action" \
+  "select * from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OTHER_OWNER',1,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Hijacked\"}}','content.saved',array['content.personWords.text']);" \
+  "memorial edit refused"
+
+S2_VIS_RESULT=$(svc "select revision from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',1,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Correction\"},\"presentation\":{\"hiddenSections\":[\"gallery\"]}}','visibility.changed',array['visibility.gallery']);")
+check "a visibility save wins with the same draft CAS" "2" "$S2_VIS_RESULT"
+svc_expect_error \
+  "an autosave based on the pre-visibility revision cannot revert visibility" \
+  "select * from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',1,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Late autosave\"}}','content.saved',array['content.personWords.text']);" \
+  "memorial draft changed"
+check "the visibility winner remains stored" "gallery" "$($DB -t -A -c "select content->'presentation'->'hiddenSections'->>0 from memorial_drafts where memorial_id='$S2_MEM';")"
+
+S2_PREPUB_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+S2_PREPUB_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$S2_OWNER','$S2_PREPUB_ENT','person','announcement','intemporel','light','fr','security-v1-lot2-prepub','ready') returning id;")
+svc "select commit_memorial_configuration_edit_v1('$S2_PREPUB_MEM','$S2_OWNER','ready',null,'language','fr','en',array['configuration.language']);" >/dev/null
+check "a configuration edit persists its checked value" "en" "$($DB -t -A -c "select language from memorials where id='$S2_PREPUB_MEM';")"
+svc_expect_error \
+  "a stale configuration value is rejected" \
+  "select commit_memorial_configuration_edit_v1('$S2_PREPUB_MEM','$S2_OWNER','ready',null,'language','fr','es',array['configuration.language']);" \
+  "memorial configuration changed"
+check "the stale configuration edit did not overwrite the winner" "en" "$($DB -t -A -c "select language from memorials where id='$S2_PREPUB_MEM';")"
+$DB -c "update memorials set status='published', first_published_at=now() where id='$S2_PREPUB_MEM';" >/dev/null
+svc_expect_error \
+  "a save authorized before publication cannot commit after publication" \
+  "select * from commit_memorial_draft_edit_v1('$S2_PREPUB_MEM','$S2_OWNER',0,'ready',null,'{\"hero\":{\"displayName\":\"Too late\"}}','content.saved',array['content.hero.displayName']);" \
+  "memorial lifecycle changed"
+check "the publication-race loser leaves Hero untouched" "{}" "$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$S2_PREPUB_MEM';")"
+
+S2_REVISION_BEFORE=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$S2_MEM';")
+svc_expect_error \
+  "an invalid/auditless request cannot mutate the draft" \
+  "select * from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',$S2_REVISION_BEFORE,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"No audit\"}}','content.saved',array[]::text[]);" \
+  "invalid memorial edit request"
+check "a failed atomic request leaves the revision unchanged" "$S2_REVISION_BEFORE" "$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$S2_MEM';")"
+
+for role in anon authenticated; do
+  CAN_DRAFT_RPC=$($DB -t -A -c "select has_function_privilege('$role','public.commit_memorial_draft_edit_v1(uuid,uuid,bigint,text,timestamptz,jsonb,text,text[])','EXECUTE');")
+  check "$role cannot execute the privileged draft RPC" "f" "$CAN_DRAFT_RPC"
+done
+PUBLIC_DRAFT_RPC=$($DB -t -A -c "select exists (select 1 from aclexplode((select proacl from pg_proc where oid='public.commit_memorial_draft_edit_v1(uuid,uuid,bigint,text,timestamptz,jsonb,text,text[])'::regprocedure)) where grantee=0 and privilege_type='EXECUTE');")
+check "PUBLIC cannot execute the privileged draft RPC" "f" "$PUBLIC_DRAFT_RPC"
+check "service_role can execute the privileged draft RPC" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.commit_memorial_draft_edit_v1(uuid,uuid,bigint,text,timestamptz,jsonb,text,text[])','EXECUTE');")"
+for role in anon authenticated; do
+  CAN_CONFIG_RPC=$($DB -t -A -c "select has_function_privilege('$role','public.commit_memorial_configuration_edit_v1(uuid,uuid,text,timestamptz,text,text,text,text[])','EXECUTE');")
+  check "$role cannot execute the privileged configuration RPC" "f" "$CAN_CONFIG_RPC"
+done
+PUBLIC_CONFIG_RPC=$($DB -t -A -c "select exists (select 1 from aclexplode((select proacl from pg_proc where oid='public.commit_memorial_configuration_edit_v1(uuid,uuid,text,timestamptz,text,text,text,text[])'::regprocedure)) where grantee=0 and privilege_type='EXECUTE');")
+check "PUBLIC cannot execute the privileged configuration RPC" "f" "$PUBLIC_CONFIG_RPC"
+check "service_role can execute the privileged configuration RPC" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.commit_memorial_configuration_edit_v1(uuid,uuid,text,timestamptz,text,text,text,text[])','EXECUTE');")"
+for role in anon authenticated service_role; do
+  for privilege in SELECT INSERT UPDATE DELETE TRUNCATE; do
+    check "$role has no direct $privilege on memorial_edit_audit_events" "f" "$($DB -t -A -c "select has_table_privilege('$role','public.memorial_edit_audit_events','$privilege');")"
+  done
+done
+PUBLIC_AUDIT_ACL=$($DB -t -A -c "select exists (select 1 from aclexplode((select relacl from pg_class where oid='public.memorial_edit_audit_events'::regclass)) where grantee=0);")
+check "PUBLIC has no privilege on memorial_edit_audit_events" "f" "$PUBLIC_AUDIT_ACL"
+
 # --- the preflight/postflight the QG will hand to the PO ---------------
 #
 # supabase/checks/*.sql is SQL a human pastes into the Supabase SQL
