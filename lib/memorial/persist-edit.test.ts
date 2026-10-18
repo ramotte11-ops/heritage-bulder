@@ -27,6 +27,23 @@ function repository() {
 }
 
 describe("commitAuthorizedDraftEdit", () => {
+  it("returns the stored timestamp and writes nothing for an identical draft", async () => {
+    const repo = repository();
+
+    await expect(
+      commitAuthorizedDraftEdit({
+        repository: repo.value,
+        access: ACCESS,
+        snapshot: snapshot(),
+        content: {},
+        operation: "content.saved",
+        mutations: [],
+      }),
+    ).resolves.toEqual({ updatedAt: "2026-10-18T10:00:00Z" });
+
+    expect(repo.commitDraft).not.toHaveBeenCalled();
+  });
+
   it("preserves normal pre-publication saves and sends the CAS facts to persistence", async () => {
     const repo = repository();
     await expect(
@@ -133,6 +150,23 @@ describe("commitAuthorizedDraftEdit", () => {
 });
 
 describe("commitAuthorizedConfigurationEdit", () => {
+  it("writes nothing for an identical configuration value", async () => {
+    const repo = repository();
+
+    await expect(
+      commitAuthorizedConfigurationEdit({
+        repository: repo.value,
+        access: ACCESS,
+        snapshot: snapshot(),
+        target: "language",
+        value: "fr",
+        mutations: [],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(repo.commitConfiguration).not.toHaveBeenCalled();
+  });
+
   it("allows language before publication and refuses it after publication", async () => {
     const repo = repository();
     await commitAuthorizedConfigurationEdit({

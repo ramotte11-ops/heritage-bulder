@@ -44,6 +44,14 @@ beforeEach(() => {
   commitConfiguration.mockResolvedValue(undefined);
 });
 describe("saveSkinVariantAction — Security V1 lot 2", () => {
+  it("accepts the already stored Light ambiance without a write or audit event", async () => {
+    await expect(saveSkinVariantAction("memorial-a", "light")).resolves.toBeUndefined();
+
+    expect(authorizeMemorialForRequest).toHaveBeenCalledWith("memorial-a");
+    expect(load).toHaveBeenCalledWith("memorial-a");
+    expect(commitConfiguration).not.toHaveBeenCalled();
+  });
+
   it("keeps the first-creation write and uses the authorized identifiers", async () => {
     await expect(saveSkinVariantAction("claimed-id", "dark")).resolves.toBeUndefined();
     expect(load).toHaveBeenCalledWith("memorial-a");
@@ -74,9 +82,9 @@ describe("saveSkinVariantAction — Security V1 lot 2", () => {
     },
   );
 
-  it("rejects another owner's memorial before persistence", async () => {
+  it("rejects another owner's memorial even for the already stored Light ambiance", async () => {
     authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
-    await expect(saveSkinVariantAction("not-mine", "dark")).rejects.toThrow();
+    await expect(saveSkinVariantAction("not-mine", "light")).rejects.toThrow();
     expect(load).not.toHaveBeenCalled();
     expect(commitConfiguration).not.toHaveBeenCalled();
   });

@@ -58,6 +58,16 @@ beforeEach(() => {
   commitConfiguration.mockResolvedValue(undefined);
 });
 describe("saveDraftAction — Security V1 lot 2", () => {
+  it("treats identical autosave content as success without a write or audit event", async () => {
+    await expect(saveDraftAction(MEMORIAL_ID, STORED)).resolves.toEqual({
+      updatedAt: "2026-10-18T10:00:00Z",
+    });
+
+    expect(authorizeMemorialForRequest).toHaveBeenCalledWith(MEMORIAL_ID);
+    expect(load).toHaveBeenCalledWith(MEMORIAL_ID);
+    expect(commitDraft).not.toHaveBeenCalled();
+  });
+
   it("re-authorizes every save and commits through the atomic repository", async () => {
     await saveDraftAction(MEMORIAL_ID, CONTENT);
     await saveDraftAction(MEMORIAL_ID, CONTENT);
@@ -136,9 +146,9 @@ describe("saveDraftAction — Security V1 lot 2", () => {
     expect(commitDraft).not.toHaveBeenCalled();
   });
 
-  it("rejects denied ownership before constructing persistence", async () => {
+  it("rejects denied ownership even when the submitted content is identical", async () => {
     authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
-    await expect(saveDraftAction("not-mine", CONTENT)).rejects.toThrow("Draft save refused");
+    await expect(saveDraftAction("not-mine", STORED)).rejects.toThrow("Draft save refused");
     expect(createServerSupabaseClient).not.toHaveBeenCalled();
     expect(commitDraft).not.toHaveBeenCalled();
   });
@@ -150,6 +160,14 @@ describe("saveDraftAction — Security V1 lot 2", () => {
 });
 
 describe("saveLanguageAction — Security V1 lot 2", () => {
+  it("accepts the already stored language without a write or audit event", async () => {
+    await expect(saveLanguageAction(MEMORIAL_ID, "fr")).resolves.toBeUndefined();
+
+    expect(authorizeMemorialForRequest).toHaveBeenCalledWith(MEMORIAL_ID);
+    expect(load).toHaveBeenCalledWith(MEMORIAL_ID);
+    expect(commitConfiguration).not.toHaveBeenCalled();
+  });
+
   it.each(["en", "fr", "es"] as const)("keeps %s available before publication", async (language) => {
     load.mockResolvedValue(editSnapshot({ language: language === "fr" ? "en" : "fr" }));
     await expect(saveLanguageAction(MEMORIAL_ID, language)).resolves.toBeUndefined();

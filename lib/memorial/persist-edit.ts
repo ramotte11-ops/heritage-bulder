@@ -43,6 +43,14 @@ export async function commitAuthorizedDraftEdit(input: {
   operation: "content.saved" | "visibility.changed";
   mutations: readonly MemorialMutationClaim[];
 }): Promise<{ updatedAt: string }> {
+  // The Server Action has already authenticated the owner, loaded this
+  // server-side snapshot through RLS and computed the stored/submitted diff.
+  // An empty diff is therefore a successful idempotent confirmation: keep the
+  // durable timestamp and skip both the data write and its audit event.
+  if (input.mutations.length === 0) {
+    return { updatedAt: input.snapshot.draft.updatedAt };
+  }
+
   authorize(input.snapshot, input.mutations);
 
   const result = await input.repository.commitDraft({
@@ -67,6 +75,10 @@ export async function commitAuthorizedConfigurationEdit(input: {
   value: string;
   mutations: readonly MemorialMutationClaim[];
 }): Promise<void> {
+  // As above, an empty server-computed diff is already the stored value. The
+  // public configuration actions keep their existing Promise<void> contract.
+  if (input.mutations.length === 0) return;
+
   authorize(input.snapshot, input.mutations);
 
   await input.repository.commitConfiguration({
