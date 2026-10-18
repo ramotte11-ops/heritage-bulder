@@ -224,6 +224,101 @@ describe("opening — flush, then a fresh server read, then full screen", () => 
   });
 });
 
+describe("loading — the keepsake album, for exactly as long as the real work lasts", () => {
+  const LOADING = "Nous préparons votre hommage…";
+  const loader = (container: HTMLElement) => container.querySelector("[data-preview-loading]");
+
+  it("appears at once on the click, before the autosave drain or the read resolve", async () => {
+    let release: (value: HostResult) => void = () => {};
+    const { container } = renderHost({ load: () => new Promise<HostResult>((resolve) => (release = resolve)) });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    });
+    expect(loader(container)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(LOADING);
+    await act(async () => release(await readyResult()));
+  });
+
+  it("stays while the read is pending, then gives way to the Preview the moment it is ready", async () => {
+    let release: (value: HostResult) => void = () => {};
+    const { container } = renderHost({ load: () => new Promise<HostResult>((resolve) => (release = resolve)) });
+    await openPreview();
+    expect(loader(container)).toBeTruthy();
+    expect(container.querySelector("[data-memorial-preview]")).toBeNull();
+    await act(async () => release(await readyResult()));
+    expect(loader(container)).toBeNull();
+    expect(container.querySelector("[data-memorial-preview]")).toBeTruthy();
+  });
+
+  it("a fast answer is never held back — no minimum duration", async () => {
+    const { container } = renderHost({});
+    await openPreview();
+    expect(loader(container)).toBeNull();
+    expect(container.querySelector("[data-memorial-preview]")).toBeTruthy();
+  });
+
+  it("repeated clicks while loading start a single attempt", async () => {
+    let release: (value: HostResult) => void = () => {};
+    const { load } = renderHost({ load: () => new Promise<HostResult>((resolve) => (release = resolve)) });
+    await openPreview();
+    await openPreview();
+    await openPreview();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => release(await readyResult()));
+  });
+
+  it("an unavailable Preview → the album goes, the message shows, and a new attempt is possible", async () => {
+    let answer: HostResult = { status: "unavailable" };
+    const { container, load } = renderHost({ load: async () => answer });
+    await openPreview();
+    expect(loader(container)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe(UNAVAILABLE);
+
+    answer = await readyResult();
+    await openPreview();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("[data-memorial-preview]")).toBeTruthy();
+  });
+
+  it("a failed autosave drain → the album goes, the Builder stays", async () => {
+    const { container } = renderHost({ persist: () => Promise.reject(new Error("offline")) });
+    fireEvent.change(screen.getByLabelText("champ"), { target: { value: "x" } });
+    await openPreview();
+    expect(loader(container)).toBeNull();
+    expect(builderWrapper(container).hidden).toBe(false);
+  });
+
+  it.each([
+    ["en", "We are preparing your tribute…"],
+    ["es", "Estamos preparando su homenaje…"],
+  ] as const)("speaks the Builder's language (%s)", async (language, text) => {
+    let release: (value: HostResult) => void = () => {};
+    render(
+      <BuilderPreviewHost
+        available
+        language={language}
+        loadPreview={() => new Promise<HostResult>((resolve) => (release = resolve))}
+      >
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: language === "en" ? "View preview" : "Ver vista previa" }));
+    });
+    expect(screen.getByRole("status").textContent).toBe(text);
+    await act(async () => release({ status: "unavailable" }));
+  });
+
+  it("pure CSS, honouring prefers-reduced-motion", () => {
+    const css = readFileSync(path.resolve(import.meta.dirname, "PreviewLoading.module.css"), "utf8");
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(/\.veil,\s*\.cover,\s*\.leaf\s*\{\s*animation: none;/);
+    const tsx = readFileSync(path.resolve(import.meta.dirname, "PreviewLoading.tsx"), "utf8");
+    expect(tsx).not.toMatch(/from "(framer-motion|motion|lottie[^"]*|gsap)"/);
+    expect(tsx).not.toMatch(/setTimeout|setInterval/);
+  });
+});
+
 describe("unavailable — never a false or empty Memorial", () => {
   it.each<[string, () => Promise<HostResult>]>([
     ["unavailable", () => Promise.resolve({ status: "unavailable" })],

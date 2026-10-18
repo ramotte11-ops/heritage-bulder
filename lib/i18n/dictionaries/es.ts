@@ -38,6 +38,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "preview.backToCreation": "Volver a la creación",
   "preview.changeAmbiance": "Cambiar el ambiente",
   "preview.unavailable": "La vista previa no está disponible en este momento. Vuelva a intentarlo en un instante.",
+  "preview.loading": "Estamos preparando su homenaje…",
   "journey.open": "Mi recorrido",
   "journey.title": "Mi recorrido",
   "journey.intro": "Encuentre cada etapa de su homenaje. Puede volver a una etapa ya empezada: sus respuestas están guardadas.",

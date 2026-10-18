@@ -40,6 +40,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "preview.backToCreation": "Revenir à la création",
   "preview.changeAmbiance": "Changer l'ambiance",
   "preview.unavailable": "L’aperçu n’est pas disponible pour le moment. Réessayez dans un instant.",
+  "preview.loading": "Nous préparons votre hommage…",
   "journey.open": "Mon parcours",
   "journey.title": "Mon parcours",
   "journey.intro": "Retrouvez chaque étape de votre hommage. Vous pouvez revenir sur une étape déjà commencée : vos réponses sont enregistrées.",
