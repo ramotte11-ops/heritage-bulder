@@ -388,6 +388,7 @@ export default async function BuilderMemorialPage({
   // `loadMemorialPreviewAction` re-reads the saved draft server-side;
   // nothing here is handed to it but the authorized id.
   const memorialLanguage = resumed.memorial.language;
+  const initialDraft = resumed.draft;
   const memorialSkinVariant = resumed.memorial.skinVariant;
   const memorialSkinId = resumed.memorial.skin;
   const saveVisibility = saveSectionVisibilityAction.bind(null, access.memorialId);
@@ -419,6 +420,8 @@ export default async function BuilderMemorialPage({
         available={available}
         language={memorialLanguage}
         loadPreview={loadPreview}
+        draftRevision={initialDraft.revision ?? 0}
+        draftContent={journeyContent ?? initialDraft.content}
         journey={
           journeyContent === null
             ? null
@@ -443,7 +446,10 @@ export default async function BuilderMemorialPage({
   }
 
   if (resumed.memorial.language === null) {
-    return withPreview(<LanguageStep persist={saveLanguageAction.bind(null, access.memorialId)} />, false);
+    return withPreview(
+      <LanguageStep persist={saveLanguageAction.bind(null, access.memorialId, null)} />,
+      false,
+    );
   }
   const language = resumed.memorial.language;
 
@@ -558,7 +564,11 @@ export default async function BuilderMemorialPage({
               photo={revealStepData}
               initialSkinVariant={resumed.memorial.skinVariant}
               persist={saveDraftAction.bind(null, access.memorialId)}
-              saveSkinVariant={saveSkinVariantAction.bind(null, access.memorialId)}
+              saveSkinVariant={saveSkinVariantAction.bind(
+                null,
+                access.memorialId,
+                resumed.memorial.skinVariant,
+              )}
             />
           ),
           available: false /* Reveal */,

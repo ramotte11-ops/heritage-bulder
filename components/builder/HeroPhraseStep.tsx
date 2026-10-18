@@ -7,6 +7,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { HERO_SHORT_PHRASE_MAX_CHARS } from "@/lib/memorial/hero";
 import {
   commitPageB,
@@ -28,7 +29,7 @@ interface HeroPhraseStepProps {
    * app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
   /** A bound Server Action — same seam as HeroIdentityStep's `persist`. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -62,12 +63,13 @@ export function HeroPhraseStep({
   content: initialContent,
   persist,
 }: HeroPhraseStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -87,7 +89,7 @@ export function HeroPhraseStep({
 
     setIsSubmitting(true);
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

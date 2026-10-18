@@ -39,16 +39,17 @@ export async function commitAuthorizedDraftEdit(input: {
   repository: MemorialEditRepository;
   access: VerifiedMemorialOwner;
   snapshot: MemorialEditSnapshot;
+  expectedRevision?: number;
   content: MemorialContent;
   operation: "content.saved" | "visibility.changed";
   mutations: readonly MemorialMutationClaim[];
-}): Promise<{ updatedAt: string }> {
+}): Promise<{ updatedAt: string; revision: number }> {
   // The Server Action has already authenticated the owner, loaded this
   // server-side snapshot through RLS and computed the stored/submitted diff.
   // An empty diff is therefore a successful idempotent confirmation: keep the
   // durable timestamp and skip both the data write and its audit event.
   if (input.mutations.length === 0) {
-    return { updatedAt: input.snapshot.draft.updatedAt };
+    return { updatedAt: input.snapshot.draft.updatedAt, revision: input.snapshot.draft.revision };
   }
 
   authorize(input.snapshot, input.mutations);
@@ -56,7 +57,7 @@ export async function commitAuthorizedDraftEdit(input: {
   const result = await input.repository.commitDraft({
     memorialId: input.access.memorialId,
     ownerId: input.access.ownerId,
-    expectedRevision: input.snapshot.draft.revision,
+    expectedRevision: input.expectedRevision ?? input.snapshot.draft.revision,
     expectedStatus: input.snapshot.status,
     expectedFirstPublishedAt: input.snapshot.firstPublishedAt,
     content: input.content,
@@ -64,7 +65,7 @@ export async function commitAuthorizedDraftEdit(input: {
     mutationTargets: auditTargets(input.mutations),
   });
 
-  return { updatedAt: result.updatedAt };
+  return result;
 }
 
 export async function commitAuthorizedConfigurationEdit(input: {
@@ -72,6 +73,7 @@ export async function commitAuthorizedConfigurationEdit(input: {
   access: VerifiedMemorialOwner;
   snapshot: MemorialEditSnapshot;
   target: "language" | "skinVariant";
+  expectedValue?: string | null;
   value: string;
   mutations: readonly MemorialMutationClaim[];
 }): Promise<void> {
@@ -88,7 +90,11 @@ export async function commitAuthorizedConfigurationEdit(input: {
     expectedFirstPublishedAt: input.snapshot.firstPublishedAt,
     target: input.target,
     expectedValue:
-      input.target === "language" ? input.snapshot.language : input.snapshot.skinVariant,
+      "expectedValue" in input
+        ? input.expectedValue ?? null
+        : input.target === "language"
+          ? input.snapshot.language
+          : input.snapshot.skinVariant,
     value: input.value,
     mutationTargets: auditTargets(input.mutations),
   });

@@ -17,16 +17,28 @@ const { createSupabaseMemorialEditRepository, load, commitDraft, commitConfigura
   commitConfiguration: vi.fn(),
   createSupabaseMemorialEditRepository: vi.fn(),
 }));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
 createSupabaseMemorialEditRepository.mockImplementation(() => ({ load, commitDraft, commitConfiguration }));
 vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
   createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
 }));
 
-const { saveDraftAction, saveLanguageAction } = await import("./actions");
+const { saveDraftAction: saveDraftActionTransport, saveLanguageAction: saveLanguageTransport } = await import("./actions");
 
 const MEMORIAL_ID = "memorial-abc";
 const STORED = { hero: { displayName: "Jeanne" } } as MemorialContent;
 const CONTENT = { hero: { displayName: "Jeanne Martin" } } as MemorialContent;
+const saveDraftAction = (memorialId: string, content: MemorialContent) =>
+  saveDraftActionTransport(memorialId, content, 7);
+const saveLanguageAction = async (memorialId: string, language: string) => {
+  const result = await saveLanguageTransport(memorialId, null, language);
+  return result.status === "saved" ? undefined : result;
+};
 
 function granted(memorialId = MEMORIAL_ID) {
   return { status: "granted", ownerId: "owner-a", memorialId };
@@ -60,7 +72,9 @@ beforeEach(() => {
 describe("saveDraftAction — Security V1 lot 2", () => {
   it("treats identical autosave content as success without a write or audit event", async () => {
     await expect(saveDraftAction(MEMORIAL_ID, STORED)).resolves.toEqual({
+      status: "saved",
       updatedAt: "2026-10-18T10:00:00Z",
+      revision: 7,
     });
 
     expect(authorizeMemorialForRequest).toHaveBeenCalledWith(MEMORIAL_ID);
@@ -87,8 +101,19 @@ describe("saveDraftAction — Security V1 lot 2", () => {
 
   it("returns the durable RPC timestamp, preserving the autosave contract", async () => {
     await expect(saveDraftAction(MEMORIAL_ID, CONTENT)).resolves.toEqual({
+      status: "saved",
       updatedAt: "2026-10-18T10:01:00Z",
+      revision: 8,
     });
+  });
+
+  it("uses the browser revision and returns an explicit conflict without a false save", async () => {
+    commitDraft.mockRejectedValue(new MemorialEditConflictError());
+
+    await expect(saveDraftActionTransport(MEMORIAL_ID, CONTENT, 6)).resolves.toEqual({
+      status: "conflict",
+    });
+    expect(commitDraft).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 6 }));
   });
 
   it("preserves stored visibility instead of accepting a stale screen copy", async () => {
@@ -172,7 +197,18 @@ describe("saveLanguageAction — Security V1 lot 2", () => {
     load.mockResolvedValue(editSnapshot({ language: language === "fr" ? "en" : "fr" }));
     await expect(saveLanguageAction(MEMORIAL_ID, language)).resolves.toBeUndefined();
     expect(commitConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({ target: "language", value: language }),
+      expect.objectContaining({ target: "language", expectedValue: null, value: language }),
+    );
+  });
+
+  it("refuses a stale language form without claiming that it was saved", async () => {
+    commitConfiguration.mockRejectedValue(new MemorialEditConflictError());
+
+    await expect(saveLanguageTransport(MEMORIAL_ID, null, "en")).resolves.toEqual({
+      status: "conflict",
+    });
+    expect(commitConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ target: "language", expectedValue: null, value: "en" }),
     );
   });
 
@@ -201,9 +237,11 @@ describe("Server Action boundary", () => {
   const source = readFileSync(path.resolve(import.meta.dirname, "actions.ts"), "utf8");
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
-  it("keeps the public signatures unchanged and accepts no actor/owner/session input", () => {
+  it("accepts only memorial state supplied by the trusted page binding", () => {
     expect(code).toMatch(/saveDraftAction\(\s*memorialId: string,\s*content: MemorialContent/);
-    expect(code).toMatch(/saveLanguageAction\(memorialId: string, language: string\)/);
+    expect(code).toMatch(
+      /saveLanguageAction\(\s*memorialId: string,\s*expectedLanguage: string \| null,\s*language: string/,
+    );
   });
 
   it("does not import the privileged client directly", () => {

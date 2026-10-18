@@ -31,6 +31,9 @@ export type MemorialContent = Partial<Record<SectionId, MemorialSectionContent>>
 export interface MemorialVersion {
   content: MemorialContent;
   updatedAt: string; // ISO 8601
+  /** Present on editable drafts. Published snapshots and historical test
+   * fixtures do not participate in optimistic concurrency. */
+  revision?: number;
 }
 
 /**

@@ -6,6 +6,7 @@ import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   ceremonyStepProgress,
   commitA07,
@@ -26,7 +27,7 @@ interface CeremonyAddressStepProps {
   /** The memorial's current draft content — A06 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -35,12 +36,13 @@ interface CeremonyAddressStepProps {
  * découpage). Facultatif, passable.
  */
 export function CeremonyAddressStep({ language, content: initialContent, persist }: CeremonyAddressStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readCeremonyForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -81,7 +83,7 @@ export function CeremonyAddressStep({ language, content: initialContent, persist
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -105,7 +107,7 @@ export function CeremonyAddressStep({ language, content: initialContent, persist
     }
 
     try {
-      await persist(skipped.content);
+      await saveDraft(skipped.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

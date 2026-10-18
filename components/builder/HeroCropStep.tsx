@@ -8,6 +8,7 @@ import type { Media } from "@/types/media";
 import type { HeroCrop } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   commitPageD,
   heroStepProgress,
@@ -46,7 +47,7 @@ interface HeroCropStepProps {
    * brief section 12). */
   photo: { media: Media; readUrl: string };
   /** A bound Server Action — same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /** One directional nudge, as a percent of the crop window's own
@@ -137,6 +138,7 @@ const UNRESOLVED_IMAGE_SIZE: HeroCropImageSize = { naturalWidth: 0, naturalHeigh
  * blocked anywhere else.
  */
 export function HeroCropStep({ language, content: initialContent, photo, persist }: HeroCropStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
@@ -145,7 +147,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
@@ -227,7 +229,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     }
 
     try {
-      await persist(reopened.content);
+      await saveDraft(reopened.content);
     } catch {
       setSubmitError(true);
       setIsReturning(false);
@@ -290,7 +292,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

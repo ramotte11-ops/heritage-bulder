@@ -23,6 +23,7 @@ import { PendingActionLabel } from "./PendingActionLabel";
 import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
 import styles from "./DeathNoticePreviewStep.module.css";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 
 /** The only skin A03 has a real renderer for today. A future mission
  * adding a Musulman/Juif/Hindou A03 renderer widens this set. */
@@ -44,7 +45,7 @@ interface DeathNoticePreviewStepProps {
    * `SkinScope`/asset selection. */
   skinVariant: SkinVariant;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -112,6 +113,7 @@ export function DeathNoticePreviewStep({
   skinVariant,
   persist,
 }: DeathNoticePreviewStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [pendingAction, setPendingAction] = useState<"announcement" | "precisions" | "continue" | null>(null);
   const [submitError, setSubmitError] = useState(false);
@@ -158,7 +160,7 @@ export function DeathNoticePreviewStep({
     }
 
     try {
-      await persist(reopened.content);
+      await saveDraft(reopened.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -181,7 +183,7 @@ export function DeathNoticePreviewStep({
     }
 
     try {
-      await persist(reopened.content);
+      await saveDraft(reopened.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -204,7 +206,7 @@ export function DeathNoticePreviewStep({
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

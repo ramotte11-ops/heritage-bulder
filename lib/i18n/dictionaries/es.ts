@@ -310,6 +310,11 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "autosave.error": "No se han podido guardar tus últimos cambios.",
   "autosave.offline": "Estás sin conexión. Tus últimos cambios se guardarán en cuanto vuelva la conexión.",
   "autosave.retry": "Reintentar",
+  "autosave.conflictTitle": "Se ha guardado una versión más reciente en otro lugar.",
+  "autosave.conflictBody": "Los últimos cambios de esta pantalla no se han guardado. Seguirán visibles hasta que recargue la página.",
+  "autosave.conflictDownload": "Descargar mis cambios",
+  "autosave.conflictReload": "Recargar la versión guardada",
+  "autosave.conflictReloadConfirm": "Al recargar se reemplazarán los cambios que todavía aparecen en esta pantalla. Descárguelos primero si desea conservar una copia. ¿Continuar?",
   "flowPause.title": "Tus respuestas están guardadas",
   "flowPause.body":
     "Has completado todos los pasos disponibles por ahora. Puedes volver en cualquier momento desde tu espacio y continuar exactamente donde lo dejaste.",

@@ -8,6 +8,7 @@ import type { Skin } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { resolveAvailableTraditionSuggestions, type TraditionSuggestion } from "@/config/tradition-suggestions";
 import {
   addTraditionsEntry,
@@ -35,7 +36,7 @@ interface TraditionsStepProps {
    * (`resolveAvailableTraditionSuggestions`) — never to infer, imply, or
    * pre-select a practice (mission brief section 3/7). */
   skin: Skin;
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /** A not-yet-confirmed repère the family is composing — lives only in
@@ -92,6 +93,7 @@ function newSuggestionComposer(suggestion: TraditionSuggestion, language: Langua
  * entries render as their own small cards with "Modifier"/"Supprimer".
  */
 export function TraditionsStep({ language, content: initialContent, skin, persist }: TraditionsStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<Composer | null>(null);
@@ -104,7 +106,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readTraditionsForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -169,7 +171,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -193,7 +195,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
     }
 
     try {
-      await persist(skipped.content);
+      await saveDraft(skipped.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

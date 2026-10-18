@@ -305,6 +305,11 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "autosave.error": "Vos dernières modifications n'ont pas pu être enregistrées.",
   "autosave.offline": "Vous êtes hors ligne. Vos dernières modifications seront enregistrées dès le retour de la connexion.",
   "autosave.retry": "Réessayer",
+  "autosave.conflictTitle": "Une version plus récente a été enregistrée ailleurs.",
+  "autosave.conflictBody": "Vos dernières modifications sur cet écran ne sont pas enregistrées. Elles restent affichées tant que vous ne rechargez pas la page.",
+  "autosave.conflictDownload": "Télécharger mes modifications",
+  "autosave.conflictReload": "Recharger la version enregistrée",
+  "autosave.conflictReloadConfirm": "Recharger remplacera les modifications encore affichées sur cet écran. Téléchargez-les d’abord si vous souhaitez les conserver. Continuer ?",
   "flowPause.title": "Vos réponses sont enregistrées",
   "flowPause.body":
     "Vous avez terminé toutes les étapes disponibles pour le moment. Vous pourrez revenir à tout moment depuis votre espace et reprendre exactement là où vous vous êtes arrêté.",

@@ -1,6 +1,7 @@
 "use server";
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
+import { MemorialEditConflictError } from "@/lib/adapters/memorial-edit-repository";
 import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isLanguage } from "@/config/languages";
@@ -14,6 +15,7 @@ import {
   commitAuthorizedConfigurationEdit,
   commitAuthorizedDraftEdit,
 } from "@/lib/memorial/persist-edit";
+import type { ConfigurationSaveResponse, DraftSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * Mission 021B (audit correction) — the one Server Action behind the
@@ -62,16 +64,20 @@ import {
  *   * the RPC changes the draft and appends any required audit event in
  *     one transaction. A CAS or audit failure rejects this action.
  *
- * The return type is exactly Missions 007-010's autosave contract —
- * `Promise<{ updatedAt: string }>` — so lib/builder/autosave-controller.ts
- * and lib/builder/use-autosave.ts consume it unchanged.
+ * The successful result retains Missions 007-010's `updatedAt` and adds
+ * the durable draft revision. The client coordinator supplies that revision
+ * to every later write and treats a tagged conflict as non-retryable.
  */
 export async function saveDraftAction(
   memorialId: string,
   content: MemorialContent,
-): Promise<{ updatedAt: string }> {
+  expectedRevision: number,
+): Promise<DraftSaveResponse> {
   if (typeof content !== "object" || content === null || Array.isArray(content)) {
     throw new Error("Unsupported draft content.");
+  }
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error("Unsupported draft revision.");
   }
 
   const access = await authorizeMemorialForRequest(memorialId);
@@ -98,14 +104,26 @@ export async function saveDraftAction(
   const nextContent = withStoredPresentation(content, snapshot.draft.content);
   const mutations = changedMemorialContentMutations(snapshot.draft.content, nextContent);
 
-  return commitAuthorizedDraftEdit({
-    repository: editRepository,
-    access,
-    snapshot,
-    content: nextContent,
-    operation: "content.saved",
-    mutations,
-  });
+  try {
+    const result = await commitAuthorizedDraftEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      expectedRevision,
+      content: nextContent,
+      operation: "content.saved",
+      mutations,
+    });
+    return { status: "saved", ...result };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -127,7 +145,14 @@ export async function saveDraftAction(
  * rejects before any Supabase call, the same "never a false success"
  * discipline as a denied authorization.
  */
-export async function saveLanguageAction(memorialId: string, language: string): Promise<void> {
+export async function saveLanguageAction(
+  memorialId: string,
+  expectedLanguage: string | null,
+  language: string,
+): Promise<ConfigurationSaveResponse> {
+  if (expectedLanguage !== null && !isLanguage(expectedLanguage)) {
+    throw new Error("Unsupported expected language.");
+  }
   if (!isLanguage(language)) {
     throw new Error("Unsupported language.");
   }
@@ -144,12 +169,24 @@ export async function saveLanguageAction(memorialId: string, language: string): 
   const snapshot = await editRepository.load(access.memorialId);
   if (snapshot === null) throw new Error("Language save refused.");
 
-  return commitAuthorizedConfigurationEdit({
-    repository: editRepository,
-    access,
-    snapshot,
-    target: "language",
-    value: language,
-    mutations: changedConfigurationMutation("language", snapshot.language, language),
-  });
+  try {
+    await commitAuthorizedConfigurationEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      target: "language",
+      expectedValue: expectedLanguage,
+      value: language,
+      mutations: changedConfigurationMutation("language", snapshot.language, language),
+    });
+    return { status: "saved" };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }

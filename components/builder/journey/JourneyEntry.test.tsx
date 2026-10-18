@@ -541,7 +541,7 @@ describe("« Gérer les rubriques visibles »", () => {
     manage();
     fireEvent.click(screen.getByRole("button", { name: "Masquer — L'annonce de décès" }));
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-    expect(save).toHaveBeenCalledWith("deathNotice", false);
+    expect(save).toHaveBeenCalledWith("deathNotice", false, 0);
     expect(order).toEqual(["flush", "save", "refresh"]);
     expect(routerPush).not.toHaveBeenCalled();
     routerRefresh.mockReset();
@@ -551,7 +551,7 @@ describe("« Gérer les rubriques visibles »", () => {
     const save = renderVisibility();
     manage();
     fireEvent.click(screen.getByRole("button", { name: "Réafficher — La cérémonie" }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith("ceremony", true));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("ceremony", true, 0));
   });
 
   it("a failed save changes nothing and says so calmly", async () => {

@@ -39,7 +39,7 @@ describe("commitAuthorizedDraftEdit", () => {
         operation: "content.saved",
         mutations: [],
       }),
-    ).resolves.toEqual({ updatedAt: "2026-10-18T10:00:00Z" });
+    ).resolves.toEqual({ updatedAt: "2026-10-18T10:00:00Z", revision: 4 });
 
     expect(repo.commitDraft).not.toHaveBeenCalled();
   });
@@ -55,7 +55,7 @@ describe("commitAuthorizedDraftEdit", () => {
         operation: "content.saved",
         mutations: [{ kind: "content", target: "hero.displayName" }],
       }),
-    ).resolves.toEqual({ updatedAt: "2026-10-18T10:01:00Z" });
+    ).resolves.toEqual({ updatedAt: "2026-10-18T10:01:00Z", revision: 5 });
 
     expect(repo.commitDraft).toHaveBeenCalledWith(
       expect.objectContaining({

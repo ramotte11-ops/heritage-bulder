@@ -5,6 +5,7 @@ import type { Language } from "@/config/languages";
 import type { AutosaveState } from "@/lib/builder/autosave-state";
 import { translate } from "@/lib/i18n/translate";
 import styles from "./AutosaveIndicator.module.css";
+import { useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
 
 interface AutosaveIndicatorProps {
   language: Language;
@@ -55,6 +56,12 @@ function getServerOnline(): boolean {
  */
 export function AutosaveIndicator({ language, state, onRetry }: AutosaveIndicatorProps) {
   const online = useSyncExternalStore(subscribeOnline, getOnline, getServerOnline);
+  const draftRevision = useDraftRevisionCoordinator();
+
+  // The host renders the dedicated conflict notice with preserve/reload
+  // choices. Do not also present the ordinary retry affordance: a version
+  // conflict is not a transient network failure and must never auto-retry.
+  if (draftRevision?.conflictContent != null) return null;
 
   if (state.status === "error") {
     return (

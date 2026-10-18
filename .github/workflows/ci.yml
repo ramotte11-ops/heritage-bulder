@@ -15,6 +15,29 @@ permissions:
   contents: read
 
 jobs:
+  postgres-contract:
+    name: PostgreSQL jetable · Security V1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install disposable PostgreSQL server binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql postgresql-client
+
+      # The harness creates its own temporary cluster with initdb, applies
+      # repository migrations, runs the CAS/RLS/audit assertions, then removes
+      # the cluster. It has no Supabase credentials and cannot reach production.
+      - name: Test migrations and Security V1 persistence
+        run: npm run db:test
+
   verify:
     name: Lint · Test · Types
     runs-on: ubuntu-latest

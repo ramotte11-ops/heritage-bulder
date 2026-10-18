@@ -5,6 +5,7 @@ import type { MemorialContent, MemorialVersion } from "@/types/memorial";
 interface MemorialDraftRow {
   content: MemorialContent;
   updated_at: string;
+  revision: number;
 }
 
 /**
@@ -34,14 +35,14 @@ export class SupabaseDraftRepository implements DraftRepository {
   async getDraftContent(memorialId: string): Promise<MemorialVersion | null> {
     const { data, error } = await this.client
       .from("memorial_drafts")
-      .select("content, updated_at")
+      .select("content, updated_at, revision")
       .eq("memorial_id", memorialId)
       .maybeSingle<MemorialDraftRow>();
 
     if (error) throw error;
     if (!data) return null;
 
-    return { content: data.content, updatedAt: data.updated_at };
+    return { content: data.content, updatedAt: data.updated_at, revision: data.revision };
   }
 
   /**

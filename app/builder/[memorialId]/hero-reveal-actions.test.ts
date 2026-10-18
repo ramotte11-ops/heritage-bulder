@@ -38,8 +38,14 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
 const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
   createSupabaseMemorialEditRepository: vi.fn(),
 }));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
 vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
   createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
 }));
 
 createSupabaseMemorialEditRepository.mockImplementation((client) => {
@@ -62,7 +68,11 @@ createSupabaseMemorialEditRepository.mockImplementation((client) => {
 });
 
 // Imported after the mocks above are registered.
-const { saveSkinVariantAction } = await import("./hero-reveal-actions");
+const { saveSkinVariantAction: saveSkinVariantTransport } = await import("./hero-reveal-actions");
+const saveSkinVariantAction = async (memorialId: string, skinVariant: string) => {
+  const result = await saveSkinVariantTransport(memorialId, "light", skinVariant);
+  return result.status === "saved" ? undefined : result;
+};
 
 const MEMORIAL_ID = "memorial-abc";
 
@@ -221,7 +231,11 @@ describe("saveSkinVariantAction — the shape of the boundary", () => {
       .filter((p) => p.length > 0);
     // `skinVariant: string`, not `skinVariant: SkinVariant` — re-validated
     // here (resolveSkinVariantRuntime), never merely typed and trusted.
-    expect(parameters).toEqual(["memorialId: string", "skinVariant: string"]);
+    expect(parameters).toEqual([
+      "memorialId: string",
+      "expectedSkinVariant: string",
+      "skinVariant: string",
+    ]);
   });
 
   it("re-validates skinVariant through the canonical runtime resolver before doing anything else", () => {

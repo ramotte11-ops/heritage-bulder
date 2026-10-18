@@ -673,7 +673,7 @@ describe("BuilderMemorialPage — granted access", () => {
       const result = await callPage();
       await result.props.persist("fr");
 
-      expect(saveLanguageAction).toHaveBeenCalledExactlyOnceWith("authorized-id", "fr");
+      expect(saveLanguageAction).toHaveBeenCalledExactlyOnceWith("authorized-id", null, "fr");
     });
 
     it("never renders LanguageStep once a language has already been recorded — T01 is never re-posed", async () => {
@@ -1825,7 +1825,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
 
       await result.props.saveSkinVariant("dark");
-      expect(saveSkinVariantAction).toHaveBeenCalledWith("authorized-id", "dark");
+      expect(saveSkinVariantAction).toHaveBeenCalledWith("authorized-id", "light", "dark");
     });
 
     it("falls through to the notice when resolveHeroCropStepData finds no usable photo, rather than crashing", async () => {

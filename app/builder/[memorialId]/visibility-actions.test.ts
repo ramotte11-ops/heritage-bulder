@@ -34,8 +34,14 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
 const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
   createSupabaseMemorialEditRepository: vi.fn(),
 }));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
 vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
   createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
 }));
 
 createSupabaseMemorialEditRepository.mockImplementation(() => ({
@@ -61,7 +67,9 @@ createSupabaseMemorialEditRepository.mockImplementation(() => ({
   commitConfiguration: vi.fn(),
 }));
 
-const { saveSectionVisibilityAction } = await import("./visibility-actions");
+const { saveSectionVisibilityAction: saveSectionVisibilityTransport } = await import("./visibility-actions");
+const saveSectionVisibilityAction = (memorialId: string, sectionId: string, visible: boolean) =>
+  saveSectionVisibilityTransport(memorialId, sectionId, visible, 0);
 
 const DRAFT = fullAnnouncement();
 

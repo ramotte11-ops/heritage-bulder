@@ -20,7 +20,11 @@ import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
 import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
+import type { MemorialContent } from "@/types/memorial";
 import { PreviewLoading } from "./PreviewLoading";
+import { DraftRevisionProvider } from "@/lib/builder/draft-revision";
+import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
+import { DraftConflictNotice } from "@/components/builder/DraftConflictNotice";
 import styles from "./BuilderPreviewHost.module.css";
 
 /**
@@ -82,6 +86,10 @@ export interface BuilderPreviewHostProps {
   language: Language | null;
   /** The bound `loadMemorialPreviewAction` for the authorized memorial. */
   loadPreview: () => Promise<MemorialPreviewResult>;
+  /** Revision read with the draft rendered by this route. Required by the
+   * real Builder; omitted only by isolated host tests. */
+  draftRevision?: number;
+  draftContent?: MemorialContent;
   /** B03 — « Mon parcours » for this screen, computed server-side from
    * the content it renders (`resolveJourney`), and the route's own path
    * built from the authorized memorial id. `null`/absent → no journey
@@ -93,7 +101,10 @@ export interface BuilderPreviewHostProps {
     builderPath: string;
     skinVariant?: SkinVariant | null;
     /** « Gérer les rubriques visibles » (rows + bound save action). */
-    visibility?: { sections: SectionVisibilityEntry[]; save: (sectionId: string, visible: boolean) => Promise<void> } | null;
+    visibility?: {
+      sections: SectionVisibilityEntry[];
+      save: (sectionId: string, visible: boolean, expectedRevision: number) => Promise<DraftSaveResponse>;
+    } | null;
   } | null;
   /** The current Builder screen. */
   children: ReactNode;
@@ -115,7 +126,15 @@ export const PreviewEntryContext = createContext<PreviewEntryState | null>(null)
 
 type Phase = "closed" | "loading" | "open";
 
-export function BuilderPreviewHost({ available, language, loadPreview, journey = null, children }: BuilderPreviewHostProps) {
+export function BuilderPreviewHost({
+  available,
+  language,
+  loadPreview,
+  draftRevision,
+  draftContent,
+  journey = null,
+  children,
+}: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
   const [phase, setPhase] = useState<Phase>("closed");
   const [assembled, setAssembled] = useState<AssembledMemorial | null>(null);
@@ -232,6 +251,7 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
     <>
       {/* Always this same wrapper — the Builder is hidden, never unmounted. */}
       <div hidden={isOpen} data-builder-screen="">
+        <DraftConflictNotice language={language} />
         {children}
       </div>
       {phase === "loading" && language !== null && <PreviewLoading language={language} />}
@@ -249,7 +269,7 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
     </>
   );
 
-  return (
+  const hosted = (
     <PreviewFlushRegistryContext.Provider value={registry}>
       <PreviewEntryContext.Provider value={entry}>
         {journey !== null && language !== null ? (
@@ -267,5 +287,13 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
         )}
       </PreviewEntryContext.Provider>
     </PreviewFlushRegistryContext.Provider>
+  );
+
+  return draftRevision === undefined || draftContent === undefined ? (
+    hosted
+  ) : (
+    <DraftRevisionProvider initialRevision={draftRevision} initialContent={draftContent}>
+      {hosted}
+    </DraftRevisionProvider>
   );
 }

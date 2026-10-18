@@ -13,14 +13,26 @@ const { createSupabaseMemorialEditRepository, load, commitConfiguration } = vi.h
   load: vi.fn(),
   commitConfiguration: vi.fn(),
 }));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
 createSupabaseMemorialEditRepository.mockImplementation(() => ({
   load,
   commitDraft: vi.fn(),
   commitConfiguration,
 }));
-vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({ createSupabaseMemorialEditRepository }));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
+}));
 
-const { saveSkinVariantAction } = await import("./hero-reveal-actions");
+const { saveSkinVariantAction: saveSkinVariantTransport } = await import("./hero-reveal-actions");
+const saveSkinVariantAction = async (memorialId: string, skinVariant: string) => {
+  const result = await saveSkinVariantTransport(memorialId, "light", skinVariant);
+  return result.status === "saved" ? undefined : result;
+};
 
 function snapshot(status: "draft" | "published" = "draft") {
   return {
@@ -60,9 +72,21 @@ describe("saveSkinVariantAction — Security V1 lot 2", () => {
         memorialId: "memorial-a",
         ownerId: "owner-a",
         target: "skinVariant",
+        expectedValue: "light",
         value: "dark",
         mutationTargets: ["configuration.skinVariant"],
       }),
+    );
+  });
+
+  it("refuses a stale ambiance form without claiming that it was saved", async () => {
+    commitConfiguration.mockRejectedValue(new MemorialEditConflictError());
+
+    await expect(saveSkinVariantTransport("memorial-a", "light", "dark")).resolves.toEqual({
+      status: "conflict",
+    });
+    expect(commitConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ target: "skinVariant", expectedValue: "light", value: "dark" }),
     );
   });
 

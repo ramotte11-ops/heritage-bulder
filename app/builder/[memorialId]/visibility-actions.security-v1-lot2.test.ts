@@ -14,11 +14,21 @@ const { createSupabaseMemorialEditRepository, load, commitDraft } = vi.hoisted((
   load: vi.fn(),
   commitDraft: vi.fn(),
 }));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
 createSupabaseMemorialEditRepository.mockImplementation(() => ({ load, commitDraft, commitConfiguration: vi.fn() }));
-vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({ createSupabaseMemorialEditRepository }));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
+}));
 
-const { saveSectionVisibilityAction } = await import("./visibility-actions");
+const { saveSectionVisibilityAction: saveSectionVisibilityTransport } = await import("./visibility-actions");
 const DRAFT = fullAnnouncement();
+const saveSectionVisibilityAction = (memorialId: string, sectionId: string, visible: boolean) =>
+  saveSectionVisibilityTransport(memorialId, sectionId, visible, 2);
 
 function snapshot(content = DRAFT, status: "draft" | "published" = "draft") {
   return {
@@ -54,7 +64,11 @@ describe("saveSectionVisibilityAction — atomic visibility write", () => {
 
   it("remains allowed after publication while ceremony content is conservatively locked", async () => {
     load.mockResolvedValue(snapshot(DRAFT, "published"));
-    await expect(saveSectionVisibilityAction("authorized-id", "ceremony", false)).resolves.toBeUndefined();
+    await expect(saveSectionVisibilityAction("authorized-id", "ceremony", false)).resolves.toEqual({
+      status: "saved",
+      updatedAt: "2026-10-18T10:01:00Z",
+      revision: 3,
+    });
     expect(commitDraft).toHaveBeenCalledOnce();
   });
 
@@ -74,5 +88,29 @@ describe("saveSectionVisibilityAction — atomic visibility write", () => {
   it("propagates a concurrent autosave conflict", async () => {
     commitDraft.mockRejectedValue(new Error("concurrent update"));
     await expect(saveSectionVisibilityAction("authorized-id", "ceremony", false)).rejects.toThrow("concurrent update");
+  });
+
+  it("uses the shared browser revision and reports a stale visibility write as a conflict", async () => {
+    commitDraft.mockRejectedValue(new MemorialEditConflictError());
+
+    await expect(
+      saveSectionVisibilityTransport("authorized-id", "ceremony", false, 1),
+    ).resolves.toEqual({ status: "conflict" });
+    expect(commitDraft).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1 }));
+  });
+
+  it("treats an already-applied visibility choice as a no-op", async () => {
+    load.mockResolvedValue(
+      snapshot({ ...DRAFT, presentation: { hiddenSections: ["ceremony"] } } as never),
+    );
+
+    await expect(
+      saveSectionVisibilityTransport("authorized-id", "ceremony", false, 1),
+    ).resolves.toEqual({
+      status: "saved",
+      updatedAt: "2026-10-18T10:00:00Z",
+      revision: 2,
+    });
+    expect(commitDraft).not.toHaveBeenCalled();
   });
 });

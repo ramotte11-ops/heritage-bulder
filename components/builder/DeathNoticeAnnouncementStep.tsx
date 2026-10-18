@@ -6,6 +6,7 @@ import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   commitA01,
   deathNoticeStepProgress,
@@ -24,7 +25,7 @@ interface DeathNoticeAnnouncementStepProps {
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -76,13 +77,14 @@ export function DeathNoticeAnnouncementStep({
   content: initialContent,
   persist,
 }: DeathNoticeAnnouncementStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readDeathNoticeForEditing(content);
 
@@ -120,7 +122,7 @@ export function DeathNoticeAnnouncementStep({
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

@@ -320,6 +320,11 @@ export const en: Record<TranslationKey, string> = {
   "autosave.error": "Your latest changes could not be saved.",
   "autosave.offline": "You are offline. Your latest changes will be saved once the connection is back.",
   "autosave.retry": "Try again",
+  "autosave.conflictTitle": "A newer version was saved elsewhere.",
+  "autosave.conflictBody": "Your latest changes on this screen were not saved. They will remain visible until you reload the page.",
+  "autosave.conflictDownload": "Download my changes",
+  "autosave.conflictReload": "Reload the saved version",
+  "autosave.conflictReloadConfirm": "Reloading will replace the changes still shown on this screen. Download them first if you want to keep a copy. Continue?",
   "flowPause.title": "Your answers are saved",
   "flowPause.body":
     "You have completed every step available for now. You can come back at any time from your space and pick up exactly where you left off.",

@@ -1,12 +1,14 @@
 "use server";
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
+import { MemorialEditConflictError } from "@/lib/adapters/memorial-edit-repository";
 import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { SECTION_IDS, type SectionId } from "@/config/sections";
 import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
-import { setSectionVisibility } from "@/lib/memorial/section-visibility";
+import { isSectionHidden, setSectionVisibility } from "@/lib/memorial/section-visibility";
 import { commitAuthorizedDraftEdit } from "@/lib/memorial/persist-edit";
+import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * « Gérer les rubriques visibles » — the ONE write of
@@ -30,9 +32,13 @@ export async function saveSectionVisibilityAction(
   memorialId: string,
   sectionId: string,
   visible: boolean,
-): Promise<void> {
+  expectedRevision: number,
+): Promise<DraftSaveResponse> {
   if (!(SECTION_IDS as readonly string[]).includes(sectionId) || typeof visible !== "boolean") {
     throw new Error("Unsupported section visibility.");
+  }
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error("Unsupported draft revision.");
   }
 
   const access = await authorizeMemorialForRequest(memorialId);
@@ -58,12 +64,25 @@ export async function saveSectionVisibilityAction(
     throw new Error("This section cannot be hidden.");
   }
 
-  await commitAuthorizedDraftEdit({
-    repository: editRepository,
-    access,
-    snapshot,
-    content: next.content,
-    operation: "visibility.changed",
-    mutations: [{ kind: "visibility", target: sectionId }],
-  });
+  const unchanged = isSectionHidden(snapshot.draft.content, sectionId as SectionId) === !visible;
+  try {
+    const result = await commitAuthorizedDraftEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      expectedRevision,
+      content: next.content,
+      operation: "visibility.changed",
+      mutations: unchanged ? [] : [{ kind: "visibility", target: sectionId }],
+    });
+    return { status: "saved", ...result };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }
