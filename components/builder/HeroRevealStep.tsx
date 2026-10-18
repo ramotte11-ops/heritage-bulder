@@ -241,7 +241,12 @@ export function HeroRevealStep({
 
       <form className={styles.builderControls} onSubmit={handleSubmit}>
         <div className={styles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={isSubmitting}>
+          <PrimaryButton
+            type="submit"
+            disabled={isSubmitting}
+            pending={isSubmitting}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "hero.revealConfirm")}
           </PrimaryButton>
         </div>

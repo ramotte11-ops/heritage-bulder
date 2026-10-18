@@ -27,6 +27,7 @@ import {
 } from "@/lib/memorial/hero-crop-geometry";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./HeroCropStep.module.css";
@@ -411,14 +412,25 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
             type="button"
             className={styles.secondaryLink}
             disabled={controlsDisabled}
+            aria-busy={isReturning || undefined}
             onClick={() => void handleChangePhoto()}
           >
-            {translate(language, "hero.cropChangePhoto")}
+            <PendingActionLabel
+              pending={isReturning}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
+              {translate(language, "hero.cropChangePhoto")}
+            </PendingActionLabel>
           </button>
         </div>
 
         <div className={screenStyles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={controlsDisabled}>
+          <PrimaryButton
+            type="submit"
+            disabled={controlsDisabled}
+            pending={isSubmitting}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "common.continue")}
           </PrimaryButton>
         </div>

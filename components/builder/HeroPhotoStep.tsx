@@ -364,7 +364,12 @@ export function HeroPhotoStep({
         )}
 
         <div className={screenStyles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={photo.status !== "ready" || isSubmitting}>
+          <PrimaryButton
+            type="submit"
+            disabled={photo.status !== "ready" || isSubmitting}
+            pending={isSubmitting}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "common.continue")}
           </PrimaryButton>
         </div>

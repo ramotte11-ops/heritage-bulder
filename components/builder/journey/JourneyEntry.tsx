@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { translate } from "@/lib/i18n/translate";
 import type { TranslationKey } from "@/lib/i18n/keys";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/builder/guided-flow/journey";
 import type { SectionId } from "@/config/sections";
 import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
+import { PendingActionLabel } from "../PendingActionLabel";
 import { useJourney, type JourneyNavigation, type JourneyVisibility } from "./journey-context";
 import styles from "./JourneyEntry.module.css";
 
@@ -44,35 +45,43 @@ const STATUS_MARK: Record<JourneyScreenState["status"], string> = {
  * the navigation runs (`JourneyNavigation.openScreen` / `resume`).
  */
 function useGuardedNavigation(journey: JourneyNavigation, onDone?: () => void) {
-  const [busy, setBusy] = useState(false);
+  const [busy, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
-  const [waiting, setWaiting] = useState<null | (() => Promise<boolean>)>(null);
+  const [waiting, setWaiting] = useState<null | { key: string; action: () => Promise<boolean> }>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   async function execute(action: () => Promise<boolean>) {
-    setBusy(true);
-    setFailed(false);
     const ok = await action();
-    setBusy(false);
+    setPendingKey(null);
     if (ok) onDone?.();
-    else setFailed(true);
+    else {
+      setFailed(true);
+    }
+  }
+
+  function begin(key: string, action: () => Promise<boolean>) {
+    setFailed(false);
+    setPendingKey(key);
+    startTransition(async () => execute(action));
   }
 
   return {
     busy,
+    pendingKey,
     failed,
     waiting: waiting !== null,
-    run(action: () => Promise<boolean>) {
+    run(key: string, action: () => Promise<boolean>) {
       if (busy) return;
       if (journey.hasPendingInput()) {
-        setWaiting(() => action);
+        setWaiting({ key, action });
         return;
       }
-      void execute(action);
+      begin(key, action);
     },
     leave() {
-      const action = waiting;
+      const queued = waiting;
       setWaiting(null);
-      if (action !== null) void execute(action);
+      if (queued !== null) begin(queued.key, queued.action);
     },
     stay() {
       setWaiting(null);
@@ -156,10 +165,16 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
       <button
         type="button"
         className={styles.linkButton}
-        onClick={() => guard.run(journey.resume)}
+        onClick={() => guard.run("resume", journey.resume)}
         disabled={guard.busy}
+        aria-busy={guard.pendingKey === "resume" || undefined}
       >
-        {translate(journey.language, "journey.resume")}
+        <PendingActionLabel
+          pending={guard.pendingKey === "resume"}
+          pendingLabel={translate(journey.language, "common.pleaseWait")}
+        >
+          {translate(journey.language, "journey.resume")}
+        </PendingActionLabel>
       </button>
       {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
       {guard.failed && (
@@ -197,9 +212,10 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
   }, [onClose]);
 
   const actions: RowActions = {
-    review: (id) => guard.run(() => journey.openScreen(id)),
-    resume: () => guard.run(journey.resume),
+    review: (id) => guard.run(id, () => journey.openScreen(id)),
+    resume: () => guard.run("resume", journey.resume),
     busy,
+    pendingKey: guard.pendingKey,
   };
 
   return (
@@ -225,8 +241,19 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
             <p className={styles.intro}>{translate(language, "journey.intro")}</p>
 
             {snapshot.revising !== null && (
-              <button type="button" className={styles.resumeButton} onClick={actions.resume} disabled={busy}>
-                {translate(language, "journey.resume")}
+              <button
+                type="button"
+                className={styles.resumeButton}
+                onClick={actions.resume}
+                disabled={busy}
+                aria-busy={actions.pendingKey === "resume" || undefined}
+              >
+                <PendingActionLabel
+                  pending={actions.pendingKey === "resume"}
+                  pendingLabel={translate(language, "common.pleaseWait")}
+                >
+                  {translate(language, "journey.resume")}
+                </PendingActionLabel>
               </button>
             )}
             {guard.waiting && (
@@ -268,6 +295,7 @@ interface RowActions {
   review: (id: JourneyScreenId) => void;
   resume: () => void;
   busy: boolean;
+  pendingKey: string | null;
 }
 
 /**
@@ -367,15 +395,18 @@ function VisibilityManager({
   const backRef = useRef<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState<SectionId | null>(null);
   const [failed, setFailed] = useState(false);
+  const [isPending, startTransition] = useTransition();
   useEffect(() => backRef.current?.focus(), []);
 
-  async function toggle(entry: SectionVisibilityEntry) {
-    if (busy !== null) return;
+  function toggle(entry: SectionVisibilityEntry) {
+    if (busy !== null || isPending) return;
     setBusy(entry.sectionId);
     setFailed(false);
-    const ok = await visibility.setVisible(entry.sectionId, entry.hidden);
-    setBusy(null);
-    if (!ok) setFailed(true);
+    startTransition(async () => {
+      const ok = await visibility.setVisible(entry.sectionId, entry.hidden);
+      setBusy(null);
+      if (!ok) setFailed(true);
+    });
   }
 
   const note = (entry: SectionVisibilityEntry): TranslationKey | null => {
@@ -391,7 +422,7 @@ function VisibilityManager({
       </button>
       <p className={styles.intro}>{translate(language, "visibility.intro")}</p>
 
-      <ul className={styles.visibilityList} aria-busy={busy !== null}>
+      <ul className={styles.visibilityList} aria-busy={busy !== null || isPending}>
         <li className={styles.visibilityRow} data-visibility-section="hero">
           <span className={styles.visibilityLabel}>{translate(language, "visibility.hero")}</span>
           <span className={styles.status}>{translate(language, "visibility.alwaysVisible")}</span>
@@ -418,11 +449,17 @@ function VisibilityManager({
                 <button
                   type="button"
                   className={styles.actionButton}
-                  onClick={() => void toggle(entry)}
-                  disabled={busy !== null}
+                  onClick={() => toggle(entry)}
+                  disabled={busy !== null || isPending}
+                  aria-busy={busy === entry.sectionId || undefined}
                   aria-label={`${action} — ${label}`}
                 >
-                  {action}
+                  <PendingActionLabel
+                    pending={busy === entry.sectionId}
+                    pendingLabel={translate(language, "common.pleaseWait")}
+                  >
+                    {action}
+                  </PendingActionLabel>
                 </button>
               </span>
             </li>
@@ -473,10 +510,16 @@ function ChangeAmbianceAction({ journey, className }: { journey: JourneyNavigati
       <button
         type="button"
         className={className ?? styles.linkButton}
-        onClick={() => guard.run(() => journey.openScreen("reveal"))}
+        onClick={() => guard.run("ambiance", () => journey.openScreen("reveal"))}
         disabled={guard.busy}
+        aria-busy={guard.pendingKey === "ambiance" || undefined}
       >
-        {translate(journey.language, "preview.changeAmbiance")}
+        <PendingActionLabel
+          pending={guard.pendingKey === "ambiance"}
+          pendingLabel={translate(journey.language, "common.pleaseWait")}
+        >
+          {translate(journey.language, "preview.changeAmbiance")}
+        </PendingActionLabel>
       </button>
       {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
       {guard.failed && (
@@ -506,8 +549,19 @@ function ScreenStatusAndAction({
   let action = null;
   if (screen.status === "current" && snapshot.revising !== null) {
     action = (
-      <button type="button" className={styles.actionButton} onClick={actions.resume} disabled={actions.busy}>
-        {translate(language, "journey.continueHere")}
+      <button
+        type="button"
+        className={styles.actionButton}
+        onClick={actions.resume}
+        disabled={actions.busy}
+        aria-busy={actions.pendingKey === "resume" || undefined}
+      >
+        <PendingActionLabel
+          pending={actions.pendingKey === "resume"}
+          pendingLabel={translate(language, "common.pleaseWait")}
+        >
+          {translate(language, "journey.continueHere")}
+        </PendingActionLabel>
       </button>
     );
   } else if (screen.accessible && screen.status !== "current" && !beingRevised) {
@@ -517,9 +571,15 @@ function ScreenStatusAndAction({
         className={styles.actionButton}
         onClick={() => actions.review(screen.id)}
         disabled={actions.busy}
+        aria-busy={actions.pendingKey === screen.id || undefined}
         aria-label={`${translate(language, "journey.review")} — ${label}`}
       >
-        {translate(language, "journey.review")}
+        <PendingActionLabel
+          pending={actions.pendingKey === screen.id}
+          pendingLabel={translate(language, "common.pleaseWait")}
+        >
+          {translate(language, "journey.review")}
+        </PendingActionLabel>
       </button>
     );
   }

@@ -1,0 +1,30 @@
+.content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--heritage-space-xs);
+}
+
+.spinner {
+  width: 0.9em;
+  height: 0.9em;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: pending-action-spin 0.75s linear infinite;
+}
+
+@keyframes pending-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-right-color: currentColor;
+    border-top-color: transparent;
+  }
+}

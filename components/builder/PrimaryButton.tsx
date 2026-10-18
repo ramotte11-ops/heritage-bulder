@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
+import { PendingActionLabel } from "./PendingActionLabel";
 import styles from "./PrimaryButton.module.css";
 
 interface PrimaryButtonProps {
   type?: "button" | "submit";
   disabled?: boolean;
+  pending?: boolean;
+  pendingLabel?: ReactNode;
   children: ReactNode;
 }
 
@@ -15,25 +18,40 @@ interface PrimaryButtonProps {
  * disabled, and a real `disabled` attribute is also what keeps it out
  * of the tab order automatically, with no extra `tabIndex` bookkeeping.
  *
- * Deliberately just a presentational wrapper: no `onClick`, no form
- * knowledge, no `pending` state of its own. A submit button inside a
- * `<form action={formAction}>` (see LanguageStep.tsx) already gets
- * "disabled while pending" from whatever computed its `disabled` prop —
- * this component only ever renders what it's told.
+ * Still a presentational wrapper: no `onClick` and no form knowledge.
+ * The owner supplies the real pending state; the button then exposes it
+ * immediately with a compact spinner, a human label and `aria-busy`,
+ * while remaining a native disabled button against duplicate submits.
  */
-export function PrimaryButton({ type = "button", disabled, children }: PrimaryButtonProps) {
+export function PrimaryButton({
+  type = "button",
+  disabled,
+  pending = false,
+  children,
+  pendingLabel = children,
+}: PrimaryButtonProps) {
   return (
-    <button type={type} disabled={disabled} className={styles.button}>
-      <span>{children}</span>
-      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
-        <path
-          d="M4 10h12M11 5l5 5-5 5"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+    <button
+      type={type}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      data-pending={pending || undefined}
+      className={styles.button}
+    >
+      <PendingActionLabel pending={pending} pendingLabel={pendingLabel}>
+        <span>{children}</span>
+      </PendingActionLabel>
+      {!pending && (
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+          <path
+            d="M4 10h12M11 5l5 5-5 5"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
     </button>
   );
 }

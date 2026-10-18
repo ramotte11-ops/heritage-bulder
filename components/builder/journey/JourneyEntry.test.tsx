@@ -126,6 +126,25 @@ describe("« Mon parcours » — the panel's content", () => {
 });
 
 describe("« Mon parcours » — navigation", () => {
+  it("shows feedback on the activated « Revoir » while the autosave drain is pending", async () => {
+    let release: () => void = () => {};
+    const registry = createPreviewFlushRegistry();
+    registry.register(() => new Promise<void>((resolve) => (release = resolve)));
+    renderWithRoute(null, registry);
+    openPanel();
+    openBlock("Votre proche");
+
+    const review = screen.getByRole("button", { name: "Revoir — Nom et dates" });
+    fireEvent.click(review);
+
+    expect(review.textContent).toBe("Un instant…");
+    expect(review.getAttribute("aria-busy")).toBe("true");
+    expect(review).toHaveProperty("disabled", true);
+
+    await act(async () => release());
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
+  });
+
   it("« Revoir » drains the autosave first, then opens ?etape= on the route's own path", async () => {
     const registry = createPreviewFlushRegistry();
     const order: string[] = [];

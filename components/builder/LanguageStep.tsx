@@ -155,7 +155,12 @@ export function LanguageStep({ persist }: LanguageStepProps) {
             breakpoint, while PrimaryButton itself stays a plain
             full-width-of-its-container primitive. */}
         <div className={screenStyles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={selected === null || isPending}>
+          <PrimaryButton
+            type="submit"
+            disabled={selected === null || isPending}
+            pending={isPending}
+            pendingLabel={translate("en", "common.pleaseWait")}
+          >
             {translate("en", "common.continue")}
           </PrimaryButton>
         </div>

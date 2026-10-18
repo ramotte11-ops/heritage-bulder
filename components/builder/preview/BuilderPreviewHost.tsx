@@ -20,6 +20,7 @@ import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
 import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
+import { PreviewLoading } from "./PreviewLoading";
 import styles from "./BuilderPreviewHost.module.css";
 
 /**
@@ -233,6 +234,7 @@ export function BuilderPreviewHost({ available, language, loadPreview, journey =
       <div hidden={isOpen} data-builder-screen="">
         {children}
       </div>
+      {phase === "loading" && language !== null && <PreviewLoading language={language} />}
       {isOpen && (
         <main className={styles.preview} data-memorial-preview="">
           <div className={styles.bar}>

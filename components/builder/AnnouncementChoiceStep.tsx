@@ -99,7 +99,12 @@ export function AnnouncementChoiceStep({ language, content, persist }: Announcem
 
         <div className={styles.footer}>
           <div className={screenStyles.ctaWrap}>
-            <PrimaryButton type="submit" disabled={selected === null || isPending}>
+            <PrimaryButton
+              type="submit"
+              disabled={selected === null || isPending}
+              pending={isPending}
+              pendingLabel={translate(language, "common.pleaseWait")}
+            >
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>

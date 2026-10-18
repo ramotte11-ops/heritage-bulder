@@ -127,7 +127,12 @@ export function CeremonyMomentStep({ language, content, persist }: CeremonyMomen
         </fieldset>
 
         <div className={screenStyles.ctaWrap}>
-          <PrimaryButton type="submit" disabled={selected === null || isSubmitting}>
+          <PrimaryButton
+            type="submit"
+            disabled={selected === null || isSubmitting}
+            pending={isSubmitting}
+            pendingLabel={translate(language, "common.pleaseWait")}
+          >
             {translate(language, "common.continue")}
           </PrimaryButton>
         </div>
