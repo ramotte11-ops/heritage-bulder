@@ -128,17 +128,23 @@ export function RouteJourneyProvider({
         return false;
       }
     }
+
+    async function canLeaveCurrentScreen(): Promise<boolean> {
+      if (draftRevision?.conflictContent != null) return false;
+      if (!(await drained())) return false;
+      return draftRevision?.conflictContent == null;
+    }
     return {
       language,
       snapshot,
       skinVariant,
       async openScreen(id) {
-        if (!(await drained())) return false;
+        if (!(await canLeaveCurrentScreen())) return false;
         router.push(`${builderPath}?etape=${id}`);
         return true;
       },
       async resume() {
-        if (!(await drained())) return false;
+        if (!(await canLeaveCurrentScreen())) return false;
         router.push(builderPath);
         return true;
       },
@@ -153,7 +159,7 @@ export function RouteJourneyProvider({
           : {
               sections: visibility.sections,
               async setVisible(sectionId, visible) {
-                if (!(await drained())) return false;
+                if (!(await canLeaveCurrentScreen())) return false;
                 try {
                   if (draftRevision === null) {
                     await visibility.save(sectionId, visible, 0);

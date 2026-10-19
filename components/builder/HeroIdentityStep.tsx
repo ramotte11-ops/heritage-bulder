@@ -98,7 +98,7 @@ export function HeroIdentityStep({
   // section-toggle model — every field write below produces a NEW
   // `content` value (never a mutation), which is what drives the
   // debounced autosave while the family types.
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const { state: autosaveState, retry: retryAutosave, flush } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -150,6 +150,7 @@ export function HeroIdentityStep({
 
     setIsSubmitting(true);
     try {
+      await flush();
       await saveDraft(committed.content);
     } catch {
       setSubmitError(true);

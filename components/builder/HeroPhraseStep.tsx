@@ -69,7 +69,7 @@ export function HeroPhraseStep({
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const { state: autosaveState, retry: retryAutosave, flush } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -89,6 +89,7 @@ export function HeroPhraseStep({
 
     setIsSubmitting(true);
     try {
+      await flush();
       await saveDraft(committed.content);
     } catch {
       setSubmitError(true);

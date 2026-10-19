@@ -179,7 +179,7 @@ export function HeroPhotoStep({
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const { state: autosaveState, retry: retryAutosave, flush } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -230,6 +230,7 @@ export function HeroPhotoStep({
       // media is ever asked to be retired. An explicit, awaited call —
       // never merely `setContent` handed to the debounced autosave —
       // because only this gives a definite yes/no to gate the retire on.
+      await flush();
       await saveDraft(written.content);
 
       setContent(written.content);
@@ -275,6 +276,7 @@ export function HeroPhotoStep({
 
     setIsSubmitting(true);
     try {
+      await flush();
       await saveDraft(committed.content);
     } catch {
       setSubmitError(true);

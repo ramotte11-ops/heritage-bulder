@@ -26,6 +26,45 @@ function wrapper(initialRevision: number, initialContent: MemorialContent) {
 }
 
 describe("DraftRevisionProvider", () => {
+  it("serializes two same-tab saves so the second uses N+1 instead of creating a false conflict", async () => {
+    let releaseFirst: () => void = () => {};
+    const firstPending = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let serverRevision = 4;
+    let serverContent = CONTENT_A;
+    const transport = vi.fn<DraftSaveTransport>(async (content, expectedRevision) => {
+      if (transport.mock.calls.length === 1) await firstPending;
+      if (expectedRevision !== serverRevision) return { status: "conflict" };
+      serverContent = content;
+      serverRevision += 1;
+      return { status: "saved", updatedAt: `t${serverRevision}`, revision: serverRevision };
+    });
+    const rendered = renderHook(() => useRevisionedDraftPersist(transport), {
+      wrapper: wrapper(4, CONTENT_A),
+    });
+
+    const first = rendered.result.current!(CONTENT_A);
+    const second = rendered.result.current!(CONTENT_B);
+
+    // The second operation must not leave the browser with the same N while
+    // the first one is still unresolved.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(transport).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseFirst();
+      await Promise.all([first, second]);
+    });
+
+    expect(transport.mock.calls.map((call) => call[1])).toEqual([4, 5]);
+    expect(serverRevision).toBe(6);
+    expect(serverContent).toEqual(CONTENT_B);
+    expect(rendered.result.current).toBeTruthy();
+  });
+
   it("refuses stale tab A after tab B commits N → N+1 and never overwrites B", async () => {
     let serverRevision = 4;
     let serverContent = CONTENT_A;

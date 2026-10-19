@@ -61,6 +61,7 @@ export function DraftRevisionProvider({
 }) {
   const revision = useRef(initialRevision);
   const conflict = useRef(false);
+  const commitTail = useRef<Promise<void>>(Promise.resolve());
   const [conflictContent, setConflictContent] = useState<MemorialContent | null>(null);
   const [conflictDownloadValue, setConflictDownloadValue] = useState<unknown>(null);
 
@@ -71,24 +72,34 @@ export function DraftRevisionProvider({
   }, []);
 
   const commit = useCallback(
-    async (
+    (
       content: MemorialContent | null,
       operation: (expectedRevision: number) => Promise<DraftSaveResponse | LegacyDraftSaveResponse>,
     ): Promise<{ updatedAt: string; revision: number }> => {
-      if (conflict.current) throw new DraftRevisionConflictError();
+      const pending = commitTail.current.then(async () => {
+        if (conflict.current) throw new DraftRevisionConflictError();
 
-      const result = await operation(revision.current);
-      if ("status" in result && result.status === "conflict") {
-        markConflict(content ?? initialContent);
-        throw new DraftRevisionConflictError();
-      }
+        const result = await operation(revision.current);
+        if ("status" in result && result.status === "conflict") {
+          markConflict(content ?? initialContent);
+          throw new DraftRevisionConflictError();
+        }
 
-      if (!("revision" in result) || result.revision === undefined) {
-        throw new Error("The draft save did not return a revision.");
-      }
+        if (!("revision" in result) || result.revision === undefined) {
+          throw new Error("The draft save did not return a revision.");
+        }
 
-      revision.current = result.revision;
-      return { updatedAt: result.updatedAt, revision: result.revision };
+        revision.current = result.revision;
+        return { updatedAt: result.updatedAt, revision: result.revision };
+      });
+
+      // Keep same-tab writes FIFO, but let a failed caller observe its own
+      // rejection without poisoning later queue bookkeeping.
+      commitTail.current = pending.then(
+        () => undefined,
+        () => undefined,
+      );
+      return pending;
     },
     [initialContent, markConflict],
   );
