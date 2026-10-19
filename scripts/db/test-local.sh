@@ -2264,6 +2264,124 @@ done
 PUBLIC_AUDIT_ACL=$($DB -t -A -c "select exists (select 1 from aclexplode((select relacl from pg_class where oid='public.memorial_edit_audit_events'::regclass)) where grantee=0);")
 check "PUBLIC has no privilege on memorial_edit_audit_events" "f" "$PUBLIC_AUDIT_ACL"
 
+# --- Security V1 publication foundation -------------------------------
+
+echo ""
+echo "== Security V1 publication: atomic snapshot and Hero-retirement lease =="
+
+PUB_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'publication-owner@example.test') returning id;")
+PUB_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'publication-other@example.test') returning id;")
+PUB_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_ENT','person','announcement','intemporel','light','fr','publication-foundation','ready') returning id;")
+$DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Jeanne\",\"photo\":null}}' where memorial_id='$PUB_MEM';" >/dev/null
+
+svc_expect_error \
+  "a foreign owner cannot publish the memorial" \
+  "select * from commit_memorial_publication_v1('$PUB_MEM','$PUB_OTHER',0,'ready',null,'fr','intemporel','light','publication-foundation','{\"hero\":{\"displayName\":\"Jeanne\",\"photo\":null}}');" \
+  "memorial publication refused"
+check "the foreign attempt creates no public snapshot" "0" "$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$PUB_MEM';")"
+
+PUB_MEDIA=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$PUB_MEM','$PUB_OWNER','$PUB_MEM/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/original.jpg','photo','image/jpeg','hero','ready',1024) returning id;")
+PUB_LEASE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$PUB_MEM','$PUB_OWNER','$PUB_MEDIA',0);")
+svc_expect_error \
+  "publication is refused while a Hero retirement lease is active" \
+  "select * from commit_memorial_publication_v1('$PUB_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-foundation','{\"hero\":{\"displayName\":\"Jeanne\",\"photo\":null}}');" \
+  "hero media retirement in progress"
+check "the blocked publication changes neither status nor first date" "ready|null" "$($DB -t -A -c "select status || '|' || coalesce(first_published_at::text,'null') from memorials where id='$PUB_MEM';")"
+svc "select finish_hero_media_retirement_v1('$PUB_MEM','$PUB_OWNER','$PUB_LEASE','cancelled');" >/dev/null
+
+PUB_FIRST=$(svc "select published_at || '|' || first_published_at || '|' || revision from commit_memorial_publication_v1('$PUB_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-foundation','{\"hero\":{\"displayName\":\"Jeanne\",\"photo\":null}}');")
+PUB_FIRST_AT=$(echo "$PUB_FIRST" | cut -d'|' -f2)
+check "first publication atomically stores status and first date" "published|$PUB_FIRST_AT" "$($DB -t -A -c "select status || '|' || first_published_at from memorials where id='$PUB_MEM';")"
+check "first publication snapshots the exact draft" "Jeanne" "$($DB -t -A -c "select content->'hero'->>'displayName' from memorial_published_snapshots where memorial_id='$PUB_MEM';")"
+svc_expect_error \
+  "a save that started before publication cannot write after publication wins" \
+  "select * from commit_memorial_draft_edit_v1('$PUB_MEM','$PUB_OWNER',0,'ready',null,'{\"hero\":{\"displayName\":\"Stale overwrite\"}}','content.saved',array['content.hero.displayName']);" \
+  "memorial lifecycle changed"
+check "publication winning the race preserves its exact snapshot" "Jeanne" "$($DB -t -A -c "select content->'hero'->>'displayName' from memorial_published_snapshots where memorial_id='$PUB_MEM';")"
+
+$DB -c "update memorials set status='editing' where id='$PUB_MEM'; update memorial_drafts set content='{\"hero\":{\"displayName\":\"Jeanne Martin\",\"photo\":null}}', revision=1 where memorial_id='$PUB_MEM';" >/dev/null
+PUB_REPUBLISHED=$(svc "select first_published_at from commit_memorial_publication_v1('$PUB_MEM','$PUB_OWNER',1,'editing','$PUB_FIRST_AT','fr','intemporel','light','publication-foundation','{\"hero\":{\"displayName\":\"Jeanne Martin\",\"photo\":null}}');")
+check "republication preserves the immutable first publication date" "$PUB_FIRST_AT" "$PUB_REPUBLISHED"
+check "republication replaces the live snapshot with the exact new draft" "Jeanne Martin" "$($DB -t -A -c "select content->'hero'->>'displayName' from memorial_published_snapshots where memorial_id='$PUB_MEM';")"
+
+PUB_STALE_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_STALE=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_STALE_ENT','person','announcement','intemporel','light','fr','publication-stale','ready') returning id;")
+svc "select * from commit_memorial_draft_edit_v1('$PUB_STALE','$PUB_OWNER',0,'ready',null,'{\"hero\":{\"displayName\":\"Fresh save\"}}','content.saved',array['content.hero.displayName']);" >/dev/null
+svc_expect_error \
+  "a publication based on the pre-save revision is rejected" \
+  "select * from commit_memorial_publication_v1('$PUB_STALE','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-stale','{}');" \
+  "memorial draft changed"
+check "the stale publication leaves the memorial unpublished" "ready|0" "$($DB -t -A -c "select status || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$PUB_STALE') from memorials where id='$PUB_STALE';")"
+
+PUB_CONFIG_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_CONFIG=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_CONFIG_ENT','person','announcement','intemporel','light','fr','publication-config-race','ready') returning id;")
+$DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Configuration race\",\"photo\":null}}' where memorial_id='$PUB_CONFIG'; update memorials set skin_variant='dark' where id='$PUB_CONFIG';" >/dev/null
+svc_expect_error \
+  "publication refuses a skin variant changed after validation" \
+  "select * from commit_memorial_publication_v1('$PUB_CONFIG','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-config-race','{\"hero\":{\"displayName\":\"Configuration race\",\"photo\":null}}');" \
+  "memorial publication configuration changed"
+check "the configuration conflict creates no false publication" "ready|dark|0" "$($DB -t -A -c "select status || '|' || skin_variant || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$PUB_CONFIG') from memorials where id='$PUB_CONFIG';")"
+
+PUB_EXPIRED_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_EXPIRED_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_EXPIRED_ENT','person','announcement','intemporel','light','fr','publication-expired-lease','ready') returning id;")
+$DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Lease recovery\",\"photo\":null}}' where memorial_id='$PUB_EXPIRED_MEM';" >/dev/null
+PUB_EXPIRED_MEDIA=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEM/bbbbbbbb-cccc-4ddd-8eee-ffffffffffff/original.jpg','photo','image/jpeg','hero','ready',1024) returning id;")
+PUB_EXPIRED_LEASE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEDIA',0);")
+$DB -c "update hero_media_retirement_leases set reserved_at=clock_timestamp() - interval '2 seconds', expires_at=clock_timestamp() - interval '1 second' where id='$PUB_EXPIRED_LEASE';" >/dev/null
+svc_expect_error \
+  "an expired retirement cannot be silently replaced by a new reservation" \
+  "select * from reserve_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEDIA',0);" \
+  "hero retirement reconciliation required"
+svc_expect_error \
+  "an interrupted expired retirement cannot later confirm Storage deletion" \
+  "select finish_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_LEASE','completed');" \
+  "hero retirement lease expired"
+svc_expect_error \
+  "an expired unfinished retirement remains a durable publication block" \
+  "select * from commit_memorial_publication_v1('$PUB_EXPIRED_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-expired-lease','{\"hero\":{\"displayName\":\"Lease recovery\",\"photo\":null}}');" \
+  "hero media retirement in progress"
+svc "select finish_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_LEASE','cancelled');" >/dev/null
+svc "select * from commit_memorial_publication_v1('$PUB_EXPIRED_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-expired-lease','{\"hero\":{\"displayName\":\"Lease recovery\",\"photo\":null}}');" >/dev/null
+check "explicit reconciliation releases an interrupted retirement" "published" "$($DB -t -A -c "select status from memorials where id='$PUB_EXPIRED_MEM';")"
+
+for forbidden_status in draft published archived; do
+  PUB_BAD_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+  PUB_BAD=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$PUB_OWNER','$PUB_BAD_ENT','person','announcement','intemporel','light','fr','publication-$forbidden_status','$forbidden_status',case when '$forbidden_status' in ('published','archived') then now() else null end) returning id;")
+  svc_expect_error \
+    "publication refuses the forbidden $forbidden_status transition" \
+    "select * from commit_memorial_publication_v1('$PUB_BAD','$PUB_OWNER',0,'$forbidden_status',(select first_published_at from memorials where id='$PUB_BAD'),'fr','intemporel','light','publication-$forbidden_status','{}');" \
+    "memorial publication transition refused"
+done
+
+PUB_FAIL_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_FAIL=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_FAIL_ENT','person','announcement','intemporel','light','fr','publication-rollback','ready') returning id;")
+$DB -c "create function test_fail_publication_snapshot() returns trigger language plpgsql as \$\$ begin if new.memorial_id='$PUB_FAIL' then raise exception 'forced snapshot failure'; end if; return new; end; \$\$; create trigger test_fail_publication_snapshot before insert or update on memorial_published_snapshots for each row execute function test_fail_publication_snapshot();" >/dev/null
+svc_expect_error \
+  "a snapshot failure rolls the complete publication back" \
+  "select * from commit_memorial_publication_v1('$PUB_FAIL','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','publication-rollback','{}');" \
+  "forced snapshot failure"
+check "snapshot failure leaves status, first date and snapshot untouched" "ready|null|0" "$($DB -t -A -c "select status || '|' || coalesce(first_published_at::text,'null') || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$PUB_FAIL') from memorials where id='$PUB_FAIL';")"
+$DB -c "drop trigger test_fail_publication_snapshot on memorial_published_snapshots; drop function test_fail_publication_snapshot();" >/dev/null
+
+for role in anon authenticated; do
+  check "$role cannot execute publication" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.commit_memorial_publication_v1(uuid,uuid,bigint,text,timestamptz,text,text,text,text,jsonb)','EXECUTE');")"
+  check "$role cannot reserve Hero retirement" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_hero_media_retirement_v1(uuid,uuid,uuid,bigint)','EXECUTE');")"
+  check "$role cannot finish Hero retirement" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.finish_hero_media_retirement_v1(uuid,uuid,uuid,text)','EXECUTE');")"
+done
+check "service_role alone can execute publication" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.commit_memorial_publication_v1(uuid,uuid,bigint,text,timestamptz,text,text,text,text,jsonb)','EXECUTE');")"
+check "service_role alone can reserve Hero retirement" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.reserve_hero_media_retirement_v1(uuid,uuid,uuid,bigint)','EXECUTE');")"
+check "service_role alone can finish Hero retirement" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.finish_hero_media_retirement_v1(uuid,uuid,uuid,text)','EXECUTE');")"
+PUBLIC_PUBLICATION_ACL=$($DB -t -A -c "select exists (select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('commit_memorial_publication_v1','reserve_hero_media_retirement_v1','finish_hero_media_retirement_v1') and a.grantee=0 and a.privilege_type='EXECUTE');")
+check "PUBLIC has no execute privilege on publication functions" "f" "$PUBLIC_PUBLICATION_ACL"
+for role in anon authenticated service_role; do
+  for privilege in SELECT INSERT UPDATE DELETE TRUNCATE; do
+    check "$role has no direct $privilege on hero_media_retirement_leases" "f" "$($DB -t -A -c "select has_table_privilege('$role','public.hero_media_retirement_leases','$privilege');")"
+  done
+done
+PUBLIC_RETIREMENT_ACL=$($DB -t -A -c "select exists (select 1 from aclexplode((select relacl from pg_class where oid='public.hero_media_retirement_leases'::regclass)) where grantee=0);")
+check "PUBLIC has no privilege on hero_media_retirement_leases" "f" "$PUBLIC_RETIREMENT_ACL"
+
 # --- the preflight/postflight the QG will hand to the PO ---------------
 #
 # supabase/checks/*.sql is SQL a human pastes into the Supabase SQL

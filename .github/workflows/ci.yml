@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, codex/security-v1-persistence]
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
