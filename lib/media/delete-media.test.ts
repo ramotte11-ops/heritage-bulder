@@ -292,3 +292,71 @@ describe("deleteMedia — Security V1 publication lifecycle", () => {
     expect(engine.mediaRepository.rows.has(media.mediaId)).toBe(true);
   });
 });
+
+describe("deleteMedia — Security V1 cleanup coordination", () => {
+  it("does not touch Storage when pending finalization wins before cleanup claim", async () => {
+    const engine = createTestEngine();
+    const reserved = await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "gallery", declaredMimeType: "image/jpeg",
+    });
+    if (!reserved.ok) throw new Error("reservation failed");
+    engine.objectStore.put(reserved.value.storagePath, JPEG_BYTES);
+
+    const original = engine.mediaSecurityRepository.reservePendingCleanup.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.reservePendingCleanup = async (input) => {
+      const finalized = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+        memorialId: MEMORIAL_A, mediaId: reserved.value.mediaId,
+      });
+      expect(finalized.ok).toBe(true);
+      return original(input);
+    };
+
+    expect(await deleteMedia(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.value.mediaId,
+    })).toEqual({ ok: false, code: "storage_unavailable" });
+    expect(engine.mediaRepository.rows.get(reserved.value.mediaId)?.status).toBe("ready");
+    expect(engine.objectStore.objects.has(reserved.value.storagePath)).toBe(true);
+  });
+
+  it("blocks finalization after pending cleanup is claimed", async () => {
+    const engine = createTestEngine();
+    const reserved = await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "gallery", declaredMimeType: "image/jpeg",
+    });
+    if (!reserved.ok) throw new Error("reservation failed");
+    engine.objectStore.put(reserved.value.storagePath, JPEG_BYTES);
+
+    const remove = engine.objectStore.removeByPrefix.bind(engine.objectStore);
+    engine.objectStore.removeByPrefix = async (input) => {
+      const finalized = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+        memorialId: MEMORIAL_A, mediaId: reserved.value.mediaId,
+      });
+      expect(finalized.ok).toBe(false);
+      expect(engine.mediaRepository.rows.get(reserved.value.mediaId)?.status).toBe("pending");
+      return remove(input);
+    };
+
+    expect(await deleteMedia(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.value.mediaId,
+    })).toEqual({ ok: true, value: { removed: true } });
+    expect(engine.mediaRepository.rows.has(reserved.value.mediaId)).toBe(false);
+  });
+
+  it("keeps an ambiguous ready-media retirement lease non-terminal", async () => {
+    const engine = createTestEngine();
+    const media = await readyMedia(engine, MEMORIAL_A, OWNER_A, "hero");
+    const remove = engine.objectStore.removeByPrefix.bind(engine.objectStore);
+    engine.objectStore.removeByPrefix = async (input) => {
+      await remove(input);
+      throw new Error("response lost after Storage deletion");
+    };
+
+    expect(await deleteMedia(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: media.mediaId,
+    })).toEqual({ ok: false, code: "storage_unavailable" });
+    expect(engine.mediaSecurityRepository.hasRetirementLease(MEMORIAL_A, media.mediaId)).toBe(true);
+    expect(engine.mediaSecurityRepository.retirementFinishes).toEqual([]);
+    expect(engine.mediaRepository.rows.has(media.mediaId)).toBe(true);
+    expect(engine.objectStore.objects.has(media.storagePath)).toBe(false);
+  });
+});

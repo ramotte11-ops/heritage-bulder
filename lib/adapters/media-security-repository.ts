@@ -12,6 +12,10 @@ export interface MediaRetirementLease {
   expiresAt: string;
 }
 
+export interface PendingMediaCleanupClaim {
+  claimId: string;
+}
+
 /**
  * Service-only persistence boundary for Security V1 media mutations.
  * The application policy is evaluated from `load`; every effective write is
@@ -33,6 +37,17 @@ export interface MediaSecurityRepository {
     purpose: MediaPurpose;
     leaseId: string;
     outcome: "completed" | "cancelled";
+  }): Promise<void>;
+  reservePendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    mediaId: string;
+    createdBefore?: string;
+  }): Promise<PendingMediaCleanupClaim>;
+  finishPendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    claimId: string;
   }): Promise<void>;
 }
 

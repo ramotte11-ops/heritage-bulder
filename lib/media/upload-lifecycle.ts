@@ -9,7 +9,6 @@ import {
 } from "./media-errors";
 import {
   buildMediaObjectPath,
-  buildMediaObjectPrefix,
   isPathWithinMemorial,
 } from "./media-path";
 import {
@@ -20,6 +19,7 @@ import { IMAGE_HEADER_BYTES, readImageDimensions } from "./image-dimensions";
 import type { MediaEngineDeps } from "./media-engine";
 import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
 import { MediaSecurityDeniedError } from "@/lib/adapters/media-security-repository";
+import { cleanupPendingMedia } from "./cleanup-pending-media";
 
 /**
  * Mission 030 — creating a media, in two server-verified steps.
@@ -374,29 +374,5 @@ export async function finalizeMediaUpload(
  * something false.
  */
 async function discardUnusableUpload(deps: MediaEngineDeps, media: Media): Promise<void> {
-  try {
-    // Built through the validated builder rather than by interpolating
-    // the ids: this runs on stored values, and the builder is the one
-    // place that refuses anything which is not a pair of UUIDs. A
-    // hand-rolled template here would be the obvious spot for a
-    // traversal to re-enter a codebase that had closed it everywhere
-    // else.
-    await deps.objectStore.removeByPrefix({
-      prefix: buildMediaObjectPrefix({
-        memorialId: media.memorialId,
-        mediaId: media.id,
-      }),
-    });
-  } catch {
-    // Deliberately ignored — see above.
-  }
-
-  try {
-    await deps.mediaRepository.deleteById({
-      memorialId: media.memorialId,
-      mediaId: media.id,
-    });
-  } catch {
-    // Deliberately ignored — see above.
-  }
+  await cleanupPendingMedia(deps, media);
 }

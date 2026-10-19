@@ -2406,6 +2406,35 @@ svc_expect_error \
   "media reservation refused"
 check "owner can finalize Gallery before publication" "ready|gallery" "$(svc "select status || '|' || purpose from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_GALLERY','gallery','image/jpeg',100,1200,1600);")"
 
+M3_CLEANUP_FIRST=$(svc "select gen_random_uuid();")
+svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_CLEANUP_FIRST','$M3_MEM/$M3_CLEANUP_FIRST/original.jpg','gallery','image/jpeg');" >/dev/null
+M3_CLEANUP_CLAIM=$(svc "select claim_id from reserve_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_CLEANUP_FIRST',null);")
+check "a repeated pending cleanup reuses its durable claim" "$M3_CLEANUP_CLAIM" "$(svc "select claim_id from reserve_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_CLEANUP_FIRST',null);")"
+svc_expect_error \
+  "a cleanup claim blocks pending media finalization" \
+  "select * from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_CLEANUP_FIRST','gallery','image/jpeg',100,1200,1600);" \
+  "pending media cleanup already reserved"
+svc "select finish_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_CLEANUP_CLAIM');" >/dev/null
+check "confirmed pending cleanup removes only the pending row and closes its claim" "0|1" "$($DB -t -A -c "select (select count(*) from media where id='$M3_CLEANUP_FIRST') || '|' || (select count(*) from pending_media_cleanup_claims where id='$M3_CLEANUP_CLAIM' and completed_at is not null);")"
+
+M3_FINALIZE_FIRST=$(svc "select gen_random_uuid();")
+svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_FINALIZE_FIRST','$M3_MEM/$M3_FINALIZE_FIRST/original.jpg','gallery','image/jpeg');" >/dev/null
+svc "select status from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_FINALIZE_FIRST','gallery','image/jpeg',100,1200,1600);" >/dev/null
+svc_expect_error \
+  "a completed finalization prevents a stale pending cleanup claim" \
+  "select * from reserve_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_FINALIZE_FIRST',null);" \
+  "pending media cleanup conflict"
+check "the finalization winner remains ready" "ready" "$($DB -t -A -c "select status from media where id='$M3_FINALIZE_FIRST';")"
+
+M3_PENDING_HERO=$(svc "select gen_random_uuid();")
+svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_PENDING_HERO','$M3_MEM/$M3_PENDING_HERO/original.jpg','hero','image/jpeg');" >/dev/null
+M3_PENDING_HERO_CLAIM=$(svc "select claim_id from reserve_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_PENDING_HERO',null);")
+svc_expect_error \
+  "an active pending Hero cleanup claim blocks publication" \
+  "select * from commit_memorial_publication_v1('$M3_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','media-security-v1','{}');" \
+  "pending Hero cleanup in progress"
+svc "select finish_pending_media_cleanup_v1('$M3_MEM','$PUB_OWNER','$M3_PENDING_HERO_CLAIM');" >/dev/null
+
 svc "select * from commit_memorial_publication_v1('$M3_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','media-security-v1','{}');" >/dev/null
 svc_expect_error \
   "Hero reserved before publication cannot finalize after publication" \
@@ -2439,11 +2468,17 @@ for role in public anon authenticated; do
   check "$role cannot reserve a media upload RPC" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_memorial_media_upload_v1(uuid,uuid,uuid,text,text,text)','EXECUTE');")"
   check "$role cannot finalize a media upload RPC" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.finalize_memorial_media_upload_v1(uuid,uuid,uuid,text,text,bigint,integer,integer)','EXECUTE');")"
   check "$role cannot reserve Gallery retirement" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_gallery_media_retirement_v1(uuid,uuid,uuid,bigint)','EXECUTE');")"
+  check "$role cannot reserve pending media cleanup" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_pending_media_cleanup_v1(uuid,uuid,uuid,timestamptz)','EXECUTE');")"
+  check "$role cannot finish pending media cleanup" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.finish_pending_media_cleanup_v1(uuid,uuid,uuid)','EXECUTE');")"
 done
 check "service_role can reserve media only through the protected RPC" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.reserve_memorial_media_upload_v1(uuid,uuid,uuid,text,text,text)','EXECUTE');")"
+check "service_role can reserve pending media cleanup through the protected RPC" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.reserve_pending_media_cleanup_v1(uuid,uuid,uuid,timestamptz)','EXECUTE');")"
 for role in anon authenticated service_role; do
   for privilege in SELECT INSERT UPDATE DELETE TRUNCATE; do
     check "$role has no direct $privilege on gallery_media_retirement_leases" "f" "$($DB -t -A -c "select has_table_privilege('$role','public.gallery_media_retirement_leases','$privilege');")"
+  done
+  for privilege in SELECT INSERT UPDATE DELETE TRUNCATE; do
+    check "$role has no direct $privilege on pending_media_cleanup_claims" "f" "$($DB -t -A -c "select has_table_privilege('$role','public.pending_media_cleanup_claims','$privilege');")"
   done
 done
 

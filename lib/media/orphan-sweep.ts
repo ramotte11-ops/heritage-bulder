@@ -1,6 +1,7 @@
 import { MEDIA_PENDING_TTL_MS } from "@/config/media";
-import { buildMediaObjectPrefix, isPathWithinMemorial } from "./media-path";
+import { isPathWithinMemorial } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
+import { cleanupPendingMedia } from "./cleanup-pending-media";
 
 /**
  * Mission 030 — the explicit answer to "what happens to an upload
@@ -79,22 +80,7 @@ export async function sweepAbandonedUploads(
     }
 
     try {
-      // Storage first, then the row — the same ordering rule as
-      // lib/media/delete-media.ts, for the same reason. If this throws,
-      // the row survives and the next sweep retries it; the reverse
-      // order would leave the object with nothing pointing at it.
-      await deps.objectStore.removeByPrefix({
-        prefix: buildMediaObjectPrefix({
-          memorialId: media.memorialId,
-          mediaId: media.id,
-        }),
-      });
-
-      await deps.mediaRepository.deleteById({
-        memorialId: media.memorialId,
-        mediaId: media.id,
-      });
-
+      if (!await cleanupPendingMedia(deps, media, { createdBefore: cutoff })) continue;
       reclaimed += 1;
     } catch {
       // One bad row must not abort the batch: the remaining

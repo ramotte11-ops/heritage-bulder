@@ -641,6 +641,38 @@ describe("finalizeMediaUpload — concurrency", () => {
   });
 });
 
+describe("finalizeMediaUpload — invalid upload cleanup safety", () => {
+  it("keeps the inventory row when Storage deletion is not confirmed", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: SVG_BYTES });
+    engine.objectStore.failOn.removeByPrefix = new Error("Storage timeout");
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "invalid_file" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+    expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
+    expect(engine.mediaSecurityRepository.hasPendingCleanupClaim(reserved.mediaId)).toBe(true);
+  });
+
+  it("never deletes a row that became ready before invalid cleanup claimed it", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: SVG_BYTES });
+    const original = engine.mediaSecurityRepository.reservePendingCleanup.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.reservePendingCleanup = async (input) => {
+      const row = engine.mediaRepository.rows.get(reserved.mediaId)!;
+      engine.mediaRepository.rows.set(reserved.mediaId, { ...row, status: "ready" });
+      return original(input);
+    };
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "invalid_file" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("ready");
+    expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
+  });
+});
+
 describe("finalizeMediaUpload — a tampered stored path", () => {
   it("refuses to act on a row pointing outside its memorial", async () => {
     // A corrupted or tampered row must not redirect an authorized

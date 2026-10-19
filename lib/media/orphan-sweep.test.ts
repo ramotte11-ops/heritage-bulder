@@ -200,6 +200,26 @@ describe("sweepAbandonedUploads", () => {
   });
 });
 
+describe("sweepAbandonedUploads — cleanup/finalization exclusion", () => {
+  it("does not remove a row or object finalized after the sweep listing", async () => {
+    const engine = createTestEngine();
+    const upload = await abandonedUpload(engine, { withBytes: true });
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+    const original = engine.mediaSecurityRepository.reservePendingCleanup.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.reservePendingCleanup = async (input) => {
+      const finalized = await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+        memorialId: MEMORIAL_A, mediaId: upload.mediaId,
+      });
+      expect(finalized.ok).toBe(true);
+      return original(input);
+    };
+
+    expect(await sweepAbandonedUploads(engine)).toEqual({ examined: 1, reclaimed: 0 });
+    expect(engine.mediaRepository.rows.get(upload.mediaId)?.status).toBe("ready");
+    expect(engine.objectStore.objects.has(upload.storagePath)).toBe(true);
+  });
+});
+
 describe("sweepAbandonedUploads — ordering and resilience", () => {
   it("removes the object before the row", async () => {
     // Same rule as deleteMedia: the reverse order would leave an object

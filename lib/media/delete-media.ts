@@ -6,6 +6,7 @@ import { buildMediaObjectPrefix, isPathWithinMemorial } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
 import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
 import { MediaSecurityDeniedError, MediaSecurityRetainedError } from "@/lib/adapters/media-security-repository";
+import { cleanupPendingMedia } from "./cleanup-pending-media";
 
 /**
  * Mission 030 — deleting a media, safely and repeatably.
@@ -97,15 +98,9 @@ export async function deleteMedia(
   // the existing idempotent cleanup path without a ready-media retirement
   // lease. In particular, a pending Hero is still refused after publication.
   if (media.status === "pending") {
-    try {
-      await deps.objectStore.removeByPrefix({
-        prefix: buildMediaObjectPrefix({ memorialId: access.memorialId, mediaId: input.mediaId }),
-      });
-      const removed = await deps.mediaRepository.deleteById({ memorialId: access.memorialId, mediaId: input.mediaId });
-      return mediaSuccess({ removed });
-    } catch {
-      return mediaFailure("storage_unavailable");
-    }
+    return await cleanupPendingMedia(deps, media)
+      ? mediaSuccess({ removed: true })
+      : mediaFailure("storage_unavailable");
   }
 
   let lease;
@@ -140,18 +135,9 @@ export async function deleteMedia(
     // produce exactly the orphan this ordering exists to prevent.
     // Leaving both means the media still works and the caller can
     // retry.
-    try {
-      await deps.mediaSecurityRepository.finishRetirement({
-        memorialId: access.memorialId,
-        ownerId: access.ownerId,
-        purpose: media.purpose,
-        leaseId: lease.leaseId,
-        outcome: "cancelled",
-      });
-    } catch {
-      // An unfinished durable lease is intentionally left for explicit
-      // reconciliation. Publication remains blocked for Hero.
-    }
+    // Storage may have completed the deletion before its response was lost.
+    // Keep the durable lease non-terminal until explicit reconciliation;
+    // cancelling here could unblock publication while Hero bytes are gone.
     return mediaFailure("storage_unavailable");
   }
 

@@ -1,6 +1,7 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
   MediaRetirementLease,
+  PendingMediaCleanupClaim,
   MediaSecurityRepository,
   MediaSecuritySnapshot,
 } from "@/lib/adapters/media-security-repository";
@@ -23,6 +24,10 @@ interface DraftRow {
 interface LeaseRow {
   lease_id: string;
   expires_at: string;
+}
+
+interface PendingCleanupClaimRow {
+  claim_id: string;
 }
 
 function throwSecurityError(error: PostgrestError): never {
@@ -96,6 +101,35 @@ export class SupabaseMediaSecurityRepository implements MediaSecurityRepository 
       p_owner_id: input.ownerId,
       p_lease_id: input.leaseId,
       p_outcome: input.outcome,
+    });
+    if (error) throwSecurityError(error);
+  }
+
+  async reservePendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    mediaId: string;
+    createdBefore?: string;
+  }): Promise<PendingMediaCleanupClaim> {
+    const { data, error } = await this.client.rpc("reserve_pending_media_cleanup_v1", {
+      p_memorial_id: input.memorialId,
+      p_owner_id: input.ownerId,
+      p_media_id: input.mediaId,
+      p_created_before: input.createdBefore ?? null,
+    }).single<PendingCleanupClaimRow>();
+    if (error) throwSecurityError(error);
+    return { claimId: data.claim_id };
+  }
+
+  async finishPendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    claimId: string;
+  }): Promise<void> {
+    const { error } = await this.client.rpc("finish_pending_media_cleanup_v1", {
+      p_memorial_id: input.memorialId,
+      p_owner_id: input.ownerId,
+      p_claim_id: input.claimId,
     });
     if (error) throwSecurityError(error);
   }
