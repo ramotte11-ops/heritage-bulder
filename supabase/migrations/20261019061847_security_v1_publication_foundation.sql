@@ -245,9 +245,9 @@ begin
     raise exception 'memorial publication data incomplete' using errcode = '23514';
   end if;
 
-  select content, revision into v_content, v_revision
-    from public.memorial_drafts
-   where memorial_id = p_memorial_id
+  select d.content, d.revision into v_content, v_revision
+    from public.memorial_drafts as d
+   where d.memorial_id = p_memorial_id
    for update;
 
   if not found
