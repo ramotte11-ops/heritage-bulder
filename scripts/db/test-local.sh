@@ -2328,7 +2328,7 @@ PUB_EXPIRED_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id,
 $DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Lease recovery\",\"photo\":null}}' where memorial_id='$PUB_EXPIRED_MEM';" >/dev/null
 PUB_EXPIRED_MEDIA=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEM/bbbbbbbb-cccc-4ddd-8eee-ffffffffffff/original.jpg','photo','image/jpeg','hero','ready',1024) returning id;")
 PUB_EXPIRED_LEASE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEDIA',0);")
-$DB -c "update hero_media_retirement_leases set expires_at=clock_timestamp() - interval '1 second' where id='$PUB_EXPIRED_LEASE';" >/dev/null
+$DB -c "update hero_media_retirement_leases set reserved_at=clock_timestamp() - interval '2 seconds', expires_at=clock_timestamp() - interval '1 second' where id='$PUB_EXPIRED_LEASE';" >/dev/null
 svc_expect_error \
   "an expired retirement cannot be silently replaced by a new reservation" \
   "select * from reserve_hero_media_retirement_v1('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEDIA',0);" \
