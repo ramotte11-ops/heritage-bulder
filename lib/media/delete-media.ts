@@ -2,7 +2,7 @@ import { authorizeMemorialAccess } from "@/lib/auth/memorial-access";
 import type { HeritageActor } from "@/lib/auth/heritage-actor";
 import type { Media } from "@/types/media";
 import { mediaFailure, mediaSuccess, type MediaResult } from "./media-errors";
-import { buildMediaObjectPrefix, isPathWithinMemorial } from "./media-path";
+import { isPathWithinMemorial } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
 import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
 import { MediaSecurityDeniedError, MediaSecurityRetainedError } from "@/lib/adapters/media-security-repository";
@@ -11,36 +11,21 @@ import { cleanupPendingMedia } from "./cleanup-pending-media";
 /**
  * Mission 030 — deleting a media, safely and repeatably.
  *
- * ## The ordering rule: Storage first, row second
+ * ## The ordering rule: durable retirement first, Storage after expiry
  *
  * A media lives in two systems that cannot be committed together. A
  * PostgreSQL transaction cannot roll back an S3-style object deletion,
  * and no amount of wrapping changes that — so this foundation claims no
  * atomicity it does not have (mission brief, section 13). What it does
- * instead is choose which side to leave inconsistent when a crash lands
- * between the two calls, and the choice is not arbitrary:
- *
- *   * object deleted, row survives -> the row points at nothing. It is
- *     VISIBLE, it is attributable to its memorial, and calling this
- *     function again finishes the job. Recoverable.
- *   * row deleted, object survives -> nothing anywhere records that the
- *     object exists. It cannot be listed by any owner-scoped query, it
- *     belongs to a family nobody can identify from the row (there is no
- *     row), and it lives in the bucket forever. Unrecoverable.
- *
- * The second is the definition of an orphan, which section 13 forbids
- * "par conception". So the object goes first, every time, and the
- * window of inconsistency is a stale row that the next delete cleans
- * up.
+ * instead retires a ready row transactionally into the non-displayable
+ * `pending` state and creates a durable cleanup claim. The row and bytes stay
+ * traceable until every signed upload permission for that path has certainly
+ * expired; only then may the sweep remove Storage and close the claim.
  *
  * ## Idempotence
  *
- * Deleting an already-deleted media succeeds. Both Storage removal and
- * the row delete are idempotent underneath, so a retry after a lost
- * response, a double-clicked button, or a resumed job all converge on
- * the same state instead of erroring. `removed` reports whether THIS
- * call was the one that found something, for callers that care;
- * nothing about the outcome depends on it.
+ * Deleting an already-deleted media succeeds. A retry while cleanup is
+ * deferred reuses the same claim; a retry after reclamation sees no row.
  */
 export interface MediaDeletion {
   /** `false` when there was already nothing to delete. */
@@ -120,28 +105,10 @@ export async function deleteMedia(
   }
 
   try {
-    // By prefix, not by the one known path: a media's future
-    // derivatives (Missions 033/047) are siblings under the same
-    // directory, and deleting only `original.jpg` would turn every one
-    // of them into an orphan on the day they are introduced.
-    await deps.objectStore.removeByPrefix({
-      prefix: buildMediaObjectPrefix({
-        memorialId: access.memorialId,
-        mediaId: input.mediaId,
-      }),
-    });
-  } catch {
-    // The row is deliberately NOT deleted. Removing it now would
-    // produce exactly the orphan this ordering exists to prevent.
-    // Leaving both means the media still works and the caller can
-    // retry.
-    // Storage may have completed the deletion before its response was lost.
-    // Keep the durable lease non-terminal until explicit reconciliation;
-    // cancelling here could unblock publication while Hero bytes are gone.
-    return mediaFailure("storage_unavailable");
-  }
-
-  try {
+    // Logical retirement is committed first. PostgreSQL atomically hides the
+    // ready row as pending, closes this lease and creates a durable pending
+    // cleanup claim. That claim replaces the publication block before any
+    // external Storage operation can have an ambiguous result.
     await deps.mediaSecurityRepository.finishRetirement({
       memorialId: access.memorialId,
       ownerId: access.ownerId,
@@ -149,17 +116,11 @@ export async function deleteMedia(
       leaseId: lease.leaseId,
       outcome: "completed",
     });
-    await deps.mediaRepository.deleteById({
-      memorialId: access.memorialId,
-      mediaId: input.mediaId,
-    });
-    // The locked finish RPC may already have removed the row atomically.
-    // This call began from a real row and completed both Storage and the
-    // durable lease, so `removed: true` remains the accurate operation result.
-    return mediaSuccess({ removed: true });
   } catch {
-    // The recoverable half of the window described above: the object is
-    // gone, the row survives, and calling again completes it.
     return mediaFailure("storage_unavailable");
   }
+
+  return await cleanupPendingMedia(deps, media)
+    ? mediaSuccess({ removed: true })
+    : mediaFailure("storage_unavailable");
 }

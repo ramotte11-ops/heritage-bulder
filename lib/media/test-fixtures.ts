@@ -375,8 +375,33 @@ export class FakeMediaSecurityRepository implements MediaSecurityRepository {
     return lease;
   }
 
-  async finishRetirement(input: { leaseId: string; outcome: "completed" | "cancelled" }): Promise<void> {
+  async finishRetirement(input: {
+    memorialId: string;
+    ownerId: string;
+    leaseId: string;
+    outcome: "completed" | "cancelled";
+  }): Promise<void> {
     this.retirementFinishes.push(input);
+    const entry = [...this.leases.entries()].find(([, lease]) => lease.leaseId === input.leaseId);
+    if (!entry) throw new Error("retirement lease missing");
+    const [key] = entry;
+    if (input.outcome === "cancelled") {
+      this.leases.delete(key);
+      return;
+    }
+    const mediaId = key.slice(key.indexOf(":") + 1);
+    const media = this.mediaRows.get(mediaId);
+    if (!media || media.memorialId !== input.memorialId || media.ownerId !== input.ownerId || media.status !== "ready") {
+      throw new Error("retirement conflict");
+    }
+    this.mediaRows.set(mediaId, { ...media, status: "pending" });
+    if (!this.cleanupClaims.has(mediaId)) {
+      this.cleanupClaims.set(mediaId, {
+        claimId: `eeeeeeee-eeee-4eee-8eee-${String(this.cleanupClaims.size + 1).padStart(12, "0")}`,
+      });
+    }
+    this.pendingCleanupMediaIds.add(mediaId);
+    this.leases.delete(key);
   }
 
   async reservePendingCleanup(input: {

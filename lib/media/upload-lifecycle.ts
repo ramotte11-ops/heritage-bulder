@@ -361,10 +361,9 @@ export async function finalizeMediaUpload(
 /**
  * Throw away an upload that arrived but is not acceptable.
  *
- * Storage first, then the row — the same ordering rule as
- * lib/media/delete-media.ts, for the same reason: a row pointing at a
- * missing object is visible and retryable, while an object no row
- * mentions is an orphan nobody can ever find again.
+ * The cleanup claim is reserved immediately, but the row and bytes remain
+ * until the signed upload permission's safety window expires. A late replay
+ * therefore still has an inventory row and is reclaimed by the sweep.
  *
  * Failures are swallowed on purpose. This runs on a path that is
  * ALREADY returning a refusal to the user, and the refusal is the

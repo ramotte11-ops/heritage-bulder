@@ -2462,7 +2462,13 @@ M3_LEASE_ONE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$M3_R
 M3_LEASE_TWO=$(svc "select lease_id from reserve_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEDIA',0);")
 check "double Hero retirement request reuses the active durable lease" "$M3_LEASE_ONE" "$M3_LEASE_TWO"
 svc "select finish_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_LEASE_ONE','completed');" >/dev/null
-check "completed Hero retirement removes the row and closes the lease" "0|1" "$($DB -t -A -c "select (select count(*) from media where id='$M3_RET_MEDIA') || '|' || (select count(*) from hero_media_retirement_leases where id='$M3_LEASE_ONE' and completed_at is not null);")"
+M3_RET_CLEANUP=$(svc "select claim_id from reserve_pending_media_cleanup_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEDIA',null);")
+check "logical Hero retirement hides the row and transfers the durable block" "pending|1|1" "$($DB -t -A -c "select (select status from media where id='$M3_RET_MEDIA') || '|' || (select count(*) from hero_media_retirement_leases where id='$M3_LEASE_ONE' and completed_at is not null) || '|' || (select count(*) from pending_media_cleanup_claims where id='$M3_RET_CLEANUP' and completed_at is null);")"
+expect_error \
+  "a logically retired media cannot be referenced again while its upload token ages out" \
+  "update memorial_drafts set content=jsonb_build_object('hero',jsonb_build_object('photo',jsonb_build_object('mediaId','$M3_RET_MEDIA'))) where memorial_id='$M3_RET_MEM';"
+svc "select finish_pending_media_cleanup_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_CLEANUP');" >/dev/null
+check "confirmed post-expiry cleanup removes the traceable row and closes its claim" "0|1" "$($DB -t -A -c "select (select count(*) from media where id='$M3_RET_MEDIA') || '|' || (select count(*) from pending_media_cleanup_claims where id='$M3_RET_CLEANUP' and completed_at is not null);")"
 
 for role in public anon authenticated; do
   check "$role cannot reserve a media upload RPC" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_memorial_media_upload_v1(uuid,uuid,uuid,text,text,text)','EXECUTE');")"

@@ -1,3 +1,4 @@
+import { MEDIA_PENDING_TTL_MS } from "@/config/media";
 import type { Media } from "@/types/media";
 import { buildMediaObjectPrefix } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
@@ -23,6 +24,17 @@ export async function cleanupPendingMedia(
     });
   } catch {
     return false;
+  }
+
+  const createdAt = new Date(media.createdAt).getTime();
+  if (!Number.isFinite(createdAt)) return false;
+
+  // A signed upload token may still recreate this exact path for two hours.
+  // Keep both the inventory row and any current bytes until the established
+  // three-hour safety window has elapsed. The active claim makes the row
+  // invisible to finalization while keeping every late upload traceable.
+  if (deps.now().getTime() - createdAt < MEDIA_PENDING_TTL_MS) {
+    return true;
   }
 
   try {
