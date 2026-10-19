@@ -13,9 +13,9 @@ export const FOUNDER_ATELIER_SECTIONS = [
   {
     id: "deathNotice",
     label: "Avis de décès",
-    rendererKey: "DeathNoticeIntemporel",
-    status: "provisional",
-    note: "Le runtime actuel reste sur DeathNoticeIntemporel. Les travaux V2 présents dans le dépôt ne sont pas encore raccordés et ne sont pas présentés ici comme un Master intégré.",
+    rendererKey: "DeathNoticeV2",
+    status: "integrated",
+    note: "Renderer V2 raccordé au moteur du mémorial et à l'aperçu A03 (Mobile Light/Dark, Desktop Light/Dark 1 + 4). La V1 reste enregistrée pour le retour arrière.",
   },
   {
     id: "ceremony",

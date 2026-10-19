@@ -143,7 +143,7 @@ describe("renderer props", () => {
   it("Avis: section heading level (QG D3), stored Hero and Avis", async () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
-    const notice = assembled.sections.find((s) => s.rendererKey === "DeathNoticeIntemporel");
+    const notice = assembled.sections.find((s) => s.rendererKey === "DeathNoticeV2");
     expect(notice?.props).toEqual({
       hero: readHero(content),
       deathNotice: readDeathNotice(content),
@@ -255,10 +255,10 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
   });
 
   it("a renderer key with no adapter is a failure (noAdapter), never another renderer", async () => {
-    delete adapters.DeathNoticeIntemporel;
+    delete adapters.DeathNoticeV2;
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
     expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
-    expect(assembled.failures).toEqual([{ sectionId: "deathNotice", rendererKey: "DeathNoticeIntemporel", reason: "noAdapter" }]);
+    expect(assembled.failures).toEqual([{ sectionId: "deathNotice", rendererKey: "DeathNoticeV2", reason: "noAdapter" }]);
   });
 
   it("a non-Hero failure alongside a Hero failure still leaves the Memorial unavailable", async () => {

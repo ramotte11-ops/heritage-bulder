@@ -18,13 +18,18 @@ describe("SECTION_RENDERERS", () => {
     expect(RENDERER_KEYS).toContain("CeremonyIntemporel");
   });
 
+  it("links the Avis de décès to V2 while keeping V1 registered for rollback", () => {
+    expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeV2");
+    expect(RENDERER_KEYS).toContain("DeathNoticeIntemporel");
+  });
+
   it("links traditions to Traditions & repères V2 (M1)", () => {
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
   });
 
   it("maps the six existing Intemporel renderers and nothing else", () => {
     expect(resolveSectionRenderer("hero", "intemporel")).toBe("HeroIntemporel");
-    expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeIntemporel");
+    expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeV2");
     expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyV2");
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
     expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
@@ -46,6 +51,7 @@ describe("SECTION_RENDERERS", () => {
     const dirs: Record<(typeof RENDERER_KEYS)[number], string> = {
       HeroIntemporel: "hero",
       DeathNoticeIntemporel: "death-notice",
+      DeathNoticeV2: "death-notice/v2",
       CeremonyIntemporel: "ceremony",
       CeremonyV2: "ceremony/v2",
       RecitDeVieIntemporel: "life-story",
@@ -56,9 +62,9 @@ describe("SECTION_RENDERERS", () => {
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);
     }
-    // Every key is wired to a section, except the two V1 rollback targets.
+    // Every key is wired to a section, except the V1 rollback targets.
     const used = Object.values(SECTION_RENDERERS).flatMap((bySkin) => Object.values(bySkin ?? {}));
-    const rollbackOnly = ["CeremonyIntemporel", "RecitDeVieIntemporel"];
+    const rollbackOnly = ["DeathNoticeIntemporel", "CeremonyIntemporel", "RecitDeVieIntemporel"];
     expect([...new Set(used)].sort()).toEqual(RENDERER_KEYS.filter((key) => !rollbackOnly.includes(key)).sort());
   });
 });

@@ -21,6 +21,16 @@
   align-items: center;
 }
 
+/* Avis de décès V2 — the Memorial zone (the renderer's own SkinScope, a
+ * direct child of `.page`) spans the page's full width. Without it,
+ * `align-items: center` shrinks it to its content, and V2's
+ * `container-type: inline-size` wrapper has no intrinsic width: the Avis
+ * would collapse to 0px. Width only — the renderer still caps and
+ * centres itself (its own 1448px Desktop limit). */
+.page > [data-heritage-skin] {
+  align-self: stretch;
+}
+
 .builderBar {
   width: 100%;
   max-width: 28rem;

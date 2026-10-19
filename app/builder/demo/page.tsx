@@ -309,7 +309,7 @@ export default function QgRuntimeDemoPage() {
         return { label: "A02 — précisions", screen: <DeathNoticePrecisionsStep language={LANGUAGE} content={content} persist={persist} />};
       case "announcementPreview":
         return {
-          label: "A03 — aperçu de l'avis (DeathNoticeIntemporel)",
+          label: "A03 — aperçu de l'avis (DeathNoticeV2)",
           screen: <DeathNoticePreviewStep
             language={LANGUAGE}
             content={content}
