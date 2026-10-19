@@ -17,6 +17,7 @@ import { ChoiceCard } from "./ChoiceCard";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./AnnouncementChoiceStep.module.css";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 
 const OPTIONS: readonly { answer: A00Answer; title: TranslationKey; description: TranslationKey }[] = [
   { answer: "yes", title: "announcementChoice.yesTitle", description: "announcementChoice.yesDescription" },
@@ -32,7 +33,7 @@ interface AnnouncementChoiceStepProps {
   language: Language;
   content: MemorialContent;
   /** The bound `saveDraftAction`, exactly like every Guided Flow screen. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -45,6 +46,7 @@ interface AnnouncementChoiceStepProps {
  * recorded is restored when the screen is shown again.
  */
 export function AnnouncementChoiceStep({ language, content, persist }: AnnouncementChoiceStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const [selected, setSelected] = useState<A00Answer | null>(() => readAnnouncementChoice(content));
   const stepDone = useStepDone();
 
@@ -56,7 +58,7 @@ export function AnnouncementChoiceStep({ language, content, persist }: Announcem
     if (!committed.ok) return { status: "error" };
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       return { status: "error" };
     }

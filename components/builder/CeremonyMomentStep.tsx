@@ -20,6 +20,7 @@ import { ChoiceCard } from "./ChoiceCard";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./CeremonyMomentStep.module.css";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 
 interface CeremonyMomentStepProps {
   language: Language;
@@ -27,7 +28,7 @@ interface CeremonyMomentStepProps {
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momentUndecided" | "ceremony.momentNo"> = {
@@ -54,6 +55,7 @@ const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momen
  * `AnnouncementChoiceStep` uses for the identical reason.
  */
 export function CeremonyMomentStep({ language, content, persist }: CeremonyMomentStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [selected, setSelected] = useState<A04Answer | null>(() => readCeremonyMomentAnswer(content));
   const [submitError, setSubmitError] = useState(false);
@@ -76,7 +78,7 @@ export function CeremonyMomentStep({ language, content, persist }: CeremonyMomen
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

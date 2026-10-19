@@ -15,6 +15,12 @@ import { inter, playfairDisplay } from "./fonts";
 import { ProgressBar } from "./ProgressBar";
 import { PrimaryButton } from "./PrimaryButton";
 import styles from "./HeroRevealStep.module.css";
+import {
+  useDraftRevisionCoordinator,
+  useRevisionedDraftPersist,
+  type ConfigurationSaveResponse,
+  type DraftSaveTransport,
+} from "@/lib/builder/draft-revision";
 
 interface HeroRevealStepProps {
   language: Language;
@@ -35,12 +41,12 @@ interface HeroRevealStepProps {
    * screen is mounted. */
   initialSkinVariant: SkinVariant;
   /** A bound Server Action — same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
   /** A bound Server Action (app/builder/[memorialId]/hero-reveal-actions.ts)
    * — the ONLY write onto `memorials.skin_variant` this screen ever
    * makes, and only at the Continue click (never on every selector change —
    * see this component's own docstring, "Preview vs. confirmation"). */
-  saveSkinVariant: (skinVariant: string) => Promise<void>;
+  saveSkinVariant: (skinVariant: string) => Promise<ConfigurationSaveResponse | void>;
 }
 
 /**
@@ -144,6 +150,8 @@ export function HeroRevealStep({
   persist,
   saveSkinVariant,
 }: HeroRevealStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
+  const draftRevision = useDraftRevisionCoordinator();
   const stepDone = useStepDone();
 
   const [previewVariant, setPreviewVariant] = useState<SkinVariant>(initialSkinVariant);
@@ -172,7 +180,13 @@ export function HeroRevealStep({
     try {
       // Step 1 — durable FIRST. A rejection here leaves T08 incomplete;
       // nothing below ever runs.
-      await saveSkinVariant(previewVariant);
+      const result = await saveSkinVariant(previewVariant);
+      if (result?.status === "conflict") {
+        draftRevision?.reportConflict(content, { content, skinVariant: previewVariant });
+        setSubmitError(true);
+        setIsSubmitting(false);
+        return;
+      }
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -190,7 +204,7 @@ export function HeroRevealStep({
 
     try {
       // Step 3 — T08's own StepRecord becomes durable only here.
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

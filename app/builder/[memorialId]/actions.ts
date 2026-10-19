@@ -1,12 +1,21 @@
 "use server";
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
-import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repository";
-import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
+import { MemorialEditConflictError } from "@/lib/adapters/memorial-edit-repository";
+import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { isLanguage } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { withStoredPresentation } from "@/lib/memorial/section-visibility";
+import {
+  changedConfigurationMutation,
+  changedMemorialContentMutations,
+} from "@/lib/memorial/edit-mutations";
+import {
+  commitAuthorizedConfigurationEdit,
+  commitAuthorizedDraftEdit,
+} from "@/lib/memorial/persist-edit";
+import type { ConfigurationSaveResponse, DraftSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * Mission 021B (audit correction) — the one Server Action behind the
@@ -47,22 +56,30 @@ import { withStoredPresentation } from "@/lib/memorial/section-visibility";
  *     the authorization returned, never the raw parameter — the same
  *     discipline `authorizeMemorialAccess` documents for its verified
  *     `ownerId`;
- *   * the Supabase client is built HERE, server-side, per call, and is
- *     the session-scoped one (`createServerSupabaseClient`), never the
- *     service-role client: `memorial_drafts_update_own` is then a real
- *     second lock behind this explicit check;
- *   * it reuses `SupabaseDraftRepository.saveDraftContent` and creates
- *     no second draft store, no second authorization model, and no
- *     state of its own.
+ *   * the session-scoped client reads the current durable facts through
+ *     RLS; the edit repository's service-only RPC then repeats ownership,
+ *     lifecycle and revision checks under locks before writing;
+ *   * the server computes the real stored/submitted diff and submits every
+ *     changed target to Security V1. Unknown paths fail closed;
+ *   * the RPC changes the draft and appends any required audit event in
+ *     one transaction. A CAS or audit failure rejects this action.
  *
- * The return type is exactly Missions 007-010's autosave contract —
- * `Promise<{ updatedAt: string }>` — so lib/builder/autosave-controller.ts
- * and lib/builder/use-autosave.ts consume it unchanged.
+ * The successful result retains Missions 007-010's `updatedAt` and adds
+ * the durable draft revision. The client coordinator supplies that revision
+ * to every later write and treats a tagged conflict as non-retryable.
  */
 export async function saveDraftAction(
   memorialId: string,
   content: MemorialContent,
-): Promise<{ updatedAt: string }> {
+  expectedRevision: number,
+): Promise<DraftSaveResponse> {
+  if (typeof content !== "object" || content === null || Array.isArray(content)) {
+    throw new Error("Unsupported draft content.");
+  }
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error("Unsupported draft revision.");
+  }
+
   const access = await authorizeMemorialForRequest(memorialId);
 
   if (access.status !== "granted") {
@@ -75,20 +92,38 @@ export async function saveDraftAction(
   }
 
   const supabase = await createServerSupabaseClient();
-  const draftRepository = new SupabaseDraftRepository(supabase);
+  const editRepository = createSupabaseMemorialEditRepository(supabase);
+  const snapshot = await editRepository.load(access.memorialId);
+  if (snapshot === null) throw new Error("Draft save refused.");
 
   // « Gérer les rubriques visibles »: `presentation` is owned by
   // `saveSectionVisibilityAction` alone. A screen autosaves the whole
   // content it mounted with, which may predate a visibility change —
   // so the STORED value is always kept, never the client's copy
   // (lib/memorial/section-visibility.ts).
-  const stored = await draftRepository.getDraftContent(access.memorialId);
+  const nextContent = withStoredPresentation(content, snapshot.draft.content);
+  const mutations = changedMemorialContentMutations(snapshot.draft.content, nextContent);
 
-  // access.memorialId — the authorized id, never the raw argument.
-  return draftRepository.saveDraftContent(
-    access.memorialId,
-    withStoredPresentation(content, stored === null ? null : stored.content),
-  );
+  try {
+    const result = await commitAuthorizedDraftEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      expectedRevision,
+      content: nextContent,
+      operation: "content.saved",
+      mutations,
+    });
+    return { status: "saved", ...result };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -96,10 +131,9 @@ export async function saveDraftAction(
  *
  * Same shape and same rules as `saveDraftAction` above, deliberately:
  * re-authorized on EVERY call (never once at render time), the id used
- * is `access.memorialId` (the verified one), the Supabase client is
- * built here, server-side, per call, with the session-scoped client so
- * `memorials_update_own` is a real second lock, and a refusal REJECTS
- * rather than resolving with a fabricated success.
+ * is `access.memorialId` (the verified one), and the current lifecycle
+ * facts are re-read server-side before the Lot 1 policy and atomic RPC
+ * run. A refusal REJECTS rather than resolving with fabricated success.
  *
  * `language` is re-validated here against `config/languages.ts`'s
  * `LANGUAGES` (via `isLanguage`) even though `LanguageStep` never lets a
@@ -111,7 +145,14 @@ export async function saveDraftAction(
  * rejects before any Supabase call, the same "never a false success"
  * discipline as a denied authorization.
  */
-export async function saveLanguageAction(memorialId: string, language: string): Promise<void> {
+export async function saveLanguageAction(
+  memorialId: string,
+  expectedLanguage: string | null,
+  language: string,
+): Promise<ConfigurationSaveResponse> {
+  if (expectedLanguage !== null && !isLanguage(expectedLanguage)) {
+    throw new Error("Unsupported expected language.");
+  }
   if (!isLanguage(language)) {
     throw new Error("Unsupported language.");
   }
@@ -124,8 +165,28 @@ export async function saveLanguageAction(memorialId: string, language: string): 
   }
 
   const supabase = await createServerSupabaseClient();
-  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
+  const editRepository = createSupabaseMemorialEditRepository(supabase);
+  const snapshot = await editRepository.load(access.memorialId);
+  if (snapshot === null) throw new Error("Language save refused.");
 
-  // access.memorialId — the authorized id, never the raw argument.
-  return memorialConfigRepository.saveLanguage(access.memorialId, language);
+  try {
+    await commitAuthorizedConfigurationEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      target: "language",
+      expectedValue: expectedLanguage,
+      value: language,
+      mutations: changedConfigurationMutation("language", snapshot.language, language),
+    });
+    return { status: "saved" };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }

@@ -9,6 +9,7 @@ import { ChoiceCard } from "./ChoiceCard";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./LanguageStep.module.css";
+import type { ConfigurationSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * Each language's own name for itself (an autonym), not a translation
@@ -25,7 +26,10 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   es: "Español",
 };
 
-type LanguageStepState = { status: "idle" } | { status: "error"; message: string };
+type LanguageStepState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "conflict"; language: Language };
 
 const INITIAL_STATE: LanguageStepState = { status: "idle" };
 
@@ -36,7 +40,7 @@ interface LanguageStepProps {
    * repository or a live Supabase client (same discipline Mission 021B
    * established for the Builder's autosave `persist`).
    */
-  persist: (language: Language) => Promise<void>;
+  persist: (language: Language) => Promise<ConfigurationSaveResponse | void>;
 }
 
 /**
@@ -109,7 +113,8 @@ export function LanguageStep({ persist }: LanguageStepProps) {
     }
 
     try {
-      await persist(language);
+      const result = await persist(language);
+      if (result?.status === "conflict") return { status: "conflict", language };
     } catch {
       return { status: "error", message: translate("en", "errors.generic") };
     }
@@ -119,6 +124,27 @@ export function LanguageStep({ persist }: LanguageStepProps) {
   }
 
   const [state, formAction, isPending] = useActionState(submit, INITIAL_STATE);
+
+  function reloadAfterConflict() {
+    if (
+      state.status === "conflict" &&
+      window.confirm(translate(state.language, "autosave.conflictReloadConfirm"))
+    ) {
+      window.location.reload();
+    }
+  }
+
+  function downloadLanguageChoice() {
+    if (state.status !== "conflict") return;
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify({ language: state.language }, null, 2)], { type: "application/json" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "heritage-modifications-non-enregistrees.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <BuilderScreen progress={0.15}>
@@ -169,6 +195,18 @@ export function LanguageStep({ persist }: LanguageStepProps) {
           <p role="alert" className={styles.error}>
             {state.message}
           </p>
+        )}
+        {state.status === "conflict" && (
+          <div role="alert" className={styles.error}>
+            <p>{translate(state.language, "autosave.conflictTitle")}</p>
+            <p>{translate(state.language, "autosave.conflictBody")}</p>
+            <button type="button" onClick={downloadLanguageChoice}>
+              {translate(state.language, "autosave.conflictDownload")}
+            </button>
+            <button type="button" onClick={reloadAfterConflict}>
+              {translate(state.language, "autosave.conflictReload")}
+            </button>
+          </div>
         )}
       </form>
     </BuilderScreen>

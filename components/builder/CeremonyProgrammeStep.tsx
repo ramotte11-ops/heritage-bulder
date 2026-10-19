@@ -8,6 +8,7 @@ import type { CeremonyMoment } from "@/types/ceremony";
 import type { MemorialContent } from "@/types/memorial";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   addCeremonyProgrammeMoment,
   ceremonyStepProgress,
@@ -30,7 +31,7 @@ interface CeremonyProgrammeStepProps {
   language: Language;
   /** The memorial's current draft content. */
   content: MemorialContent;
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /** A moment being written or edited — lives only in this component's
@@ -93,6 +94,7 @@ function draftInput(draft: MomentDraft) {
  * moved moment and a polite live region announces its new position.
  */
 export function CeremonyProgrammeStep({ language, content: initialContent, persist }: CeremonyProgrammeStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [composer, setComposer] = useState<MomentDraft | null>(null);
@@ -111,7 +113,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
   // control receives focus once the list has re-rendered.
   const focusRequest = useRef<string | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readCeremonyProgrammeForEditing(content);
   const moments = read.status === "ready" ? read.moments : [];
@@ -261,7 +263,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
     }
 
     try {
-      await persist(written.content);
+      await saveDraft(written.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

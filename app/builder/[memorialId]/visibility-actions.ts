@@ -1,21 +1,24 @@
 "use server";
 
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
-import { SupabaseDraftRepository } from "@/lib/adapters/supabase/draft-repository";
-import { SupabaseMemorialConfigRepository } from "@/lib/adapters/supabase/memorial-config-repository";
+import { MemorialEditConflictError } from "@/lib/adapters/memorial-edit-repository";
+import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { SECTION_IDS, type SectionId } from "@/config/sections";
 import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
-import { setSectionVisibility } from "@/lib/memorial/section-visibility";
+import { isSectionHidden, setSectionVisibility } from "@/lib/memorial/section-visibility";
+import { commitAuthorizedDraftEdit } from "@/lib/memorial/persist-edit";
+import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * « Gérer les rubriques visibles » — the ONE write of
  * `memorial_drafts.content.presentation` (lib/memorial/section-visibility.ts).
  *
  * Same rules as every Guided Flow write in this route: re-authorized on
- * every call, the AUTHORIZED id only, a session-scoped client (RLS is
- * the second lock), arguments re-validated (they cross a network
- * boundary), and a refusal REJECTS — never a fabricated success.
+ * every call, the AUTHORIZED id only, arguments re-validated (they cross
+ * a network boundary), and a refusal REJECTS — never a fabricated
+ * success. The shared atomic RPC prevents this write from replacing a
+ * concurrent autosave.
  *
  * It re-reads the SAVED draft and changes nothing but
  * `presentation.hiddenSections`: hiding never deletes, showing again
@@ -29,9 +32,13 @@ export async function saveSectionVisibilityAction(
   memorialId: string,
   sectionId: string,
   visible: boolean,
-): Promise<void> {
+  expectedRevision: number,
+): Promise<DraftSaveResponse> {
   if (!(SECTION_IDS as readonly string[]).includes(sectionId) || typeof visible !== "boolean") {
     throw new Error("Unsupported section visibility.");
+  }
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error("Unsupported draft revision.");
   }
 
   const access = await authorizeMemorialForRequest(memorialId);
@@ -40,20 +47,15 @@ export async function saveSectionVisibilityAction(
   }
 
   const supabase = await createServerSupabaseClient();
-  const draftRepository = new SupabaseDraftRepository(supabase);
-  const memorialConfigRepository = new SupabaseMemorialConfigRepository(supabase);
-
-  const [config, draft] = await Promise.all([
-    memorialConfigRepository.findConfigById(access.memorialId),
-    draftRepository.getDraftContent(access.memorialId),
-  ]);
-  if (config === null || draft === null) {
+  const editRepository = createSupabaseMemorialEditRepository(supabase);
+  const snapshot = await editRepository.load(access.memorialId);
+  if (snapshot === null) {
     throw new Error("Section visibility save refused.");
   }
 
-  const skin = resolveSkinRuntime(config.skin);
+  const skin = resolveSkinRuntime(snapshot.skin);
   const next = setSectionVisibility(
-    draft.content,
+    snapshot.draft.content,
     sectionId as SectionId,
     visible,
     skin.status === "resolved" ? skin.skin : null,
@@ -62,5 +64,25 @@ export async function saveSectionVisibilityAction(
     throw new Error("This section cannot be hidden.");
   }
 
-  await draftRepository.saveDraftContent(access.memorialId, next.content);
+  const unchanged = isSectionHidden(snapshot.draft.content, sectionId as SectionId) === !visible;
+  try {
+    const result = await commitAuthorizedDraftEdit({
+      repository: editRepository,
+      access,
+      snapshot,
+      expectedRevision,
+      content: next.content,
+      operation: "visibility.changed",
+      mutations: unchanged ? [] : [{ kind: "visibility", target: sectionId }],
+    });
+    return { status: "saved", ...result };
+  } catch (error) {
+    if (
+      error instanceof MemorialEditConflictError ||
+      (typeof error === "object" && error !== null && "code" in error && error.code === "MEMORIAL_EDIT_CONFLICT")
+    ) {
+      return { status: "conflict" };
+    }
+    throw error;
+  }
 }

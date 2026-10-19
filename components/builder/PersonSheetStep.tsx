@@ -6,6 +6,7 @@ import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   commitPersonSheet,
   personSheetProgress,
@@ -33,7 +34,7 @@ interface PersonSheetStepProps {
   /** The memorial's current draft content — A09 is already guaranteed
    * resolved by the time this renders. */
   content: MemorialContent;
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -128,12 +129,13 @@ function LifeStoryField({ id, language, label, helper, initialValue, disabled, o
 }
 
 export function PersonSheetStep({ language, content: initialContent, persist }: PersonSheetStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readPersonSheetForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -179,7 +181,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -203,7 +205,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
     }
 
     try {
-      await persist(skipped.content);
+      await saveDraft(skipped.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

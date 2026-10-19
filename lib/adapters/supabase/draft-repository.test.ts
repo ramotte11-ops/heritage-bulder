@@ -36,7 +36,7 @@ describe("SupabaseDraftRepository.getDraftContent", () => {
   it("returns the draft's content and updatedAt when it exists and is reachable", async () => {
     const content = { hero: { title: "Éléonore Vasseur" } };
     const { client, from, select, eqAfterSelect } = fakeSupabaseClient({
-      data: { content, updated_at: "2026-01-01T00:00:00.000Z" },
+      data: { content, updated_at: "2026-01-01T00:00:00.000Z", revision: 7 },
       error: null,
     });
     const repository = new SupabaseDraftRepository(client);
@@ -44,9 +44,9 @@ describe("SupabaseDraftRepository.getDraftContent", () => {
     const result = await repository.getDraftContent("memorial-123");
 
     expect(from).toHaveBeenCalledWith("memorial_drafts");
-    expect(select).toHaveBeenCalledWith("content, updated_at");
+    expect(select).toHaveBeenCalledWith("content, updated_at, revision");
     expect(eqAfterSelect).toHaveBeenCalledWith("memorial_id", "memorial-123");
-    expect(result).toEqual({ content, updatedAt: "2026-01-01T00:00:00.000Z" });
+    expect(result).toEqual({ content, updatedAt: "2026-01-01T00:00:00.000Z", revision: 7 });
   });
 
   it("preserves nested/multi-section JSON content exactly, with no reshaping", async () => {
@@ -56,7 +56,7 @@ describe("SupabaseDraftRepository.getDraftContent", () => {
       story: { body: "Une vie pleine.", tags: ["famille", "voyages"] },
     };
     const { client } = fakeSupabaseClient({
-      data: { content, updated_at: "2026-01-01T00:00:00.000Z" },
+      data: { content, updated_at: "2026-01-01T00:00:00.000Z", revision: 8 },
       error: null,
     });
     const repository = new SupabaseDraftRepository(client);

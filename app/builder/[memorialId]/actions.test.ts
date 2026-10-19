@@ -54,11 +54,60 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
   SupabaseMemorialConfigRepository,
 }));
 
+const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
+  createSupabaseMemorialEditRepository: vi.fn(),
+}));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
+}));
+
+createSupabaseMemorialEditRepository.mockImplementation((client) => {
+  // Keep the historical repository-boundary assertions meaningful while
+  // adapting them to Security V1's centralized persistence envelope.
+  new SupabaseDraftRepository(client);
+  new SupabaseMemorialConfigRepository(client);
+  return {
+    load: async (memorialId: string) => {
+      const stored = await getDraftContent(memorialId);
+      return {
+        status: "draft",
+        firstPublishedAt: null,
+        language: null,
+        skin: "intemporel",
+        skinVariant: "light",
+        draft: {
+          content: stored?.content ?? {},
+          updatedAt: stored?.updatedAt ?? "2026-01-01T00:00:00.000Z",
+          revision: 0,
+        },
+      };
+    },
+    commitDraft: async (input: { memorialId: string; content: unknown }) => ({
+      ...(await saveDraftContent(input.memorialId, input.content)),
+      revision: 1,
+    }),
+    commitConfiguration: async (input: { memorialId: string; value: string }) =>
+      saveLanguage(input.memorialId, input.value),
+  };
+});
+
 // Imported after the mocks above are registered.
-const { saveDraftAction, saveLanguageAction } = await import("./actions");
+const { saveDraftAction: saveDraftActionTransport, saveLanguageAction: saveLanguageTransport } = await import("./actions");
 
 const MEMORIAL_ID = "memorial-abc";
-const CONTENT = { hero: { title: "Edited by the family" } };
+const CONTENT = { hero: { displayName: "Edited by the family" } };
+const saveDraftAction = (memorialId: string, content: Parameters<typeof saveDraftActionTransport>[1]) =>
+  saveDraftActionTransport(memorialId, content, 0);
+const saveLanguageAction = async (memorialId: string, language: string) => {
+  const result = await saveLanguageTransport(memorialId, null, language);
+  return result.status === "saved" ? undefined : result;
+};
 
 function granted(memorialId = MEMORIAL_ID) {
   return { status: "granted", ownerId: "owner-a", memorialId };
@@ -91,7 +140,7 @@ describe("saveDraftAction — authorization on every single save", () => {
     const result = await saveDraftAction(MEMORIAL_ID, CONTENT);
 
     expect(saveDraftContent).toHaveBeenCalledExactlyOnceWith(MEMORIAL_ID, CONTENT);
-    expect(result).toEqual({ updatedAt: "2026-02-01T00:00:00.000Z" });
+    expect(result).toEqual({ status: "saved", updatedAt: "2026-02-01T00:00:00.000Z", revision: 1 });
   });
 
   it("writes to the id the authorization returned, never the one it was handed", async () => {
@@ -363,7 +412,11 @@ describe("saveDraftAction — the shape of the boundary", () => {
       .split(",")
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
-    expect(parameters).toEqual(["memorialId: string", "content: MemorialContent"]);
+    expect(parameters).toEqual([
+      "memorialId: string",
+      "content: MemorialContent",
+      "expectedRevision: number",
+    ]);
   });
 
   it("never builds a second authorization mechanism of its own", () => {
@@ -394,7 +447,11 @@ describe("saveLanguageAction — the shape of the boundary", () => {
     // `language: string`, not `language: Language` — a Server Action
     // argument crosses a network boundary and must be re-validated here
     // (isLanguage), never merely typed and trusted.
-    expect(parameters).toEqual(["memorialId: string", "language: string"]);
+    expect(parameters).toEqual([
+      "memorialId: string",
+      "expectedLanguage: string | null",
+      "language: string",
+    ]);
   });
 
   it("re-validates language against the canonical LANGUAGES before doing anything else", () => {

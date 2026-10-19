@@ -12,6 +12,7 @@ import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
 import type { MediaDeletion } from "@/lib/media/delete-media";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { precheckHeroPhotoFile } from "@/lib/media/precheck-upload";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
@@ -41,7 +42,7 @@ interface HeroPhotoStepProps {
    * brief section 16). */
   initialPhoto: { media: Media; readUrl: string } | null;
   /** A bound Server Action — same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
   /** Bound Server Actions — `memorialId` is already baked in server-side
    * (app/builder/[memorialId]/media-actions.ts), so nothing here ever
    * holds a raw memorial id to misuse. */
@@ -168,6 +169,7 @@ export function HeroPhotoStep({
   finalizeUpload,
   retireUpload,
 }: HeroPhotoStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
@@ -177,7 +179,7 @@ export function HeroPhotoStep({
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { state: autosaveState, retry: retryAutosave, flush } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -228,7 +230,8 @@ export function HeroPhotoStep({
       // media is ever asked to be retired. An explicit, awaited call —
       // never merely `setContent` handed to the debounced autosave —
       // because only this gives a definite yes/no to gate the retire on.
-      await persist(written.content);
+      await flush();
+      await saveDraft(written.content);
 
       setContent(written.content);
       setPhoto({ status: "ready", media: finalizedMedia, displayUrl: localPreviewUrl, errorMessage: null });
@@ -273,7 +276,8 @@ export function HeroPhotoStep({
 
     setIsSubmitting(true);
     try {
-      await persist(committed.content);
+      await flush();
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

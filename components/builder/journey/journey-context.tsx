@@ -14,6 +14,7 @@ import {
   hasIncompleteNativeInput,
   PendingInputRegistryContext,
 } from "./pending-input";
+import { useDraftRevisionCoordinator, type DraftSaveResponse } from "@/lib/builder/draft-revision";
 
 /**
  * B03 — « Mon parcours »: what the entry (`JourneyEntry`, rendered by
@@ -97,13 +98,14 @@ export function RouteJourneyProvider({
    * `saveSectionVisibilityAction` for the AUTHORIZED memorial. */
   visibility?: {
     sections: SectionVisibilityEntry[];
-    save: (sectionId: string, visible: boolean) => Promise<void>;
+    save: (sectionId: string, visible: boolean, expectedRevision: number) => Promise<DraftSaveResponse>;
   } | null;
   builderPath: string;
   children: ReactNode;
 }) {
   const router = useRouter();
   const registry = useContext(PreviewFlushRegistryContext);
+  const draftRevision = useDraftRevisionCoordinator();
   const [pendingInputs] = useState(createPendingInputRegistry);
 
   // Closing or reloading the tab with unsaved, incomplete input: the
@@ -126,17 +128,23 @@ export function RouteJourneyProvider({
         return false;
       }
     }
+
+    async function canLeaveCurrentScreen(): Promise<boolean> {
+      if (draftRevision?.conflictContent != null) return false;
+      if (!(await drained())) return false;
+      return draftRevision?.conflictContent == null;
+    }
     return {
       language,
       snapshot,
       skinVariant,
       async openScreen(id) {
-        if (!(await drained())) return false;
+        if (!(await canLeaveCurrentScreen())) return false;
         router.push(`${builderPath}?etape=${id}`);
         return true;
       },
       async resume() {
-        if (!(await drained())) return false;
+        if (!(await canLeaveCurrentScreen())) return false;
         router.push(builderPath);
         return true;
       },
@@ -151,9 +159,15 @@ export function RouteJourneyProvider({
           : {
               sections: visibility.sections,
               async setVisible(sectionId, visible) {
-                if (!(await drained())) return false;
+                if (!(await canLeaveCurrentScreen())) return false;
                 try {
-                  await visibility.save(sectionId, visible);
+                  if (draftRevision === null) {
+                    await visibility.save(sectionId, visible, 0);
+                  } else {
+                    await draftRevision.commit(null, (expectedRevision) =>
+                      visibility.save(sectionId, visible, expectedRevision),
+                    );
+                  }
                 } catch {
                   return false;
                 }
@@ -162,7 +176,7 @@ export function RouteJourneyProvider({
               },
             },
     };
-  }, [language, snapshot, skinVariant, visibility, builderPath, router, registry, pendingInputs]);
+  }, [language, snapshot, skinVariant, visibility, builderPath, router, registry, pendingInputs, draftRevision]);
 
   return (
     <PendingInputRegistryContext.Provider value={pendingInputs}>

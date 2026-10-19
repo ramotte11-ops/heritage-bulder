@@ -31,7 +31,45 @@ vi.mock("@/lib/adapters/supabase/memorial-config-repository", () => ({
   }),
 }));
 
-const { saveSectionVisibilityAction } = await import("./visibility-actions");
+const { createSupabaseMemorialEditRepository } = vi.hoisted(() => ({
+  createSupabaseMemorialEditRepository: vi.fn(),
+}));
+const { MemorialEditConflictError } = vi.hoisted(() => ({
+  MemorialEditConflictError: class MemorialEditConflictError extends Error {
+    readonly code = "MEMORIAL_EDIT_CONFLICT";
+  },
+}));
+vi.mock("@/lib/adapters/supabase/memorial-edit-repository", () => ({
+  createSupabaseMemorialEditRepository,
+  MemorialEditConflictError,
+}));
+
+createSupabaseMemorialEditRepository.mockImplementation(() => ({
+  load: async (memorialId: string) => {
+    const [draft, config] = await Promise.all([
+      getDraftContent(memorialId),
+      findConfigById(memorialId),
+    ]);
+    if (!draft || !config) return null;
+    return {
+      status: "draft",
+      firstPublishedAt: null,
+      language: "fr",
+      skin: config.skin,
+      skinVariant: "light",
+      draft: { ...draft, revision: 0 },
+    };
+  },
+  commitDraft: async (input: { memorialId: string; content: unknown }) => ({
+    ...(await saveDraftContent(input.memorialId, input.content)),
+    revision: 1,
+  }),
+  commitConfiguration: vi.fn(),
+}));
+
+const { saveSectionVisibilityAction: saveSectionVisibilityTransport } = await import("./visibility-actions");
+const saveSectionVisibilityAction = (memorialId: string, sectionId: string, visible: boolean) =>
+  saveSectionVisibilityTransport(memorialId, sectionId, visible, 0);
 
 const DRAFT = fullAnnouncement();
 

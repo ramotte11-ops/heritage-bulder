@@ -526,6 +526,11 @@ export const TRANSLATION_KEYS = [
   "autosave.error",
   "autosave.offline",
   "autosave.retry",
+  "autosave.conflictTitle",
+  "autosave.conflictBody",
+  "autosave.conflictDownload",
+  "autosave.conflictReload",
+  "autosave.conflictReloadConfirm",
   // Builder continuity mission — the Guided Flow's own resting screen
   // once every step built so far is behind the family
   // (components/builder/GuidedFlowPause.tsx). Replaces

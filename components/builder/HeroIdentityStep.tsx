@@ -7,6 +7,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { HeroDate } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   commitPageA,
   heroStepProgress,
@@ -31,7 +32,7 @@ interface HeroIdentityStepProps {
   /** A bound Server Action — `saveDraftAction.bind(null, memorialId)` —
    * the exact same seam BuilderShell's autosave already uses (Mission
    * 021B). Never a closure over a repository or a live Supabase client. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 type DateErrorKind = "date" | "chronology" | null;
@@ -84,6 +85,7 @@ export function HeroIdentityStep({
   content: initialContent,
   persist,
 }: HeroIdentityStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -96,7 +98,7 @@ export function HeroIdentityStep({
   // section-toggle model — every field write below produces a NEW
   // `content` value (never a mutation), which is what drives the
   // debounced autosave while the family types.
-  const { state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { state: autosaveState, retry: retryAutosave, flush } = useAutosave({ content, persist: saveDraft });
 
   const read = readHeroForEditing(content);
 
@@ -148,7 +150,8 @@ export function HeroIdentityStep({
 
     setIsSubmitting(true);
     try {
-      await persist(committed.content);
+      await flush();
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);

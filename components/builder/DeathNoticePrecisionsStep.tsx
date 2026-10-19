@@ -8,6 +8,7 @@ import type { TranslationKey } from "@/lib/i18n/keys";
 import type { DeathNoticePrecisionField } from "@/lib/memorial/death-notice";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   commitA02,
   deathNoticeStepProgress,
@@ -28,7 +29,7 @@ interface DeathNoticePrecisionsStepProps {
    * done by the time this renders (see app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /** The five precisions, in the order the mission brief's own UX map
@@ -88,13 +89,14 @@ export function DeathNoticePrecisionsStep({
   content: initialContent,
   persist,
 }: DeathNoticePrecisionsStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [openedFields, setOpenedFields] = useState<ReadonlySet<DeathNoticePrecisionField>>(() => new Set());
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readDeathNoticeForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -135,7 +137,7 @@ export function DeathNoticePrecisionsStep({
     }
 
     try {
-      await persist(committed.content);
+      await saveDraft(committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -159,7 +161,7 @@ export function DeathNoticePrecisionsStep({
     }
 
     try {
-      await persist(skipped.content);
+      await saveDraft(skipped.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

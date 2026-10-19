@@ -11,6 +11,7 @@ import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { commitA13, galleryStepProgress, readGalleryForEditing, skipA13 } from "@/lib/builder/guided-flow/gallery-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
@@ -26,7 +27,7 @@ interface GalleryStepProps {
   content: MemorialContent;
   /** Resolved server-side (`resolveGalleryStepData`): mediaId -> short-lived read URL, never persisted. */
   thumbnails: GalleryStepThumbnails;
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
   /** Bound Gallery actions — memorialId and purpose `"gallery"` fixed server-side. */
   reserveUpload: (declaredMimeType: string) => Promise<MediaResult<ReservedUpload>>;
   finalizeUpload: (mediaId: string) => Promise<MediaResult<Media>>;
@@ -58,13 +59,14 @@ export function GalleryStep({
   finalizeUpload,
   retirePhoto,
 }: GalleryStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
   const [workshopBusy, setWorkshopBusy] = useState(false);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist });
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
 
   const read = readGalleryForEditing(content);
   const isSubmitting = pendingAction !== null;
@@ -90,7 +92,7 @@ export function GalleryStep({
     }
 
     try {
-      await persist(resolved.content);
+      await saveDraft(resolved.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -132,7 +134,7 @@ export function GalleryStep({
           content={content}
           setContent={setContent}
           flush={flush}
-          persist={persist}
+        persist={saveDraft}
           initialThumbnails={thumbnails}
           reserveUpload={reserveUpload}
           finalizeUpload={finalizeUpload}

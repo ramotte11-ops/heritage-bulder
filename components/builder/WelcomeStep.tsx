@@ -10,6 +10,7 @@ import { PrimaryButton } from "./PrimaryButton";
 import { playfairDisplay, inter, ebGaramond } from "./fonts";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./WelcomeStep.module.css";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 
 /** The Ceremony title's own botanical sprig, reused as-is (never
  * modified): the one decorative image on this screen besides the
@@ -25,7 +26,7 @@ interface WelcomeStepProps {
   content: MemorialContent;
   /** The bound `saveDraftAction`, exactly like every Guided Flow
    * screen's own `persist`. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: DraftSaveTransport;
 }
 
 /**
@@ -43,11 +44,12 @@ interface WelcomeStepProps {
  * face) for the welcome copy, title included.
  */
 export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
+  const saveDraft = useRevisionedDraftPersist(persist);
   const router = useRouter();
 
   async function submit(): Promise<WelcomeStepState> {
     try {
-      await persist(commitWelcome(content));
+      await saveDraft(commitWelcome(content));
     } catch {
       return { status: "error" };
     }

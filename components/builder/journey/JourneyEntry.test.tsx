@@ -5,6 +5,8 @@ import type { MemorialContent } from "@/types/memorial";
 import { resolveJourney } from "@/lib/builder/guided-flow/journey";
 import { throughA02 } from "@/lib/memorial/assembly/test-fixtures";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
+import { DraftRevisionProvider, useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
+import { DraftConflictNotice } from "@/components/builder/DraftConflictNotice";
 
 const { routerPush, routerReplace, routerRefresh, useRouter } = vi.hoisted(() => {
   const push = vi.fn();
@@ -62,6 +64,41 @@ const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const blockToggle = (title: string) => screen.getByRole("button", { name: new RegExp(`^${escapeRe(title)}`) });
 const openBlock = (title: string) => fireEvent.click(blockToggle(title));
 const ALL_BLOCKS = ["Votre proche", "L'annonce de décès", "La cérémonie", "Traditions & repères", "Quelques mots sur la personne", "Vos souvenirs en images"];
+
+function ConflictTrigger() {
+  const coordinator = useDraftRevisionCoordinator();
+  return (
+    <button type="button" onClick={() => coordinator?.reportConflict(PARTIAL)}>
+      Déclarer un conflit
+    </button>
+  );
+}
+
+function renderConflictedRoute({
+  revising = null,
+  visibility,
+}: {
+  revising?: Parameters<typeof resolveJourney>[1];
+  visibility?: Parameters<typeof RouteJourneyProvider>[0]["visibility"];
+} = {}) {
+  render(
+    <DraftRevisionProvider initialRevision={4} initialContent={PARTIAL}>
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider
+          language="fr"
+          snapshot={resolveJourney(PARTIAL, revising)}
+          visibility={visibility}
+          builderPath="/builder/m-1"
+        >
+          <DraftConflictNotice language="fr" />
+          <BuilderScreenNav />
+          <ConflictTrigger />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>
+    </DraftRevisionProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Déclarer un conflit" }));
+}
 
 describe("« Mon parcours » — the entry", () => {
   it("renders nothing outside a journey (T01, the Welcome)", () => {
@@ -126,6 +163,28 @@ describe("« Mon parcours » — the panel's content", () => {
 });
 
 describe("« Mon parcours » — navigation", () => {
+  it("a declared conflict blocks Revoir and keeps the export action on the current screen", async () => {
+    renderConflictedRoute();
+    openPanel();
+    openBlock("Votre proche");
+    const review = screen.getByRole("button", { name: "Revoir — Nom et dates" });
+    fireEvent.click(review);
+
+    await waitFor(() => expect(review).toHaveProperty("disabled", false));
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Télécharger mes modifications" })).toBeTruthy();
+  });
+
+  it("a declared conflict blocks Reprendre without reloading or discarding local values", async () => {
+    renderConflictedRoute({ revising: "identity" });
+    const resume = screen.getByRole("button", { name: "Reprendre où j'en étais" });
+    fireEvent.click(resume);
+
+    await waitFor(() => expect(resume).toHaveProperty("disabled", false));
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Télécharger mes modifications" })).toBeTruthy();
+  });
+
   it("shows feedback on the activated « Revoir » while the autosave drain is pending", async () => {
     let release: () => void = () => {};
     const registry = createPreviewFlushRegistry();
@@ -541,7 +600,7 @@ describe("« Gérer les rubriques visibles »", () => {
     manage();
     fireEvent.click(screen.getByRole("button", { name: "Masquer — L'annonce de décès" }));
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-    expect(save).toHaveBeenCalledWith("deathNotice", false);
+    expect(save).toHaveBeenCalledWith("deathNotice", false, 0);
     expect(order).toEqual(["flush", "save", "refresh"]);
     expect(routerPush).not.toHaveBeenCalled();
     routerRefresh.mockReset();
@@ -551,7 +610,21 @@ describe("« Gérer les rubriques visibles »", () => {
     const save = renderVisibility();
     manage();
     fireEvent.click(screen.getByRole("button", { name: "Réafficher — La cérémonie" }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith("ceremony", true));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("ceremony", true, 0));
+  });
+
+  it("a declared conflict blocks visibility writes and never refreshes the route", async () => {
+    const save = vi.fn();
+    renderConflictedRoute({ visibility: { sections: ENTRIES, save } });
+    openPanel();
+    manage();
+    const hide = screen.getByRole("button", { name: "Masquer — L'annonce de décès" });
+    fireEvent.click(hide);
+
+    await waitFor(() => expect(hide).toHaveProperty("disabled", false));
+    expect(save).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Télécharger mes modifications" })).toBeTruthy();
   });
 
   it("a failed save changes nothing and says so calmly", async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { BuilderMemorial, MemorialContent } from "@/types/memorial";
+import type { BuilderMemorial } from "@/types/memorial";
 import {
   createInitialBuilderState,
   getManagedSections,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/builder/builder-state";
 import type { DemoSectionContent } from "@/lib/builder/demo-content";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { SectionList } from "./SectionList";
 import { SectionEditor } from "./SectionEditor";
 import { MemorialPreview } from "./MemorialPreview";
@@ -70,7 +71,7 @@ export function BuilderShell({
    * closure over a server-side Supabase client. Same contract as
    * Missions 007-010 either way: resolve with the row's new
    * `updatedAt`, reject on refusal or failure — never a false success. */
-  persist?: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist?: DraftSaveTransport;
 }) {
   const [state, setState] = useState<BuilderState>(() => createInitialBuilderState(memorial));
   const { selectedSectionId } = state;
@@ -78,7 +79,8 @@ export function BuilderShell({
   // Observes state.content — the Builder's one existing source of
   // truth — rather than tracking a second, parallel copy of it. See
   // use-autosave.ts for why the mount value is never itself "saved".
-  useAutosave({ content: state.content, persist });
+  const saveDraft = useRevisionedDraftPersist(persist);
+  useAutosave({ content: state.content, persist: saveDraft });
 
   const managedSections = getManagedSections(state);
   const previewSections = getPreviewSections(state);
