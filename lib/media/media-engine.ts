@@ -1,6 +1,7 @@
 import type { MediaObjectStore } from "@/lib/adapters/media-object-store";
 import type { MediaRepository } from "@/lib/adapters/media-repository";
 import type { MemorialOwnershipRepository } from "@/lib/adapters/memorial-ownership-repository";
+import type { MediaSecurityRepository } from "@/lib/adapters/media-security-repository";
 
 /**
  * Mission 030 — the dependencies every media primitive shares.
@@ -28,6 +29,7 @@ import type { MemorialOwnershipRepository } from "@/lib/adapters/memorial-owners
 export interface MediaEngineDeps {
   /** Resolves the ground truth for "who owns this memorial". */
   memorialOwnershipRepository: MemorialOwnershipRepository;
+  mediaSecurityRepository: MediaSecurityRepository;
   mediaRepository: MediaRepository;
   objectStore: MediaObjectStore;
   /**

@@ -60,7 +60,9 @@ export interface MediaRepository {
    */
   markReady(input: {
     memorialId: string;
+    ownerId: string;
     mediaId: string;
+    expectedPurpose: MediaPurpose;
     mimeType: string;
     sizeBytes: number;
     width: number | null;

@@ -16,10 +16,11 @@ async function readyMedia(
   engine: ReturnType<typeof createTestEngine>,
   memorialId = MEMORIAL_A,
   ownerId = OWNER_A,
+  purpose: "hero" | "gallery" = "gallery",
 ) {
   const reserved = await reserveMediaUpload(engine, ownerActor(ownerId), {
     memorialId,
-    purpose: "gallery",
+    purpose,
     declaredMimeType: "image/jpeg",
   });
   if (!reserved.ok) throw new Error("reservation failed");
@@ -273,5 +274,21 @@ describe("deleteMedia — a pending reservation", () => {
 
     expect(result).toEqual({ ok: true, value: { removed: true } });
     expect(engine.mediaRepository.rows.size).toBe(0);
+  });
+});
+
+describe("deleteMedia — Security V1 publication lifecycle", () => {
+  it("refuses Hero retirement after first publication without touching Storage or the row", async () => {
+    const engine = createTestEngine();
+    const media = await readyMedia(engine, MEMORIAL_A, OWNER_A, "hero");
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published", firstPublishedAt: "2026-10-19T10:00:00.000Z", draftRevision: 2,
+    });
+
+    expect(await deleteMedia(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: media.mediaId,
+    })).toEqual({ ok: false, code: "access_denied" });
+    expect(engine.objectStore.objects.has(media.storagePath)).toBe(true);
+    expect(engine.mediaRepository.rows.has(media.mediaId)).toBe(true);
   });
 });

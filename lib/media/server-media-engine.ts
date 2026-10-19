@@ -3,6 +3,7 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-cli
 import { SupabaseMediaRepository } from "@/lib/adapters/supabase/media-repository";
 import { SupabaseMediaObjectStore } from "@/lib/adapters/supabase/media-object-store";
 import { SupabaseMemorialOwnershipRepository } from "@/lib/adapters/supabase/memorial-ownership-repository";
+import { SupabaseMediaSecurityRepository } from "@/lib/adapters/supabase/media-security-repository";
 import type { MediaEngineDeps } from "./media-engine";
 
 /**
@@ -38,6 +39,7 @@ export function createServerMediaEngineDeps(): MediaEngineDeps {
 
   return {
     memorialOwnershipRepository: new SupabaseMemorialOwnershipRepository(client),
+    mediaSecurityRepository: new SupabaseMediaSecurityRepository(client),
     mediaRepository: new SupabaseMediaRepository(client),
     objectStore: new SupabaseMediaObjectStore(client),
     // A fresh, opaque, unguessable id per upload — see MediaEngineDeps's

@@ -888,3 +888,37 @@ describe("finalizeMediaUpload — expectedPurpose (dette D1)", () => {
     expect(result.ok && result.value.purpose).toBe("gallery");
   });
 });
+
+describe("Security V1 — publication lifecycle", () => {
+  it("locks every Hero reservation after the first publication while keeping Gallery open", async () => {
+    const engine = createTestEngine();
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published",
+      firstPublishedAt: "2026-10-19T10:00:00.000Z",
+      draftRevision: 4,
+    });
+
+    expect(await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "hero", declaredMimeType: "image/jpeg",
+    })).toEqual({ ok: false, code: "access_denied" });
+
+    expect((await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "gallery", declaredMimeType: "image/jpeg",
+    })).ok).toBe(true);
+  });
+
+  it("does not finalize a Hero reservation that publication overtook", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { purpose: "hero", bytes: JPEG_BYTES });
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published",
+      firstPublishedAt: "2026-10-19T10:00:00.000Z",
+      draftRevision: 1,
+    });
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "access_denied" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+  });
+});

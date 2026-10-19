@@ -4,6 +4,8 @@ import type { Media } from "@/types/media";
 import { mediaFailure, mediaSuccess, type MediaResult } from "./media-errors";
 import { buildMediaObjectPrefix, isPathWithinMemorial } from "./media-path";
 import type { MediaEngineDeps } from "./media-engine";
+import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
+import { MediaSecurityDeniedError, MediaSecurityRetainedError } from "@/lib/adapters/media-security-repository";
 
 /**
  * Mission 030 — deleting a media, safely and repeatably.
@@ -42,6 +44,7 @@ import type { MediaEngineDeps } from "./media-engine";
 export interface MediaDeletion {
   /** `false` when there was already nothing to delete. */
   removed: boolean;
+  retained?: "referenced";
 }
 
 export async function deleteMedia(
@@ -73,12 +76,52 @@ export async function deleteMedia(
     return mediaSuccess({ removed: false });
   }
 
+  let authorized;
+  try {
+    authorized = await authorizeMediaEdit(deps, actor, access, mediaTarget(media.purpose, "retire"));
+  } catch {
+    return mediaFailure("storage_unavailable");
+  }
+  if (authorized === null) return mediaFailure("access_denied");
+
   // The stored path is checked against the memorial we authorized
   // against before anything is removed. Ownership was proven for a
   // MEMORIAL; this is what stops a tampered row from pointing that
   // proven authority at another family's object.
   if (!isPathWithinMemorial(media.storagePath, access.memorialId)) {
     return mediaFailure("storage_unavailable");
+  }
+
+  // A pending upload is not usable and cannot be referenced by a published
+  // memorial. Once the current lifecycle authorization has passed it can use
+  // the existing idempotent cleanup path without a ready-media retirement
+  // lease. In particular, a pending Hero is still refused after publication.
+  if (media.status === "pending") {
+    try {
+      await deps.objectStore.removeByPrefix({
+        prefix: buildMediaObjectPrefix({ memorialId: access.memorialId, mediaId: input.mediaId }),
+      });
+      const removed = await deps.mediaRepository.deleteById({ memorialId: access.memorialId, mediaId: input.mediaId });
+      return mediaSuccess({ removed });
+    } catch {
+      return mediaFailure("storage_unavailable");
+    }
+  }
+
+  let lease;
+  try {
+    lease = await deps.mediaSecurityRepository.reserveRetirement({
+      memorialId: access.memorialId,
+      ownerId: access.ownerId,
+      mediaId: media.id,
+      purpose: media.purpose,
+      expectedRevision: authorized.draftRevision,
+    });
+  } catch (error) {
+    if (error instanceof MediaSecurityRetainedError) {
+      return mediaSuccess({ removed: false, retained: "referenced" });
+    }
+    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
   }
 
   try {
@@ -97,15 +140,37 @@ export async function deleteMedia(
     // produce exactly the orphan this ordering exists to prevent.
     // Leaving both means the media still works and the caller can
     // retry.
+    try {
+      await deps.mediaSecurityRepository.finishRetirement({
+        memorialId: access.memorialId,
+        ownerId: access.ownerId,
+        purpose: media.purpose,
+        leaseId: lease.leaseId,
+        outcome: "cancelled",
+      });
+    } catch {
+      // An unfinished durable lease is intentionally left for explicit
+      // reconciliation. Publication remains blocked for Hero.
+    }
     return mediaFailure("storage_unavailable");
   }
 
   try {
-    const removed = await deps.mediaRepository.deleteById({
+    await deps.mediaSecurityRepository.finishRetirement({
+      memorialId: access.memorialId,
+      ownerId: access.ownerId,
+      purpose: media.purpose,
+      leaseId: lease.leaseId,
+      outcome: "completed",
+    });
+    await deps.mediaRepository.deleteById({
       memorialId: access.memorialId,
       mediaId: input.mediaId,
     });
-    return mediaSuccess({ removed });
+    // The locked finish RPC may already have removed the row atomically.
+    // This call began from a real row and completed both Storage and the
+    // durable lease, so `removed: true` remains the accurate operation result.
+    return mediaSuccess({ removed: true });
   } catch {
     // The recoverable half of the window described above: the object is
     // gone, the row survives, and calling again completes it.

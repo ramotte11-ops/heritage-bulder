@@ -6,6 +6,8 @@ import type { Media } from "@/types/media";
 import { listMemorialMedia, createMediaReadUrl } from "@/lib/media/read-media";
 import { deleteMedia } from "@/lib/media/delete-media";
 import { reconcileHeroPhotoMedia, readHeroForEditing } from "./hero-step";
+import { authorizeMemorialAccess } from "@/lib/auth/memorial-access";
+import { authorizeMediaEdit } from "@/lib/media/authorize-media-edit";
 
 /**
  * Mission 033 — everything `app/builder/[memorialId]/page.tsx` needs to
@@ -177,6 +179,21 @@ async function reconcileAndRetireHeroMedia(
   // decision itself, which the caller (page.tsx) has already made
   // before ever reaching this function.
   const readyHeroMedia = heroMedia.ok ? heroMedia.value : [];
+
+  // Reconciliation used to be a write-capable read path. After the first
+  // publication it must remain read-only: it may display the already-canonical
+  // Hero, but it must neither adopt a late upload nor retire an older one.
+  const access = await authorizeMemorialAccess(deps.mediaEngine, actor, memorialId);
+  const mayMutate = access.status === "granted"
+    ? await authorizeMediaEdit(deps.mediaEngine, actor, access, "hero.finalize").catch(() => null)
+    : null;
+  if (mayMutate === null) {
+    const read = readHeroForEditing(content);
+    const canonical = read.status === "ready" && read.hero.photo !== null
+      ? readyHeroMedia.find((candidate) => candidate.id === read.hero.photo?.mediaId) ?? null
+      : null;
+    return { content, readyHeroMedia, canonical };
+  }
 
   // Step 1 — reconcile and PERSIST an eventual still-unadopted `ready`
   // media BEFORE anything below ever considers cleaning anything up.

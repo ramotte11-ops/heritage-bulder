@@ -53,6 +53,13 @@ async function readyHeroMedia(
 
 const EMPTY_CONTENT: MemorialContent = {};
 
+function contentWithT06Completed(mediaId: string): MemorialContent {
+  return {
+    hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId, crop: null } },
+    guidedFlow: { T06: { status: "completed" } },
+  } as MemorialContent;
+}
+
 describe("resolveHeroPhotoStepData", () => {
   it("returns the content unchanged and no initialPhoto when there is no ready hero media at all", async () => {
     const engine = createTestEngine();
@@ -367,15 +374,6 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
 });
 
 describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T06", () => {
-  /** A Hero already fully done, T06 included — the exact shape a
-   * memorial has once the family has clicked Continue on PAGE C. */
-  function contentWithT06Completed(mediaId: string): MemorialContent {
-    return {
-      hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId, crop: null } },
-      guidedFlow: { T06: { status: "completed" } },
-    } as MemorialContent;
-  }
-
   it("retries retiring a stale ready hero media even though T06 is already completed", async () => {
     const engine = createTestEngine();
     const draftRepository = new FakeDraftRepository();
@@ -518,5 +516,28 @@ describe("resolveHeroPhotoStepData — MemorialVersion's own content shape", () 
     );
 
     expect(result.content).toBe(draft.content);
+  });
+});
+
+describe("resolveHeroPhotoStepData — Security V1 publication lock", () => {
+  it("never adopts or retires Hero media after first publication", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const late = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published", firstPublishedAt: "2026-10-19T10:00:00.000Z", draftRevision: 8,
+    });
+
+    const result = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository }, ownerActor(OWNER_A), MEMORIAL_A, content,
+    );
+
+    expect(result).toBe(content);
+    expect(draftRepository.saved).toEqual([]);
+    expect(engine.mediaRepository.rows.has(canonical.id)).toBe(true);
+    expect(engine.mediaRepository.rows.has(late.id)).toBe(true);
   });
 });

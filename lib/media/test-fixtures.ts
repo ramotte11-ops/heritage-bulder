@@ -5,6 +5,7 @@ import type { HeritageActor } from "@/lib/auth/heritage-actor";
 import type { Media } from "@/types/media";
 import type { MediaPurpose, MediaStatus } from "@/config/media";
 import type { MediaEngineDeps } from "./media-engine";
+import type { MediaSecurityRepository, MediaSecuritySnapshot, MediaRetirementLease } from "@/lib/adapters/media-security-repository";
 
 /**
  * Mission 030 — in-memory doubles for the media engine's ports.
@@ -258,7 +259,9 @@ export class FakeMediaRepository implements MediaRepository {
 
   async markReady(input: {
     memorialId: string;
+    ownerId: string;
     mediaId: string;
+    expectedPurpose: MediaPurpose;
     mimeType: string;
     sizeBytes: number;
     width: number | null;
@@ -274,6 +277,7 @@ export class FakeMediaRepository implements MediaRepository {
     // second finalization win.
     if (!existing) return null;
     if (existing.memorialId !== input.memorialId) return null;
+    if (existing.ownerId !== input.ownerId || existing.purpose !== input.expectedPurpose) return null;
     if (existing.status !== "pending") return null;
 
     const updated: Media = {
@@ -337,6 +341,30 @@ export class FakeMediaRepository implements MediaRepository {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .slice(0, input.limit);
   }
+}
+
+export class FakeMediaSecurityRepository implements MediaSecurityRepository {
+  public snapshots = new Map<string, MediaSecuritySnapshot>([
+    [MEMORIAL_A, { status: "draft", firstPublishedAt: null, draftRevision: 0 }],
+    [MEMORIAL_B, { status: "draft", firstPublishedAt: null, draftRevision: 0 }],
+  ]);
+  private leases = new Map<string, MediaRetirementLease>();
+
+  async load(input: { memorialId: string; ownerId: string }): Promise<MediaSecuritySnapshot | null> {
+    const expected = input.memorialId === MEMORIAL_A ? OWNER_A : input.memorialId === MEMORIAL_B ? OWNER_B : null;
+    return expected === input.ownerId ? this.snapshots.get(input.memorialId) ?? null : null;
+  }
+
+  async reserveRetirement(input: { memorialId: string; mediaId: string }): Promise<MediaRetirementLease> {
+    const key = `${input.memorialId}:${input.mediaId}`;
+    const existing = this.leases.get(key);
+    if (existing) return existing;
+    const lease = { leaseId: `dddddddd-dddd-4ddd-8ddd-${String(this.leases.size + 1).padStart(12, "0")}`, expiresAt: "2026-09-09T12:05:00.000Z" };
+    this.leases.set(key, lease);
+    return lease;
+  }
+
+  async finishRetirement(): Promise<void> {}
 }
 
 export class FakeObjectStore implements MediaObjectStore {
@@ -413,6 +441,7 @@ export interface TestEngine extends MediaEngineDeps {
   memorialOwnershipRepository: FakeOwnershipRepository;
   mediaRepository: FakeMediaRepository;
   objectStore: FakeObjectStore;
+  mediaSecurityRepository: FakeMediaSecurityRepository;
   /** Move the engine's clock, for the sweep's TTL. */
   advance(ms: number): void;
 }
@@ -423,6 +452,7 @@ export function createTestEngine(options: { now?: Date } = {}): TestEngine {
 
   return {
     memorialOwnershipRepository: new FakeOwnershipRepository(),
+    mediaSecurityRepository: new FakeMediaSecurityRepository(),
     mediaRepository: new FakeMediaRepository(() => clock),
     objectStore: new FakeObjectStore(),
     // Deterministic, but still a real UUID shape — media-path.ts

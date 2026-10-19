@@ -2382,6 +2382,64 @@ done
 PUBLIC_RETIREMENT_ACL=$($DB -t -A -c "select exists (select 1 from aclexplode((select relacl from pg_class where oid='public.hero_media_retirement_leases'::regclass)) where grantee=0);")
 check "PUBLIC has no privilege on hero_media_retirement_leases" "f" "$PUBLIC_RETIREMENT_ACL"
 
+# --- Security V1 media operations ------------------------------------
+
+echo ""
+echo "== Security V1 media: locked upload lifecycle and durable retirement =="
+
+M3_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M3_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$M3_ENT','person','announcement','intemporel','light','fr','media-security-v1','ready') returning id;")
+M3_HERO=$(svc "select gen_random_uuid();")
+M3_GALLERY=$(svc "select gen_random_uuid();")
+check "owner can reserve Hero before publication" "$M3_HERO" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_HERO','$M3_MEM/$M3_HERO/original.jpg','hero','image/jpeg');")"
+check "owner can reserve Gallery before publication" "$M3_GALLERY" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_GALLERY','$M3_MEM/$M3_GALLERY/original.jpg','gallery','image/jpeg');")"
+svc_expect_error \
+  "foreign owner cannot reserve media" \
+  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OTHER',gen_random_uuid(),'$M3_MEM/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/original.jpg','gallery','image/jpeg');" \
+  "media reservation refused"
+check "owner can finalize Gallery before publication" "ready|gallery" "$(svc "select status || '|' || purpose from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_GALLERY','gallery','image/jpeg',100,1200,1600);")"
+
+svc "select * from commit_memorial_publication_v1('$M3_MEM','$PUB_OWNER',0,'ready',null,'fr','intemporel','light','media-security-v1','{}');" >/dev/null
+svc_expect_error \
+  "Hero reserved before publication cannot finalize after publication" \
+  "select * from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_HERO','hero','image/jpeg',100,1200,1600);" \
+  "media finalization lifecycle refused"
+svc_expect_error \
+  "Hero cannot reserve after first publication" \
+  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER',gen_random_uuid(),'$M3_MEM/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original.jpg','hero','image/jpeg');" \
+  "media reservation lifecycle refused"
+M3_POST_GALLERY=$(svc "select gen_random_uuid();")
+check "Gallery remains reservable after publication" "$M3_POST_GALLERY" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_POST_GALLERY','$M3_MEM/$M3_POST_GALLERY/original.jpg','gallery','image/jpeg');")"
+check "Gallery remains finalizable after publication" "ready" "$(svc "select status from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_POST_GALLERY','gallery','image/jpeg',100,1200,1600);")"
+
+$DB -c "update memorial_published_snapshots set content=jsonb_build_object('gallery',jsonb_build_object('items',jsonb_build_array(jsonb_build_object('mediaId','$M3_POST_GALLERY','caption',null)))) where memorial_id='$M3_MEM';" >/dev/null
+svc_expect_error \
+  "Gallery media referenced by the published snapshot is physically retained" \
+  "select * from reserve_gallery_media_retirement_v1('$M3_MEM','$PUB_OWNER','$M3_POST_GALLERY',0);" \
+  "gallery media retained for published snapshot"
+check "retained published Gallery media row remains present" "1" "$($DB -t -A -c "select count(*) from media where id='$M3_POST_GALLERY';")"
+
+M3_RET_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M3_RET_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$M3_RET_ENT','person','announcement','intemporel','light','fr','media-retirement-v1','ready') returning id;")
+M3_RET_MEDIA=$($DB -t -A -c "insert into media (memorial_id,owner_id,storage_path,media_type,mime_type,purpose,status,size_bytes) values ('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEM/cccccccc-cccc-4ccc-8ccc-cccccccccccc/original.jpg','photo','image/jpeg','hero','ready',100) returning id;")
+M3_LEASE_ONE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEDIA',0);")
+M3_LEASE_TWO=$(svc "select lease_id from reserve_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEDIA',0);")
+check "double Hero retirement request reuses the active durable lease" "$M3_LEASE_ONE" "$M3_LEASE_TWO"
+svc "select finish_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_LEASE_ONE','completed');" >/dev/null
+check "completed Hero retirement removes the row and closes the lease" "0|1" "$($DB -t -A -c "select (select count(*) from media where id='$M3_RET_MEDIA') || '|' || (select count(*) from hero_media_retirement_leases where id='$M3_LEASE_ONE' and completed_at is not null);")"
+
+for role in public anon authenticated; do
+  check "$role cannot reserve a media upload RPC" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_memorial_media_upload_v1(uuid,uuid,uuid,text,text,text)','EXECUTE');")"
+  check "$role cannot finalize a media upload RPC" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.finalize_memorial_media_upload_v1(uuid,uuid,uuid,text,text,bigint,integer,integer)','EXECUTE');")"
+  check "$role cannot reserve Gallery retirement" "f" "$($DB -t -A -c "select has_function_privilege('$role','public.reserve_gallery_media_retirement_v1(uuid,uuid,uuid,bigint)','EXECUTE');")"
+done
+check "service_role can reserve media only through the protected RPC" "t" "$($DB -t -A -c "select has_function_privilege('service_role','public.reserve_memorial_media_upload_v1(uuid,uuid,uuid,text,text,text)','EXECUTE');")"
+for role in anon authenticated service_role; do
+  for privilege in SELECT INSERT UPDATE DELETE TRUNCATE; do
+    check "$role has no direct $privilege on gallery_media_retirement_leases" "f" "$($DB -t -A -c "select has_table_privilege('$role','public.gallery_media_retirement_leases','$privilege');")"
+  done
+done
+
 # --- the preflight/postflight the QG will hand to the PO ---------------
 #
 # supabase/checks/*.sql is SQL a human pastes into the Supabase SQL
