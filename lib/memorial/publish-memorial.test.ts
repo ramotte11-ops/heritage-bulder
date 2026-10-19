@@ -58,6 +58,10 @@ describe("publishMemorial", () => {
       expectedRevision: 7,
       expectedStatus: "ready",
       expectedFirstPublishedAt: null,
+      expectedLanguage: "fr",
+      expectedSkin: "intemporel",
+      expectedSkinVariant: "light",
+      expectedSlug: "jeanne-martin",
       expectedContent: expect.any(Object) as MemorialContent,
     });
   });

@@ -92,6 +92,10 @@ export class SupabaseMemorialPublicationRepository implements MemorialPublicatio
         p_expected_revision: input.expectedRevision,
         p_expected_status: input.expectedStatus,
         p_expected_first_published_at: input.expectedFirstPublishedAt,
+        p_expected_language: input.expectedLanguage,
+        p_expected_skin: input.expectedSkin,
+        p_expected_skin_variant: input.expectedSkinVariant,
+        p_expected_slug: input.expectedSlug,
         p_expected_content: input.expectedContent,
       })
       .single<PublicationRow>();

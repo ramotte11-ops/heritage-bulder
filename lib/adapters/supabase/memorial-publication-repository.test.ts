@@ -53,6 +53,10 @@ describe("SupabaseMemorialPublicationRepository", () => {
         expectedRevision: 7,
         expectedStatus: "ready",
         expectedFirstPublishedAt: null,
+        expectedLanguage: "fr",
+        expectedSkin: "intemporel",
+        expectedSkinVariant: "light",
+        expectedSlug: "jeanne-martin",
         expectedContent: { hero: { displayName: "Jeanne" } },
       }),
     ).resolves.toEqual({ publishedAt: "published", firstPublishedAt: "first", revision: 7 });
@@ -62,6 +66,10 @@ describe("SupabaseMemorialPublicationRepository", () => {
       p_expected_revision: 7,
       p_expected_status: "ready",
       p_expected_first_published_at: null,
+      p_expected_language: "fr",
+      p_expected_skin: "intemporel",
+      p_expected_skin_variant: "light",
+      p_expected_slug: "jeanne-martin",
       p_expected_content: { hero: { displayName: "Jeanne" } },
     });
   });
@@ -81,6 +89,10 @@ describe("SupabaseMemorialPublicationRepository", () => {
         expectedRevision: 1,
         expectedStatus: "editing",
         expectedFirstPublishedAt: "first",
+        expectedLanguage: "fr",
+        expectedSkin: "intemporel",
+        expectedSkinVariant: "dark",
+        expectedSlug: "memorial",
         expectedContent: {},
       }),
     ).rejects.toBeInstanceOf(MemorialPublicationConflictError);

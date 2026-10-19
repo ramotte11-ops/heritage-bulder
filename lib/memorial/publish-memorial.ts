@@ -25,6 +25,10 @@ export interface MemorialPublicationCommit {
   expectedRevision: number;
   expectedStatus: "ready" | "editing";
   expectedFirstPublishedAt: string | null;
+  expectedLanguage: Language;
+  expectedSkin: Skin;
+  expectedSkinVariant: SkinVariant;
+  expectedSlug: string;
   expectedContent: MemorialContent;
 }
 
@@ -88,6 +92,10 @@ export async function publishMemorial(
     expectedRevision: input.expectedRevision,
     expectedStatus: snapshot.status as "ready" | "editing",
     expectedFirstPublishedAt: snapshot.firstPublishedAt,
+    expectedLanguage: snapshot.language,
+    expectedSkin: snapshot.skin,
+    expectedSkinVariant: snapshot.skinVariant,
+    expectedSlug: snapshot.slug,
     expectedContent: snapshot.draft.content,
   });
   return { ok: true, ...committed };

@@ -187,6 +187,10 @@ create or replace function public.commit_memorial_publication_v1(
   p_expected_revision bigint,
   p_expected_status text,
   p_expected_first_published_at timestamptz,
+  p_expected_language text,
+  p_expected_skin text,
+  p_expected_skin_variant text,
+  p_expected_slug text,
   p_expected_content jsonb
 )
 returns table (published_at timestamptz, first_published_at timestamptz, revision bigint)
@@ -201,7 +205,12 @@ declare
   v_now timestamptz := clock_timestamp();
   v_first_published_at timestamptz;
 begin
-  if p_expected_revision is null or p_expected_content is null then
+  if p_expected_revision is null
+     or p_expected_language is null
+     or p_expected_skin is null
+     or p_expected_skin_variant is null
+     or nullif(btrim(p_expected_slug), '') is null
+     or p_expected_content is null then
     raise exception 'invalid memorial publication request' using errcode = '22023';
   end if;
 
@@ -219,6 +228,12 @@ begin
   if v_memorial.status is distinct from p_expected_status
      or v_memorial.first_published_at is distinct from p_expected_first_published_at then
     raise exception 'memorial lifecycle changed' using errcode = '40001';
+  end if;
+  if v_memorial.language is distinct from p_expected_language
+     or v_memorial.skin_id is distinct from p_expected_skin
+     or v_memorial.skin_variant is distinct from p_expected_skin_variant
+     or v_memorial.slug is distinct from p_expected_slug then
+    raise exception 'memorial publication configuration changed' using errcode = '40001';
   end if;
   if not (
     (v_memorial.status = 'ready' and v_memorial.first_published_at is null)
@@ -267,13 +282,13 @@ begin
 end;
 $$;
 
-comment on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, jsonb) is
-  'Internal Security V1 publication transaction. Locks memorial then draft, repeats owner/lifecycle/content CAS, blocks active Hero retirement, snapshots the exact draft and moves to published atomically. Service-role-only and intentionally not wired to a family action.';
+comment on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, text, text, text, text, jsonb) is
+  'Internal Security V1 publication transaction. Locks memorial then draft, repeats owner/lifecycle/configuration/content CAS, blocks active Hero retirement, snapshots the exact draft and moves to published atomically. Service-role-only and intentionally not wired to a family action.';
 
 revoke execute on function public.reserve_hero_media_retirement_v1(uuid, uuid, uuid, bigint) from public, anon, authenticated;
 revoke execute on function public.finish_hero_media_retirement_v1(uuid, uuid, uuid, text) from public, anon, authenticated;
-revoke execute on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, jsonb) from public, anon, authenticated;
+revoke execute on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, text, text, text, text, jsonb) from public, anon, authenticated;
 
 grant execute on function public.reserve_hero_media_retirement_v1(uuid, uuid, uuid, bigint) to service_role;
 grant execute on function public.finish_hero_media_retirement_v1(uuid, uuid, uuid, text) to service_role;
-grant execute on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, jsonb) to service_role;
+grant execute on function public.commit_memorial_publication_v1(uuid, uuid, bigint, text, timestamptz, text, text, text, text, jsonb) to service_role;
