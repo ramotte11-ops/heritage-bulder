@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEDIA_PENDING_TTL_MS } from "@/config/media";
 import type { DraftRepository } from "@/lib/adapters/draft-repository";
 import { finalizeMediaUpload, reserveMediaUpload } from "@/lib/media/upload-lifecycle";
 import { sweepAbandonedUploads } from "@/lib/media/orphan-sweep";
@@ -46,6 +47,10 @@ async function uploadGalleryPhoto(engine: ReturnType<typeof createTestEngine>, w
   engine.objectStore.put(reserved.value.storagePath, jpegWithDimensions(width, height));
   const finalized = await finalizeMediaUpload(engine, OWNER, { memorialId: MEMORIAL_A, mediaId: reserved.value.mediaId, expectedPurpose: purpose });
   if (!finalized.ok) throw new Error(finalized.code);
+  // This integration suite exercises the historical physical-retirement
+  // contract. Fresh signed-token quarantine is covered by the media lifecycle
+  // tests, so age this fixture beyond that safety window before retirement.
+  engine.advance(MEDIA_PENDING_TTL_MS + 1000);
   return finalized.value;
 }
 
