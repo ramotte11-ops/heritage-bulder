@@ -691,6 +691,7 @@ check "owner A's update to owner B's memorial silently affects 0 rows" "en" "$UP
 # `editorial_context`) is actually grantable already ran, before that
 # blanket grant, in the "Mission 035" privilege block. This is the
 # POLICY's own isolation, not the grant's shape.
+$DB -c "update memorials set status = 'ready' where id = '$MEM_A';" >/dev/null
 as_owner "$AUTH_UID_A" "update memorials set skin_variant = 'dark' where id = '$MEM_A';" >/dev/null
 UPDATED_VARIANT_A=$($DB -t -A -c "select skin_variant from memorials where id = '$MEM_A';")
 check "owner A can update their own memorial's skin_variant" "dark" "$UPDATED_VARIANT_A"
@@ -744,6 +745,10 @@ check "owner A can read their own memorial's draft content" "Autosaved" "$READ_O
 
 READ_OTHERS=$(as_owner "$AUTH_UID_A" "select count(*) from memorial_drafts where memorial_id = '$MEM_B';")
 check "owner A cannot read owner B's draft at all (0 rows, not an error)" "0" "$READ_OTHERS"
+
+# The legacy RLS write checks above model prepublication. Restore the fixture's
+# published status before exercising public snapshots and visitor messages.
+$DB -c "update memorials set status = 'published' where id = '$MEM_A';" >/dev/null
 
 RESULT=$(as_anon "select count(*) from memorial_published_snapshots;")
 check "anonymous visitor sees the 1 published snapshot (memorial A)" "1" "$RESULT"
@@ -2391,11 +2396,13 @@ M3_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('dire
 M3_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$M3_ENT','person','announcement','intemporel','light','fr','media-security-v1','ready') returning id;")
 M3_HERO=$(svc "select gen_random_uuid();")
 M3_GALLERY=$(svc "select gen_random_uuid();")
+M3_FOREIGN=$(svc "select gen_random_uuid();")
+M3_POST_HERO=$(svc "select gen_random_uuid();")
 check "owner can reserve Hero before publication" "$M3_HERO" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_HERO','$M3_MEM/$M3_HERO/original.jpg','hero','image/jpeg');")"
 check "owner can reserve Gallery before publication" "$M3_GALLERY" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_GALLERY','$M3_MEM/$M3_GALLERY/original.jpg','gallery','image/jpeg');")"
 svc_expect_error \
   "foreign owner cannot reserve media" \
-  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OTHER',gen_random_uuid(),'$M3_MEM/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/original.jpg','gallery','image/jpeg');" \
+  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OTHER','$M3_FOREIGN','$M3_MEM/$M3_FOREIGN/original.jpg','gallery','image/jpeg');" \
   "media reservation refused"
 check "owner can finalize Gallery before publication" "ready|gallery" "$(svc "select status || '|' || purpose from finalize_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_GALLERY','gallery','image/jpeg',100,1200,1600);")"
 
@@ -2406,7 +2413,7 @@ svc_expect_error \
   "media finalization lifecycle refused"
 svc_expect_error \
   "Hero cannot reserve after first publication" \
-  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER',gen_random_uuid(),'$M3_MEM/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original.jpg','hero','image/jpeg');" \
+  "select * from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_POST_HERO','$M3_MEM/$M3_POST_HERO/original.jpg','hero','image/jpeg');" \
   "media reservation lifecycle refused"
 M3_POST_GALLERY=$(svc "select gen_random_uuid();")
 check "Gallery remains reservable after publication" "$M3_POST_GALLERY" "$(svc "select id from reserve_memorial_media_upload_v1('$M3_MEM','$PUB_OWNER','$M3_POST_GALLERY','$M3_MEM/$M3_POST_GALLERY/original.jpg','gallery','image/jpeg');")"
