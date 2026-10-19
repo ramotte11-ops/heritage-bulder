@@ -21,6 +21,7 @@ interface QueryLog {
   insert: Record<string, unknown>[];
   update: Record<string, unknown>[];
   deletes: number;
+  rpc: [string, Record<string, unknown>][];
 }
 
 function client(result: { data: unknown; error: unknown }) {
@@ -34,6 +35,7 @@ function client(result: { data: unknown; error: unknown }) {
     insert: [],
     update: [],
     deletes: 0,
+    rpc: [],
   };
 
   const builder = {
@@ -83,6 +85,10 @@ function client(result: { data: unknown; error: unknown }) {
       log.from.push(table);
       return builder;
     },
+    rpc(name: string, args: Record<string, unknown>) {
+      log.rpc.push([name, args]);
+      return builder;
+    },
     storage: { from: () => ({}) },
   };
 
@@ -117,7 +123,7 @@ const ROW = {
 };
 
 describe("createPending", () => {
-  it("writes a pending row with no size and no filename", async () => {
+  it("uses the lifecycle-locked reservation RPC", async () => {
     const { repo, log } = repository({ data: { ...ROW, status: "pending" }, error: null });
 
     await repo.createPending({
@@ -129,13 +135,12 @@ describe("createPending", () => {
       declaredMimeType: "image/jpeg",
     });
 
-    const values = log.insert[0];
-    expect(values.status).toBe("pending");
-    // Absent, not zero: the file does not exist yet, and a placeholder
-    // would be a lie the ready-requires-size constraint could not catch.
-    expect(values.size_bytes).toBeUndefined();
-    // The client's filename is never recorded.
-    expect(values.original_filename).toBeUndefined();
+    expect(log.rpc).toEqual([["reserve_memorial_media_upload_v1", expect.objectContaining({
+      p_memorial_id: "memorial-a",
+      p_owner_id: "owner-a",
+      p_media_id: "media-1",
+      p_purpose: "hero",
+    })]]);
   });
 
   it("records the owner id it was given, having not derived one itself", async () => {
@@ -151,9 +156,7 @@ describe("createPending", () => {
       declaredMimeType: "image/png",
     });
 
-    expect(log.insert[0].owner_id).toBe("owner-a");
-    expect(log.insert[0].memorial_id).toBe("memorial-a");
-    expect(log.insert[0].media_type).toBe("photo");
+    expect(log.rpc[0]?.[1]).toMatchObject({ p_owner_id: "owner-a", p_memorial_id: "memorial-a", p_purpose: "gallery" });
   });
 
   it("throws rather than reporting a reservation that did not happen", async () => {
@@ -176,67 +179,42 @@ describe("createPending", () => {
 });
 
 describe("markReady", () => {
-  it("is a compare-and-set: it only matches a row that is still pending", async () => {
-    // Without this filter, a second finalization could double-write, or
-    // a late one could resurrect a row the sweep had reclaimed.
+  const input = {
+    memorialId: "memorial-a", ownerId: "owner-a", mediaId: "media-1",
+    expectedPurpose: "hero" as const, mimeType: "image/jpeg", sizeBytes: 2048,
+    width: 1600, height: 1200,
+  };
+
+  it("uses the lifecycle-locked finalization RPC", async () => {
     const { repo, log } = repository({ data: ROW, error: null });
 
-    await repo.markReady({
-      memorialId: "memorial-a",
-      mediaId: "media-1",
-      mimeType: "image/jpeg",
-      sizeBytes: 2048,
-      width: 1600,
-      height: 1200,
-    });
-
-    expect(log.eq).toContainEqual(["status", "pending"]);
+    await repo.markReady(input);
+    expect(log.rpc[0]).toEqual(["finalize_memorial_media_upload_v1", expect.objectContaining({ p_expected_purpose: "hero" })]);
   });
 
   it("scopes the update to the caller's memorial", async () => {
     const { repo, log } = repository({ data: ROW, error: null });
 
-    await repo.markReady({
-      memorialId: "memorial-a",
-      mediaId: "media-1",
-      mimeType: "image/jpeg",
-      sizeBytes: 2048,
-      width: 1600,
-      height: 1200,
-    });
-
-    expect(log.eq).toContainEqual(["memorial_id", "memorial-a"]);
-    expect(log.eq).toContainEqual(["id", "media-1"]);
+    await repo.markReady(input);
+    expect(log.rpc[0]?.[1]).toMatchObject({ p_memorial_id: "memorial-a", p_owner_id: "owner-a", p_media_id: "media-1" });
   });
 
   it("overwrites mime_type with the VERIFIED value", async () => {
     // A ready row's type is measured, never claimed.
     const { repo, log } = repository({ data: ROW, error: null });
 
-    await repo.markReady({
-      memorialId: "memorial-a",
-      mediaId: "media-1",
-      mimeType: "image/png",
-      sizeBytes: 999,
-      width: 1600,
-      height: 1200,
-    });
-
-    expect(log.update[0]).toMatchObject({
-      status: "ready",
-      mime_type: "image/png",
-      size_bytes: 999,
-    });
+    await repo.markReady({ ...input, mimeType: "image/png", sizeBytes: 999 });
+    expect(log.rpc[0]?.[1]).toMatchObject({ p_mime_type: "image/png", p_size_bytes: 999 });
   });
 
   it("writes the MEASURED natural dimensions (dette D1), including an honest null", async () => {
     const measured = repository({ data: ROW, error: null });
-    await measured.repo.markReady({ memorialId: "memorial-a", mediaId: "media-1", mimeType: "image/jpeg", sizeBytes: 10, width: 3024, height: 4032 });
-    expect(measured.log.update[0]).toMatchObject({ width: 3024, height: 4032 });
+    await measured.repo.markReady({ ...input, sizeBytes: 10, width: 3024, height: 4032 });
+    expect(measured.log.rpc[0]?.[1]).toMatchObject({ p_width: 3024, p_height: 4032 });
 
     const unknown = repository({ data: ROW, error: null });
-    await unknown.repo.markReady({ memorialId: "memorial-a", mediaId: "media-1", mimeType: "image/jpeg", sizeBytes: 10, width: null, height: null });
-    expect(unknown.log.update[0]).toMatchObject({ width: null, height: null });
+    await unknown.repo.markReady({ ...input, sizeBytes: 10, width: null, height: null });
+    expect(unknown.log.rpc[0]?.[1]).toMatchObject({ p_width: null, p_height: null });
   });
 
   it("returns null when it matched nothing, rather than erroring", async () => {
@@ -244,14 +222,7 @@ describe("markReady", () => {
     const { repo } = repository({ data: null, error: null });
 
     expect(
-      await repo.markReady({
-        memorialId: "memorial-a",
-        mediaId: "media-1",
-        mimeType: "image/jpeg",
-        sizeBytes: 1,
-        width: 1600,
-        height: 1200,
-      }),
+      await repo.markReady({ ...input, sizeBytes: 1 }),
     ).toBeNull();
   });
 });

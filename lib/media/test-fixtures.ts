@@ -5,6 +5,7 @@ import type { HeritageActor } from "@/lib/auth/heritage-actor";
 import type { Media } from "@/types/media";
 import type { MediaPurpose, MediaStatus } from "@/config/media";
 import type { MediaEngineDeps } from "./media-engine";
+import type { MediaSecurityRepository, MediaSecuritySnapshot, MediaRetirementLease, PendingMediaCleanupClaim } from "@/lib/adapters/media-security-repository";
 
 /**
  * Mission 030 — in-memory doubles for the media engine's ports.
@@ -217,7 +218,10 @@ export class FakeMediaRepository implements MediaRepository {
    * test clock would never make a reservation look old, and every
    * TTL assertion would silently measure nothing.
    */
-  constructor(private readonly now: () => Date = () => new Date()) {}
+  constructor(
+    private readonly now: () => Date = () => new Date(),
+    private readonly pendingCleanupClaims: Set<string> = new Set(),
+  ) {}
 
   private guard(method: keyof MediaRepository): void {
     const failure = this.failOn[method];
@@ -258,7 +262,9 @@ export class FakeMediaRepository implements MediaRepository {
 
   async markReady(input: {
     memorialId: string;
+    ownerId: string;
     mediaId: string;
+    expectedPurpose: MediaPurpose;
     mimeType: string;
     sizeBytes: number;
     width: number | null;
@@ -274,7 +280,9 @@ export class FakeMediaRepository implements MediaRepository {
     // second finalization win.
     if (!existing) return null;
     if (existing.memorialId !== input.memorialId) return null;
+    if (existing.ownerId !== input.ownerId || existing.purpose !== input.expectedPurpose) return null;
     if (existing.status !== "pending") return null;
+    if (this.pendingCleanupClaims.has(input.mediaId)) return null;
 
     const updated: Media = {
       ...existing,
@@ -336,6 +344,110 @@ export class FakeMediaRepository implements MediaRepository {
       .filter((media) => new Date(media.createdAt) < input.olderThan)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .slice(0, input.limit);
+  }
+}
+
+export class FakeMediaSecurityRepository implements MediaSecurityRepository {
+  public snapshots = new Map<string, MediaSecuritySnapshot>([
+    [MEMORIAL_A, { status: "draft", firstPublishedAt: null, draftRevision: 0 }],
+    [MEMORIAL_B, { status: "draft", firstPublishedAt: null, draftRevision: 0 }],
+  ]);
+  private leases = new Map<string, MediaRetirementLease>();
+  private cleanupClaims = new Map<string, PendingMediaCleanupClaim>();
+  public retirementFinishes: Array<{ leaseId: string; outcome: "completed" | "cancelled" }> = [];
+
+  constructor(
+    private readonly mediaRows: Map<string, Media> = new Map(),
+    private readonly pendingCleanupMediaIds: Set<string> = new Set(),
+  ) {}
+
+  async load(input: { memorialId: string; ownerId: string }): Promise<MediaSecuritySnapshot | null> {
+    const expected = input.memorialId === MEMORIAL_A ? OWNER_A : input.memorialId === MEMORIAL_B ? OWNER_B : null;
+    return expected === input.ownerId ? this.snapshots.get(input.memorialId) ?? null : null;
+  }
+
+  async reserveRetirement(input: { memorialId: string; mediaId: string }): Promise<MediaRetirementLease> {
+    const key = `${input.memorialId}:${input.mediaId}`;
+    const existing = this.leases.get(key);
+    if (existing) return existing;
+    const lease = { leaseId: `dddddddd-dddd-4ddd-8ddd-${String(this.leases.size + 1).padStart(12, "0")}`, expiresAt: "2026-09-09T12:05:00.000Z" };
+    this.leases.set(key, lease);
+    return lease;
+  }
+
+  async finishRetirement(input: {
+    memorialId: string;
+    ownerId: string;
+    leaseId: string;
+    outcome: "completed" | "cancelled";
+  }): Promise<void> {
+    this.retirementFinishes.push(input);
+    const entry = [...this.leases.entries()].find(([, lease]) => lease.leaseId === input.leaseId);
+    if (!entry) throw new Error("retirement lease missing");
+    const [key] = entry;
+    if (input.outcome === "cancelled") {
+      this.leases.delete(key);
+      return;
+    }
+    const mediaId = key.slice(key.indexOf(":") + 1);
+    const media = this.mediaRows.get(mediaId);
+    if (!media || media.memorialId !== input.memorialId || media.ownerId !== input.ownerId || media.status !== "ready") {
+      throw new Error("retirement conflict");
+    }
+    this.mediaRows.set(mediaId, { ...media, status: "pending" });
+    if (!this.cleanupClaims.has(mediaId)) {
+      this.cleanupClaims.set(mediaId, {
+        claimId: `eeeeeeee-eeee-4eee-8eee-${String(this.cleanupClaims.size + 1).padStart(12, "0")}`,
+      });
+    }
+    this.pendingCleanupMediaIds.add(mediaId);
+    this.leases.delete(key);
+  }
+
+  async reservePendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    mediaId: string;
+    createdBefore?: string;
+  }): Promise<PendingMediaCleanupClaim> {
+    const media = this.mediaRows.get(input.mediaId);
+    if (!media || media.memorialId !== input.memorialId || media.ownerId !== input.ownerId || media.status !== "pending") {
+      throw new Error("pending cleanup conflict");
+    }
+    if (input.createdBefore && media.createdAt >= input.createdBefore) {
+      throw new Error("pending cleanup is too recent");
+    }
+    const existing = this.cleanupClaims.get(input.mediaId);
+    if (existing) return existing;
+    const claim = { claimId: `eeeeeeee-eeee-4eee-8eee-${String(this.cleanupClaims.size + 1).padStart(12, "0")}` };
+    this.cleanupClaims.set(input.mediaId, claim);
+    this.pendingCleanupMediaIds.add(input.mediaId);
+    return claim;
+  }
+
+  async finishPendingCleanup(input: {
+    memorialId: string;
+    ownerId: string;
+    claimId: string;
+  }): Promise<void> {
+    const entry = [...this.cleanupClaims.entries()].find(([, claim]) => claim.claimId === input.claimId);
+    if (!entry) throw new Error("pending cleanup claim missing");
+    const [mediaId] = entry;
+    const media = this.mediaRows.get(mediaId);
+    if (!media || media.memorialId !== input.memorialId || media.ownerId !== input.ownerId || media.status !== "pending") {
+      throw new Error("pending cleanup conflict");
+    }
+    this.mediaRows.delete(mediaId);
+    this.cleanupClaims.delete(mediaId);
+    this.pendingCleanupMediaIds.delete(mediaId);
+  }
+
+  hasPendingCleanupClaim(mediaId: string): boolean {
+    return this.pendingCleanupMediaIds.has(mediaId);
+  }
+
+  hasRetirementLease(memorialId: string, mediaId: string): boolean {
+    return this.leases.has(`${memorialId}:${mediaId}`);
   }
 }
 
@@ -413,6 +525,7 @@ export interface TestEngine extends MediaEngineDeps {
   memorialOwnershipRepository: FakeOwnershipRepository;
   mediaRepository: FakeMediaRepository;
   objectStore: FakeObjectStore;
+  mediaSecurityRepository: FakeMediaSecurityRepository;
   /** Move the engine's clock, for the sweep's TTL. */
   advance(ms: number): void;
 }
@@ -421,9 +534,14 @@ export function createTestEngine(options: { now?: Date } = {}): TestEngine {
   let clock = options.now ?? new Date("2026-09-09T12:00:00.000Z");
   let counter = 0;
 
+  const pendingCleanupMediaIds = new Set<string>();
+  const mediaRepository = new FakeMediaRepository(() => clock, pendingCleanupMediaIds);
+  const mediaSecurityRepository = new FakeMediaSecurityRepository(mediaRepository.rows, pendingCleanupMediaIds);
+
   return {
     memorialOwnershipRepository: new FakeOwnershipRepository(),
-    mediaRepository: new FakeMediaRepository(() => clock),
+    mediaSecurityRepository,
+    mediaRepository,
     objectStore: new FakeObjectStore(),
     // Deterministic, but still a real UUID shape — media-path.ts
     // refuses anything else, so a test cannot accidentally prove

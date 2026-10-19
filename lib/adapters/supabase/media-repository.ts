@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MediaPurpose, MediaStatus } from "@/config/media";
 import type { MediaRepository } from "@/lib/adapters/media-repository";
 import type { Media } from "@/types/media";
+import { MediaSecurityConflictError, MediaSecurityDeniedError } from "@/lib/adapters/media-security-repository";
 
 /**
  * SERVER ONLY. Reads and writes `media` with the service-role client
@@ -54,6 +55,12 @@ interface MediaRow {
 const MEDIA_COLUMNS =
   "id, memorial_id, owner_id, storage_path, media_type, purpose, status, mime_type, original_filename, size_bytes, width, height, created_at, updated_at";
 
+function throwMutationError(error: { code?: string }): never {
+  if (error.code === "42501" || error.code === "23514") throw new MediaSecurityDeniedError();
+  if (error.code === "40001") throw new MediaSecurityConflictError();
+  throw error;
+}
+
 function toMedia(row: MediaRow): Media {
   return {
     id: row.id,
@@ -91,84 +98,46 @@ export class SupabaseMediaRepository implements MediaRepository {
     purpose: MediaPurpose;
     declaredMimeType: string;
   }): Promise<Media> {
-    const { data, error } = await this.client
-      .from("media")
-      .insert({
-        id: input.mediaId,
-        memorial_id: input.memorialId,
-        owner_id: input.ownerId,
-        storage_path: input.storagePath,
-        media_type: "photo",
-        purpose: input.purpose,
-        // Explicit rather than relying on the column default: the row
-        // being unverified is the single most important fact about it,
-        // and it should be visible at the call site.
-        status: "pending",
-        // The DECLARED type. It determines the path's extension and
-        // nothing else, and finalization refuses the media if the real
-        // bytes disagree with it.
-        mime_type: input.declaredMimeType,
-        // size_bytes is deliberately omitted, not zero: the file does
-        // not exist yet, and NULL is the honest value. The
-        // media_ready_requires_size constraint makes sure it cannot
-        // stay NULL past finalization.
-        //
-        // original_filename is likewise never written — see its column
-        // comment in the migration.
-      })
-      .select(MEDIA_COLUMNS)
-      .single<MediaRow>();
+    const { data, error } = await this.client.rpc("reserve_memorial_media_upload_v1", {
+      p_memorial_id: input.memorialId,
+      p_owner_id: input.ownerId,
+      p_media_id: input.mediaId,
+      p_storage_path: input.storagePath,
+      p_purpose: input.purpose,
+      p_declared_mime_type: input.declaredMimeType,
+    }).single<MediaRow>();
 
     // Rethrown rather than swallowed. A reservation that failed must
     // not look like one that succeeded: the caller would then hand out
     // an upload permission for a path no row records, which is the one
     // way this design could manufacture an orphan.
-    if (error) throw error;
+    if (error) throwMutationError(error);
 
     return toMedia(data);
   }
 
   async markReady(input: {
     memorialId: string;
+    ownerId: string;
     mediaId: string;
+    expectedPurpose: MediaPurpose;
     mimeType: string;
     sizeBytes: number;
     width: number | null;
     height: number | null;
   }): Promise<Media | null> {
-    const { data, error } = await this.client
-      .from("media")
-      .update({
-        status: "ready",
-        // Overwritten with the VERIFIED type. If the client declared
-        // JPEG and the bytes were really PNG, finalization has already
-        // refused; this write is what makes a ready row's mime_type
-        // measured rather than claimed.
-        mime_type: input.mimeType,
-        size_bytes: input.sizeBytes,
-        // Dette D1: MEASURED from the stored bytes, never declared by the
-        // client (lib/media/image-dimensions.ts). The columns' own
-        // `> 0` CHECKs are the database's second lock.
-        width: input.width,
-        height: input.height,
-      })
-      .eq("id", input.mediaId)
-      // Scoped to the memorial the caller proved it owns. Without this
-      // the ownership check upstream would be decorative.
-      .eq("memorial_id", input.memorialId)
-      // THE compare-and-set. Filtering on the current state turns this
-      // into a conditional update: exactly one of two racing
-      // finalizations matches a `pending` row, and a finalization that
-      // arrives after the sweep has reclaimed the row matches nothing.
-      // Without it, a blind update could resurrect a row the sweep had
-      // already decided was abandoned, or double-finalize.
-      .eq("status", "pending")
-      .select(MEDIA_COLUMNS)
-      // `maybeSingle`, not `single`: matching no row is the expected
-      // outcome of losing the race, not an error.
-      .maybeSingle<MediaRow>();
+    const { data, error } = await this.client.rpc("finalize_memorial_media_upload_v1", {
+      p_memorial_id: input.memorialId,
+      p_owner_id: input.ownerId,
+      p_media_id: input.mediaId,
+      p_expected_purpose: input.expectedPurpose,
+      p_mime_type: input.mimeType,
+      p_size_bytes: input.sizeBytes,
+      p_width: input.width,
+      p_height: input.height,
+    }).maybeSingle<MediaRow>();
 
-    if (error) throw error;
+    if (error) throwMutationError(error);
 
     return data ? toMedia(data) : null;
   }

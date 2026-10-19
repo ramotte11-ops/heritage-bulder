@@ -38,6 +38,7 @@ async function existingHero(engine: ReturnType<typeof createTestEngine>) {
     memorialId: MEMORIAL_A,
     mediaId: media.mediaId,
   });
+  engine.advance(MEDIA_PENDING_TTL_MS + 1000);
   return media;
 }
 
@@ -131,13 +132,11 @@ describe("replaceMedia — the old photograph survives every failure", () => {
     engine.objectStore.put(newHero.storagePath, JPEG_BYTES);
 
     let newWasReadyWhenOldRemoved: boolean | null = null;
-    const store = engine.objectStore;
-    const original = store.removeByPrefix.bind(store);
-    store.removeByPrefix = async (input) => {
-      if (input.prefix.includes(oldHero.mediaId)) {
-        newWasReadyWhenOldRemoved =
-          engine.mediaRepository.rows.get(newHero.mediaId)?.status === "ready";
-      }
+    const security = engine.mediaSecurityRepository;
+    const original = security.finishRetirement.bind(security);
+    security.finishRetirement = async (input) => {
+      newWasReadyWhenOldRemoved =
+        engine.mediaRepository.rows.get(newHero.mediaId)?.status === "ready";
       return original(input);
     };
 
@@ -216,15 +215,13 @@ describe("replaceMedia — the happy path", () => {
     const newHero = await reserve(engine);
     engine.objectStore.put(newHero.storagePath, JPEG_BYTES);
 
-    const store = engine.objectStore;
-    const original = store.removeByPrefix.bind(store);
     let bothReady = false;
-    store.removeByPrefix = async (input) => {
-      if (input.prefix.includes(oldHero.mediaId)) {
-        bothReady =
-          engine.mediaRepository.rows.get(oldHero.mediaId)?.status === "ready" &&
-          engine.mediaRepository.rows.get(newHero.mediaId)?.status === "ready";
-      }
+    const security = engine.mediaSecurityRepository;
+    const original = security.finishRetirement.bind(security);
+    security.finishRetirement = async (input) => {
+      bothReady =
+        engine.mediaRepository.rows.get(oldHero.mediaId)?.status === "ready" &&
+        engine.mediaRepository.rows.get(newHero.mediaId)?.status === "ready";
       return original(input);
     };
 

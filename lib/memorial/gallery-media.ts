@@ -121,5 +121,8 @@ export async function retireGalleryMedia(
 
   const deletion = await deleteMedia(deps.mediaEngine, actor, { memorialId: access.memorialId, mediaId: media.id });
   if (!deletion.ok) return deletion;
+  if (deletion.value.retained === "referenced") {
+    return mediaSuccess({ removed: false, retained: "stillReferenced" });
+  }
   return mediaSuccess(deletion.value.removed ? { removed: true } : { removed: false, retained: "alreadyAbsent" });
 }

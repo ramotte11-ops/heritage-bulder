@@ -9,7 +9,6 @@ import {
 } from "./media-errors";
 import {
   buildMediaObjectPath,
-  buildMediaObjectPrefix,
   isPathWithinMemorial,
 } from "./media-path";
 import {
@@ -18,6 +17,9 @@ import {
 } from "./image-signature";
 import { IMAGE_HEADER_BYTES, readImageDimensions } from "./image-dimensions";
 import type { MediaEngineDeps } from "./media-engine";
+import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
+import { MediaSecurityDeniedError } from "@/lib/adapters/media-security-repository";
+import { cleanupPendingMedia } from "./cleanup-pending-media";
 
 /**
  * Mission 030 — creating a media, in two server-verified steps.
@@ -93,6 +95,14 @@ export async function reserveMediaUpload(
     return mediaFailure("invalid_file");
   }
 
+  try {
+    if (await authorizeMediaEdit(deps, actor, access, mediaTarget(input.purpose, "reserve")) === null) {
+      return mediaFailure("access_denied");
+    }
+  } catch (error) {
+    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
+  }
+
   // A cheap pre-filter, NOT the decision. Refusing an obviously
   // unacceptable type here saves a reservation and a wasted upload; a
   // client that lies gets refused at finalization instead, having
@@ -130,9 +140,9 @@ export async function reserveMediaUpload(
       purpose: input.purpose,
       declaredMimeType: input.declaredMimeType,
     });
-  } catch {
+  } catch (error) {
     // Nothing was reserved and nothing was issued. No cleanup to do.
-    return mediaFailure("storage_unavailable");
+    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
   }
 
   try {
@@ -196,8 +206,8 @@ export async function finalizeMediaUpload(
       memorialId: access.memorialId,
       mediaId: input.mediaId,
     });
-  } catch {
-    return mediaFailure("storage_unavailable");
+  } catch (error) {
+    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
   }
 
   // `null` is "no such media in THIS memorial" — which covers both a
@@ -210,6 +220,14 @@ export async function finalizeMediaUpload(
 
   if (input.expectedPurpose !== undefined && media.purpose !== input.expectedPurpose) {
     return mediaFailure("access_denied");
+  }
+
+  try {
+    if (await authorizeMediaEdit(deps, actor, access, mediaTarget(media.purpose, "finalize")) === null) {
+      return mediaFailure("access_denied");
+    }
+  } catch {
+    return mediaFailure("storage_unavailable");
   }
 
   if (media.status === "ready") {
@@ -304,14 +322,16 @@ export async function finalizeMediaUpload(
     // reclaimed row.
     ready = await deps.mediaRepository.markReady({
       memorialId: access.memorialId,
+      ownerId: access.ownerId,
       mediaId: input.mediaId,
+      expectedPurpose: media.purpose,
       mimeType: actualMimeType,
       sizeBytes: stat.sizeBytes,
       width: dimensions?.width ?? null,
       height: dimensions?.height ?? null,
     });
-  } catch {
-    return mediaFailure("storage_unavailable");
+  } catch (error) {
+    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
   }
 
   if (ready === null) {
@@ -341,10 +361,9 @@ export async function finalizeMediaUpload(
 /**
  * Throw away an upload that arrived but is not acceptable.
  *
- * Storage first, then the row — the same ordering rule as
- * lib/media/delete-media.ts, for the same reason: a row pointing at a
- * missing object is visible and retryable, while an object no row
- * mentions is an orphan nobody can ever find again.
+ * The cleanup claim is reserved immediately, but the row and bytes remain
+ * until the signed upload permission's safety window expires. A late replay
+ * therefore still has an inventory row and is reclaimed by the sweep.
  *
  * Failures are swallowed on purpose. This runs on a path that is
  * ALREADY returning a refusal to the user, and the refusal is the
@@ -354,29 +373,5 @@ export async function finalizeMediaUpload(
  * something false.
  */
 async function discardUnusableUpload(deps: MediaEngineDeps, media: Media): Promise<void> {
-  try {
-    // Built through the validated builder rather than by interpolating
-    // the ids: this runs on stored values, and the builder is the one
-    // place that refuses anything which is not a pair of UUIDs. A
-    // hand-rolled template here would be the obvious spot for a
-    // traversal to re-enter a codebase that had closed it everywhere
-    // else.
-    await deps.objectStore.removeByPrefix({
-      prefix: buildMediaObjectPrefix({
-        memorialId: media.memorialId,
-        mediaId: media.id,
-      }),
-    });
-  } catch {
-    // Deliberately ignored — see above.
-  }
-
-  try {
-    await deps.mediaRepository.deleteById({
-      memorialId: media.memorialId,
-      mediaId: media.id,
-    });
-  } catch {
-    // Deliberately ignored — see above.
-  }
+  await cleanupPendingMedia(deps, media);
 }

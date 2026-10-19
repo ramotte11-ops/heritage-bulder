@@ -46,9 +46,9 @@ export type MediaPurpose = (typeof MEDIA_PURPOSES)[number];
 /**
  * Lifecycle state. Mirrors the `status` CHECK constraint.
  *
- *   pending  a path has been reserved and an upload permission issued,
- *            but no verified bytes exist yet. NOTHING may display a
- *            pending media.
+ *   pending  a path has been reserved and is not yet verified, or a retired
+ *            path is waiting for its old upload permission to expire.
+ *            NOTHING may display a pending media.
  *   ready    the object exists, and the server has verified its size
  *            and its actual content type. Usable.
  *

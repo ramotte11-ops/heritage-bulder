@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { MEDIA_PENDING_TTL_MS } from "@/config/media";
 import type { DraftRepository } from "@/lib/adapters/draft-repository";
 import type { MemorialContent, MemorialVersion } from "@/types/memorial";
 import { EMPTY_HERO_CONTENT } from "@/types/hero";
 import { finalizeMediaUpload, reserveMediaUpload } from "@/lib/media/upload-lifecycle";
+import { sweepAbandonedUploads } from "@/lib/media/orphan-sweep";
 import {
   JPEG_BYTES,
   MEMORIAL_A,
@@ -48,10 +50,20 @@ async function readyHeroMedia(
   });
   if (!finalized.ok) throw new Error("finalize failed");
 
+  // These reconciliation tests assert completed physical retirement. The
+  // active-token quarantine itself is covered by the media lifecycle suite.
+  engine.advance(MEDIA_PENDING_TTL_MS + 1000);
   return finalized.value;
 }
 
 const EMPTY_CONTENT: MemorialContent = {};
+
+function contentWithT06Completed(mediaId: string): MemorialContent {
+  return {
+    hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId, crop: null } },
+    guidedFlow: { T06: { status: "completed" } },
+  } as MemorialContent;
+}
 
 describe("resolveHeroPhotoStepData", () => {
   it("returns the content unchanged and no initialPhoto when there is no ready hero media at all", async () => {
@@ -246,7 +258,7 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
     expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id })).toBeNull();
   });
 
-  it("a retire that fails leaves the stale media in place and the canonical untouched — the NEXT read retries and succeeds", async () => {
+  it("a Storage failure leaves a durable pending claim that the maintenance sweep retries", async () => {
     const engine = createTestEngine();
     const draftRepository = new FakeDraftRepository();
     const older = await readyHeroMedia(engine);
@@ -269,10 +281,13 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
     // caller's problem — and the canonical is already adopted+persisted.
     expect(first.initialPhoto?.media.id).toBe(newer.id);
     expect(first.content).not.toBe(content); // reconciliation persisted
-    // The stale media SURVIVED the failed retry.
-    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).not.toBeNull();
+    // Logical retirement is durable even though the external delete failed.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id }))
+      .toMatchObject({ status: "pending" });
+    expect(engine.mediaSecurityRepository.hasPendingCleanupClaim(older.id)).toBe(true);
 
-    // The next "resume" reads the now-persisted, already-linked content.
+    // A later Builder read keeps resolving the canonical media normally; the
+    // maintenance sweep owns retries once retirement has become pending.
     engine.objectStore.failOn.removeByPrefix = undefined as unknown as Error;
     const second = await resolveHeroPhotoStepData(
       { mediaEngine: engine, draftRepository },
@@ -282,7 +297,7 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
     );
 
     expect(second.initialPhoto?.media.id).toBe(newer.id);
-    // The retry succeeded this time.
+    expect(await sweepAbandonedUploads(engine)).toEqual({ examined: 1, reclaimed: 1 });
     expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: older.id })).toBeNull();
     // The canonical one was never at risk, through either read.
     expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: newer.id })).not.toBeNull();
@@ -367,15 +382,6 @@ describe("resolveHeroPhotoStepData — QG follow-up: durable retry for a failed 
 });
 
 describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T06", () => {
-  /** A Hero already fully done, T06 included — the exact shape a
-   * memorial has once the family has clicked Continue on PAGE C. */
-  function contentWithT06Completed(mediaId: string): MemorialContent {
-    return {
-      hero: { ...EMPTY_HERO_CONTENT, photo: { mediaId, crop: null } },
-      guidedFlow: { T06: { status: "completed" } },
-    } as MemorialContent;
-  }
-
   it("retries retiring a stale ready hero media even though T06 is already completed", async () => {
     const engine = createTestEngine();
     const draftRepository = new FakeDraftRepository();
@@ -404,7 +410,7 @@ describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T
     ).not.toBeNull();
   });
 
-  it("a retire that fails after T06 is completed is retried on the NEXT resume/reload — durable, not one-shot", async () => {
+  it("a retire that fails after T06 is completed remains durably retryable by the maintenance sweep", async () => {
     const engine = createTestEngine();
     const draftRepository = new FakeDraftRepository();
     const canonical = await readyHeroMedia(engine);
@@ -419,8 +425,10 @@ describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T
       MEMORIAL_A,
       content,
     );
-    // Still there after the failed attempt.
-    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).not.toBeNull();
+    // Still inventoried after the failed external operation, but hidden.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id }))
+      .toMatchObject({ status: "pending" });
+    expect(engine.mediaSecurityRepository.hasPendingCleanupClaim(stale.id)).toBe(true);
 
     // A later Builder reload/resume — the retry mechanism this function
     // itself IS, called again exactly as page.tsx calls it on every load.
@@ -432,6 +440,7 @@ describe("reconcileHeroMediaOnResume — QG follow-up #2: cleanup must outlive T
       firstLoad,
     );
 
+    expect(await sweepAbandonedUploads(engine)).toEqual({ examined: 1, reclaimed: 1 });
     expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).toBeNull();
     expect(
       await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: canonical.id }),
@@ -518,5 +527,28 @@ describe("resolveHeroPhotoStepData — MemorialVersion's own content shape", () 
     );
 
     expect(result.content).toBe(draft.content);
+  });
+});
+
+describe("resolveHeroPhotoStepData — Security V1 publication lock", () => {
+  it("never adopts or retires Hero media after first publication", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const late = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published", firstPublishedAt: "2026-10-19T10:00:00.000Z", draftRevision: 8,
+    });
+
+    const result = await reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository }, ownerActor(OWNER_A), MEMORIAL_A, content,
+    );
+
+    expect(result).toBe(content);
+    expect(draftRepository.saved).toEqual([]);
+    expect(engine.mediaRepository.rows.has(canonical.id)).toBe(true);
+    expect(engine.mediaRepository.rows.has(late.id)).toBe(true);
   });
 });

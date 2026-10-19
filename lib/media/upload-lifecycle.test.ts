@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MAX_MEDIA_BYTES } from "@/config/media";
+import { MAX_MEDIA_BYTES, MEDIA_PENDING_TTL_MS } from "@/config/media";
 import { finalizeMediaUpload, reserveMediaUpload } from "./upload-lifecycle";
+import { sweepAbandonedUploads } from "./orphan-sweep";
 import {
   ADMIN_NON_OWNER,
   AUTHENTICATED_NON_OWNER,
@@ -436,8 +437,7 @@ describe("finalizeMediaUpload — a lying client", () => {
     expect(result).toEqual({ ok: false, code: "invalid_file" });
   });
 
-  it("leaves no row and no object behind after refusing", async () => {
-    // A rejected upload must not become an orphan of either kind.
+  it("keeps a rejected upload traceable until its signed permission expires", async () => {
     const engine = createTestEngine();
     const reserved = await uploadedMedia(engine, {
       declaredMimeType: "image/jpeg",
@@ -449,6 +449,16 @@ describe("finalizeMediaUpload — a lying client", () => {
       mediaId: reserved.mediaId,
     });
 
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+    expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
+    expect(engine.mediaSecurityRepository.hasPendingCleanupClaim(reserved.mediaId)).toBe(true);
+
+    // A replay before token expiry remains attached to the same inventory row.
+    engine.objectStore.put(reserved.storagePath, SVG_BYTES);
+    expect(engine.mediaRepository.rows.has(reserved.mediaId)).toBe(true);
+
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+    expect(await sweepAbandonedUploads(engine)).toEqual({ examined: 1, reclaimed: 1 });
     expect(engine.mediaRepository.rows.has(reserved.mediaId)).toBe(false);
     expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(false);
   });
@@ -514,6 +524,10 @@ describe("finalizeMediaUpload — size", () => {
       mediaId: reserved.mediaId,
     });
 
+    expect(engine.objectStore.objects.size).toBe(1);
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+    engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+    await sweepAbandonedUploads(engine);
     expect(engine.objectStore.objects.size).toBe(0);
     expect(engine.mediaRepository.rows.size).toBe(0);
   });
@@ -638,6 +652,38 @@ describe("finalizeMediaUpload — concurrency", () => {
 
     expect(result.ok).toBe(false);
     expect(engine.mediaRepository.rows.has(reserved.mediaId)).toBe(false);
+  });
+});
+
+describe("finalizeMediaUpload — invalid upload cleanup safety", () => {
+  it("keeps the inventory row when Storage deletion is not confirmed", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: SVG_BYTES });
+    engine.objectStore.failOn.removeByPrefix = new Error("Storage timeout");
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "invalid_file" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+    expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
+    expect(engine.mediaSecurityRepository.hasPendingCleanupClaim(reserved.mediaId)).toBe(true);
+  });
+
+  it("never deletes a row that became ready before invalid cleanup claimed it", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: SVG_BYTES });
+    const original = engine.mediaSecurityRepository.reservePendingCleanup.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.reservePendingCleanup = async (input) => {
+      const row = engine.mediaRepository.rows.get(reserved.mediaId)!;
+      engine.mediaRepository.rows.set(reserved.mediaId, { ...row, status: "ready" });
+      return original(input);
+    };
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "invalid_file" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("ready");
+    expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
   });
 });
 
@@ -825,13 +871,17 @@ describe("finalizeMediaUpload — natural dimensions (dette D1)", () => {
     expect(engine.objectStore.objects.get(reserved.storagePath)).toEqual(bytes);
   });
 
-  it("refuses a Gallery media whose dimensions cannot be established — discarded like any unusable file", async () => {
+  it("refuses a Gallery media whose dimensions cannot be established and defers physical cleanup safely", async () => {
     for (const bytes of [JPEG_WITHOUT_SOF, jpegWithDimensions(0, 1600), pngWithDimensions(1200, 0)]) {
       const engine = createTestEngine();
       const declaredMimeType = bytes[0] === 0x89 ? "image/png" : "image/jpeg";
       const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose: "gallery" });
       const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
       expect(result).toEqual({ ok: false, code: "invalid_file" });
+      expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+      expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(true);
+      engine.advance(MEDIA_PENDING_TTL_MS + 1000);
+      await sweepAbandonedUploads(engine);
       expect(engine.mediaRepository.rows.has(reserved.mediaId)).toBe(false);
       expect(engine.objectStore.objects.has(reserved.storagePath)).toBe(false);
     }
@@ -886,5 +936,39 @@ describe("finalizeMediaUpload — expectedPurpose (dette D1)", () => {
     const gallery = await uploadedMedia(engine, { bytes: jpegWithDimensions(10, 20), purpose: "gallery" });
     const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: gallery.mediaId, expectedPurpose: "gallery" });
     expect(result.ok && result.value.purpose).toBe("gallery");
+  });
+});
+
+describe("Security V1 — publication lifecycle", () => {
+  it("locks every Hero reservation after the first publication while keeping Gallery open", async () => {
+    const engine = createTestEngine();
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published",
+      firstPublishedAt: "2026-10-19T10:00:00.000Z",
+      draftRevision: 4,
+    });
+
+    expect(await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "hero", declaredMimeType: "image/jpeg",
+    })).toEqual({ ok: false, code: "access_denied" });
+
+    expect((await reserveMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, purpose: "gallery", declaredMimeType: "image/jpeg",
+    })).ok).toBe(true);
+  });
+
+  it("does not finalize a Hero reservation that publication overtook", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { purpose: "hero", bytes: JPEG_BYTES });
+    engine.mediaSecurityRepository.snapshots.set(MEMORIAL_A, {
+      status: "published",
+      firstPublishedAt: "2026-10-19T10:00:00.000Z",
+      draftRevision: 1,
+    });
+
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+      memorialId: MEMORIAL_A, mediaId: reserved.mediaId,
+    })).toEqual({ ok: false, code: "access_denied" });
+    expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
   });
 });
