@@ -15,7 +15,7 @@ describe("Founder Atelier fixture", () => {
     expect(assembled.status).toBe("assembled");
     expect(assembled.sections.map(({ sectionId, rendererKey }) => [sectionId, rendererKey])).toEqual([
       ["hero", "HeroIntemporel"],
-      ["deathNotice", "DeathNoticeIntemporel"],
+      ["deathNotice", "DeathNoticeV2"],
       ["ceremony", "CeremonyV2"],
       ["story", "RecitDeVieV2"],
       ["traditions", "TraditionsV2"],

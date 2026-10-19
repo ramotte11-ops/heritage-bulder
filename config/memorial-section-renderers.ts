@@ -17,6 +17,11 @@ import type { Skin } from "./skins";
  * renderer — the composition fails closed on it (`noRenderer`), it never
  * substitutes another skin's renderer.
  *
+ *  - `deathNotice` → `DeathNoticeV2`: l'Avis de décès V2, the four
+ *    validated variants (Mobile Light/Dark, Desktop Light/Dark 1 + 4),
+ *    drawn as is from `components/memorial/death-notice/v2/`. The V1
+ *    renderer `DeathNoticeIntemporel` stays registered: switching this
+ *    one line back to it is the whole rollback.
  *  - `story` → `RecitDeVieV2`: the Récit de vie V2 (A10/A11/A12, Mobile
  *    and Desktop, LIGHT = bleu pétrole / DARK = ivoire-champagne). The V1
  *    renderer `RecitDeVieIntemporel` stays registered: switching this one
@@ -43,6 +48,7 @@ import type { Skin } from "./skins";
 export const RENDERER_KEYS = [
   "HeroIntemporel",
   "DeathNoticeIntemporel",
+  "DeathNoticeV2",
   "CeremonyIntemporel",
   "CeremonyV2",
   "RecitDeVieIntemporel",
@@ -57,7 +63,7 @@ export const SECTION_RENDERERS: Readonly<
   Partial<Record<SectionId, Readonly<Partial<Record<Skin, RendererKey>>>>>
 > = {
   hero: { intemporel: "HeroIntemporel" },
-  deathNotice: { intemporel: "DeathNoticeIntemporel" },
+  deathNotice: { intemporel: "DeathNoticeV2" },
   ceremony: { intemporel: "CeremonyV2" },
   story: { intemporel: "RecitDeVieV2" },
   traditions: { intemporel: "TraditionsV2" },

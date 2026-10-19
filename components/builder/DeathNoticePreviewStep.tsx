@@ -15,7 +15,7 @@ import {
   reopenA01,
   reopenA02,
 } from "@/lib/builder/guided-flow/death-notice-step";
-import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
+import { DeathNoticeV2 } from "@/components/memorial/death-notice/v2/DeathNoticeV2";
 import { BuilderScreen } from "./BuilderScreen";
 import { BuilderScreenNav } from "./journey/BuilderScreenNav";
 import { inter, playfairDisplay } from "./fonts";
@@ -51,6 +51,14 @@ interface DeathNoticePreviewStepProps {
 /**
  * Mission 039B — A03: the Death Notice preview, obligatoire et
  * non-passable (mission brief section 1).
+ *
+ * Avis de décès V2 — integration: the Memorial zone below is now the
+ * validated `DeathNoticeV2` (the same renderer the assembled Memorial
+ * uses for `deathNotice`), at its default `page` heading level — A03
+ * has no Hero above it. Everything else on this screen is unchanged.
+ * The notes below about `DeathNoticeIntemporel` (V1, kept registered
+ * for rollback) describe the layout decision, which V2 follows as is:
+ * full-bleed, its width capped only by its own stylesheet.
  *
  * ## Correction pass — the Memorial is no longer a card inside the Builder
  *
@@ -228,7 +236,7 @@ export function DeathNoticePreviewStep({
         </div>
       </div>
 
-      <DeathNoticeIntemporel
+      <DeathNoticeV2
         hero={heroRead.hero}
         deathNotice={deathNoticeRead.deathNotice}
         language={language}

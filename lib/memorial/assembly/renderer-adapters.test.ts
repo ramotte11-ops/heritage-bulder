@@ -7,6 +7,7 @@ import {
   adaptCeremonyIntemporel,
   adaptCeremonyV2,
   adaptDeathNoticeIntemporel,
+  adaptDeathNoticeV2,
   adaptHeroIntemporel,
   adaptRecitDeVieIntemporel,
   adaptRecitDeVieV2,
@@ -107,6 +108,46 @@ describe("adaptDeathNoticeIntemporel", () => {
       ok: false,
       reason: "contentUnreadable",
     });
+  });
+});
+
+describe("adaptDeathNoticeV2 — the V1 contract, unchanged", () => {
+  it("hands V2 exactly the props V1 receives: Hero name and dates, Avis, language, variant, section level", async () => {
+    for (const skinVariant of ["light", "dark"] as const) {
+      for (const language of ["fr", "en", "es"] as const) {
+        const ctx = { ...context(fullAnnouncement()), skinVariant, language };
+        const v2 = await adaptDeathNoticeV2(ctx);
+        expect(v2).toEqual(await adaptDeathNoticeIntemporel(ctx));
+        expect(v2.ok && v2.props.headingLevel).toBe("section");
+        expect(v2.ok && v2.props.skinVariant).toBe(skinVariant);
+        expect(v2.ok && v2.props.language).toBe(language);
+      }
+    }
+  });
+
+  it.each<[string, (c: MemorialContent) => MemorialContent]>([
+    ["a corrupted Avis", (c) => ({ ...c, deathNotice: { announcementText: 42 } }) as unknown as MemorialContent],
+    ["an absent Avis", (c) => ({ ...c, deathNotice: undefined })],
+    [
+      "no announcement text",
+      (c) => ({ ...c, deathNotice: { ...(c.deathNotice as object), announcementText: null } }) as MemorialContent,
+    ],
+    ["a corrupted Hero", (c) => ({ ...c, hero: "garbage" }) as unknown as MemorialContent],
+    ["no display name", (c) => withHero(c, { displayName: null })],
+  ])("%s → contentUnreadable", async (_label, corrupt) => {
+    expect(await adaptDeathNoticeV2(context(corrupt(fullAnnouncement())))).toEqual({
+      ok: false,
+      reason: "contentUnreadable",
+    });
+  });
+
+  it("refuses any skin other than Intemporel", async () => {
+    for (const skin of ["musulman", "juif", "hindou", null] as const) {
+      expect(await adaptDeathNoticeV2({ ...context(fullAnnouncement()), skin })).toEqual({
+        ok: false,
+        reason: "skinMismatch",
+      });
+    }
   });
 });
 

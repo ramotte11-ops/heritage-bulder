@@ -5,6 +5,7 @@ import type { RendererKey } from "@/config/memorial-section-renderers";
 import type { MemorialContent } from "@/types/memorial";
 import type { HeroIntemporelProps } from "@/components/memorial/hero/HeroIntemporel";
 import type { DeathNoticeIntemporelProps } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
+import type { DeathNoticeV2Props } from "@/components/memorial/death-notice/v2/DeathNoticeV2";
 import type { CeremonyIntemporelProps } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import type { CeremonyV2Props } from "@/components/memorial/ceremony/v2/CeremonyV2";
 import type { RecitDeVieIntemporelProps } from "@/components/memorial/life-story/RecitDeVieIntemporel";
@@ -47,6 +48,7 @@ import type { MediaResolver } from "./media-resolver";
 export interface RendererPropsMap {
   HeroIntemporel: HeroIntemporelProps;
   DeathNoticeIntemporel: DeathNoticeIntemporelProps;
+  DeathNoticeV2: DeathNoticeV2Props;
   CeremonyIntemporel: CeremonyIntemporelProps;
   CeremonyV2: CeremonyV2Props;
   RecitDeVieIntemporel: RecitDeVieIntemporelProps;
@@ -123,7 +125,14 @@ export const adaptHeroIntemporel: RendererAdapter<"HeroIntemporel"> = async (con
   };
 };
 
-export const adaptDeathNoticeIntemporel: RendererAdapter<"DeathNoticeIntemporel"> = async (context) => {
+/**
+ * The Death Notice read shared by V1 and V2 — same sources of truth
+ * (name and dates from the Hero, announcement and the five precisions
+ * from the Avis), same refusals: another skin, a corrupted Hero or Avis,
+ * no name, no announcement. QG D3: the Hero's name is the Memorial's
+ * only <h1>, so the Avis sits at `section` level.
+ */
+function adaptDeathNotice(context: AdapterContext): AdapterResult<"DeathNoticeIntemporel" | "DeathNoticeV2"> {
   if (context.skin !== "intemporel") return refuse("skinMismatch");
 
   const hero = inspectHero(context.content);
@@ -141,11 +150,18 @@ export const adaptDeathNoticeIntemporel: RendererAdapter<"DeathNoticeIntemporel"
       deathNotice: deathNotice.deathNotice,
       language: context.language,
       skinVariant: context.skinVariant,
-      // QG D3: the Hero's name is the Memorial's only <h1>.
       headingLevel: "section",
     },
   };
-};
+}
+
+/** V1 — kept registered as the rollback target only. */
+export const adaptDeathNoticeIntemporel: RendererAdapter<"DeathNoticeIntemporel"> = async (context) =>
+  adaptDeathNotice(context);
+
+/** Avis de décès V2 — exactly the V1 contract (same matters, same
+ * refusals, same props): only the renderer differs. */
+export const adaptDeathNoticeV2: RendererAdapter<"DeathNoticeV2"> = async (context) => adaptDeathNotice(context);
 
 export const adaptCeremonyIntemporel: RendererAdapter<"CeremonyIntemporel"> = async (context) => {
   if (context.skin !== "intemporel") return refuse("skinMismatch");
@@ -321,6 +337,7 @@ export const adaptGalleryIntemporel: RendererAdapter<"GalleryIntemporel"> = asyn
 export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K> } = {
   HeroIntemporel: adaptHeroIntemporel,
   DeathNoticeIntemporel: adaptDeathNoticeIntemporel,
+  DeathNoticeV2: adaptDeathNoticeV2,
   CeremonyIntemporel: adaptCeremonyIntemporel,
   CeremonyV2: adaptCeremonyV2,
   RecitDeVieIntemporel: adaptRecitDeVieIntemporel,

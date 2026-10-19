@@ -464,7 +464,7 @@ describe("real parcours (announcement, through A12, ceremony yes)", () => {
     expect(composition.renderable).toEqual(["hero", "deathNotice", "ceremony", "story"]);
     expect(composition.sections.filter((s) => s.state === "renderable").map((s) => s.rendererKey)).toEqual([
       "HeroIntemporel",
-      "DeathNoticeIntemporel",
+      "DeathNoticeV2",
       "CeremonyV2",
       "RecitDeVieV2",
     ]);

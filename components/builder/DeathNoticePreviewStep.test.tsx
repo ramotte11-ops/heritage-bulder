@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { MemorialContent } from "@/types/memorial";
-import type { Skin } from "@/config/skins";
+import type { Skin, SkinVariant } from "@/config/skins";
 
 /**
  * Mission 039B — contract tests for A03's Builder screen
@@ -70,7 +72,7 @@ function defaultProps() {
     language: "fr" as const,
     content: READY_CONTENT,
     skin: "intemporel" as Skin,
-    skinVariant: "light" as const,
+    skinVariant: "light" as SkinVariant,
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),
   };
 }
@@ -80,7 +82,7 @@ function baseProps(overrides: Partial<ReturnType<typeof defaultProps>> = {}) {
 }
 
 describe("DeathNoticePreviewStep — the real renderer, rendered", () => {
-  it("renders the family's own content through the real DeathNoticeIntemporel", () => {
+  it("renders the family's own content through the real DeathNoticeV2", () => {
     render(<DeathNoticePreviewStep {...baseProps()} />);
     expect(screen.getByText("Jean Dupont")).toBeTruthy();
     expect(screen.getByText("Elle s'en est allée paisiblement, entourée des siens.")).toBeTruthy();
@@ -119,6 +121,48 @@ describe("DeathNoticePreviewStep — the real renderer, rendered", () => {
       />,
     );
     expect(screen.getByRole("alert")).toBeTruthy();
+  });
+});
+
+describe("DeathNoticePreviewStep — Avis de décès V2, the validated renderer", () => {
+  it.each(["light", "dark"] as const)("shows the real DeathNoticeV2 in %s — never the V1 scene", (skinVariant) => {
+    const { container } = render(<DeathNoticePreviewStep {...baseProps({ skinVariant })} />);
+    const notice = container.querySelector('[data-testid="death-notice-v2"]');
+    expect(notice).toBeTruthy();
+    expect(notice?.closest("[data-variant]")?.getAttribute("data-variant")).toBe(skinVariant);
+    expect(container.querySelector('img[src*="a03-scene-top.png"]')).toBeNull();
+  });
+
+  it("the Memorial zone is a direct child of the page, between the Builder strips", () => {
+    const { container } = render(<DeathNoticePreviewStep {...baseProps()} />);
+    const page = container.querySelector("main") as HTMLElement;
+    const children = Array.from(page.children);
+    const scope = page.querySelector('[data-heritage-skin="intemporel"]') as HTMLElement;
+    expect(children).toContain(scope);
+    expect(children.indexOf(scope)).toBeGreaterThan(0);
+    expect(children[children.length - 1].tagName).toBe("FORM");
+  });
+
+  it("A03 has no Hero above it: the Avis title is the page's <h1>, the name an <h2>", () => {
+    render(<DeathNoticePreviewStep {...baseProps()} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Avis de décès");
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Jean Dupont");
+  });
+
+  /* jsdom has no layout: this pins the one rule that keeps V2 from
+   * collapsing to 0px in `.page`'s centring flex column (V2's wrapper is a
+   * `container-type: inline-size` box with no intrinsic width) —
+   * verified in a real browser during the integration QA. */
+  it("the page stretches the Memorial zone to its full width", () => {
+    const css = readFileSync(path.resolve(import.meta.dirname, "DeathNoticePreviewStep.module.css"), "utf8");
+    expect(css).toMatch(/\.page > \[data-heritage-skin\]\s*\{\s*align-self: stretch;\s*\}/);
+  });
+
+  it("keeps the three Builder controls", () => {
+    render(<DeathNoticePreviewStep {...baseProps()} />);
+    expect(screen.getByRole("button", { name: "Modifier l'annonce" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Modifier les précisions" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continuer" })).toBeTruthy();
   });
 });
 

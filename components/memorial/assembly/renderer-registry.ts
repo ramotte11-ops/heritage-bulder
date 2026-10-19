@@ -3,6 +3,7 @@ import type { RendererKey } from "@/config/memorial-section-renderers";
 import type { RendererPropsMap } from "@/lib/memorial/assembly/renderer-adapters";
 import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
 import { DeathNoticeIntemporel } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
+import { DeathNoticeV2 } from "@/components/memorial/death-notice/v2/DeathNoticeV2";
 import { CeremonyIntemporel } from "@/components/memorial/ceremony/CeremonyIntemporel";
 import { CeremonyV2 } from "@/components/memorial/ceremony/v2/CeremonyV2";
 import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVieIntemporel";
@@ -20,6 +21,7 @@ import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntempor
 export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<RendererPropsMap[K]> } = {
   HeroIntemporel,
   DeathNoticeIntemporel,
+  DeathNoticeV2,
   CeremonyIntemporel,
   CeremonyV2,
   RecitDeVieIntemporel,

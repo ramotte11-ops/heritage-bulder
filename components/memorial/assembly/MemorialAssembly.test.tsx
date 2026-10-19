@@ -44,6 +44,7 @@ const { setSectionVisibility } = await import("@/lib/memorial/section-visibility
 const { RENDERER_COMPONENTS } = await import("./renderer-registry");
 const { HeroIntemporel } = await import("@/components/memorial/hero/HeroIntemporel");
 const { DeathNoticeIntemporel } = await import("@/components/memorial/death-notice/DeathNoticeIntemporel");
+const { DeathNoticeV2 } = await import("@/components/memorial/death-notice/v2/DeathNoticeV2");
 const { CeremonyIntemporel } = await import("@/components/memorial/ceremony/CeremonyIntemporel");
 const { CeremonyV2 } = await import("@/components/memorial/ceremony/v2/CeremonyV2");
 const { RecitDeVieIntemporel } = await import("@/components/memorial/life-story/RecitDeVieIntemporel");
@@ -91,7 +92,9 @@ describe("MemorialAssembly — the real renderers, in the composition's order", 
     const block = (id: string) => container.querySelector(`[data-memorial-section="${id}"]`) as HTMLElement;
 
     expect(block("hero").querySelector('img[src*="hero-runtime-light-desktop.png"]')).toBeTruthy();
-    expect(block("deathNotice").querySelector('img[src*="a03-scene-top.png"]')).toBeTruthy();
+    expect(block("deathNotice").querySelector('[data-testid="death-notice-v2"]')).toBeTruthy();
+    // V1 (rollback only) is never what the Memorial draws.
+    expect(block("deathNotice").querySelector('img[src*="a03-scene-top.png"]')).toBeNull();
     expect(block("story").querySelector('[data-testid="recit-de-vie-v2"]')).toBeTruthy();
     expect(block("story").textContent).toContain(FIXTURE_PERSON_WORDS);
     expect(block("ceremony").querySelector('[data-testid="ceremony-v2"]')).toBeTruthy();
@@ -159,6 +162,7 @@ describe("renderer registry", () => {
     expect(Object.keys(RENDERER_COMPONENTS).sort()).toEqual([...RENDERER_KEYS].sort());
     expect(RENDERER_COMPONENTS.HeroIntemporel).toBe(HeroIntemporel);
     expect(RENDERER_COMPONENTS.DeathNoticeIntemporel).toBe(DeathNoticeIntemporel);
+    expect(RENDERER_COMPONENTS.DeathNoticeV2).toBe(DeathNoticeV2);
     expect(RENDERER_COMPONENTS.CeremonyIntemporel).toBe(CeremonyIntemporel);
     expect(RENDERER_COMPONENTS.CeremonyV2).toBe(CeremonyV2);
     expect(RENDERER_COMPONENTS.RecitDeVieIntemporel).toBe(RecitDeVieIntemporel);
