@@ -24,6 +24,7 @@ import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
+import { openNativeTimePicker } from "./open-native-time-picker";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./CeremonyProgrammeStep.module.css";
 
@@ -545,6 +546,7 @@ function MomentFields({
           disabled={disabled}
           aria-invalid={timeIncomplete || undefined}
           aria-describedby={timeIncomplete ? timeErrorId : undefined}
+          onClick={(event) => openNativeTimePicker(event.currentTarget)}
           onChange={(event) => onChange({ ...draft, time: event.target.value })}
         />
         {timeIncomplete && (

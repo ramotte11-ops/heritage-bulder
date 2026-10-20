@@ -130,6 +130,18 @@ describe("CeremonyProgrammeStep — rendu", () => {
 });
 
 describe("CeremonyProgrammeStep — Ajouter", () => {
+  it("opens the native time picker from the whole time field", () => {
+    render(<CeremonyProgrammeStep {...baseProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter un moment" }));
+    const input = screen.getByLabelText("Heure (facultatif)") as HTMLInputElement;
+    const showPicker = vi.fn();
+    Object.defineProperty(input, "showPicker", { configurable: true, value: showPicker });
+
+    fireEvent.click(input);
+
+    expect(showPicker).toHaveBeenCalledOnce();
+  });
+
   it("adds a confirmed moment: card appears, composer closes, Continue enables", () => {
     render(<CeremonyProgrammeStep {...baseProps()} />);
     addMoment("Accueil des proches", "14:30", "Salle paroissiale");

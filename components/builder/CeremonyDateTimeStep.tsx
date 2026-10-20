@@ -19,6 +19,7 @@ import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
+import { openNativeTimePicker } from "./open-native-time-picker";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./CeremonyDateTimeStep.module.css";
 
@@ -178,6 +179,7 @@ export function CeremonyDateTimeStep({ language, content: initialContent, persis
               className={styles.input}
               defaultValue={read.ceremony.time ?? ""}
               disabled={controlsDisabled}
+              onClick={(event) => openNativeTimePicker(event.currentTarget)}
               onChange={(event) => handleTimeChange(event.target.value)}
             />
           </div>
