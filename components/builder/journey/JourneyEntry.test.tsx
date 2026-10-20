@@ -372,14 +372,17 @@ describe("a real step opened for revision (A00: Oui → Non)", () => {
 });
 
 describe("B03 — incomplete input: never a silent loss", () => {
-  async function renderWithPending(revising: Parameters<typeof resolveJourney>[1] = null) {
+  async function renderWithPending(
+    revising: Parameters<typeof resolveJourney>[1] = null,
+    registry = createPreviewFlushRegistry(),
+  ) {
     const { usePendingInput } = await import("./pending-input");
     function Unfinished() {
       usePendingInput(true);
       return null;
     }
     render(
-      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+      <PreviewFlushRegistryContext.Provider value={registry}>
         <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL, revising)} builderPath="/builder/m-1">
           <BuilderScreenNav />
           <Unfinished />
@@ -442,6 +445,26 @@ describe("B03 — incomplete input: never a silent loss", () => {
     expect(forward).toHaveBeenCalledOnce();
   });
 
+  it("browser Back still drains an autosave after the family accepts abandoning an incomplete answer", async () => {
+    let release: () => void = () => {};
+    const registry = createPreviewFlushRegistry();
+    const flush = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
+    registry.register(flush);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const forward = vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    await renderWithPending("identity", registry);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(forward).toHaveBeenCalledOnce();
+    expect(back).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(flush).toHaveBeenCalledOnce();
+    await act(async () => release());
+    await waitFor(() => expect(back).toHaveBeenCalledOnce());
+  });
+
   it("browser Back drains an in-flight autosave before replaying the navigation", async () => {
     let release: () => void = () => {};
     const registry = createPreviewFlushRegistry();
@@ -474,6 +497,49 @@ describe("B03 — incomplete input: never a silent loss", () => {
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/pas encore enregistrées/));
     expect(back).not.toHaveBeenCalled();
+  });
+
+  it("browser Back stays on the form when a revision conflict is already declared", async () => {
+    const forward = vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    renderConflictedRoute({ revising: "identity" });
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Vos dernières modifications ne sont pas encore enregistrées/)).toBeTruthy(),
+    );
+    expect(forward).toHaveBeenCalledOnce();
+    expect(back).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Télécharger mes modifications" })).toBeTruthy();
+  });
+
+  it("serializes repeated Back presses while autosave is pending without a loop or duplicate flush", async () => {
+    let release: () => void = () => {};
+    const registry = createPreviewFlushRegistry();
+    const flush = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
+    registry.register(flush);
+    const forward = vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    renderWithRoute("identity", registry);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(flush).toHaveBeenCalledOnce();
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(forward).toHaveBeenCalledTimes(2);
+    expect(flush).toHaveBeenCalledOnce();
+
+    await act(async () => release());
+    expect(back).not.toHaveBeenCalled();
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() => expect(back).toHaveBeenCalledOnce());
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(back).toHaveBeenCalledOnce();
+    expect(forward).toHaveBeenCalledTimes(2);
   });
 });
 

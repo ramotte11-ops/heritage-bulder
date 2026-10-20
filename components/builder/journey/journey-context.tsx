@@ -123,7 +123,8 @@ export function RouteJourneyProvider({
   const draftRevision = useDraftRevisionCoordinator();
   const [pendingInputs] = useState(createPendingInputRegistry);
   const [backNavigationFailed, setBackNavigationFailed] = useState(false);
-  const backPhase = useRef<"restore" | "drain" | "allow" | null>(null);
+  const backPhase = useRef<"restore" | "drain" | "waiting" | "waitingRestore" | "allow" | null>(null);
+  const backDrainResult = useRef<boolean | null>(null);
 
   const drained = useCallback(async (): Promise<boolean> => {
     if (registry === null) return true;
@@ -159,6 +160,17 @@ export function RouteJourneyProvider({
   useEffect(() => {
     if (snapshot.revising === null) return;
 
+    function finishBackNavigation(safe: boolean) {
+      if (!safe) {
+        backPhase.current = null;
+        setBackNavigationFailed(true);
+        return;
+      }
+      setBackNavigationFailed(false);
+      backPhase.current = "allow";
+      window.history.back();
+    }
+
     function handlePopState() {
       if (backPhase.current === "allow") {
         backPhase.current = null;
@@ -168,16 +180,28 @@ export function RouteJourneyProvider({
         backPhase.current = null;
         return;
       }
+      if (backPhase.current === "waitingRestore") {
+        backPhase.current = "waiting";
+        const safe = backDrainResult.current;
+        backDrainResult.current = null;
+        if (safe !== null) finishBackNavigation(safe);
+        return;
+      }
+      if (backPhase.current === "waiting") {
+        // A second Back while the save is pending must not start another
+        // flush or move farther back. Restore the protected form once.
+        backPhase.current = "waitingRestore";
+        window.history.forward();
+        return;
+      }
       if (backPhase.current === "drain") {
+        backPhase.current = "waiting";
         void canLeaveCurrentScreen().then((safe) => {
-          if (!safe) {
-            backPhase.current = null;
-            setBackNavigationFailed(true);
+          if (backPhase.current === "waitingRestore") {
+            backDrainResult.current = safe;
             return;
           }
-          setBackNavigationFailed(false);
-          backPhase.current = "allow";
-          window.history.back();
+          if (backPhase.current === "waiting") finishBackNavigation(safe);
         });
         return;
       }
@@ -186,8 +210,7 @@ export function RouteJourneyProvider({
         const leave = window.confirm(
           `${translate(language, "journey.pending")}\n\n${translate(language, "journey.pendingLeave")}`,
         );
-        if (leave) return;
-        backPhase.current = "restore";
+        backPhase.current = leave ? "drain" : "restore";
         window.history.forward();
         return;
       }
@@ -197,7 +220,11 @@ export function RouteJourneyProvider({
     }
 
     window.addEventListener("popstate", handlePopState, { capture: true });
-    return () => window.removeEventListener("popstate", handlePopState, { capture: true });
+    return () => {
+      window.removeEventListener("popstate", handlePopState, { capture: true });
+      backPhase.current = null;
+      backDrainResult.current = null;
+    };
   }, [snapshot.revising, language, pendingInputs, canLeaveCurrentScreen]);
 
   const value = useMemo<JourneyNavigation>(() => {
