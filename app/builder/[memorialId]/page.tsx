@@ -50,8 +50,10 @@ import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
 import {
   resolveJourney,
-  resolveRevisionTarget,
+  resolveRevisionContext,
+  resolveReviewingSection,
   type JourneyScreenId,
+  type JourneySection,
 } from "@/lib/builder/guided-flow/journey";
 import { resolveGalleryStepData } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import {
@@ -301,7 +303,7 @@ export default async function BuilderMemorialPage({
   searchParams,
 }: {
   params: Promise<{ memorialId: string }>;
-  /** B03 — only `etape` is read (a revision target, validated below). */
+  /** B03/#59 — `etape` and `rubrique` are navigation claims, validated below. */
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { memorialId } = await params;
@@ -375,6 +377,7 @@ export default async function BuilderMemorialPage({
   // the raw URL segment, and a bound Server Action rather than a closure
   // over `supabase`/`memorialConfigRepository` — the same reasons
   // Mission 021B already documents for the draft's `persist`.
+  const query = await searchParams;
   // Étape 3 — Preview réel. Every Guided Flow screen below is returned
   // inside the SAME `BuilderPreviewHost` wrapper (`withPreview`), locked
   // or not, so the tree's shape never changes and the host can hide —
@@ -389,6 +392,7 @@ export default async function BuilderMemorialPage({
   // nothing here is handed to it but the authorized id.
   const memorialLanguage = resumed.memorial.language;
   const initialDraft = resumed.draft;
+  let activeReviewingSection: JourneySection | null = null;
   const memorialSkinVariant = resumed.memorial.skinVariant;
   const memorialSkinId = resumed.memorial.skin;
   const saveVisibility = saveSectionVisibilityAction.bind(null, access.memorialId);
@@ -426,7 +430,7 @@ export default async function BuilderMemorialPage({
           journeyContent === null
             ? null
             : {
-                snapshot: resolveJourney(journeyContent, revising),
+                snapshot: resolveJourney(journeyContent, revising, activeReviewingSection),
                 builderPath,
                 skinVariant: memorialSkinVariant,
                 // « Gérer les rubriques visibles »: the rows come from the
@@ -735,8 +739,13 @@ export default async function BuilderMemorialPage({
   // screen fresh. PAGE C keeps its own compensation pass on the raw
   // draft; every other screen renders the reconciled content, exactly
   // like the route below.
-  const revisionTarget = resolveRevisionTarget(resumed.draft.content, (await searchParams).etape);
-  if (revisionTarget !== null) {
+  const revisionContext = resolveRevisionContext(resumed.draft.content, query.etape, query.rubrique);
+  activeReviewingSection =
+    query.etape === undefined
+      ? resolveReviewingSection(resumed.draft.content, query.rubrique)
+      : revisionContext?.section ?? null;
+  if (revisionContext !== null) {
+    const revisionTarget = revisionContext.screen;
     const revisionContent =
       revisionTarget === "photo"
         ? resumed.draft.content

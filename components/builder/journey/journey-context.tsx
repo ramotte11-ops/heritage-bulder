@@ -1,10 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
-import type { JourneyScreenId, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
+import {
+  journeySectionForScreen,
+  type JourneyScreenId,
+  type JourneySection,
+  type JourneySnapshot,
+} from "@/lib/builder/guided-flow/journey";
 import type { SectionId } from "@/config/sections";
 import type { SectionVisibilityEntry } from "@/lib/memorial/visibility-entries";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
@@ -15,6 +20,7 @@ import {
   PendingInputRegistryContext,
 } from "./pending-input";
 import { useDraftRevisionCoordinator, type DraftSaveResponse } from "@/lib/builder/draft-revision";
+import { translate } from "@/lib/i18n/translate";
 
 /**
  * B03 — « Mon parcours »: what the entry (`JourneyEntry`, rendered by
@@ -36,11 +42,16 @@ export interface JourneyNavigation {
   openScreen: (id: JourneyScreenId) => Promise<boolean>;
   /** Saves, then goes back to where the family stopped. */
   resume: () => Promise<boolean>;
+  /** Explicitly leaves rubrique revision and resumes the normal route. */
+  finishReview: () => Promise<boolean>;
   /** Called by a step once its own Continue (or skip) is saved. */
   finishStep: () => void;
   /** The current screen holds input the autosave cannot save yet
    * (./pending-input.tsx) — « Mon parcours » asks before leaving. */
   hasPendingInput: () => boolean;
+  /** A browser Back navigation stayed on the form because its autosave
+   * or conflict guard could not safely release it. */
+  backNavigationFailed: boolean;
   /** « Gérer les rubriques visibles ». `null` → the entry is absent (a
    * host that does not provide it: the QG demo, unit tests). */
   visibility?: JourneyVisibility | null;
@@ -77,6 +88,10 @@ export function useStepDone(): () => void {
   }, [journey, router]);
 }
 
+function sectionPath(builderPath: string, section: JourneySection): string {
+  return `${builderPath}?rubrique=${section}`;
+}
+
 /**
  * The real route's provider (`BuilderPreviewHost` mounts it when the
  * page hands it a journey). `builderPath` is built server-side from the
@@ -107,6 +122,25 @@ export function RouteJourneyProvider({
   const registry = useContext(PreviewFlushRegistryContext);
   const draftRevision = useDraftRevisionCoordinator();
   const [pendingInputs] = useState(createPendingInputRegistry);
+  const [backNavigationFailed, setBackNavigationFailed] = useState(false);
+  const backPhase = useRef<"restore" | "drain" | "waiting" | "waitingRestore" | "allow" | null>(null);
+  const backDrainResult = useRef<boolean | null>(null);
+
+  const drained = useCallback(async (): Promise<boolean> => {
+    if (registry === null) return true;
+    try {
+      await registry.flushAll();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [registry]);
+
+  const canLeaveCurrentScreen = useCallback(async (): Promise<boolean> => {
+    if (draftRevision?.conflictContent != null) return false;
+    if (!(await drained())) return false;
+    return draftRevision?.conflictContent == null;
+  }, [draftRevision, drained]);
 
   // Closing or reloading the tab with unsaved, incomplete input: the
   // browser's own warning (same guard as the autosave's).
@@ -118,38 +152,110 @@ export function RouteJourneyProvider({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [pendingInputs]);
 
-  const value = useMemo<JourneyNavigation>(() => {
-    async function drained(): Promise<boolean> {
-      if (registry === null) return true;
-      try {
-        await registry.flushAll();
-        return true;
-      } catch {
-        return false;
+  // App Router search-param transitions do not fire `beforeunload`.
+  // On a revised form, bounce a browser Back navigation to the still-
+  // mounted form, drain its autosave, then replay Back exactly once. An
+  // incomplete native value is the one intentional exception: the
+  // browser asks synchronously before allowing it to be abandoned.
+  useEffect(() => {
+    if (snapshot.revising === null) return;
+
+    function finishBackNavigation(safe: boolean) {
+      if (!safe) {
+        backPhase.current = null;
+        setBackNavigationFailed(true);
+        return;
       }
+      setBackNavigationFailed(false);
+      backPhase.current = "allow";
+      window.history.back();
     }
 
-    async function canLeaveCurrentScreen(): Promise<boolean> {
-      if (draftRevision?.conflictContent != null) return false;
-      if (!(await drained())) return false;
-      return draftRevision?.conflictContent == null;
+    function handlePopState() {
+      if (backPhase.current === "allow") {
+        backPhase.current = null;
+        return;
+      }
+      if (backPhase.current === "restore") {
+        backPhase.current = null;
+        return;
+      }
+      if (backPhase.current === "waitingRestore") {
+        backPhase.current = "waiting";
+        const safe = backDrainResult.current;
+        backDrainResult.current = null;
+        if (safe !== null) finishBackNavigation(safe);
+        return;
+      }
+      if (backPhase.current === "waiting") {
+        // A second Back while the save is pending must not start another
+        // flush or move farther back. Restore the protected form once.
+        backPhase.current = "waitingRestore";
+        window.history.forward();
+        return;
+      }
+      if (backPhase.current === "drain") {
+        backPhase.current = "waiting";
+        void canLeaveCurrentScreen().then((safe) => {
+          if (backPhase.current === "waitingRestore") {
+            backDrainResult.current = safe;
+            return;
+          }
+          if (backPhase.current === "waiting") finishBackNavigation(safe);
+        });
+        return;
+      }
+
+      if (pendingInputs.hasPending() || hasIncompleteNativeInput()) {
+        const leave = window.confirm(
+          `${translate(language, "journey.pending")}\n\n${translate(language, "journey.pendingLeave")}`,
+        );
+        backPhase.current = leave ? "drain" : "restore";
+        window.history.forward();
+        return;
+      }
+
+      backPhase.current = "drain";
+      window.history.forward();
     }
+
+    window.addEventListener("popstate", handlePopState, { capture: true });
+    return () => {
+      window.removeEventListener("popstate", handlePopState, { capture: true });
+      backPhase.current = null;
+      backDrainResult.current = null;
+    };
+  }, [snapshot.revising, language, pendingInputs, canLeaveCurrentScreen]);
+
+  const value = useMemo<JourneyNavigation>(() => {
     return {
       language,
       snapshot,
       skinVariant,
+      backNavigationFailed,
       async openScreen(id) {
         if (!(await canLeaveCurrentScreen())) return false;
-        router.push(`${builderPath}?etape=${id}`);
+        const section = journeySectionForScreen(id);
+        const path = `${builderPath}?etape=${id}&rubrique=${section}`;
+        if (snapshot.reviewingSection === null) router.push(path);
+        else router.replace(path);
         return true;
       },
       async resume() {
         if (!(await canLeaveCurrentScreen())) return false;
-        router.push(builderPath);
+        if (snapshot.reviewingSection === null) router.push(builderPath);
+        else router.replace(builderPath);
+        return true;
+      },
+      async finishReview() {
+        if (!(await canLeaveCurrentScreen())) return false;
+        router.replace(builderPath);
         return true;
       },
       finishStep() {
-        if (snapshot.revising !== null) router.replace(builderPath);
+        if (snapshot.revising !== null) {
+          router.replace(sectionPath(builderPath, snapshot.reviewingSection ?? journeySectionForScreen(snapshot.revising)));
+        }
         else router.refresh();
       },
       hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
@@ -176,7 +282,18 @@ export function RouteJourneyProvider({
               },
             },
     };
-  }, [language, snapshot, skinVariant, visibility, builderPath, router, registry, pendingInputs, draftRevision]);
+  }, [
+    language,
+    snapshot,
+    skinVariant,
+    visibility,
+    builderPath,
+    router,
+    pendingInputs,
+    draftRevision,
+    backNavigationFailed,
+    canLeaveCurrentScreen,
+  ]);
 
   return (
     <PendingInputRegistryContext.Provider value={pendingInputs}>

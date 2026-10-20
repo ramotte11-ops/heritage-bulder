@@ -246,6 +246,7 @@ export const TRANSLATION_KEYS = [
   "journey.intro",
   "journey.close",
   "journey.resume",
+  "journey.finishReview",
   "journey.revising",
   "journey.review",
   "journey.continueHere",

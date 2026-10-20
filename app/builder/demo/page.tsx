@@ -31,9 +31,11 @@ import { heroStepProgress } from "@/lib/builder/guided-flow/hero-step";
 import { readHero } from "@/lib/memorial/hero";
 import {
   currentJourneyScreen,
+  journeySectionForScreen,
   resolveJourney,
   resolveRevisionTarget,
   type JourneyScreenId,
+  type JourneySection,
 } from "@/lib/builder/guided-flow/journey";
 import {
   QG_RUNTIME_DEMO_BIRTH,
@@ -200,6 +202,7 @@ export default function QgRuntimeDemoPage() {
 
   // B03 — the screen opened from « Mon parcours » (the demo's `?etape=`).
   const [revising, setRevising] = useState<JourneyScreenId | null>(null);
+  const [reviewingSection, setReviewingSection] = useState<JourneySection | null>(null);
   const [pendingInputs] = useState(createPendingInputRegistry);
 
   function applyRecitScenario(next: RecitScenario) {
@@ -219,6 +222,7 @@ export default function QgRuntimeDemoPage() {
   function applyScenario(next: Scenario) {
     setScenario(next);
     setRevising(null);
+    setReviewingSection(null);
     setContent(buildQgRuntimeDemoContent(scenarioHeroInput(next)));
     setSkinVariant(QG_RUNTIME_DEMO_DEFAULT_SKIN_VARIANT);
     setGeneration((n) => n + 1);
@@ -226,6 +230,7 @@ export default function QgRuntimeDemoPage() {
 
   function jumpToA03() {
     setRevising(null);
+    setReviewingSection(null);
     setContent(buildQgRuntimeDemoContentThroughA03(scenarioHeroInput(scenario)));
     setGeneration((n) => n + 1);
   }
@@ -244,15 +249,23 @@ export default function QgRuntimeDemoPage() {
   const revisionTarget = resolveRevisionTarget(content, revising);
   const journey: JourneyNavigation = {
     language: LANGUAGE,
-    snapshot: resolveJourney(content, revisionTarget),
+    snapshot: resolveJourney(content, revisionTarget, reviewingSection),
     skinVariant,
     async openScreen(id) {
+      setReviewingSection(journeySectionForScreen(id));
       setRevising(id);
       setGeneration((n) => n + 1);
       return true;
     },
     async resume() {
       setRevising(null);
+      setReviewingSection(null);
+      setGeneration((n) => n + 1);
+      return true;
+    },
+    async finishReview() {
+      setRevising(null);
+      setReviewingSection(null);
       setGeneration((n) => n + 1);
       return true;
     },
@@ -262,6 +275,7 @@ export default function QgRuntimeDemoPage() {
       setGeneration((n) => n + 1);
     },
     hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
+    backNavigationFailed: false,
   };
 
   function unavailableNotice(what: string) {
