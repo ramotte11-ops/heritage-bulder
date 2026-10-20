@@ -237,6 +237,8 @@ export interface JourneySnapshot {
   current: JourneyScreenId | null;
   /** The screen being revised, when the route shows one out of order. */
   revising: JourneyScreenId | null;
+  /** The rubrique whose list remains open between successive revisions. */
+  reviewingSection: JourneySection | null;
 }
 
 export function resolveJourneyScreens(content: MemorialContent): JourneyScreenState[] {
@@ -265,13 +267,34 @@ function sectionStatus(screens: JourneyScreenState[]): JourneySectionStatus {
   return "inProgress";
 }
 
-export function resolveJourney(content: MemorialContent, revising: JourneyScreenId | null = null): JourneySnapshot {
+export function journeySectionForScreen(id: JourneyScreenId): JourneySection {
+  return JOURNEY_SCREENS.find((screen) => screen.id === id)!.section;
+}
+
+export function resolveJourney(
+  content: MemorialContent,
+  revising: JourneyScreenId | null = null,
+  reviewingSection: JourneySection | null = revising === null ? null : journeySectionForScreen(revising),
+): JourneySnapshot {
   const screens = resolveJourneyScreens(content);
   const sections = JOURNEY_SECTIONS.map((id): JourneySectionState => {
     const own = screens.filter((s) => s.section === id);
     return { id, status: sectionStatus(own), screens: own };
   }).filter((section) => section.screens.length > 0);
-  return { sections, current: currentJourneyScreen(content), revising };
+  return { sections, current: currentJourneyScreen(content), revising, reviewingSection };
+}
+
+/**
+ * A raw `?rubrique=` value is only a navigation hint. Keep it when it
+ * names a known rubrique that still contains at least one server-resolved
+ * accessible screen; otherwise ignore it.
+ */
+export function resolveReviewingSection(content: MemorialContent, raw: unknown): JourneySection | null {
+  if (typeof raw !== "string" || !JOURNEY_SECTIONS.includes(raw as JourneySection)) return null;
+  const section = raw as JourneySection;
+  return resolveJourneyScreens(content).some((screen) => screen.section === section && screen.accessible)
+    ? section
+    : null;
 }
 
 /**
@@ -286,4 +309,19 @@ export function resolveRevisionTarget(content: MemorialContent, raw: unknown): J
   const state = resolveJourneyScreens(content).find((s) => s.id === raw);
   if (state === undefined || !state.accessible || state.status === "current") return null;
   return raw;
+}
+
+/** Validates the pair supplied by the browser and derives the rubrique
+ * from the fixed catalog. A mismatched `?rubrique=` can never move a
+ * screen into another rubrique. Legacy `?etape=` links remain valid. */
+export function resolveRevisionContext(
+  content: MemorialContent,
+  rawScreen: unknown,
+  rawSection: unknown,
+): { screen: JourneyScreenId; section: JourneySection } | null {
+  const screen = resolveRevisionTarget(content, rawScreen);
+  if (screen === null) return null;
+  const section = journeySectionForScreen(screen);
+  if (rawSection !== undefined && rawSection !== section) return null;
+  return { screen, section };
 }

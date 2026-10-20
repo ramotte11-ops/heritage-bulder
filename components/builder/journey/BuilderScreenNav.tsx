@@ -22,7 +22,9 @@ export function BuilderScreenNav() {
   return (
     <div className={styles.nav}>
       <div className={styles.navRow}>
-        <JourneyEntry />
+        <JourneyEntry
+          key={`${journey?.snapshot.revising ?? "list"}-${journey?.snapshot.reviewingSection ?? "normal"}`}
+        />
         <PreviewEntry />
       </div>
       <JourneyRevisingNotice />

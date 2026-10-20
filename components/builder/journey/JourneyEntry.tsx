@@ -117,7 +117,9 @@ function PendingConfirm({
 
 export function JourneyEntry() {
   const journey = useJourney();
-  const [open, setOpen] = useState(false);
+  const reviewingSection = journey?.snapshot.reviewingSection ?? null;
+  const revising = journey?.snapshot.revising ?? null;
+  const [open, setOpen] = useState(reviewingSection !== null && revising === null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const close = useCallback(() => {
@@ -182,6 +184,11 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
           {translate(journey.language, "journey.saveFailed")}
         </p>
       )}
+      {journey.backNavigationFailed && (
+        <p role="alert" className={styles.error}>
+          {translate(journey.language, "journey.saveFailed")}
+        </p>
+      )}
     </div>
   );
 }
@@ -213,7 +220,11 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
 
   const actions: RowActions = {
     review: (id) => guard.run(id, () => journey.openScreen(id)),
-    resume: () => guard.run("resume", journey.resume),
+    resume: () =>
+      guard.run(
+        "resume",
+        snapshot.reviewingSection === null ? journey.resume : journey.finishReview,
+      ),
     busy,
     pendingKey: guard.pendingKey,
   };
@@ -240,7 +251,7 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
           <>
             <p className={styles.intro}>{translate(language, "journey.intro")}</p>
 
-            {snapshot.revising !== null && (
+            {(snapshot.revising !== null || snapshot.reviewingSection !== null) && (
               <button
                 type="button"
                 className={styles.resumeButton}
@@ -252,7 +263,10 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
                   pending={actions.pendingKey === "resume"}
                   pendingLabel={translate(language, "common.pleaseWait")}
                 >
-                  {translate(language, "journey.resume")}
+                  {translate(
+                    language,
+                    snapshot.reviewingSection === null ? "journey.resume" : "journey.finishReview",
+                  )}
                 </PendingActionLabel>
               </button>
             )}
@@ -315,7 +329,8 @@ function SectionItem({
   actions: RowActions;
 }) {
   const { language } = journey;
-  const [open, setOpen] = useState(false);
+  const active = journey.snapshot.reviewingSection === section.id;
+  const [open, setOpen] = useState(active);
   const contentId = useId();
   const title = translate(language, `journey.section.${section.id}` as TranslationKey);
   const memorialSection = JOURNEY_SECTION_MEMORIAL_SECTION[section.id];

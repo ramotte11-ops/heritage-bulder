@@ -3154,6 +3154,30 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(screen.key).toBe("revision-identity");
       expect(screen.props.content).toEqual(REAL_DRAFT.content);
       expect(raw.props.journey.snapshot.revising).toBe("identity");
+      expect(raw.props.journey.snapshot.reviewingSection).toBe("person");
+    });
+
+    it("?rubrique= reopens the validated rubrique list without changing the normal current screen", async () => {
+      resumeWith(REAL_DRAFT);
+      const raw = await callPageRaw(MEMORIAL_ID, { rubrique: "ceremony" });
+      expect(raw.props.children.type).toBe(GuidedFlowPause);
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+      expect(raw.props.journey.snapshot.reviewingSection).toBe("ceremony");
+    });
+
+    it("rejects a rubrique that does not match the requested step", async () => {
+      resumeWith(REAL_DRAFT);
+      const raw = await callPageRaw(MEMORIAL_ID, { etape: "identity", rubrique: "ceremony" });
+      expect(raw.props.children.type).toBe(GuidedFlowPause);
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+      expect(raw.props.journey.snapshot.reviewingSection).toBeNull();
+    });
+
+    it("ignores a rubrique with no accessible screen under the current server-side draft", async () => {
+      resumeWith(variant({ A04: undefined, A09: undefined, A13: undefined }));
+      const raw = await callPageRaw(MEMORIAL_ID, { rubrique: "gallery" });
+      expect(raw.props.children.type).toBe(CeremonyMomentStep);
+      expect(raw.props.journey.snapshot.reviewingSection).toBeNull();
     });
 
     it("?etape=announcementChoice reopens A00 on an old draft whose yes is derived (no A00 record)", async () => {

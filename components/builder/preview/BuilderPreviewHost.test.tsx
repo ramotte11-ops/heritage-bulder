@@ -397,7 +397,7 @@ describe("correction Light / Dark — « Changer l'ambiance » in the Preview", 
     );
     await openPreview();
     fireEvent.click(screen.getByRole("button", { name: CHANGE }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person"));
   });
 
   it("the Preview closes once the route brings T08 — never left covering it", async () => {

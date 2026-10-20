@@ -141,8 +141,10 @@ describe("HeroRevealStep — « Mon parcours » and the way back (correction Lig
       skinVariant: "light" as const,
       openScreen: vi.fn().mockResolvedValue(true),
       resume: vi.fn().mockResolvedValue(true),
+      finishReview: vi.fn().mockResolvedValue(true),
       finishStep: vi.fn(),
       hasPendingInput: () => false,
+      backNavigationFailed: false,
     };
   }
 

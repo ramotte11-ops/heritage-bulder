@@ -13,7 +13,9 @@ import {
   isJourneyScreenId,
   resolveJourney,
   resolveJourneyScreens,
+  resolveRevisionContext,
   resolveRevisionTarget,
+  resolveReviewingSection,
   type JourneyScreenId,
   type JourneyScreenStatus,
 } from "./journey";
@@ -204,5 +206,37 @@ describe("resolveRevisionTarget — only reached screens, never a jump forward",
     resolveJourney(content, "identity");
     resolveRevisionTarget(content, "identity");
     expect(JSON.stringify(content)).toBe(before);
+  });
+});
+
+describe("section revision context — validated server-side", () => {
+  const partial = throughA02();
+
+  it("accepts an accessible rubrique and derives a revised screen's rubrique from the catalog", () => {
+    expect(resolveReviewingSection(partial, "person")).toBe("person");
+    expect(resolveReviewingSection(partial, "deathNotice")).toBe("deathNotice");
+    expect(resolveRevisionContext(partial, "identity", "person")).toEqual({
+      screen: "identity",
+      section: "person",
+    });
+    expect(resolveRevisionContext(partial, "announcementText", undefined)).toEqual({
+      screen: "announcementText",
+      section: "deathNotice",
+    });
+  });
+
+  it("rejects unknown, inaccessible, and mismatched rubrique claims", () => {
+    expect(resolveReviewingSection(partial, "ceremony")).toBeNull();
+    expect(resolveReviewingSection(partial, "__proto__")).toBeNull();
+    expect(resolveReviewingSection(partial, ["person"])).toBeNull();
+    expect(resolveRevisionContext(partial, "identity", "ceremony")).toBeNull();
+    expect(resolveRevisionContext(partial, "gallery", "gallery")).toBeNull();
+  });
+
+  it("records the rubrique independently of the currently displayed step", () => {
+    expect(resolveJourney(partial, null, "deathNotice")).toMatchObject({
+      revising: null,
+      reviewingSection: "deathNotice",
+    });
   });
 });

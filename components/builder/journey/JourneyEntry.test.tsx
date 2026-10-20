@@ -35,6 +35,7 @@ const { JourneyContext, RouteJourneyProvider, useStepDone } = await import("./jo
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   routerPush.mockClear();
   routerReplace.mockClear();
   routerRefresh.mockClear();
@@ -48,10 +49,15 @@ function renderWithRoute(
   revising: Parameters<typeof resolveJourney>[1] = null,
   registry = createPreviewFlushRegistry(),
   language: "fr" | "en" | "es" = "fr",
+  reviewingSection?: Parameters<typeof resolveJourney>[2],
 ) {
   render(
     <PreviewFlushRegistryContext.Provider value={registry}>
-      <RouteJourneyProvider language={language} snapshot={resolveJourney(PARTIAL, revising)} builderPath="/builder/m-1">
+      <RouteJourneyProvider
+        language={language}
+        snapshot={resolveJourney(PARTIAL, revising, reviewingSection)}
+        builderPath="/builder/m-1"
+      >
         <BuilderScreenNav />
       </RouteJourneyProvider>
     </PreviewFlushRegistryContext.Provider>,
@@ -163,6 +169,34 @@ describe("« Mon parcours » — the panel's content", () => {
 });
 
 describe("« Mon parcours » — navigation", () => {
+  it("reopens the active rubrique after a save and replaces the edit URL for another field", async () => {
+    renderWithRoute(null, createPreviewFlushRegistry(), "fr", "person");
+
+    expect(screen.getByRole("dialog", { name: "Mon parcours" })).toBeTruthy();
+    expect(blockToggle("Votre proche").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Terminer les modifications" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/builder/m-1?etape=identity&rubrique=person"),
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("leaves rubrique revision only through « Terminer les modifications »", async () => {
+    renderWithRoute(null, createPreviewFlushRegistry(), "fr", "person");
+    fireEvent.click(screen.getByRole("button", { name: "Terminer les modifications" }));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
+  });
+
+  it.each([
+    ["en", "Finish editing"],
+    ["es", "Terminar las modificaciones"],
+  ] as const)("translates the explicit rubrique exit (%s)", (language, label) => {
+    renderWithRoute(null, createPreviewFlushRegistry(), language, "person");
+    expect(screen.getByRole("button", { name: label })).toBeTruthy();
+  });
+
   it("a declared conflict blocks Revoir and keeps the export action on the current screen", async () => {
     renderConflictedRoute();
     openPanel();
@@ -201,7 +235,7 @@ describe("« Mon parcours » — navigation", () => {
     expect(review).toHaveProperty("disabled", true);
 
     await act(async () => release());
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity&rubrique=person"));
   });
 
   it("« Revoir » drains the autosave first, then opens ?etape= on the route's own path", async () => {
@@ -215,7 +249,7 @@ describe("« Mon parcours » — navigation", () => {
     openPanel();
     openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity&rubrique=person"));
     expect(order).toEqual(["flush", "push"]);
     routerPush.mockReset();
   });
@@ -236,14 +270,16 @@ describe("« Mon parcours » — navigation", () => {
     renderWithRoute("identity");
     expect(screen.getByText(/Vous modifiez une étape déjà remplie/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reprendre où j'en étais" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
 
-    routerPush.mockClear();
+    cleanup();
+    routerReplace.mockClear();
+    renderWithRoute("identity");
     openPanel();
     expect((document.querySelector('[data-screen="identity"]') as HTMLElement).textContent).toContain("En cours");
     openBlock("L'annonce de décès");
     fireEvent.click(screen.getByRole("button", { name: "Continuer ici" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
   });
 });
 
@@ -274,14 +310,14 @@ describe("useStepDone — what a step does once its Continue is saved", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
-  it("on a revised screen: back to the route without ?etape= (resume where the family stopped)", () => {
+  it("on a revised screen: returns to the same rubrique after the save", () => {
     render(
       <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL, "identity")} builderPath="/builder/m-1">
         <Probe />
       </RouteJourneyProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "done" }));
-    expect(routerReplace).toHaveBeenCalledWith("/builder/m-1");
+    expect(routerReplace).toHaveBeenCalledWith("/builder/m-1?rubrique=person");
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
@@ -295,8 +331,10 @@ describe("useStepDone — what a step does once its Continue is saved", () => {
           skinVariant: null,
           openScreen: async () => true,
           resume: async () => true,
+          finishReview: async () => true,
           finishStep,
           hasPendingInput: () => false,
+          backNavigationFailed: false,
         }}
       >
         <Probe />
@@ -324,7 +362,7 @@ describe("a real step opened for revision (A00: Oui → Non)", () => {
     fireEvent.click(screen.getByLabelText(/^Non/));
     fireEvent.click(screen.getByRole("button", { name: /Continuer/ }));
 
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1?rubrique=person"));
     const saved = persist.mock.calls[0][0] as { deathNotice: unknown; guidedFlow: Record<string, unknown> };
     expect(saved.guidedFlow.A00).toEqual({ status: "completed", answer: "no" });
     expect(saved.deathNotice).toEqual((draft as { deathNotice: unknown }).deathNotice);
@@ -368,7 +406,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
     openBlock("Votre proche");
     fireEvent.click(screen.getByRole("button", { name: "Revoir — Nom et dates" }));
     fireEvent.click(screen.getByRole("button", { name: "Quitter sans cette réponse" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=identity&rubrique=person"));
   });
 
   it("the revision notice's « Reprendre où j'en étais » asks too", async () => {
@@ -377,7 +415,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/n'est pas terminée/);
     expect(routerPush).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Quitter sans cette réponse" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
   });
 
   it("closing the tab with incomplete input triggers the browser's own warning; without, nothing", async () => {
@@ -391,6 +429,51 @@ describe("B03 — incomplete input: never a silent loss", () => {
     const quiet = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(quiet);
     expect(quiet.defaultPrevented).toBe(false);
+  });
+
+  it("browser Back keeps an incomplete answer on screen when the family cancels", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const forward = vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    await renderWithPending("identity");
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Quitter sans cette réponse"));
+    expect(forward).toHaveBeenCalledOnce();
+  });
+
+  it("browser Back drains an in-flight autosave before replaying the navigation", async () => {
+    let release: () => void = () => {};
+    const registry = createPreviewFlushRegistry();
+    registry.register(() => new Promise<void>((resolve) => (release = resolve)));
+    const forward = vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    renderWithRoute("identity", registry);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(forward).toHaveBeenCalledOnce();
+    expect(back).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await act(async () => release());
+    await waitFor(() => expect(back).toHaveBeenCalledOnce());
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(forward).toHaveBeenCalledOnce();
+  });
+
+  it("browser Back stays on the form and reports a failed autosave", async () => {
+    const registry = createPreviewFlushRegistry();
+    registry.register(() => Promise.reject(new Error("offline")));
+    vi.spyOn(window.history, "forward").mockImplementation(() => {});
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    renderWithRoute("identity", registry);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/pas encore enregistrées/));
+    expect(back).not.toHaveBeenCalled();
   });
 });
 
@@ -469,7 +552,7 @@ describe("correction Light / Dark — the saved ambiance, and « Changer l'ambia
   it("« Changer l'ambiance » opens T08 for revision, after draining the autosave", async () => {
     renderJourney(PARTIAL, "light", <ChangeAmbianceLink />);
     fireEvent.click(screen.getByRole("button", { name: "Changer l'ambiance" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person"));
   });
 
   it("« Changer l'ambiance » asks first when the screen holds incomplete input", async () => {
