@@ -1,6 +1,8 @@
+import type { Language } from "@/config/languages";
 import type { SectionId } from "@/config/sections";
 import type { MemorialComposition } from "@/lib/memorial/composition/compose-memorial";
 import { ARCHIVABLE_SECTIONS, isHideableSection } from "@/lib/memorial/section-visibility";
+import { isSectionAvailableInLanguage } from "@/lib/memorial/section-languages";
 
 /**
  * « Gérer les rubriques visibles » — the rows the family sees, computed
@@ -13,6 +15,9 @@ import { ARCHIVABLE_SECTIONS, isHideableSection } from "@/lib/memorial/section-v
  * memorial: applicable and either shown, hidden, or still being filled
  * in. A section that does not apply (A00 = Non / Plus tard, A04 = Non)
  * or has no matter at all gets no row: hiding it would mean nothing.
+ * Neither does a section the memorial's language never shows
+ * (`isSectionAvailableInLanguage` — Offrandes symboliques outside French),
+ * when that language is given.
  */
 export interface SectionVisibilityEntry {
   sectionId: SectionId;
@@ -27,9 +32,13 @@ export interface SectionVisibilityEntry {
 
 const LISTED_STATES = new Set(["renderable", "hidden", "pending"]);
 
-export function resolveVisibilityEntries(composition: MemorialComposition): SectionVisibilityEntry[] {
+export function resolveVisibilityEntries(
+  composition: MemorialComposition,
+  language: Language | null = null,
+): SectionVisibilityEntry[] {
   return composition.sections
     .filter((section) => isHideableSection(section.sectionId, composition.skin) && LISTED_STATES.has(section.state))
+    .filter((section) => language === null || isSectionAvailableInLanguage(section.sectionId, language))
     .map((section) => ({
       sectionId: section.sectionId,
       hidden: section.hiddenByFamily,

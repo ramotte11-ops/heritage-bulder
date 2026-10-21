@@ -292,6 +292,7 @@ export const TRANSLATION_KEYS = [
   "visibility.section.condolences",
   "visibility.section.video",
   "visibility.section.memoryMessage",
+  "visibility.section.symbolicOfferings",
   "memorial.archive.deathNotice",
   "memorial.archive.ceremony",
   "journey.screen.announcementText",

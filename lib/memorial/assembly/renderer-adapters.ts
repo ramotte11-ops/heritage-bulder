@@ -22,6 +22,7 @@ import { inspectLegacy } from "@/lib/memorial/legacy";
 import { inspectTraditions } from "@/lib/memorial/traditions";
 import { inspectGallery } from "@/lib/memorial/gallery-content";
 import { translateWith } from "@/lib/i18n/translate";
+import { isSectionAvailableInLanguage } from "@/lib/memorial/section-languages";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import type { MediaResolver } from "./media-resolver";
 
@@ -343,7 +344,7 @@ export const adaptGalleryIntemporel: RendererAdapter<"GalleryIntemporel"> = asyn
  */
 export const adaptSymbolicOfferingsV1Section: RendererAdapter<"SymbolicOfferingsV1Section"> = async (context) => {
   if (context.skin !== "intemporel") return refuse("skinMismatch");
-  if (context.language !== "fr") return refuse("textUnavailable");
+  if (!isSectionAvailableInLanguage("symbolicOfferings", context.language)) return refuse("textUnavailable");
   return { ok: true, props: { skinVariant: context.skinVariant } };
 };
 

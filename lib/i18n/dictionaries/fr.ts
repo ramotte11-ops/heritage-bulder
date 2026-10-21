@@ -92,6 +92,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "visibility.section.condolences": "Les condoléances",
   "visibility.section.video": "La vidéo",
   "visibility.section.memoryMessage": "Les messages de souvenir",
+  "visibility.section.symbolicOfferings": "Les offrandes symboliques",
   "memorial.archive.deathNotice": "Consulter l'annonce de décès",
   "memorial.archive.ceremony": "Consulter les informations de la cérémonie",
   "journey.screen.announcementText": "Le texte de l'annonce",

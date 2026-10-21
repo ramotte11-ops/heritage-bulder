@@ -162,7 +162,7 @@ describe("the assembly", () => {
 describe("the rows of « Gérer les rubriques visibles »", () => {
   it("lists the memorial's own hideable sections — never the Hero, never one that does not apply", () => {
     const rows = resolveVisibilityEntries(compose(hide(fullAnnouncement(), "ceremony")));
-    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "ceremony", "story"]);
+    expect(rows.map((r) => r.sectionId)).toEqual(["deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(rows.find((r) => r.sectionId === "ceremony")).toEqual({ sectionId: "ceremony", hidden: true, ready: true, archivable: true });
     expect(rows.find((r) => r.sectionId === "story")?.archivable).toBe(false);
 
@@ -179,9 +179,7 @@ describe("the rows of « Gérer les rubriques visibles »", () => {
 describe("every section that can ever be hidden or archived has its words, in three languages", () => {
   it("visibility labels for every section but the Hero; archive links for archivable sections", () => {
     for (const dictionary of [fr, en, es]) {
-      // M3 — Offrandes symboliques cannot be hidden yet (QG decision to
-      // come): no visibility row, so no label to word in three languages.
-      for (const id of SECTION_IDS.filter((id) => id !== "hero" && id !== "symbolicOfferings")) {
+      for (const id of SECTION_IDS.filter((id) => id !== "hero")) {
         expect(dictionary[`visibility.section.${id}` as keyof typeof dictionary], id).toBeTruthy();
       }
       for (const id of ARCHIVABLE_SECTIONS) {
@@ -195,17 +193,53 @@ describe("every section that can ever be hidden or archived has its words, in th
   });
 });
 
-describe("Offrandes symboliques (M3, Preview du Builder seulement)", () => {
-  it("cannot be hidden yet: refused on write, never a visibility row, a stored value is ignored", () => {
-    expect(isHideableSection("symbolicOfferings", "intemporel")).toBe(false);
-    expect(setSectionVisibility(fullAnnouncement(), "symbolicOfferings", false, "intemporel")).toEqual({
-      ok: false,
-      reason: "notHideable",
-    });
-    expect(resolveVisibilityEntries(compose(fullAnnouncement())).map((r) => r.sectionId)).not.toContain(
-      "symbolicOfferings",
+describe("Offrandes symboliques (M3.1) — same mechanism as every other rubrique", () => {
+  const assemble = (content: MemorialContent) =>
+    assembleMemorial(
+      { skin: "intemporel", skinVariant: "light", language: "fr", content },
+      { resolveMedia: recordingResolver().resolve },
     );
-    const forged = { ...fullAnnouncement(), presentation: { hiddenSections: ["symbolicOfferings"] } } as MemorialContent;
-    expect(stateOf(forged, "symbolicOfferings")).toBe("renderable");
+
+  it("proposed by default: a visible row, shown in the Preview", async () => {
+    const row = resolveVisibilityEntries(compose(fullAnnouncement()), "fr").find((r) => r.sectionId === "symbolicOfferings");
+    expect(row).toEqual({ sectionId: "symbolicOfferings", hidden: false, ready: true, archivable: false });
+    expect((await assemble(fullAnnouncement())).sections.map((s) => s.sectionId)).toContain("symbolicOfferings");
+  });
+
+  it("hidden: absent from the flow and from the archives; shown again: back exactly", async () => {
+    const before = fullAnnouncement();
+    const hidden = ok(setSectionVisibility(before, "symbolicOfferings", false, "intemporel"));
+    expect(readHiddenSections(hidden)).toEqual(["symbolicOfferings"]);
+    expect(resolveVisibilityEntries(compose(hidden), "fr").find((r) => r.sectionId === "symbolicOfferings")?.hidden).toBe(true);
+    const assembled = await assemble(hidden);
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(assembled.archivedSections).toEqual([]);
+
+    const shown = ok(setSectionVisibility(hidden, "symbolicOfferings", true, "intemporel"));
+    expect(readHiddenSections(shown)).toEqual([]);
+    // Same sections, same renderers; the Offrandes with the very same props.
+    // (The Récit receives the whole content, which now carries an empty
+    // `presentation` — the only difference.)
+    const keys = (a: Awaited<ReturnType<typeof assemble>>) => a.sections.map((s) => [s.sectionId, s.rendererKey]);
+    expect(keys(await assemble(shown))).toEqual(keys(await assemble(before)));
+    const offerings = async (c: MemorialContent) =>
+      (await assemble(c)).sections.find((s) => s.sectionId === "symbolicOfferings")?.props;
+    expect(await offerings(shown)).toEqual(await offerings(before));
+  });
+
+  it("touches no other rubrique", () => {
+    const hidden = ok(setSectionVisibility(hide(fullAnnouncement(), "story"), "symbolicOfferings", false, "intemporel"));
+    expect(readHiddenSections(hidden)).toEqual(["story", "symbolicOfferings"]);
+    const withoutPresentation = (content: MemorialContent) =>
+      Object.fromEntries(Object.entries(content).filter(([key]) => key !== "presentation"));
+    expect(withoutPresentation(hidden)).toEqual(withoutPresentation(hide(fullAnnouncement(), "story")));
+  });
+
+  it("no row where the memorial's language never shows it (EN, ES)", () => {
+    for (const language of ["en", "es"] as const) {
+      expect(resolveVisibilityEntries(compose(fullAnnouncement()), language).map((r) => r.sectionId)).not.toContain(
+        "symbolicOfferings",
+      );
+    }
   });
 });

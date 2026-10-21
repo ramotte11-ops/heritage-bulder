@@ -264,13 +264,16 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
         },
       },
       selection: {
+        // M3.1 — descriptions des cartes remontées (titre → description :
+        // 40 px de canevas) : à 320 px, le plancher de lecture agrandissait
+        // l'interligne et posait la dernière ligne sur le bord du papier.
         decor: `${IMG}/selection/mobile-dark`,
         intro: { lines: ["À travers un simple geste,", "faites vivre votre présence", "et honorez son souvenir."], size: 31, baseline: 349.0, step: 29.5 },
         footer: { lines: ["Chaque geste est une pensée", "offerte en sa mémoire."], size: 31, baseline: 1438.0, step: 32.0 },
         cards: [
-          { kind: "lys", box: { left: 90, top: 473, width: 371, height: 398 }, title: { lines: ["Déposer une fleur"], size: 35, baseline: 761.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 26, baseline: 824.0, step: 35.0 } },
-          { kind: "bougie", box: { left: 488, top: 479, width: 367, height: 411 }, title: { lines: ["Allumer une bougie"], size: 35, baseline: 766.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 26, baseline: 825.0, step: 36.0 } },
-          { kind: "coeur", box: { left: 262, top: 879, width: 423, height: 400 }, title: { lines: ["Offrir un cœur"], size: 35, baseline: 1161.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 26, baseline: 1227.0, step: 35.0 } },
+          { kind: "lys", box: { left: 90, top: 473, width: 371, height: 398 }, title: { lines: ["Déposer une fleur"], size: 35, baseline: 761.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 26, baseline: 801.0, step: 35.0 } },
+          { kind: "bougie", box: { left: 488, top: 479, width: 367, height: 411 }, title: { lines: ["Allumer une bougie"], size: 35, baseline: 766.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 26, baseline: 806.0, step: 36.0 } },
+          { kind: "coeur", box: { left: 262, top: 879, width: 423, height: 400 }, title: { lines: ["Offrir un cœur"], size: 35, baseline: 1161.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 26, baseline: 1201.0, step: 35.0 } },
         ],
       },
     },

@@ -152,7 +152,7 @@ describe("Security V1 edit authorization — ceremony and visibility", () => {
     ).toMatchObject({ decision: "DENY", reason: "ceremony_lock_unknown" });
   });
 
-  it.each(["ceremony", "story", "gallery", "deathNotice"])("keeps content-section visibility independent (%s)", (target) => {
+  it.each(["ceremony", "story", "gallery", "deathNotice", "symbolicOfferings"])("keeps content-section visibility independent (%s)", (target) => {
     expect(
       authorizeMemorialEdit(context({ status: "published", published: true, ceremony: "closed" }), [visibility(target)]),
     ).toEqual({ decision: "ALLOW", reason: "section_visibility_edit" });

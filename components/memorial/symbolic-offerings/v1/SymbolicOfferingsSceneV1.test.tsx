@@ -167,3 +167,15 @@ describe("Offrandes V1 — registre (M3 : Preview du Builder seulement)", () => 
     }
   });
 });
+
+describe("Offrandes V1 — état « cartes » Mobile Dark (M3.1)", () => {
+  it("descriptions remontées : 40 px de canevas sous chaque titre, au-dessus du bord du papier", () => {
+    // Bord inférieur du papier sous la dernière ligne, mesuré sur le décor validé.
+    const PAPER_BOTTOM = { lys: 863, bougie: 856, coeur: 1276 } as const;
+    for (const card of OFFERINGS_V1_TOKENS.dark.mobile.selection.cards) {
+      expect(card.description.baseline - card.title.baseline, card.kind).toBe(40);
+      const last = card.description.baseline + (card.description.lines.length - 1) * card.description.step;
+      expect(last, card.kind).toBeLessThan(PAPER_BOTTOM[card.kind] - 10);
+    }
+  });
+});

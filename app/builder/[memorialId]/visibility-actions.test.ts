@@ -98,6 +98,20 @@ describe("saveSectionVisibilityAction", () => {
     expect(saveDraftContent).toHaveBeenCalledExactlyOnceWith("authorized-id", { ...DRAFT, presentation: { hiddenSections: [] } });
   });
 
+  it("Offrandes symboliques (M3.1): hidden, then shown again, like any other rubrique", async () => {
+    await saveSectionVisibilityAction("claimed-id", "symbolicOfferings", false);
+    expect(saveDraftContent).toHaveBeenLastCalledWith("authorized-id", {
+      ...DRAFT,
+      presentation: { hiddenSections: ["symbolicOfferings"] },
+    });
+    getDraftContent.mockResolvedValue({
+      content: { ...DRAFT, presentation: { hiddenSections: ["symbolicOfferings"] } },
+      updatedAt: "x",
+    });
+    await saveSectionVisibilityAction("authorized-id", "symbolicOfferings", true);
+    expect(saveDraftContent).toHaveBeenLastCalledWith("authorized-id", { ...DRAFT, presentation: { hiddenSections: [] } });
+  });
+
   it.each([
     ["the Hero", "hero", false],
     ["a section without a renderer yet (condolences)", "condolences", false],
