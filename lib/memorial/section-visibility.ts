@@ -31,6 +31,8 @@ import type { MemorialContent } from "@/types/memorial";
  *   it exactly.
  * - The Hero is structural: it can never be hidden (dropped on read and
  *   refused on write).
+ * - Offrandes symboliques (M3, Preview only) cannot be hidden yet:
+ *   refused on write, ignored on read.
  * - A section can be hidden only if it can actually appear: a renderer
  *   exists for the memorial's skin (`isHideableSection`). Traditions —
  *   or any future section — joins the moment its renderer is registered.
@@ -49,6 +51,11 @@ export interface MemorialPresentation {
 export const ARCHIVABLE_SECTIONS: readonly SectionId[] = ["deathNotice", "ceremony"];
 
 const STRUCTURAL: SectionId = "hero";
+
+/** M3 — Offrandes symboliques live in the Builder Preview only: nothing
+ * about them is written, not even a visibility choice. Whether the
+ * family may hide them is a QG decision still to come. */
+const NOT_HIDEABLE_YET: readonly SectionId[] = ["symbolicOfferings"];
 
 function isSectionId(value: unknown): value is SectionId {
   return typeof value === "string" && (SECTION_IDS as readonly string[]).includes(value);
@@ -76,7 +83,11 @@ export function isSectionHidden(content: MemorialContent, sectionId: SectionId):
 /** Can the family hide this section at all? Never the Hero; only a
  * section the memorial can actually show (a renderer for its skin). */
 export function isHideableSection(sectionId: SectionId, skin: Skin | null): boolean {
-  return sectionId !== STRUCTURAL && resolveSectionRenderer(sectionId, skin) !== null;
+  return (
+    sectionId !== STRUCTURAL &&
+    !NOT_HIDEABLE_YET.includes(sectionId) &&
+    resolveSectionRenderer(sectionId, skin) !== null
+  );
 }
 
 export type SetSectionVisibilityResult =

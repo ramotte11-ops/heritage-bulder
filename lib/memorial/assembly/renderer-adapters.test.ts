@@ -12,6 +12,7 @@ import {
   adaptRecitDeVieIntemporel,
   adaptRecitDeVieV2,
   adaptTraditionsV2,
+  adaptSymbolicOfferingsV1Section,
   type AdapterContext,
 } from "./renderer-adapters";
 import type { ResolvedMedia } from "./media-resolver";
@@ -283,6 +284,35 @@ describe("adaptTraditionsV2", () => {
     expect(await adaptTraditionsV2(context(patch(fullAnnouncementWithTraditions())))).toEqual({
       ok: false,
       reason: "contentUnreadable",
+    });
+  });
+});
+
+describe("adaptSymbolicOfferingsV1Section (M3)", () => {
+  it("passes the skin variant only — no family content, no media", async () => {
+    const resolver = recordingResolver();
+    for (const skinVariant of ["light", "dark"] as const) {
+      const result = await adaptSymbolicOfferingsV1Section(
+        context(fullAnnouncement(), { skinVariant, resolveMedia: resolver.resolve }),
+      );
+      expect(result).toEqual({ ok: true, props: { skinVariant } });
+    }
+    expect(resolver.calls).toEqual([]);
+  });
+
+  it("French only: EN and ES have no validated wording yet (textUnavailable)", async () => {
+    for (const language of ["en", "es"] as const) {
+      expect(await adaptSymbolicOfferingsV1Section(context(fullAnnouncement(), { language }))).toEqual({
+        ok: false,
+        reason: "textUnavailable",
+      });
+    }
+  });
+
+  it("refuses any other skin", async () => {
+    expect(await adaptSymbolicOfferingsV1Section(context(fullAnnouncement(), { skin: null }))).toEqual({
+      ok: false,
+      reason: "skinMismatch",
     });
   });
 });

@@ -37,6 +37,11 @@ import type { Skin } from "./skins";
  *    rollback.
  *  - `gallery` → `GalleryIntemporel` (dettes D2–D4): the product host of
  *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
+ *  - `symbolicOfferings` → `SymbolicOfferingsV1Section` (M3): the twelve
+ *    validated compositions and the M2 animations (`SymbolicOfferingsV1`),
+ *    drawn as is from `components/memorial/symbolic-offerings/v1/`. BUILDER PREVIEW ONLY:
+ *    the renderer draws nothing outside the Preview's offerings context
+ *    (no visitor gesture is ever public before its persistence exists).
  *  - `testimonials`, `condolences`, `video`, `memoryMessage`: no renderer
  *    exists yet — deliberately absent.
  *
@@ -55,6 +60,7 @@ export const RENDERER_KEYS = [
   "RecitDeVieV2",
   "TraditionsV2",
   "GalleryIntemporel",
+  "SymbolicOfferingsV1Section",
 ] as const;
 
 export type RendererKey = (typeof RENDERER_KEYS)[number];
@@ -68,6 +74,7 @@ export const SECTION_RENDERERS: Readonly<
   story: { intemporel: "RecitDeVieV2" },
   traditions: { intemporel: "TraditionsV2" },
   gallery: { intemporel: "GalleryIntemporel" },
+  symbolicOfferings: { intemporel: "SymbolicOfferingsV1Section" },
 };
 
 /** The renderer for this section in this skin, or `null` when none

@@ -253,11 +253,11 @@ describe("traditions", () => {
 
   it("keeps the canonical order: Récit de vie → Traditions → Galerie, with nothing in between", () => {
     const content = withGallery(ok(skipPersonSheet(withOneEntry())));
-    expect(compose(content).renderable).toEqual(["hero", "deathNotice", "story", "traditions", "gallery"]);
+    expect(compose(content).renderable).toEqual(["hero", "deathNotice", "story", "traditions", "gallery", "symbolicOfferings"]);
   });
 
   it("absent sections leave no gap: without the Récit, Traditions follows the Avis directly", () => {
-    expect(compose(withOneEntry()).renderable).toEqual(["hero", "deathNotice", "traditions"]);
+    expect(compose(withOneEntry()).renderable).toEqual(["hero", "deathNotice", "traditions", "symbolicOfferings"]);
   });
 
   it("is pending while A09 is not treated yet, even with an entry already written", () => {
@@ -327,7 +327,7 @@ describe("A00 = no / later — no death notice", () => {
 
   it("the ceremony stays independent: rendered without a death notice once A04 = yes is resolved", () => {
     const composition = compose(withA00(withCeremonyYesResolved(), A00_NO));
-    expect(composition.renderable).toEqual(["hero", "ceremony"]);
+    expect(composition.renderable).toEqual(["hero", "ceremony", "symbolicOfferings"]);
   });
 
   it("the written notice is kept: back to yes, the Avis is renderable again with no new write", () => {
@@ -461,13 +461,21 @@ describe("real parcours (announcement, through A12, ceremony yes)", () => {
     let content = ok(skipA09(withCeremonyYesResolved()));
     content = ok(commitPersonSheet(ok(writePersonWordsFieldText(content, "Elle riait de tout."))));
     const composition = compose(content);
-    expect(composition.renderable).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(composition.renderable).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(composition.sections.filter((s) => s.state === "renderable").map((s) => s.rendererKey)).toEqual([
       "HeroIntemporel",
       "DeathNoticeV2",
       "CeremonyV2",
       "RecitDeVieV2",
+      "SymbolicOfferingsV1Section",
     ]);
     expect(stateOf(composition, "gallery")).toBe("optional");
+  });
+});
+
+describe("symbolicOfferings (M3)", () => {
+  it("is renderable with the Hero, never before it", () => {
+    expect(stateOf(compose({} as MemorialContent), "symbolicOfferings")).toBe("pending");
+    expect(compose(withCeremonyYesResolved()).renderable.at(-1)).toBe("symbolicOfferings");
   });
 });

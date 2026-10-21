@@ -145,7 +145,7 @@ describe("the assembly", () => {
       { resolveMedia: recordingResolver().resolve },
     );
     expect(assembled.status).toBe("assembled");
-    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "ceremony"]);
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "ceremony", "symbolicOfferings"]);
     expect(assembled.archivedSections.map((s) => s.sectionId)).toEqual(["deathNotice"]);
   });
 
@@ -154,7 +154,7 @@ describe("the assembly", () => {
       { skin: "intemporel", skinVariant: "light", language: "fr", content: fullAnnouncement() },
       { resolveMedia: recordingResolver().resolve },
     );
-    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(assembled.archivedSections).toEqual([]);
   });
 });
@@ -179,7 +179,9 @@ describe("the rows of « Gérer les rubriques visibles »", () => {
 describe("every section that can ever be hidden or archived has its words, in three languages", () => {
   it("visibility labels for every section but the Hero; archive links for archivable sections", () => {
     for (const dictionary of [fr, en, es]) {
-      for (const id of SECTION_IDS.filter((id) => id !== "hero")) {
+      // M3 — Offrandes symboliques cannot be hidden yet (QG decision to
+      // come): no visibility row, so no label to word in three languages.
+      for (const id of SECTION_IDS.filter((id) => id !== "hero" && id !== "symbolicOfferings")) {
         expect(dictionary[`visibility.section.${id}` as keyof typeof dictionary], id).toBeTruthy();
       }
       for (const id of ARCHIVABLE_SECTIONS) {
@@ -190,5 +192,20 @@ describe("every section that can ever be hidden or archived has its words, in th
     // with its renderer (M1), with no other change — and is not archivable.
     expect(Object.keys(SECTION_RENDERERS)).toContain("traditions");
     expect(ARCHIVABLE_SECTIONS).not.toContain("traditions");
+  });
+});
+
+describe("Offrandes symboliques (M3, Preview du Builder seulement)", () => {
+  it("cannot be hidden yet: refused on write, never a visibility row, a stored value is ignored", () => {
+    expect(isHideableSection("symbolicOfferings", "intemporel")).toBe(false);
+    expect(setSectionVisibility(fullAnnouncement(), "symbolicOfferings", false, "intemporel")).toEqual({
+      ok: false,
+      reason: "notHideable",
+    });
+    expect(resolveVisibilityEntries(compose(fullAnnouncement())).map((r) => r.sectionId)).not.toContain(
+      "symbolicOfferings",
+    );
+    const forged = { ...fullAnnouncement(), presentation: { hiddenSections: ["symbolicOfferings"] } } as MemorialContent;
+    expect(stateOf(forged, "symbolicOfferings")).toBe("renderable");
   });
 });

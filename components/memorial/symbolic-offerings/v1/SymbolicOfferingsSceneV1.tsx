@@ -29,8 +29,9 @@ import {
 import styles from "./SymbolicOfferingsSceneV1.module.css";
 
 /**
- * Offrandes symboliques V1 — pilote (M1 statique, M2 animé). Non branché
- * sur le registre des rubriques ni sur le parcours client.
+ * Offrandes symboliques V1 — pilote (M1 statique, M2 animé). Branché sur
+ * le registre des rubriques en M3 par `SymbolicOfferingsV1Section`, qui ne
+ * le dessine que dans la Preview du Builder ; hors parcours client.
  *
  * Trois états :
  *  - « cartes » : décor de sélection validé et trois cartes-boutons. Les
@@ -57,7 +58,8 @@ import styles from "./SymbolicOfferingsSceneV1.module.css";
  * largeur RÉELLE du conteneur (requête de conteneur à 1024 px) ; l'autre
  * est en `display: none`, ses images différées ne sont pas téléchargées.
  * Géométrie en px de canevas (`--px`), textes posés par leur ligne de base
- * avec un plancher de lecture. Textes : français validé (EN/ES en M3).
+ * avec un plancher de lecture. Textes : français validé (EN/ES à valider :
+ * hors français, la rubrique n'est pas assemblée).
  */
 
 export const OFFERINGS_V1_TEXT_FR = {

@@ -20,4 +20,5 @@ export const SECTION_LABELS: Record<SectionId, string> = {
   condolences: "Condoléances",
   video: "Vidéo",
   memoryMessage: "Laisser un mot",
+  symbolicOfferings: "Offrandes symboliques",
 };

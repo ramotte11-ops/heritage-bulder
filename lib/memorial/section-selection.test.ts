@@ -329,7 +329,10 @@ describe("unknown/invalid state — fail-safe (mission brief section 12)", () =>
 
   it("an absent content signal never makes a section applicable", () => {
     const result = resolveSectionSelection(announcement());
-    expect(Object.values(result)).not.toContain("applicable");
+    // M3 — Offrandes symboliques carry no family matter: always applicable.
+    const { symbolicOfferings, ...others } = result;
+    expect(symbolicOfferings).toBe("applicable");
+    expect(Object.values(others)).not.toContain("applicable");
   });
 });
 
@@ -355,7 +358,7 @@ describe("sectionIdsWithStatus", () => {
     // ceremony is driven straight to applicable by A04=yes, so it is NOT
     // in the recommended bucket.
     expect(sectionIdsWithStatus(input, "recommended")).toEqual(["deathNotice"]);
-    expect(sectionIdsWithStatus(input, "applicable")).toEqual(["ceremony"]);
+    expect(sectionIdsWithStatus(input, "applicable")).toEqual(["ceremony", "symbolicOfferings"]);
   });
 
   it("never includes hero in the recommended or applicable bucket (hero is structural)", () => {
@@ -389,5 +392,13 @@ describe("isSectionApplicable — QG micro-correction", () => {
 
   it("is false for notRelevant", () => {
     expect(isSectionApplicable("notRelevant")).toBe(false);
+  });
+});
+
+describe("symbolicOfferings (M3)", () => {
+  it("is applicable for every A00 answer and without any content signal — no family matter", () => {
+    for (const flowState of [undefined, {}, A00_YES, A00_NO, A00_LATER]) {
+      expect(resolveSectionSelectionStatus("symbolicOfferings", { flowState })).toBe("applicable");
+    }
   });
 });

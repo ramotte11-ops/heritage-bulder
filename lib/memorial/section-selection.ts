@@ -167,6 +167,8 @@ const ANNOUNCEMENT_SECTIONS: readonly SectionId[] = ["deathNotice", "traditions"
  *     real matter — and `"notRelevant"` for `"no"`, `"undecided"`, or no
  *     answer at all, matching Mission 025's own `isApplicable` for
  *     A05-A08 (mission brief section 7).
+ *  3b. `symbolicOfferings` (M3) is always `"applicable"`: it carries no
+ *     family matter (see the branch below).
  *  4. Otherwise, if `input.explicitContentSectionIds` names this
  *     section, it is `"applicable"` — the generic "real matter exists
  *     now" signal (mission brief section 5), which applies identically
@@ -198,6 +200,13 @@ export function resolveSectionSelectionStatus(
   if (sectionId === "ceremony") {
     return isA04AnsweredYes(input.flowState ?? {}) ? "applicable" : "notRelevant";
   }
+
+  // M3 — Offrandes symboliques: no family matter at all (the gestures are
+  // HERITAGE's own compositions), so no content signal could ever raise
+  // it. It applies to every memorial — the Preview lets the family try
+  // the three gestures. Default presence is a provisional M3 choice, for
+  // the QG to confirm.
+  if (sectionId === "symbolicOfferings") return "applicable";
 
   if ((input.explicitContentSectionIds ?? []).includes(sectionId)) return "applicable";
 

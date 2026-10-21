@@ -201,7 +201,11 @@ describe("opening — flush, then a fresh server read, then full screen", () => 
     const preview = container.querySelector("[data-memorial-preview]") as HTMLElement;
     expect(preview).toBeTruthy();
     expect(preview.tagName).toBe("MAIN");
-    expect(preview.querySelectorAll("[data-memorial-section]").length).toBe(4);
+    expect(preview.querySelectorAll("[data-memorial-section]").length).toBe(5);
+    // M3 — the Preview is the one host of the Offrandes: drawn, with the
+    // simulated-response notice.
+    const offerings = preview.querySelector('[data-memorial-section="symbolicOfferings"]') as HTMLElement;
+    expect(offerings.querySelector("[data-offerings-preview] [role=note]")?.textContent).toMatch(/simulée/);
     expect(preview.querySelector(`img[src="${FIXTURE_READ_URL}"]`)).toBeTruthy();
 
     expect(builderWrapper(container).hidden).toBe(true);

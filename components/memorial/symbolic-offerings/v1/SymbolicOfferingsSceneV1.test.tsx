@@ -26,7 +26,7 @@ vi.mock("next/font/google", () => ({
 const { SymbolicOfferingsSceneV1 } = await import("./SymbolicOfferingsSceneV1");
 const { OFFERINGS_V1_TOKENS, OFFERING_KINDS } = await import("@/config/symbolic-offerings-v1-tokens");
 const { RENDERER_KEYS, SECTION_RENDERERS } = await import("@/config/memorial-section-renderers");
-const { SECTION_IDS } = await import("@/config/sections");
+const { EDITORIAL_CONTEXT_SECTIONS } = await import("@/config/sections");
 const { RESERVED_MEMORIAL_SLOTS } = await import("@/config/memorial-section-order");
 
 afterEach(cleanup);
@@ -154,11 +154,16 @@ describe("Offrandes V1 — rendu", () => {
   });
 });
 
-describe("Offrandes V1 — hors produit (M1)", () => {
-  it("aucune rubrique, aucun rendu enregistré, la réservation reste une réservation", () => {
-    expect(SECTION_IDS as readonly string[]).not.toContain("symbolicOfferings");
-    expect(RENDERER_KEYS.some((k) => /offr|offering/i.test(k))).toBe(false);
-    expect(Object.keys(SECTION_RENDERERS)).not.toContain("symbolicOfferings");
-    expect(RESERVED_MEMORIAL_SLOTS).toEqual(["symbolicOfferings"]);
+describe("Offrandes V1 — registre (M3 : Preview du Builder seulement)", () => {
+  it("une rubrique branchée sur ce composant, plus aucune réservation", () => {
+    expect(RENDERER_KEYS).toContain("SymbolicOfferingsV1Section");
+    expect(SECTION_RENDERERS.symbolicOfferings).toEqual({ intemporel: "SymbolicOfferingsV1Section" });
+    expect(RESERVED_MEMORIAL_SLOTS).toEqual([]);
+  });
+
+  it("jamais dans les listes du shell historique (enabled_sections et sa contrainte CHECK)", () => {
+    for (const list of Object.values(EDITORIAL_CONTEXT_SECTIONS)) {
+      expect(list.map((section) => section.id)).not.toContain("symbolicOfferings");
+    }
   });
 });

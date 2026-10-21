@@ -78,7 +78,7 @@ function sectionIds(container: HTMLElement): (string | null)[] {
 describe("MemorialAssembly — the real renderers, in the composition's order", () => {
   it("renders every assembled section, in order, each in its own neutral block", async () => {
     const { container, assembled } = await renderAssembly(fullAnnouncement());
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(sectionIds(container)).toEqual(assembled.composition.renderable);
 
     for (const block of Array.from(container.querySelectorAll("[data-memorial-section]"))) {
@@ -147,13 +147,13 @@ describe("MemorialAssembly — fail closed (QG D1)", () => {
   it("a failed non-Hero section leaves no trace — no placeholder, no other renderer", async () => {
     adapters.CeremonyV2 = async () => ({ ok: false, reason: "contentUnreadable" });
     const { container } = await renderAssembly(fullAnnouncement());
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "story"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "story", "symbolicOfferings"]);
     expect(container.querySelector('[data-testid="ceremony-v2"]')).toBeNull();
   });
 
   it("Hero-only Memorial renders the Hero alone", async () => {
     const { container } = await renderAssembly(throughA02());
-    expect(sectionIds(container)).toEqual(["hero"]);
+    expect(sectionIds(container)).toEqual(["hero", "symbolicOfferings"]);
   });
 });
 
@@ -181,7 +181,7 @@ describe("MemorialAssembly — « Gérer les rubriques visibles »: hidden secti
 
   it("a hidden section is absent from the flow; an archived one sits behind a closed, discreet link after it", async () => {
     const { container } = await renderAssembly(hide(fullAnnouncement(), "deathNotice", "ceremony", "story"));
-    expect(sectionIds(container)).toEqual(["hero"]);
+    expect(sectionIds(container)).toEqual(["hero", "symbolicOfferings"]);
     const archives = container.querySelector("[data-memorial-archives]") as HTMLElement;
     expect(archives).toBeTruthy();
     const entries = [...archives.querySelectorAll("details")];
@@ -199,7 +199,7 @@ describe("MemorialAssembly — « Gérer les rubriques visibles »: hidden secti
   it("no archive strip at all when nothing is archived (story hidden only, or nothing hidden)", async () => {
     const { container } = await renderAssembly(hide(fullAnnouncement(), "story"));
     expect(container.querySelector("[data-memorial-archives]")).toBeNull();
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "symbolicOfferings"]);
   });
 
   it("the archive link is translated with the memorial's language", async () => {
@@ -219,7 +219,7 @@ describe("MemorialAssembly — Traditions & repères V2 (M1), the real validated
 
   it("sits right after the Récit, in its own neutral block", async () => {
     const { container } = await renderWith(fullAnnouncementWithTraditions());
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions", "symbolicOfferings"]);
     const block = container.querySelector('[data-memorial-section="traditions"]') as HTMLElement;
     expect(block.getAttribute("class")).toBeNull();
     expect(block.getAttribute("style")).toBeNull();
@@ -272,7 +272,7 @@ describe("MemorialAssembly — Traditions & repères V2 (M1), the real validated
     const hidden = setSectionVisibility(fullAnnouncementWithTraditions(), "traditions", false, "intemporel");
     if (!hidden.ok) throw new Error("fixture");
     const { container } = await renderWith(hidden.content);
-    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(sectionIds(container)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(container.querySelector('[data-testid="traditions-v2"]')).toBeNull();
     expect(container.querySelector("[data-memorial-archives]")).toBeNull();
   });
