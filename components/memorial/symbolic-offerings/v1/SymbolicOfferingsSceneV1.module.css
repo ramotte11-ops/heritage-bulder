@@ -1,5 +1,6 @@
 /*
- * Offrandes symboliques V1 — scène de recueillement (pilote statique M1).
+ * Offrandes symboliques V1 — pilote : état « cartes », scène de recueillement
+ * et animations (M2, jouées par le composant avec l'API Web Animations).
  * Toute géométrie est en px de canevas du fond de la variante (`--px` =
  * 1 px de canevas à la largeur rendue) : à la largeur du fond, la scène
  * reproduit la maquette validée. Les textes sont posés par leur ligne de
@@ -77,23 +78,62 @@
   mix-blend-mode: screen;
 }
 
-/* La lumière de la cire ne touche que la bougie : masquée par sa propre
-   silhouette. Repli WebP, AVIF quand le navigateur sait le choisir. */
-.wax {
-  mix-blend-mode: screen;
-  -webkit-mask: url("/assets/offrandes/v1/objets/bougie.webp") 0 0 / 100% 100% no-repeat;
-  mask: url("/assets/offrandes/v1/objets/bougie.webp") 0 0 / 100% 100% no-repeat;
+/* Silhouette d'un objet comme masque (ombres, lumière de la cire, lueur du
+   cœur) : WebP sans perte, ou l'AVIF déjà téléchargé quand le navigateur
+   sait choisir. `--mask-avif` / `--mask-webp` : posés par le composant. */
+.fill {
+  position: absolute;
+  inset: 0;
+}
+
+.masked {
+  -webkit-mask: var(--mask-webp) 0 0 / 100% 100% no-repeat;
+  mask: var(--mask-webp) 0 0 / 100% 100% no-repeat;
 }
 
 @supports (mask-image: image-set(url("/assets/offrandes/v1/objets/bougie.avif") type("image/avif"))) {
-  .wax {
-    -webkit-mask-image: image-set(url("/assets/offrandes/v1/objets/bougie.avif") type("image/avif"), url("/assets/offrandes/v1/objets/bougie.webp") type("image/webp"));
-    mask-image: image-set(url("/assets/offrandes/v1/objets/bougie.avif") type("image/avif"), url("/assets/offrandes/v1/objets/bougie.webp") type("image/webp"));
+  .masked {
+    -webkit-mask-image: image-set(var(--mask-avif) type("image/avif"), var(--mask-webp) type("image/webp"));
+    mask-image: image-set(var(--mask-avif) type("image/avif"), var(--mask-webp) type("image/webp"));
   }
+}
+
+/* Ombre portée : la silhouette masquée est floutée par son parent (le flou
+   doit précéder le masque). σ en px de canevas. */
+.blur {
+  filter: blur(calc(var(--px) * var(--sigma)));
+}
+
+/* La lumière de la cire ne touche que la bougie (masquée par sa silhouette). */
+.wax {
+  mix-blend-mode: screen;
 }
 
 .wax > .glow {
   mix-blend-mode: normal;
+}
+
+/* Voile de la transition A : opacité statique nulle, animée seulement. */
+.veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--veil);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Lueur du cœur : opacité statique nulle (s'éteint en arrivant). */
+.heartGlow {
+  opacity: 0;
+}
+
+.wrap[data-variant="light"] {
+  --heart-glow: rgb(255 244 226);
+}
+
+.wrap[data-variant="dark"] {
+  --heart-glow: rgb(255 232 196);
 }
 
 /* --- Textes ------------------------------------------------------------- */
@@ -203,6 +243,13 @@
   display: block;
 }
 
+/* Cibles de focus non actionnables (bloc de statut, confirmation) : elles
+   reçoivent le focus pour la lecture d'écran, sans contour visible. */
+.confirm:focus,
+.confirmText:focus {
+  outline: none;
+}
+
 /* Bouton : 246 × 62 px de canevas sur les maquettes. Cible tactile d'au
    moins 44 px ; jamais plus large que le papier libre à sa hauteur
    (`--button-max`) : sous les planchers, le libellé passe à la ligne. */
@@ -227,4 +274,88 @@
 .continue:focus-visible {
   outline: 2px solid var(--button-line);
   outline-offset: 4px;
+}
+
+.continue[data-interactive] {
+  cursor: pointer;
+}
+
+/* --- État « cartes » (reconstitution provisoire, non validée) ------------ */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Bloc de lignes centrées : haut = ligne de base de la première ligne −
+   ((L − 1,305 em) / 2 + 1,007 em) ; pas des lignes L = celui du Master, ou
+   1,2 em si le plancher de lecture agrandit le corps. */
+.lines {
+  --fs: max(var(--floor), calc(var(--px) * var(--size)));
+  --lh: max(calc(var(--px) * var(--step)), calc(var(--fs) * 1.2));
+  position: absolute;
+  margin: 0;
+  left: calc(var(--px) * var(--x));
+  top: calc(var(--px) * var(--base) - ((var(--lh) - var(--fs) * 1.305) / 2 + var(--fs) * 1.007));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(var(--px) * var(--maxw));
+  font-size: var(--fs);
+  line-height: var(--lh);
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+.intro {
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  color: var(--ink-body);
+}
+
+.cardTitle {
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  color: rgb(44 38 28);
+}
+
+.cardText {
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-weight: 400;
+  color: rgb(60 55 44);
+}
+
+/* Carte-bouton : exactement la carte du décor ; aucun fond, le décor est
+   l'image. Cible tactile très supérieure à 44 px. */
+.card {
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--px) * 10);
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--ink-script);
+  outline-offset: calc(var(--px) * 8);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

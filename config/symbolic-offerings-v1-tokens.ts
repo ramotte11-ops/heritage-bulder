@@ -48,6 +48,31 @@ export interface OfferingsV1Scene {
   buttonMaxWidth: number;
 }
 
+/** Bloc de lignes centrées : ligne de base de la première, pas entre lignes. */
+export interface OfferingsV1Lines { lines: readonly string[]; size: number; baseline: number; step: number }
+
+/**
+ * État « cartes » — RECONSTITUTION PROVISOIRE, NON VALIDÉE ARTISTIQUEMENT.
+ * Décor de sélection validé (avec cartes, sans texte) ; textes posés
+ * d'après les Masters illustrés (hauts et largeurs d'encre). Pilote
+ * seulement, jusqu'à validation PO.
+ */
+export interface OfferingsV1Card {
+  kind: OfferingKind;
+  box: OfferingsV1Box;
+  title: OfferingsV1Lines;
+  description: OfferingsV1Lines;
+  /** Encres propres à une carte (papier olive du Desktop Dark). */
+  ink?: { title: string; body: string };
+}
+
+export interface OfferingsV1Selection {
+  decor: ImageBase;
+  intro: OfferingsV1Lines;
+  footer: OfferingsV1Lines;
+  cards: readonly OfferingsV1Card[];
+}
+
 export interface OfferingsV1Composition {
   canvas: { width: number; height: number };
   fond: ImageBase;
@@ -55,6 +80,7 @@ export interface OfferingsV1Composition {
   axis: number;
   header: { heritage: OfferingsV1Text; subtitle: OfferingsV1Text; title: OfferingsV1Text; script: OfferingsV1Text };
   scenes: Readonly<Record<OfferingKind, OfferingsV1Scene>>;
+  selection: OfferingsV1Selection;
 }
 
 export interface OfferingsV1Ink { title: string; lockup: string; body: string; script: string; buttonLine: string; buttonLabel: string }
@@ -117,6 +143,16 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           buttonMaxWidth: 262,
         },
       },
+      selection: {
+        decor: `${IMG}/selection/mobile-light`,
+        intro: { lines: ["À travers un simple geste,", "faites vivre votre présence", "et honorez son souvenir."], size: 29, baseline: 320.0, step: 33.5 },
+        footer: { lines: ["Chaque geste est une pensée", "offerte en sa mémoire."], size: 29, baseline: 1382.0, step: 36.0 },
+        cards: [
+          { kind: "lys", box: { left: 78, top: 442, width: 387, height: 431 }, title: { lines: ["Déposer une fleur"], size: 38, baseline: 748.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 28, baseline: 805.0, step: 38.0 } },
+          { kind: "bougie", box: { left: 480, top: 442, width: 408, height: 431 }, title: { lines: ["Allumer une bougie"], size: 38, baseline: 748.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 28, baseline: 805.0, step: 36.0 } },
+          { kind: "coeur", box: { left: 267, top: 877, width: 411, height: 403 }, title: { lines: ["Offrir un cœur"], size: 38, baseline: 1165.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 28, baseline: 1224.0, step: 37.0 } },
+        ],
+      },
     },
     desktop: {
       canvas: { width: 1670, height: 942 },
@@ -165,6 +201,16 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           buttonGap: 42.93,
           buttonMaxWidth: 282,
         },
+      },
+      selection: {
+        decor: `${IMG}/selection/desktop-light`,
+        intro: { lines: ["À travers un simple geste, faites vivre votre présence", "et honorez son souvenir."], size: 27, baseline: 287.0, step: 29.0 },
+        footer: { lines: ["Chaque geste est une pensée offerte en sa mémoire."], size: 27, baseline: 835.0, step: 0.0 },
+        cards: [
+          { kind: "lys", box: { left: 287, top: 371, width: 353, height: 387 }, title: { lines: ["Déposer une fleur"], size: 33, baseline: 634.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 25, baseline: 690.0, step: 33.0 } },
+          { kind: "bougie", box: { left: 658, top: 371, width: 364, height: 387 }, title: { lines: ["Allumer une bougie"], size: 33, baseline: 634.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 25, baseline: 690.0, step: 31.0 } },
+          { kind: "coeur", box: { left: 1040, top: 371, width: 351, height: 387 }, title: { lines: ["Offrir un cœur"], size: 33, baseline: 634.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 25, baseline: 690.0, step: 32.0 } },
+        ],
       },
     },
   },
@@ -217,6 +263,16 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           buttonMaxWidth: 396,
         },
       },
+      selection: {
+        decor: `${IMG}/selection/mobile-dark`,
+        intro: { lines: ["À travers un simple geste,", "faites vivre votre présence", "et honorez son souvenir."], size: 31, baseline: 349.0, step: 29.5 },
+        footer: { lines: ["Chaque geste est une pensée", "offerte en sa mémoire."], size: 31, baseline: 1438.0, step: 32.0 },
+        cards: [
+          { kind: "lys", box: { left: 90, top: 473, width: 371, height: 398 }, title: { lines: ["Déposer une fleur"], size: 35, baseline: 761.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 26, baseline: 824.0, step: 35.0 } },
+          { kind: "bougie", box: { left: 488, top: 479, width: 367, height: 411 }, title: { lines: ["Allumer une bougie"], size: 35, baseline: 766.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 26, baseline: 825.0, step: 36.0 } },
+          { kind: "coeur", box: { left: 262, top: 879, width: 423, height: 400 }, title: { lines: ["Offrir un cœur"], size: 35, baseline: 1161.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 26, baseline: 1227.0, step: 35.0 } },
+        ],
+      },
     },
     desktop: {
       canvas: { width: 1670, height: 942 },
@@ -265,6 +321,16 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           buttonGap: 42.93,
           buttonMaxWidth: 258,
         },
+      },
+      selection: {
+        decor: `${IMG}/selection/desktop-dark`,
+        intro: { lines: ["À travers un simple geste, faites vivre votre présence", "et honorez son souvenir."], size: 25, baseline: 301.0, step: 25.0 },
+        footer: { lines: ["Chaque geste est une pensée offerte en sa mémoire."], size: 25, baseline: 886.0, step: 0.0 },
+        cards: [
+          { kind: "lys", box: { left: 307, top: 357, width: 349, height: 383 }, title: { lines: ["Déposer une fleur"], size: 33, baseline: 624.0, step: 0.0 }, description: { lines: ["Une fleur pour exprimer", "votre affection."], size: 24, baseline: 676.0, step: 35.0 }, ink: { title: "rgb(240 232 216)", body: "rgb(226 219 204)" } },
+          { kind: "bougie", box: { left: 675, top: 360, width: 349, height: 381 }, title: { lines: ["Allumer une bougie"], size: 33, baseline: 624.0, step: 0.0 }, description: { lines: ["Une lumière pour garder", "son souvenir vivant."], size: 24, baseline: 676.0, step: 33.0 } },
+          { kind: "coeur", box: { left: 1039, top: 358, width: 343, height: 384 }, title: { lines: ["Offrir un cœur"], size: 33, baseline: 624.0, step: 0.0 }, description: { lines: ["Un symbole d’amour", "toujours présent."], size: 24, baseline: 676.0, step: 34.0 }, ink: { title: "rgb(240 232 216)", body: "rgb(226 219 204)" } },
+        ],
       },
     },
   },

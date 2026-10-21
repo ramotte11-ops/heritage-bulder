@@ -4,7 +4,9 @@ Fichiers remis par la Product Owner, copiés **octet pour octet** depuis :
 
 - `OFFRANDES_INTEMPOREL_RECUEILLEMENT_4_FONDS_V1.zip` (fonds de recueillement,
   sans cartes, acceptés par la PO) ;
-- `HERITAGE_OFFRANDES_OBJETS_ISOLES_V1.zip` (objets isolés validés).
+- `HERITAGE_OFFRANDES_OBJETS_ISOLES_V1.zip` (objets isolés validés) ;
+- `OFFRANDES_INTEMPOREL_DECORS_VIERGES_V1.zip` (décors de sélection, avec
+  cartes, sans texte — versés en M2 pour la transition A).
 
 Zone protégée (`AGENTS.md`) : ne jamais modifier, recompresser ni supprimer.
 Les versions servies au navigateur sont dérivées par
@@ -21,6 +23,11 @@ ces sources-ci ne sont jamais servies.
 | `source/02_Flamme.png` | 1536 × 1024 | `e8a4ba480135201d733debd6355d4f618114c6d33b44bddac5158197c6235a9b` |
 | `source/03_Lys_ivoire.png` | 1536 × 1024 | `71d74bb473a6eb77e8eb43869985af63f3f0eb457fb9878e57f71b95ca038b7e` |
 | `source/04_Coeur_sculpte.png` | 1536 × 1024 | `0e072f5f25c30832a0ac2ac4d3701edbf865e8bbddab886484579f1a7a5c1364` |
+| `source/offrandes-mobile-light.png` | 941 × 1672 | `259eaffd39f49fd2bc2c2267150e305df19183bdc0b35b1ba8ba08148522030e` |
+| `source/offrandes-mobile-dark.png` | 941 × 1672 | `e3924284d1d854750f3b6b9e95c08b28dd1e4b51aab1ed479445e84000be5d70` |
+| `source/offrandes-desktop-light.png` | 1670 × 942 | `46d1f4cfd52a98155cd629c9fe6ab442437f6dcf2ed596f001aebf91a6367b8d` |
+| `source/offrandes-desktop-dark.png` | 1670 × 942 | `4a6764f8683905ae01f6614211bb5aa5180531f3fef852f8d851264d7a0c5f95` |
 
-Les décors de sélection (avec cartes) ne sont pas versés en M1 : l'état
-« cartes » n'est pas encore validé artistiquement.
+Les décors de sélection sont des autorités validées ; en revanche la
+composition de l'état « cartes » (textes posés sur ces décors) n'est pas
+encore validée artistiquement : elle n'existe que dans le pilote.

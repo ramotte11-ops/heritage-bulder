@@ -38,6 +38,12 @@ SOURCES = {
     "fonds/mobile-dark": ("offrandes-recueillement-mobile-dark.png", "fc57a1982ae473aa3d843ae578bae939093c6110d8350b64f327be35b8df2381", False),
     "fonds/desktop-light": ("offrandes-recueillement-desktop-light.png", "f491b13184b7d17861b15a4adb58275749c3386206c9174789dcd20c7b55d68e", False),
     "fonds/desktop-dark": ("offrandes-recueillement-desktop-dark.png", "2204e3aa6163af9049d9a80dbb0dac8936e8e9ca93331368365019d5b9e6a2e2", False),
+    # Décors de sélection (avec cartes, sans texte) — M2 : point de départ de
+    # la transition A et du retour aux cartes.
+    "selection/mobile-light": ("offrandes-mobile-light.png", "259eaffd39f49fd2bc2c2267150e305df19183bdc0b35b1ba8ba08148522030e", False),
+    "selection/mobile-dark": ("offrandes-mobile-dark.png", "e3924284d1d854750f3b6b9e95c08b28dd1e4b51aab1ed479445e84000be5d70", False),
+    "selection/desktop-light": ("offrandes-desktop-light.png", "46d1f4cfd52a98155cd629c9fe6ab442437f6dcf2ed596f001aebf91a6367b8d", False),
+    "selection/desktop-dark": ("offrandes-desktop-dark.png", "4a6764f8683905ae01f6614211bb5aa5180531f3fef852f8d851264d7a0c5f95", False),
     "objets/bougie": ("01_Bougie_eteinte.png", "4f3df62e630de0fb53e2e360a6493c608bed0f2520d83599ecba79800a383a98", True),
     "objets/flamme": ("02_Flamme.png", "e8a4ba480135201d733debd6355d4f618114c6d33b44bddac5158197c6235a9b", True),
     "objets/lys": ("03_Lys_ivoire.png", "71d74bb473a6eb77e8eb43869985af63f3f0eb457fb9878e57f71b95ca038b7e", True),

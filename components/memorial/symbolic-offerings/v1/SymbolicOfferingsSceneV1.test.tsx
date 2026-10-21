@@ -119,16 +119,23 @@ describe("Offrandes V1 — rendu", () => {
         expect(q.getByRole("heading", { level: 2 }).textContent).toBe("Un geste pour sa mémoire");
         expect(q.getByText("HERITAGE")).toBeTruthy();
         expect(q.getByText("HOMMAGE INTEMPOREL")).toBeTruthy();
-        expect(q.getByText(CONFIRMATIONS[offering].split(" ")[0], { exact: false }).closest("p")!.textContent!.replace(/\s+/g, " ").trim()).toBe(CONFIRMATIONS[offering]);
+        expect(scene.querySelector("[data-focus=confirmation]")!.textContent!.replace(/\s+/g, " ").trim()).toBe(CONFIRMATIONS[offering]);
         expect(q.getByRole("button", { name: "Poursuivre la visite" })).toBeTruthy();
-        // Une seule offrande : son image (ombre large + ombre de contact), et
-        // la flamme pour la bougie ; aucune autre offrande, aucune carte.
+        // Une seule offrande : son image, et la flamme pour la bougie ; les
+        // ombres sont sa silhouette en masque, aucune autre offrande.
         const objects = [...scene.querySelectorAll("img")].map((i) => i.getAttribute("src")).filter((s) => s!.includes("/objets/"));
         const own = `/assets/offrandes/v1/objets/${offering}.webp`;
-        expect(objects.filter((s) => s === own)).toHaveLength(2);
+        expect(objects.filter((s) => s === own)).toHaveLength(1);
         expect(objects.filter((s) => s !== own)).toEqual(offering === "bougie" ? ["/assets/offrandes/v1/objets/flamme.webp"] : []);
+        const masks = [...scene.querySelectorAll<HTMLElement>("[style*='--mask-webp']")].map((m) => m.style.getPropertyValue("--mask-webp"));
+        expect(new Set(masks)).toEqual(new Set([`url("/assets/offrandes/v1/objets/${offering}.webp")`]));
+        // Les cartes restent dans le DOM, inertes et invisibles pour la lecture.
+        const cards = scene.querySelector("[data-provisional=cards-state]")!;
+        expect(cards.hasAttribute("inert")).toBe(true);
+        expect(cards.getAttribute("aria-hidden")).toBe("true");
+        expect(q.queryByRole("button", { name: /Allumer une bougie/ })).toBeNull();
       }
-      expect(container.textContent).not.toMatch(/Déposer une fleur|Allumer une bougie|Offrir un cœur|jardin/);
+      expect(container.textContent).not.toMatch(/jardin/);
       expect(container.querySelector(`[data-heritage-skin-variant="${variant}"]`)).not.toBeNull();
     },
   );
