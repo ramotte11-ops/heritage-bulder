@@ -95,7 +95,7 @@ describe("Offrandes V1 — un geste", () => {
     const retry = await mobile().findByRole("button", { name: "Réessayer" });
     expect(document.activeElement === retry || retry.dataset.focus === "retry").toBe(true);
     expect(screen.getByTestId("offerings-v1-mobile").textContent).not.toContain("Une pensée d’amour offerte");
-    expect(screen.getByTestId("offerings-v1-mobile").textContent).toContain("Votre geste n’a pas pu être transmis.");
+    expect(screen.getByTestId("offerings-v1-mobile").textContent).toContain("Votre geste n’a pas pu être enregistré.");
     expect(screen.getByTestId("offerings-v1-mobile").querySelector("img[src$='/objets/coeur.webp']")).not.toBeNull();
     fireEvent.click(retry);
     await mobile().findByRole("button", { name: "Poursuivre la visite" });

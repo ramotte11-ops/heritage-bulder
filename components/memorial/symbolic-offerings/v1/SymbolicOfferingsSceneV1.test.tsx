@@ -28,6 +28,7 @@ const { OFFERINGS_V1_TOKENS, OFFERING_KINDS } = await import("@/config/symbolic-
 const { RENDERER_KEYS, SECTION_RENDERERS } = await import("@/config/memorial-section-renderers");
 const { EDITORIAL_CONTEXT_SECTIONS } = await import("@/config/sections");
 const { RESERVED_MEMORIAL_SLOTS } = await import("@/config/memorial-section-order");
+const { OFFERINGS_V1_TEXTS } = await import("./texts");
 
 afterEach(cleanup);
 
@@ -177,5 +178,44 @@ describe("Offrandes V1 — état « cartes » Mobile Dark (M3.1)", () => {
       const last = card.description.baseline + (card.description.lines.length - 1) * card.description.step;
       expect(last, card.kind).toBeLessThan(PAPER_BOTTOM[card.kind] - 10);
     }
+  });
+});
+
+describe("Offrandes V1 — textes FR / EN / ES (F1)", () => {
+  it("le FR est exactement celui des compositions validées (lignes des jetons)", () => {
+    const fr = OFFERINGS_V1_TEXTS.fr;
+    for (const variant of ["light", "dark"] as const) {
+      for (const layout of ["mobile", "desktop"] as const) {
+        const C = OFFERINGS_V1_TOKENS[variant][layout];
+        expect(fr.layouts[layout].intro, `${variant} ${layout}`).toEqual(C.selection.intro.lines);
+        expect(fr.layouts[layout].footer, `${variant} ${layout}`).toEqual(C.selection.footer.lines);
+        for (const card of C.selection.cards) {
+          expect([fr.cards[card.kind].title], card.kind).toEqual(card.title.lines);
+          expect(fr.cards[card.kind].description, card.kind).toEqual(card.description.lines);
+        }
+        for (const kind of OFFERING_KINDS) {
+          expect(fr.layouts[layout].confirmations[kind], `${variant} ${layout} ${kind}`).toEqual(C.scenes[kind].confirmation.lines);
+        }
+      }
+    }
+    expect(fr.failure).toBe("Votre geste n’a pas pu être enregistré.");
+    expect(fr.retry).toBe("Réessayer");
+  });
+
+  it("EN et ES gardent les lignes imposées du FR et la signature HERITAGE", () => {
+    const fr = OFFERINGS_V1_TEXTS.fr;
+    for (const language of ["en", "es"] as const) {
+      const t = OFFERINGS_V1_TEXTS[language];
+      expect([t.heritage, t.subtitle]).toEqual(["HERITAGE", "HOMMAGE INTEMPOREL"]);
+      for (const layout of ["mobile", "desktop"] as const) {
+        expect(t.layouts[layout].intro.length).toBe(fr.layouts[layout].intro.length);
+        expect(t.layouts[layout].footer.length).toBe(fr.layouts[layout].footer.length);
+        for (const kind of OFFERING_KINDS) {
+          expect(t.layouts[layout].confirmations[kind].length, `${language} ${layout} ${kind}`).toBe(fr.layouts[layout].confirmations[kind].length);
+        }
+      }
+      for (const kind of OFFERING_KINDS) expect(t.cards[kind].description.length).toBe(fr.cards[kind].description.length);
+    }
+    expect(OFFERINGS_V1_TEXTS.en.script).toBe("in remembrance");
   });
 });

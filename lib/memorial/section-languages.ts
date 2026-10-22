@@ -8,11 +8,13 @@ import type { SectionId } from "@/config/sections";
  * exist for the family (the adapter refuses `textUnavailable`). A section
  * absent from this table is available in every language.
  *
- * - symbolicOfferings: the official confirmations are French only
- *   (EN/ES wording still to be validated by the QG).
+ * - symbolicOfferings: FR, EN and ES wordings validated by the QG (F1),
+ *   in `components/memorial/symbolic-offerings/v1/texts.ts`. A language
+ *   added to `LANGUAGES` later stays without the rubrique until its
+ *   wording is validated and listed here.
  */
 const SECTION_LANGUAGES: Readonly<Partial<Record<SectionId, readonly Language[]>>> = {
-  symbolicOfferings: ["fr"],
+  symbolicOfferings: ["fr", "en", "es"],
 };
 
 export function isSectionAvailableInLanguage(sectionId: SectionId, language: Language): boolean {

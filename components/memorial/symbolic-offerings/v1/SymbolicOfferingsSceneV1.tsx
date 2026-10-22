@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import {
   OFFERINGS_V1_INK,
@@ -26,6 +27,7 @@ import {
   transitionSteps,
   type AnimationStep,
 } from "./choreography";
+import { OFFERINGS_V1_TEXTS, type OfferingsV1Texts } from "./texts";
 import styles from "./SymbolicOfferingsSceneV1.module.css";
 
 /**
@@ -58,20 +60,10 @@ import styles from "./SymbolicOfferingsSceneV1.module.css";
  * largeur RÉELLE du conteneur (requête de conteneur à 1024 px) ; l'autre
  * est en `display: none`, ses images différées ne sont pas téléchargées.
  * Géométrie en px de canevas (`--px`), textes posés par leur ligne de base
- * avec un plancher de lecture. Textes : français validé (EN/ES à valider :
- * hors français, la rubrique n'est pas assemblée).
+ * avec un plancher de lecture. Textes FR / EN / ES : `./texts.ts` (mêmes
+ * géométrie et lignes de base dans les trois langues).
  */
 
-export const OFFERINGS_V1_TEXT_FR = {
-  heritage: "HERITAGE",
-  subtitle: "HOMMAGE INTEMPOREL",
-  title: "Un geste",
-  script: "pour sa mémoire",
-  continue: "Poursuivre la visite",
-  /** Provisoires (démonstration, à valider) : échec de transmission. */
-  failure: "Votre geste n’a pas pu être transmis.",
-  retry: "Réessayer",
-} as const;
 
 export type OfferingsV1State =
   | { phase: "cards" }
@@ -80,6 +72,8 @@ export type OfferingsV1State =
 
 export interface SymbolicOfferingsV1Props {
   skinVariant: SkinVariant;
+  /** Langue des textes (`./texts.ts`) ; la géométrie ne change pas. */
+  language?: Language;
   /** `"page"` → titre `<h1>` ; `"section"` → `<h2>`. */
   headingLevel?: "page" | "section";
   /** Scène affichée d'emblée, déjà confirmée et immobile (contrôle des
@@ -118,6 +112,7 @@ type AnimRequest = { type: "enter"; offering: OfferingKind } | { type: "status" 
 
 export function SymbolicOfferingsV1({
   skinVariant,
+  language = "fr",
   headingLevel = "section",
   initialOffering = null,
   transmit,
@@ -128,6 +123,7 @@ export function SymbolicOfferingsV1({
 }: SymbolicOfferingsV1Props) {
   const tokens = OFFERINGS_V1_TOKENS[skinVariant];
   const ink = OFFERINGS_V1_INK[skinVariant];
+  const text = OFFERINGS_V1_TEXTS[language];
   const systemReduced = useSystemReducedMotion();
   const reduced = reducedMotion ?? systemReduced;
 
@@ -212,10 +208,10 @@ export function SymbolicOfferingsV1({
       if (run !== runRef.current) return;
       if (!reduced) animRequest.current = { type: "status" };
       focusRequest.current = ok ? "confirmation" : "retry";
-      setAnnouncement(ok ? tokens.mobile.scenes[offering].confirmation.lines.join(" ") : OFFERINGS_V1_TEXT_FR.failure);
+      setAnnouncement(ok ? text.layouts.mobile.confirmations[offering].join(" ") : text.failure);
       setState({ phase: "scene", offering, status: ok ? "confirmed" : "failed" });
     },
-    [transmit, reduced, tokens],
+    [transmit, reduced, text],
   );
 
   const perform = useCallback(
@@ -274,7 +270,7 @@ export function SymbolicOfferingsV1({
         data-phase={state.phase}
         data-status={state.phase === "scene" ? state.status : undefined}
         data-offering={state.phase === "cards" ? undefined : state.offering}
-        lang="fr"
+        lang={language}
         style={
           {
             "--ink-title": ink.title,
@@ -292,6 +288,7 @@ export function SymbolicOfferingsV1({
             key={layout}
             layout={layout}
             composition={tokens[layout]}
+            text={text}
             state={state}
             headingLevel={headingLevel}
             interactive={continueAction !== null}
@@ -315,13 +312,23 @@ export function SymbolicOfferingsV1({
 export function SymbolicOfferingsSceneV1({
   offering,
   skinVariant,
+  language = "fr",
   headingLevel = "section",
 }: {
   offering: OfferingKind;
   skinVariant: SkinVariant;
+  language?: Language;
   headingLevel?: "page" | "section";
 }) {
-  return <SymbolicOfferingsV1 skinVariant={skinVariant} headingLevel={headingLevel} initialOffering={offering} continueAction={null} />;
+  return (
+    <SymbolicOfferingsV1
+      skinVariant={skinVariant}
+      language={language}
+      headingLevel={headingLevel}
+      initialOffering={offering}
+      continueAction={null}
+    />
+  );
 }
 
 function boxVars(box: OfferingsV1Box): CSSProperties {
@@ -420,6 +427,7 @@ function Warm({ composition, offering }: { composition: OfferingsV1Composition; 
 function Composition({
   layout,
   composition: C,
+  text,
   state,
   headingLevel,
   interactive,
@@ -432,6 +440,7 @@ function Composition({
 }: {
   layout: "mobile" | "desktop";
   composition: OfferingsV1Composition;
+  text: OfferingsV1Texts;
   state: OfferingsV1State;
   headingLevel: "page" | "section";
   interactive: boolean;
@@ -448,6 +457,8 @@ function Composition({
   const inCards = state.phase === "cards";
   const status = state.phase === "scene" ? state.status : null;
   const sel = C.selection;
+  const lines = text.layouts[layout];
+  const confirmation = offering !== null ? lines.confirmations[offering] : [];
   const vars = {
     "--canvas-w": C.canvas.width,
     "--canvas-h": C.canvas.height,
@@ -516,11 +527,11 @@ function Composition({
       <div className={styles.veil} data-a="veil" aria-hidden="true" />
 
       <header className={styles.header}>
-        <p className={`${styles.text} ${styles.heritage}`}>{OFFERINGS_V1_TEXT_FR.heritage}</p>
-        <p className={`${styles.text} ${styles.subtitle}`}>{OFFERINGS_V1_TEXT_FR.subtitle}</p>
+        <p className={`${styles.text} ${styles.heritage}`}>{text.heritage}</p>
+        <p className={`${styles.text} ${styles.subtitle}`}>{text.subtitle}</p>
         <TitleTag className={styles.heading}>
-          <span className={`${styles.text} ${styles.title}`}>{OFFERINGS_V1_TEXT_FR.title}</span>{" "}
-          <span className={`${styles.text} ${styles.script}`}>{OFFERINGS_V1_TEXT_FR.script}</span>
+          <span className={`${styles.text} ${styles.title}`}>{text.title}</span>{" "}
+          <span className={`${styles.text} ${styles.script}`}>{text.script}</span>
         </TitleTag>
       </header>
 
@@ -534,7 +545,7 @@ function Composition({
         data-provisional="cards-state"
       >
         <p className={`${styles.lines} ${styles.intro}`} style={linesVars(sel.intro, C.axis, 14, C.canvas.width * 0.62)}>
-          {sel.intro.lines.map((line) => (
+          {lines.intro.map((line) => (
             <span key={line} className={styles.line}>
               {line}{" "}
             </span>
@@ -546,7 +557,8 @@ function Composition({
             // Cartes fixes du décor : marges et planchers resserrés (12–13 px)
             // pour que les textes restent dans la carte jusqu'à 320 px.
             const inner = card.box.width - 24;
-            const label = `${card.title.lines.join(" ")} — ${card.description.lines.join(" ")}`;
+            const words = text.cards[card.kind];
+            const label = `${words.title} — ${words.description.join(" ")}`;
             return (
               <li key={card.kind}>
                 <button
@@ -566,14 +578,14 @@ function Composition({
                   aria-hidden="true"
                   style={{ ...linesVars(card.title, cx, 13, inner), ...(card.ink !== undefined && { color: card.ink.title }) }}
                 >
-                  <span className={styles.line}>{card.title.lines[0]}</span>
+                  <span className={styles.line}>{words.title}</span>
                 </span>
                 <span
                   className={`${styles.lines} ${styles.cardText}`}
                   aria-hidden="true"
                   style={{ ...linesVars(card.description, cx, 12, inner), ...(card.ink !== undefined && { color: card.ink.body }) }}
                 >
-                  {card.description.lines.map((line) => (
+                  {words.description.map((line) => (
                     <span key={line} className={styles.line}>
                       {line}{" "}
                     </span>
@@ -584,7 +596,7 @@ function Composition({
           })}
         </ul>
         <p className={`${styles.lines} ${styles.intro}`} style={linesVars(sel.footer, C.axis, 13, C.canvas.width * 0.62)}>
-          {sel.footer.lines.map((line) => (
+          {lines.footer.map((line) => (
             <span key={line} className={styles.line}>
               {line}{" "}
             </span>
@@ -596,17 +608,17 @@ function Composition({
         <div className={styles.confirm} data-a="status" tabIndex={-1} data-focus="status" style={{ opacity: state.phase === "returning" ? 0 : 1 }}>
           {status !== "failed" && (
             <p className={styles.confirmText} tabIndex={-1} data-focus="confirmation" hidden={status === "pending"}>
-              {scene.confirmation.lines.map((line) => (
+              {confirmation.map((line) => (
                 <span key={line} className={styles.line}>
                   {line}{" "}
                 </span>
               ))}
             </p>
           )}
-          {status === "failed" && <p className={styles.confirmText}>{OFFERINGS_V1_TEXT_FR.failure}</p>}
+          {status === "failed" && <p className={styles.confirmText}>{text.failure}</p>}
           {status === "failed" ? (
             <button type="button" className={styles.continue} data-a="continue" data-focus="retry" data-interactive="" onClick={onRetry}>
-              {OFFERINGS_V1_TEXT_FR.retry}
+              {text.retry}
             </button>
           ) : (
             <button
@@ -617,7 +629,7 @@ function Composition({
               hidden={status === "pending"}
               onClick={onContinue}
             >
-              {OFFERINGS_V1_TEXT_FR.continue}
+              {text.continue}
             </button>
           )}
         </div>

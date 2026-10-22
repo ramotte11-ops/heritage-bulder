@@ -288,25 +288,26 @@ describe("adaptTraditionsV2", () => {
   });
 });
 
-describe("adaptSymbolicOfferingsV1Section (M3)", () => {
-  it("passes the skin variant only — no family content, no media", async () => {
+describe("adaptSymbolicOfferingsV1Section (M3, F1)", () => {
+  it("passes the skin variant and the language only — no family content, no media", async () => {
     const resolver = recordingResolver();
     for (const skinVariant of ["light", "dark"] as const) {
-      const result = await adaptSymbolicOfferingsV1Section(
-        context(fullAnnouncement(), { skinVariant, resolveMedia: resolver.resolve }),
-      );
-      expect(result).toEqual({ ok: true, props: { skinVariant } });
+      for (const language of ["fr", "en", "es"] as const) {
+        const result = await adaptSymbolicOfferingsV1Section(
+          context(fullAnnouncement(), { skinVariant, language, resolveMedia: resolver.resolve }),
+        );
+        expect(result).toEqual({ ok: true, props: { skinVariant, language } });
+      }
     }
     expect(resolver.calls).toEqual([]);
   });
 
-  it("French only: EN and ES have no validated wording yet (textUnavailable)", async () => {
-    for (const language of ["en", "es"] as const) {
-      expect(await adaptSymbolicOfferingsV1Section(context(fullAnnouncement(), { language }))).toEqual({
-        ok: false,
-        reason: "textUnavailable",
-      });
-    }
+  it("a language without validated wording gets no rubrique (textUnavailable)", async () => {
+    const unknown = "de" as unknown as AdapterContext["language"];
+    expect(await adaptSymbolicOfferingsV1Section(context(fullAnnouncement(), { language: unknown }))).toEqual({
+      ok: false,
+      reason: "textUnavailable",
+    });
   });
 
   it("refuses any other skin", async () => {

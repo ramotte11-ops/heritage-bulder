@@ -336,16 +336,17 @@ export const adaptGalleryIntemporel: RendererAdapter<"GalleryIntemporel"> = asyn
 };
 
 /**
- * Offrandes symboliques V1 (M3). No family matter: only the skin variant
- * reaches the renderer — its compositions, texts and assets are
- * HERITAGE's own. The texts are validated in French only (the official
- * confirmations); any other language gets no rubrique (`textUnavailable`,
- * fail closed) — never an unvalidated translation.
+ * Offrandes symboliques V1 (M3, textes FR/EN/ES en F1). No family matter:
+ * only the skin variant and the memorial's language reach the renderer —
+ * its compositions, texts and assets are HERITAGE's own. A language
+ * without validated wording (`isSectionAvailableInLanguage`) gets no
+ * rubrique (`textUnavailable`, fail closed) — never an unvalidated
+ * translation.
  */
 export const adaptSymbolicOfferingsV1Section: RendererAdapter<"SymbolicOfferingsV1Section"> = async (context) => {
   if (context.skin !== "intemporel") return refuse("skinMismatch");
   if (!isSectionAvailableInLanguage("symbolicOfferings", context.language)) return refuse("textUnavailable");
-  return { ok: true, props: { skinVariant: context.skinVariant } };
+  return { ok: true, props: { skinVariant: context.skinVariant, language: context.language } };
 };
 
 /** Exhaustive over `RendererKey`: a key added to `RENDERER_KEYS` without

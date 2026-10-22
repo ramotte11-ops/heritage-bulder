@@ -17,10 +17,15 @@ vi.mock("next/font/google", () => ({
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
 }));
 
-const { SymbolicOfferingsV1Section, OFFERINGS_PREVIEW_NOTICE_FR } = await import("./SymbolicOfferingsV1Section");
+const { SymbolicOfferingsV1Section } = await import("./SymbolicOfferingsV1Section");
+const { OFFERINGS_V1_TEXTS } = await import("./texts");
 const { OfferingsPreviewProvider, simulatedOfferingTransmit, SIMULATED_RESPONSE_MS } = await import("./offerings-preview");
 const { MemorialAssembly } = await import("@/components/memorial/assembly/MemorialAssembly");
 const { RENDERER_COMPONENTS } = await import("@/components/memorial/assembly/renderer-registry");
+
+// La réponse simulée est une vraie minuterie (SIMULATED_RESPONSE_MS) : une
+// marge large évite qu'une machine chargée fasse échouer l'attente.
+const SIMULATED_WAIT = 3000;
 
 const fetchSpy = vi.fn();
 
@@ -52,9 +57,17 @@ function confirmationText() {
   return p.hidden ? null : p.textContent!.replace(/\s+/g, " ").trim();
 }
 
+function renderPreview(variant: "light" | "dark" = "light", language: "fr" | "en" | "es" = "fr") {
+  render(
+    <OfferingsPreviewProvider>
+      <SymbolicOfferingsV1Section skinVariant={variant} language={language} />
+    </OfferingsPreviewProvider>,
+  );
+}
+
 describe("Offrandes V1 — hors de la Preview du Builder", () => {
   it("ne dessine rien : ni carte, ni scène, ni mention", () => {
-    const { container } = render(<SymbolicOfferingsV1Section skinVariant="light" />);
+    const { container } = render(<SymbolicOfferingsV1Section skinVariant="light" language="fr" />);
     expect(container.innerHTML).toBe("");
   });
 
@@ -67,7 +80,7 @@ describe("Offrandes V1 — hors de la Preview du Builder", () => {
           skin: "intemporel",
           skinVariant: "dark",
           language: "fr",
-          sections: [{ sectionId: "symbolicOfferings", rendererKey: "SymbolicOfferingsV1Section", props: { skinVariant: "dark" } }],
+          sections: [{ sectionId: "symbolicOfferings", rendererKey: "SymbolicOfferingsV1Section", props: { skinVariant: "dark", language: "fr" } }],
           archivedSections: [],
           failures: [],
         }}
@@ -82,18 +95,11 @@ describe("Offrandes V1 — hors de la Preview du Builder", () => {
 });
 
 describe("Offrandes V1 — dans la Preview du Builder", () => {
-  function renderPreview(variant: "light" | "dark" = "light") {
-    render(
-      <OfferingsPreviewProvider>
-        <SymbolicOfferingsV1Section skinVariant={variant} />
-      </OfferingsPreviewProvider>,
-    );
-  }
 
   it("annonce la réponse simulée au-dessus de la composition", () => {
     renderPreview("dark");
     const note = screen.getByRole("note");
-    expect(note.textContent).toBe(OFFERINGS_PREVIEW_NOTICE_FR);
+    expect(note.textContent).toBe(OFFERINGS_V1_TEXTS.fr.previewNotice);
     expect(note.dataset.variant).toBe("dark");
     expect(note.textContent).toMatch(/simulée/);
     expect(note.textContent).toMatch(/aucun geste n’est enregistré/);
@@ -112,10 +118,32 @@ describe("Offrandes V1 — dans la Preview du Builder", () => {
     for (const [card, confirmation] of tries) {
       fireEvent.click(mobile().getByRole("button", { name: card }));
       expect(confirmationText()).toBeNull();
-      await waitFor(() => expect(confirmationText()).toBe(confirmation));
+      await waitFor(() => expect(confirmationText()).toBe(confirmation), { timeout: SIMULATED_WAIT });
       fireEvent.click(mobile().getByRole("button", { name: "Poursuivre la visite" }));
       await waitFor(() => expect(mobile().getAllByRole("button")).toHaveLength(3));
     }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Offrandes V1 — langues du mémorial (F1)", () => {
+  it.each(["en", "es"] as const)("%s : mention, cartes, confirmation et bouton dans la langue, retour aux cartes", async (language) => {
+    const t = OFFERINGS_V1_TEXTS[language];
+    renderPreview("light", language);
+    expect(screen.getByRole("note").textContent).toBe(t.previewNotice);
+    expect(screen.getByRole("note").closest("[lang]")?.getAttribute("lang")).toBe(language);
+    const labels = mobile().getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(labels).toEqual(
+      (["lys", "bougie", "coeur"] as const).map((k) => `${t.cards[k].title} — ${t.cards[k].description.join(" ")}`),
+    );
+    expect(screen.getByTestId("offerings-v1-mobile").textContent).toContain(t.layouts.mobile.intro[0]);
+    expect(screen.getByTestId("offerings-v1-mobile").textContent).toContain(t.script);
+    fireEvent.click(mobile().getByRole("button", { name: new RegExp(t.cards.bougie.title) }));
+    await waitFor(() => expect(confirmationText()).toBe(t.layouts.mobile.confirmations.bougie.join(" ")), {
+      timeout: SIMULATED_WAIT,
+    });
+    fireEvent.click(mobile().getByRole("button", { name: t.continue }));
+    await waitFor(() => expect(mobile().getAllByRole("button")).toHaveLength(3));
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

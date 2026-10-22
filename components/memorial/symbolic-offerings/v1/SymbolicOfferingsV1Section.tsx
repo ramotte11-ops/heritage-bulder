@@ -1,8 +1,10 @@
 "use client";
 
+import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import { SymbolicOfferingsV1 } from "./SymbolicOfferingsSceneV1";
 import { useOfferingsPreview } from "./offerings-preview";
+import { OFFERINGS_V1_TEXTS } from "./texts";
 import styles from "./SymbolicOfferingsV1Section.module.css";
 
 /**
@@ -14,25 +16,29 @@ import styles from "./SymbolicOfferingsV1Section.module.css";
  * composant M2 validé (douze compositions, transition A, animations) :
  * essais libres des trois gestes et retour aux cartes par « Poursuivre
  * la visite », avec une réponse serveur SIMULÉE, annoncée par une
- * mention posée AU-DESSUS de la composition (jamais dans les Masters).
+ * mention posée AU-DESSUS de la composition (jamais dans les Masters),
+ * dans la langue du mémorial.
  */
-export const OFFERINGS_PREVIEW_NOTICE_FR =
-  "Aperçu — essai libre des gestes. La confirmation est simulée : aucun geste n’est enregistré.";
-
 export interface SymbolicOfferingsV1SectionProps {
   skinVariant: SkinVariant;
+  language: Language;
 }
 
-export function SymbolicOfferingsV1Section({ skinVariant }: SymbolicOfferingsV1SectionProps) {
+export function SymbolicOfferingsV1Section({ skinVariant, language }: SymbolicOfferingsV1SectionProps) {
   const preview = useOfferingsPreview();
   if (preview === null) return null;
 
   return (
-    <div data-offerings-preview="" lang="fr">
+    <div data-offerings-preview="" lang={language}>
       <p role="note" className={styles.notice} data-variant={skinVariant}>
-        {OFFERINGS_PREVIEW_NOTICE_FR}
+        {OFFERINGS_V1_TEXTS[language].previewNotice}
       </p>
-      <SymbolicOfferingsV1 skinVariant={skinVariant} transmit={preview.transmit} continueAction="returnToCards" />
+      <SymbolicOfferingsV1
+        skinVariant={skinVariant}
+        language={language}
+        transmit={preview.transmit}
+        continueAction="returnToCards"
+      />
     </div>
   );
 }

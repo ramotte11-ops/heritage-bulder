@@ -235,11 +235,15 @@ describe("Offrandes symboliques (M3.1) — same mechanism as every other rubriqu
     expect(withoutPresentation(hidden)).toEqual(withoutPresentation(hide(fullAnnouncement(), "story")));
   });
 
-  it("no row where the memorial's language never shows it (EN, ES)", () => {
-    for (const language of ["en", "es"] as const) {
-      expect(resolveVisibilityEntries(compose(fullAnnouncement()), language).map((r) => r.sectionId)).not.toContain(
+  it("a row in every language with validated wording (FR, EN, ES — F1), none in any other", () => {
+    for (const language of ["fr", "en", "es"] as const) {
+      expect(resolveVisibilityEntries(compose(fullAnnouncement()), language).map((r) => r.sectionId)).toContain(
         "symbolicOfferings",
       );
     }
+    const unknown = "de" as unknown as Parameters<typeof resolveVisibilityEntries>[1];
+    expect(resolveVisibilityEntries(compose(fullAnnouncement()), unknown).map((r) => r.sectionId)).not.toContain(
+      "symbolicOfferings",
+    );
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { OfferingKind } from "@/config/symbolic-offerings-v1-tokens";
 import { SymbolicOfferingsV1, type OfferingsV1State } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsSceneV1";
@@ -14,6 +15,7 @@ import { SymbolicOfferingsV1, type OfferingsV1State } from "@/components/memoria
 
 export interface OfferingsPilotSettings {
   variant: SkinVariant;
+  language: Language;
   width: number | null;
   outcome: "ok" | "fail";
   delay: number;
@@ -131,6 +133,7 @@ export function OfferingsPilot({ initial }: { initial: OfferingsPilotSettings })
         <SymbolicOfferingsV1
           key={generation}
           skinVariant={settings.variant}
+          language={settings.language}
           headingLevel="page"
           transmit={transmit}
           continueAction="returnToCards"
