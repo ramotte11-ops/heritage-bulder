@@ -91,7 +91,8 @@ describe("A13 Album — memory table render contracts", () => {
     const img = view.container.querySelector("img")!;
     expect(img.hasAttribute("loading")).toBe(false);
     expect(img.hasAttribute("decoding")).toBe(false);
-    expect(img.getAttributeNames().sort()).toEqual(["alt", "class", "draggable", "src", "style"]);
+    // + Optimisation photographique V1: the whole-photo state (visibility only, never geometry).
+    expect(img.getAttributeNames().sort()).toEqual(["alt", "class", "data-photo-state", "draggable", "src", "style"]);
   });
   it("Dark renders the SAME geometry DOM as Light (material only) and never processes a photo", () => {
     const fx = albumFixture(20, "natural-mix", "mixed");

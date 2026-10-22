@@ -4,6 +4,7 @@ import type { PolaroidLayout, Rect } from "@/lib/memorial/gallery/dynamic-polaro
 import type { CaptionLayout } from "@/lib/memorial/gallery/caption-layout";
 import type { A13Theme } from "@/config/gallery-a13-dark-material";
 import { darkPrintMaterial } from "@/lib/memorial/gallery/theme-material";
+import { PolaroidPhoto } from "./PolaroidPhoto";
 import styles from "./DynamicPolaroid.module.css";
 
 /**
@@ -148,15 +149,8 @@ export function DynamicPolaroid({ slot, layout, src, alt, caption, qa = false, o
       >
         {widened ? <div className={styles.bandWing} style={{ ...box(layout.band), backgroundPosition: `${k(-layout.band.x)} ${k(-layout.band.y)}` }} aria-hidden="true" data-band-wing="" /> : null}
         <div className={styles.window} style={box(layout.window)}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className={styles.photo}
-            style={box(layout.photo)}
-            draggable={false}
-            {...(imageLoading ? { loading: imageLoading, decoding: "async" as const } : {})}
-          />
+          {/* Keyed by its source: a new photograph starts hidden again until it is whole. */}
+          <PolaroidPhoto key={src} src={src} alt={alt} style={box(layout.photo)} loading={imageLoading} />
         </div>
         <figcaption className={styles.band} style={box(layout.band)}>
           {caption ? <span className={styles.srOnly}>{caption.lines.map((l) => l.text).join(" ")}</span> : null}

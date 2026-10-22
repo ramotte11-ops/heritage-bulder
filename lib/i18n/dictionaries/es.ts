@@ -145,6 +145,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "hero.photoCroppingNote":
     "No se preocupe por el encuadre por ahora: podrá ajustarlo justo después.",
   "hero.photoUploading": "Añadiendo la foto…",
+  "hero.photoPreparing": "Preparando la foto…",
   "hero.photoAlt": "Foto elegida para el homenaje",
   "hero.photoErrorTooLarge": "Esta foto es demasiado grande. Pruebe con otra.",
   "hero.photoErrorUnsupportedFormat":
@@ -339,6 +340,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "galleryStep.replaced": "Foto reemplazada.",
   "galleryStep.removed": "Foto quitada.",
   "galleryStep.uploading": "Añadiendo…",
+  "galleryStep.preparing": "Preparando la foto…",
   "galleryStep.replacing": "Reemplazando…",
   "galleryStep.photoUnavailable": "Esta foto no se puede mostrar por el momento.",
   "galleryStep.dismiss": "Descartar",

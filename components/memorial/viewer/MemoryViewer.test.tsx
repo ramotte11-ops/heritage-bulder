@@ -347,3 +347,27 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     }
   });
 });
+
+describe("Optimisation photographique V1 — the photograph is revealed only whole", () => {
+  it("the frame opens on time; the photo stays hidden (paper alone, aria-busy) until loaded and decoded, then shows", async () => {
+    const { root } = await open("light");
+    const photo = root.querySelector<HTMLImageElement>("[data-viewer-photo]")!;
+    const print = root.querySelector<HTMLElement>("[data-viewer-print]")!;
+    expect(photo.dataset.viewerPhotoState).toBe("loading");
+    expect(print.getAttribute("aria-busy")).toBe("true");
+    const box = { w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top };
+    fireEvent.load(photo);
+    await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("ready"));
+    expect(print.hasAttribute("aria-busy")).toBe(false);
+    // Visibility only: the photo's box is the same before and after.
+    expect({ w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top }).toEqual(box);
+  });
+
+  it("a photo that cannot load (expired signed URL, network) is never shown broken; the Viewer still closes normally", async () => {
+    const { root } = await open("dark");
+    const photo = root.querySelector<HTMLImageElement>("[data-viewer-photo]")!;
+    fireEvent.error(photo);
+    await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("error"));
+    expect(root.querySelector("[data-viewer-close]")).toBeTruthy();
+  });
+});

@@ -344,6 +344,8 @@ export const TRANSLATION_KEYS = [
   "hero.photoChangeLabel",
   "hero.photoCroppingNote",
   "hero.photoUploading",
+  // Optimisation photographique V1 — la photo est préparée dans le navigateur avant l'envoi.
+  "hero.photoPreparing",
   "hero.photoAlt",
   "hero.photoErrorTooLarge",
   "hero.photoErrorUnsupportedFormat",
@@ -566,6 +568,7 @@ export const TRANSLATION_KEYS = [
   "galleryStep.replaced",
   "galleryStep.removed",
   "galleryStep.uploading",
+  "galleryStep.preparing",
   "galleryStep.replacing",
   "galleryStep.photoUnavailable",
   "galleryStep.dismiss",

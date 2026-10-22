@@ -54,7 +54,21 @@ const { uploadToSignedUrl, getBrowserSupabaseClient } = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase/browser-client", () => ({ getBrowserSupabaseClient }));
 
+// Optimisation photographique V1 — the in-browser preparation needs a real
+// canvas (measured in Chromium, not here). Stand-in: every chosen photo
+// becomes one optimized WebP; the pre-checks around it stay real
+// (`lib/media/prepare-chosen-photo.ts`).
+const { preparePhotoForUpload } = vi.hoisted(() => ({
+  preparePhotoForUpload: vi.fn(async (_file: File, purpose: string) => ({
+    ok: true as const,
+    file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+    report: { purpose },
+  })),
+}));
+vi.mock("@/lib/media/photo-preparation", () => ({ preparePhotoForUpload }));
+
 const { HeroPhotoStep } = await import("./HeroPhotoStep");
+const { PHOTO_INPUT_MAX_BYTES } = await import("@/config/photo-profiles");
 
 afterEach(cleanup);
 
@@ -117,6 +131,7 @@ beforeEach(() => {
   uploadToSignedUrl.mockClear();
   uploadToSignedUrl.mockResolvedValue({ data: {}, error: null });
   getBrowserSupabaseClient.mockClear();
+  preparePhotoForUpload.mockClear();
 });
 
 describe("HeroPhotoStep — empty state", () => {
@@ -224,12 +239,14 @@ describe("HeroPhotoStep — a fresh upload, start to finish", () => {
     const input = document.querySelector("input[type='file']") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [jpegFile()] } });
 
-    await waitFor(() => expect(reserveUpload).toHaveBeenCalledWith("image/jpeg"));
+    // Only the optimized file is reserved and uploaded — never the chosen original.
+    await waitFor(() => expect(reserveUpload).toHaveBeenCalledWith("image/webp"));
+    expect(preparePhotoForUpload).toHaveBeenCalledWith(expect.objectContaining({ name: "photo.jpg" }), "hero");
     await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalledWith(
       READY_MEDIA.storagePath,
       "token-x",
-      expect.any(File),
-      expect.objectContaining({ contentType: "image/jpeg" }),
+      expect.objectContaining({ name: "photo.webp", type: "image/webp" }),
+      expect.objectContaining({ contentType: "image/webp" }),
     ));
     await waitFor(() => expect(finalizeUpload).toHaveBeenCalledWith(READY_MEDIA.id));
 
@@ -267,13 +284,85 @@ describe("HeroPhotoStep — a fresh upload, start to finish", () => {
   });
 });
 
+describe("HeroPhotoStep — the photo is prepared in the browser before it is sent", () => {
+  const reservedOk = () =>
+    vi.fn().mockResolvedValue({
+      ok: true,
+      value: { mediaId: READY_MEDIA.id, storagePath: READY_MEDIA.storagePath, uploadUrl: "https://storage.test/upload/x", uploadToken: "token-x" },
+    });
+
+  it("shows « Préparation de la photo… » while the photo is being prepared", async () => {
+    let finish: (value: unknown) => void = () => {};
+    preparePhotoForUpload.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)) as never);
+    const reserveUpload = reservedOk();
+    render(<HeroPhotoStep {...baseProps({ reserveUpload, finalizeUpload: vi.fn().mockResolvedValue({ ok: true, value: READY_MEDIA }) })} />);
+
+    fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [jpegFile()] } });
+
+    await waitFor(() => expect(screen.getByText("Préparation de la photo…")).toBeTruthy());
+    expect(screen.getByRole("button", { name: /continuer/i })).toHaveProperty("disabled", true);
+    expect(reserveUpload).not.toHaveBeenCalled();
+    finish({ ok: true, file: new File([new Uint8Array(8)], "photo.webp", { type: "image/webp" }), report: {} });
+    await waitFor(() => expect(reserveUpload).toHaveBeenCalledWith("image/webp"));
+  });
+
+  it("a photo that cannot be prepared: a human message, and NOTHING is sent — never the original", async () => {
+    preparePhotoForUpload.mockResolvedValueOnce({ ok: false, code: "invalid_file" } as never);
+    const reserveUpload = vi.fn();
+    render(<HeroPhotoStep {...baseProps({ reserveUpload })} />);
+
+    fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [jpegFile("tronquee.jpg")] } });
+
+    await waitFor(() => expect(screen.getByText("Nous n'avons pas pu utiliser cette photo. Essayez-en une autre.")).toBeTruthy());
+    expect(reserveUpload).not.toHaveBeenCalled();
+    expect(uploadToSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("an unexpected browser failure during preparation is the same human error, never an upload", async () => {
+    preparePhotoForUpload.mockRejectedValueOnce(new Error("canvas out of memory"));
+    const reserveUpload = vi.fn();
+    render(<HeroPhotoStep {...baseProps({ reserveUpload })} />);
+
+    fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [jpegFile()] } });
+
+    await waitFor(() => expect(screen.getByText("Nous n'avons pas pu utiliser cette photo. Essayez-en une autre.")).toBeTruthy());
+    expect(uploadToSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("a heavy phone photo (over the server's 15 MB) is no longer refused: it is prepared, then sent light", async () => {
+    const reserveUpload = reservedOk();
+    render(<HeroPhotoStep {...baseProps({ reserveUpload, finalizeUpload: vi.fn().mockResolvedValue({ ok: true, value: READY_MEDIA }) })} />);
+
+    fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [jpegFile("IMG_48MP.jpg", 18 * 1024 * 1024)] } });
+
+    await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalled());
+    expect((uploadToSignedUrl.mock.calls[0][2] as File).size).toBe(512);
+  });
+
+  it("a failed preparation during a REPLACEMENT leaves the previous photo in place", async () => {
+    preparePhotoForUpload.mockResolvedValueOnce({ ok: false, code: "file_too_large" } as never);
+    render(
+      <HeroPhotoStep
+        {...baseProps({ content: CONTENT_WITH_PHOTO, initialPhoto: { media: READY_MEDIA, readUrl: "https://storage.test/signed/old" } })}
+      />,
+    );
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [jpegFile()] } });
+
+    await waitFor(() => expect(screen.getByText("Cette photo est trop volumineuse. Essayez-en une autre.")).toBeTruthy());
+    expect(screen.getByRole("img").getAttribute("src")).toBe("https://storage.test/signed/old");
+    expect(screen.getByRole("button", { name: /continuer/i })).toHaveProperty("disabled", false);
+  });
+});
+
 describe("HeroPhotoStep — human errors, never technical ones", () => {
   it("shows the exact 'too large' message and never calls reserveUpload for an oversized file", async () => {
     const reserveUpload = vi.fn();
     render(<HeroPhotoStep {...baseProps({ reserveUpload })} />);
 
     const input = document.querySelector("input[type='file']") as HTMLInputElement;
-    const bigFile = jpegFile("big.jpg", 16 * 1024 * 1024);
+    const bigFile = jpegFile("big.jpg", PHOTO_INPUT_MAX_BYTES + 1);
     fireEvent.change(input, { target: { files: [bigFile] } });
 
     await waitFor(() =>
