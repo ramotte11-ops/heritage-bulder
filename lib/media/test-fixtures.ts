@@ -130,8 +130,8 @@ export const JPEG_BYTES = jpegWithDimensions(1200, 1600);
 /** A valid PNG header — signature + IHDR (1600 × 1200). */
 export const PNG_BYTES = pngWithDimensions(1600, 1200);
 
-/** "RIFF" + size + "WEBP" + a VP8X canvas (1920 × 1080). */
-export const WEBP_BYTES = webpVp8xWithDimensions(1920, 1080);
+/** "RIFF" + size + "WEBP" + a VP8X canvas (1600 × 900 — within every photo profile). */
+export const WEBP_BYTES = webpVp8xWithDimensions(1600, 900);
 
 /** `<svg ...` — the format that must never be accepted. */
 export const SVG_BYTES = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg">');

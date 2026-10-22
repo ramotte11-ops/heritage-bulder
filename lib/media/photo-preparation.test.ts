@@ -99,7 +99,16 @@ describe("preparePhotoForUpload — profils", () => {
     expect(calls.resized).toEqual([[1600, 1200, false]]);
   });
 
-  it("Hero : 2400 px de grand côté et qualité de départ supérieure", async () => {
+  it("décode directement à la taille du profil, calculée sur l'en-tête ; le rapport garde les dimensions d'origine", async () => {
+    const { env } = fakeEnv({ decoded: { width: 1600, height: 1200 }, weight: () => 200 * 1024 });
+    const targets: Array<{ width: number; height: number }> = [];
+    const spy: PhotoPreparationEnv = { ...env, decode: (file, target) => (targets.push(target), env.decode(file, target)) };
+    const result = await preparePhotoForUpload(photo(3_000_000, "image/jpeg", pngHead(8160, 6120)), "gallery", spy);
+    expect(targets).toEqual([{ width: 1600, height: 1200 }]);
+    expect(result.ok && result.report).toMatchObject({ inputWidth: 8160, inputHeight: 6120, width: 1600, height: 1200 });
+  });
+
+    it("Hero : 2400 px de grand côté et qualité de départ supérieure", async () => {
     const { env } = fakeEnv({ decoded: { width: 3024, height: 4032 }, weight: () => 500 * 1024 });
     const result = await preparePhotoForUpload(photo(), "hero", env);
     expect(result.ok && result.report).toMatchObject({ width: 1800, height: 2400, quality: 0.86, targetMet: true });
@@ -191,13 +200,20 @@ describe("preparePhotoForUpload — refus, jamais d'envoi de l'original", () => 
   it("image démesurée refusée sur son en-tête, AVANT tout décodage", async () => {
     let decodedCalled = false;
     const { env } = fakeEnv();
-    const guarded = { ...env, decode: async () => ((decodedCalled = true), env.decode(new Blob())) };
+    const guarded = { ...env, decode: async () => ((decodedCalled = true), env.decode(new Blob(), { width: 1, height: 1 })) };
     expect(10_000 * 7_000).toBeGreaterThan(PHOTO_INPUT_MAX_PIXELS);
     expect(await preparePhotoForUpload(photo(3_000_000, "image/jpeg", pngHead(10_000, 7_000)), "gallery", guarded)).toEqual({
       ok: false,
       code: "file_too_large",
     });
     expect(decodedCalled).toBe(false);
+    // L'ancienne limite (60 Mpx) est refusée ; un capteur 50 Mpx (8160 × 6120) passe.
+    expect(8940 * 6700).toBeGreaterThan(PHOTO_INPUT_MAX_PIXELS);
+    expect(await preparePhotoForUpload(photo(3_000_000, "image/jpeg", pngHead(8940, 6700)), "gallery", guarded)).toEqual({
+      ok: false,
+      code: "file_too_large",
+    });
+    expect(8160 * 6120).toBeLessThanOrEqual(PHOTO_INPUT_MAX_PIXELS);
   });
 
   it("en-tête illisible ou image impossible à décoder", async () => {
@@ -209,7 +225,7 @@ describe("preparePhotoForUpload — refus, jamais d'envoi de l'original", () => 
   it("fichier tronqué (transfert interrompu) refusé AVANT tout décodage — le navigateur l'aurait grisé", async () => {
     let decodedCalled = false;
     const { env } = fakeEnv();
-    const guarded = { ...env, decode: async (file: Blob) => ((decodedCalled = true), env.decode(file)) };
+    const guarded = { ...env, decode: async (file: Blob, target: { width: number; height: number }) => ((decodedCalled = true), env.decode(file, target)) };
     expect(await preparePhotoForUpload(photo(3_000_000, "image/png", pngHead(4032, 3024), false), "gallery", guarded)).toEqual({
       ok: false,
       code: "invalid_file",

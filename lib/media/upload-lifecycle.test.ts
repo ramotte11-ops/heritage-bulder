@@ -850,9 +850,10 @@ describe("finalizeMediaUpload — natural dimensions (dette D1)", () => {
 
   it("records width/height MEASURED from the stored bytes, for every admitted format", async () => {
     for (const [declaredMimeType, bytes, expected] of [
-      ["image/jpeg", jpegWithDimensions(3024, 4032), { width: 3024, height: 4032 }],
+      // Within the Gallery profile's 1600 px long side (Optimisation photographique V1).
+      ["image/jpeg", jpegWithDimensions(1200, 1600), { width: 1200, height: 1600 }],
       ["image/png", pngWithDimensions(1600, 1200), { width: 1600, height: 1200 }],
-      ["image/webp", webpVp8lWithDimensions(2390, 1000), { width: 2390, height: 1000 }],
+      ["image/webp", webpVp8lWithDimensions(1600, 669), { width: 1600, height: 669 }],
     ] as const) {
       const engine = createTestEngine();
       const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose: "gallery" });
@@ -864,10 +865,10 @@ describe("finalizeMediaUpload — natural dimensions (dette D1)", () => {
 
   it("reports the ratio the photograph is SEEN at: an EXIF quarter turn swaps the sides, the bytes stay untouched", async () => {
     const engine = createTestEngine();
-    const bytes = jpegWithDimensions(4032, 3024, { orientation: 6 });
+    const bytes = jpegWithDimensions(1600, 1200, { orientation: 6 });
     const reserved = await uploadedMedia(engine, { bytes, purpose: "gallery" });
     const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
-    expect(result.ok && [result.value.width, result.value.height]).toEqual([3024, 4032]);
+    expect(result.ok && [result.value.width, result.value.height]).toEqual([1200, 1600]);
     expect(engine.objectStore.objects.get(reserved.storagePath)).toEqual(bytes);
   });
 
@@ -918,6 +919,68 @@ describe("finalizeMediaUpload — natural dimensions (dette D1)", () => {
     // @ts-expect-error — no client-declared dimension can be passed
     const forged: Input = { memorialId: MEMORIAL_A, mediaId: "x", width: 99999 };
     void forged;
+  });
+});
+
+describe("finalizeMediaUpload — long side bounded by the photo profile (Optimisation photographique V1)", () => {
+  it("accepts a NEW photograph exactly at its profile's long side: Gallery 1600 px, Hero 2400 px", async () => {
+    for (const [purpose, bytes] of [
+      ["gallery", jpegWithDimensions(1600, 1067)],
+      ["gallery", webpVp8lWithDimensions(900, 1600)],
+      ["hero", jpegWithDimensions(2400, 1800)],
+      ["hero", pngWithDimensions(1800, 2400)],
+    ] as const) {
+      const engine = createTestEngine();
+      const declaredMimeType = bytes[0] === 0x89 ? "image/png" : bytes[0] === 0x52 ? "image/webp" : "image/jpeg";
+      const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose });
+      const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+      expect(result.ok, `${purpose} ${declaredMimeType}`).toBe(true);
+    }
+  });
+
+  it("refuses a NEW photograph above it — an unprepared file — as file_too_large, never made ready", async () => {
+    for (const [purpose, bytes] of [
+      ["gallery", jpegWithDimensions(1601, 1000)],
+      ["gallery", pngWithDimensions(1200, 1601)],
+      ["gallery", jpegWithDimensions(4032, 3024)],
+      ["hero", jpegWithDimensions(2401, 1600)],
+      ["hero", webpVp8lWithDimensions(3024, 4032)],
+    ] as const) {
+      const engine = createTestEngine();
+      const declaredMimeType = bytes[0] === 0x89 ? "image/png" : bytes[0] === 0x52 ? "image/webp" : "image/jpeg";
+      const reserved = await uploadedMedia(engine, { declaredMimeType, bytes, purpose });
+      const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+      expect(result, `${purpose} ${declaredMimeType}`).toEqual({ ok: false, code: "file_too_large" });
+      expect(engine.mediaRepository.rows.get(reserved.mediaId)?.status).toBe("pending");
+    }
+  });
+
+  it("the bound reads the side the photograph is SEEN at: an EXIF quarter turn changes nothing to its long side", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: jpegWithDimensions(1601, 1200, { orientation: 6 }), purpose: "gallery" });
+    expect(await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId })).toEqual({
+      ok: false,
+      code: "file_too_large",
+    });
+  });
+
+  it("historical media are untouched: an already-ready photograph above the bound is returned unchanged", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: jpegWithDimensions(1200, 1600), purpose: "gallery" });
+    await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    // A photograph stored before this version (as large as 4032 × 3024), already ready.
+    const row = engine.mediaRepository.rows.get(reserved.mediaId)!;
+    engine.mediaRepository.rows.set(reserved.mediaId, { ...row, width: 4032, height: 3024 });
+    const again = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(again.ok && [again.value.status, again.value.width, again.value.height]).toEqual(["ready", 4032, 3024]);
+  });
+
+  it("keeps the Hero's pre-D1 tolerance: unreadable dimensions stay an honest null, never a refusal", async () => {
+    const engine = createTestEngine();
+    const noSof = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9]);
+    const reserved = await uploadedMedia(engine, { bytes: noSof, purpose: "hero" });
+    const result = await finalizeMediaUpload(engine, ownerActor(OWNER_A), { memorialId: MEMORIAL_A, mediaId: reserved.mediaId });
+    expect(result.ok).toBe(true);
   });
 });
 

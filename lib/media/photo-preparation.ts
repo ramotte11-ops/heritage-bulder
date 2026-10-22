@@ -23,10 +23,14 @@ import type { MediaErrorCode } from "./media-errors";
  *    tout décodage, pour refuser proprement une image qui saturerait la
  *    mémoire d'un téléphone — et fichier complet (`image-integrity.ts` :
  *    un navigateur décode sans erreur une photo tronquée, grisée).
- * 2. Décoder en appliquant l'orientation EXIF (comportement par défaut
- *    des navigateurs actuels : les pixels produits sont déjà droits, et
- *    le fichier envoyé ne porte plus aucune métadonnée — ni orientation,
- *    ni position GPS).
+ * 2. Décoder en appliquant l'orientation EXIF (les pixels produits sont
+ *    déjà droits, et le fichier envoyé ne porte plus aucune métadonnée —
+ *    ni orientation, ni position GPS). Quand le navigateur le permet
+ *    (`createImageBitmap` redimensionné, vérifié une fois par une sonde),
+ *    l'image est rendue DIRECTEMENT à la taille du profil : aucune copie
+ *    pleine résolution n'est conservée pendant la réduction (mesure
+ *    Chromium : pic ≈ +270 Mo à 50 Mpx, contre ≈ +600 Mo avant). Sinon,
+ *    repli sûr sur l'élément image, sans `decode()` forcé.
  * 3. Réduire au grand côté du profil (jamais d'agrandissement), par
  *    divisions successives par deux puis un dernier pas lissé, pour une
  *    réduction nette.
@@ -44,7 +48,7 @@ import type { MediaErrorCode } from "./media-errors";
  */
 
 export interface DecodedPhoto {
-  /** Dimensions affichées (orientation EXIF appliquée). */
+  /** Dimensions décodées (orientation EXIF appliquée) : la taille demandée, ou l'image entière en repli. */
   width: number;
   height: number;
   release(): void;
@@ -61,7 +65,8 @@ export type PreparedPhotoType = "image/webp" | "image/jpeg";
 export interface PhotoPreparationEnv {
   /** Octets `[start, end[` du fichier. */
   read(file: Blob, start: number, end: number): Promise<Uint8Array>;
-  decode(file: Blob): Promise<DecodedPhoto>;
+  /** `target` : la taille du profil (orientée) — décodée directement à cette taille quand c'est possible. */
+  decode(file: Blob, target: { width: number; height: number }): Promise<DecodedPhoto>;
   /** `opaque` : fond blanc sous les zones transparentes (le JPEG n'a pas d'alpha). */
   resize(photo: DecodedPhoto, width: number, height: number, opaque: boolean): Promise<ResizedPhoto>;
   canEncodeWebp(): Promise<boolean>;
@@ -146,10 +151,10 @@ export async function preparePhotoForUpload(
     return fail("invalid_file");
   }
 
-  // 2. Décoder (orientation EXIF appliquée par le navigateur).
+  // 2. Décoder (orientation EXIF appliquée), à la taille du profil si possible.
   let decoded: DecodedPhoto;
   try {
-    decoded = await env.decode(file);
+    decoded = await env.decode(file, fitWithin(header.width, header.height, profile.maxSide));
   } catch {
     return fail("invalid_file");
   }
@@ -206,8 +211,8 @@ export async function preparePhotoForUpload(
       report: {
         purpose,
         inputBytes: file.size,
-        inputWidth: decoded.width,
-        inputHeight: decoded.height,
+        inputWidth: header.width,
+        inputHeight: header.height,
         outputBytes: prepared.size,
         width: best.width,
         height: best.height,
@@ -229,7 +234,7 @@ export async function preparePhotoForUpload(
 // ---------------------------------------------------------------------
 
 interface BrowserDecodedPhoto extends DecodedPhoto {
-  image: HTMLImageElement;
+  source: CanvasImageSource;
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -246,40 +251,116 @@ function releaseCanvas(canvas: HTMLCanvasElement): void {
 }
 
 let webpSupport: Promise<boolean> | null = null;
+let bitmapDecodeSupport: Promise<boolean> | null = null;
+
+/**
+ * Sonde du décodage redimensionné : un JPEG de 16 × 8 px (moitié gauche
+ * noire, droite blanche) portant l'orientation EXIF 6 (quart de tour).
+ * Demandé à 4 × 8 px, un navigateur qui applique à la fois la réduction
+ * ET l'orientation rend un bitmap de 4 × 8 au haut noir et au bas blanc.
+ * Un navigateur qui ignorerait l'une des deux options rendrait une autre
+ * taille, ou une image couchée et étirée (haut droit blanc) — jamais
+ * utilisée : repli sur l'élément image.
+ */
+const BITMAP_PROBE_JPEG =
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAIABADAREAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD/AD/6AP8Af4oA/9k=";
+
+function bitmapOptions(width: number, height: number): ImageBitmapOptions {
+  return { resizeWidth: width, resizeHeight: height, resizeQuality: "high", imageOrientation: "from-image" };
+}
+
+async function probeBitmapDecode(): Promise<boolean> {
+  if (typeof createImageBitmap !== "function") return false;
+  let bitmap: ImageBitmap | null = null;
+  const canvas = createCanvas(4, 8);
+  try {
+    const bytes = Uint8Array.from(atob(BITMAP_PROBE_JPEG), (c) => c.charCodeAt(0));
+    bitmap = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }), bitmapOptions(4, 8));
+    if (bitmap.width !== 4 || bitmap.height !== 8) return false;
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) return false;
+    ctx.drawImage(bitmap, 0, 0);
+    const luminance = (x: number, y: number) => ctx.getImageData(x, y, 1, 1).data[0];
+    // Haut droit noir (orienté), bas gauche blanc.
+    return luminance(3, 1) < 64 && luminance(0, 6) > 192;
+  } catch {
+    return false;
+  } finally {
+    bitmap?.close();
+    releaseCanvas(canvas);
+  }
+}
+
+/** Repli : l'élément image, chargé sans `decode()` forcé (qui garderait une seconde copie décodée). */
+function loadImageElement(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => (image.naturalWidth > 0 ? resolve(image) : reject(new Error("decode")));
+    image.onerror = () => reject(new Error("decode"));
+    image.src = url;
+  });
+}
+
+async function decodeForPreparation(file: Blob, target: { width: number; height: number }, bitmapDecode: boolean): Promise<DecodedPhoto> {
+  // Rendue directement à la taille du profil : aucune copie pleine
+  // résolution n'est gardée pendant la réduction.
+  bitmapDecodeSupport ??= probeBitmapDecode();
+  if (bitmapDecode && (await bitmapDecodeSupport)) {
+    try {
+      const bitmap = await createImageBitmap(file, bitmapOptions(target.width, target.height));
+      if (bitmap.width === target.width && bitmap.height === target.height) {
+        const decoded: BrowserDecodedPhoto = { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
+        return decoded;
+      }
+      bitmap.close();
+    } catch {
+      // Repli ci-dessous.
+    }
+  }
+  const url = URL.createObjectURL(file);
+  let image: HTMLImageElement;
+  try {
+    image = await loadImageElement(url);
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+  const decoded: BrowserDecodedPhoto = {
+    source: image,
+    // naturalWidth/naturalHeight suivent l'orientation EXIF
+    // (`image-orientation: from-image`, défaut des navigateurs actuels).
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    release() {
+      URL.revokeObjectURL(url);
+      image.removeAttribute("src");
+    },
+  };
+  return decoded;
+}
+
+/**
+ * L'environnement navigateur. `bitmapDecode: false` force le repli sur
+ * l'élément image (banc d'essai : mesurer le chemin des navigateurs sans
+ * décodage redimensionné).
+ */
+export function createBrowserPhotoPreparationEnv({ bitmapDecode = true }: { bitmapDecode?: boolean } = {}): PhotoPreparationEnv {
+  return {
+    ...browserPhotoPreparationEnv,
+    decode: (file, target) => decodeForPreparation(file, target, bitmapDecode),
+  };
+}
 
 export const browserPhotoPreparationEnv: PhotoPreparationEnv = {
   async read(file, start, end) {
     return new Uint8Array(await file.slice(start, end).arrayBuffer());
   },
 
-  async decode(file) {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.decoding = "async";
-    image.src = url;
-    try {
-      await image.decode();
-    } catch (error) {
-      URL.revokeObjectURL(url);
-      throw error;
-    }
-    const decoded: BrowserDecodedPhoto = {
-      image,
-      // naturalWidth/naturalHeight suivent l'orientation EXIF
-      // (`image-orientation: from-image`, défaut des navigateurs actuels).
-      width: image.naturalWidth,
-      height: image.naturalHeight,
-      release() {
-        URL.revokeObjectURL(url);
-        image.removeAttribute("src");
-      },
-    };
-    return decoded;
-  },
+  decode: (file, target) => decodeForPreparation(file, target, true),
 
   async resize(photo, width, height, opaque) {
-    const { image } = photo as BrowserDecodedPhoto;
-    let source: CanvasImageSource = image;
+    let source: CanvasImageSource = (photo as BrowserDecodedPhoto).source;
     let sw = photo.width;
     let sh = photo.height;
     let intermediate: HTMLCanvasElement | null = null;

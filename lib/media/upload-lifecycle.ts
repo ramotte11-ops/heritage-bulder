@@ -1,4 +1,5 @@
 import { MAX_MEDIA_BYTES, MEDIA_PURPOSES, type MediaPurpose } from "@/config/media";
+import { PHOTO_PROFILES } from "@/config/photo-profiles";
 import { authorizeMemorialAccess } from "@/lib/auth/memorial-access";
 import type { HeritageActor } from "@/lib/auth/heritage-actor";
 import type { Media } from "@/types/media";
@@ -312,6 +313,18 @@ export async function finalizeMediaUpload(
   if (dimensions === null && media.purpose === "gallery") {
     await discardUnusableUpload(deps, media);
     return mediaFailure("invalid_file");
+  }
+
+  // Optimisation photographique V1 — the Builder prepares every
+  // photograph within its profile's long side (config/photo-profiles.ts:
+  // Hero 2400 px, Gallery 1600 px) before uploading it. A larger one was
+  // not prepared — a modified client — and would be served as is to
+  // every visitor: refused like any other oversized file. NEW media only:
+  // this runs once, on a `pending` upload; an already-ready media
+  // (every historical photograph) returned above, untouched.
+  if (dimensions !== null && Math.max(dimensions.width, dimensions.height) > PHOTO_PROFILES[media.purpose].maxSide) {
+    await discardUnusableUpload(deps, media);
+    return mediaFailure("file_too_large");
   }
 
   let ready: Media | null;

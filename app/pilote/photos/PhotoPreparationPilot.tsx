@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { MediaPurpose } from "@/config/media";
 import {
-  browserPhotoPreparationEnv,
+  createBrowserPhotoPreparationEnv,
   preparePhotoForUpload,
   type PhotoPreparationEnv,
   type PhotoPreparationResult,
@@ -16,7 +16,10 @@ interface Row {
   url: string | null;
 }
 
-/** Banc d'essai : `?nowebp=1` simule un navigateur sans encodeur WebP (Safari). */
+/**
+ * Banc d'essai : `?nowebp=1` simule un navigateur sans encodeur WebP
+ * (Safari) ; `?nobitmap=1` force le repli sans décodage redimensionné.
+ */
 export function PhotoPreparationPilot() {
   const [purpose, setPurpose] = useState<MediaPurpose>("gallery");
   const [rows, setRows] = useState<Row[]>([]);
@@ -24,8 +27,9 @@ export function PhotoPreparationPilot() {
 
   async function run(files: File[]) {
     setBusy(true);
-    const noWebp = new URLSearchParams(window.location.search).get("nowebp") === "1";
-    const env: PhotoPreparationEnv = noWebp ? { ...browserPhotoPreparationEnv, canEncodeWebp: async () => false } : browserPhotoPreparationEnv;
+    const params = new URLSearchParams(window.location.search);
+    const base = createBrowserPhotoPreparationEnv({ bitmapDecode: params.get("nobitmap") !== "1" });
+    const env: PhotoPreparationEnv = params.get("nowebp") === "1" ? { ...base, canEncodeWebp: async () => false } : base;
     const next: Row[] = [];
     for (const file of files) {
       const result = await preparePhotoForUpload(file, purpose, env);

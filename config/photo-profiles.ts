@@ -48,11 +48,14 @@ export const PHOTO_SCALE_STEPS: readonly number[] = [1, 0.85, 0.72];
 /**
  * Garde-fous MÉMOIRE du navigateur, vérifiés sur l'en-tête du fichier
  * AVANT tout décodage : une image décodée occupe ~4 octets par pixel
- * (48 Mpx ≈ 190 Mo). Au-delà, un téléphone risque de saturer — la
+ * (50 Mpx ≈ 200 Mo). Au-delà, un téléphone modeste risque de saturer — la
  * famille reçoit un message clair, jamais un plantage.
  *
- * - 60 Mpx couvre les capteurs 48/50 Mpx des téléphones actuels.
+ * - 50 Mpx couvre les capteurs 48/50 Mpx des téléphones actuels
+ *   (8160 × 6120 = 49,9 Mpx). Mesure Chromium (émulation mobile) : pic
+ *   ≈ +270 Mo à 50 Mpx avec le décodage redimensionné, contre ≈ +600 Mo
+ *   à 50–60 Mpx avant lui — d'où l'abaissement depuis 60 Mpx.
  * - 40 Mo couvre les JPEG les plus lourds de ces capteurs.
  */
-export const PHOTO_INPUT_MAX_PIXELS = 60_000_000;
+export const PHOTO_INPUT_MAX_PIXELS = 50_000_000;
 export const PHOTO_INPUT_MAX_BYTES = 40 * 1024 * 1024;
