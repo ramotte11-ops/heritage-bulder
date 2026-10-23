@@ -53,9 +53,11 @@ export interface A13MobileFullAlbumProps {
   responsive?: boolean;
   /** Host-owned Viewer: when given, a print asks the host to open the Viewer (origin Album) instead of this section's own — so it outlives a family switch. */
   onOpenMemory?: (mediaIndex: number) => void;
+  /** Called when the composition is unresolved (no Album rendered): the host returns to the Gallery instead of an empty Album. */
+  onUnavailable?: () => void;
 }
 
-export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false, onOpenMemory }: A13MobileFullAlbumProps) {
+export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false, onOpenMemory, onUnavailable }: A13MobileFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -83,6 +85,11 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
   useEffect(() => {
     if (small && small.status !== "PASS") console.error("Album Small Mobile: composition unresolved (no Album rendered):", small.status, small.detail);
   }, [small]);
+  // STOP: no Album is rendered — tell the host, which never leaves the visitor in front of an empty Album.
+  const unavailable = (small !== null && small.status !== "PASS") || (layout !== null && layout.status !== "PASS");
+  useEffect(() => {
+    if (unavailable) onUnavailable?.();
+  }, [unavailable, onUnavailable]);
 
   const logged = useRef<string | null>(null);
   useEffect(() => {
