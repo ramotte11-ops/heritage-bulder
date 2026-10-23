@@ -128,6 +128,26 @@ export const A13_ALBUM_MOBILE_MINIMUM_EXCEPTIONS = [
 /** Relative tolerance on the media ratio of an exception ("9:16" = 0.5625 ± 0.5 %). */
 export const A13_ALBUM_MOBILE_EXCEPTION_RATIO_TOLERANCE = 0.005;
 
+/**
+ * GO PO / QG 23/10/2026 — the P3 exception extended, as a FALLBACK only:
+ * a portrait narrower than 3:4 (2:3, 9:19.5, 9:20, 1:3…) in P3 can never
+ * reach the 72 px secondary minimum (measured ceiling ≈ 69.3 px, the 9:16
+ * witness), so the whole Mobile Album was withheld (ITEM_INACCESSIBLE).
+ * Such a P3 takes the SAME 69 px as the validated 9:16 exception — but
+ * only for a group with no solution under the standard minimums: a group
+ * that resolves today is solved exactly as before. No geometry, territory,
+ * scale-ceiling, slot or other threshold change.
+ */
+export const A13_ALBUM_MOBILE_P3_PORTRAIT_FALLBACK = {
+  id: "P3_PORTRAIT_FALLBACK_375",
+  slotId: "P3" as AlbumMobileSlotId,
+  /** A portrait narrower than 3:4: width / height strictly below 3 / 4. */
+  mediaRatioBelow: 3 / 4,
+  viewportCssPx: 375,
+  outerPaperShortSideMinimumCssPx: 69,
+  onlyWhenUnresolved: true,
+} as const;
+
 /** `safeHorizontalInsetRefPx`: every paper inside x ∈ [24, 1000]. */
 export const A13_ALBUM_MOBILE_SAFE_INSET = 24;
 /** Horizontal overflow allowed for the rotated paper SHADOW only (CSS px). */
