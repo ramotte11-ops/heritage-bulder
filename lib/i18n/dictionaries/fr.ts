@@ -328,6 +328,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "galleryStep.remove": "Retirer",
   "galleryStep.removeQuestion": "Retirer cette photo de vos souvenirs ?",
   "galleryStep.removeConfirm": "Confirmer",
+  "galleryStep.removing": "Retrait en cours…",
   "galleryStep.moveUp": "Monter",
   "galleryStep.moveDown": "Descendre",
   "galleryStep.moved": "Photo déplacée en position {position} sur {total}.",
@@ -346,6 +347,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "gallery.seeMoreMemories": "Voir plus de souvenirs",
   "memory.position": "Souvenir {index} sur {total}",
   "album.label": "Album de souvenirs",
+  "album.title": "Galerie de souvenirs",
   "viewer.close": "Fermer le souvenir",
   "viewer.dialogLabel": "Souvenir — {subject}",
 };

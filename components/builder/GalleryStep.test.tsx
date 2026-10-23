@@ -267,6 +267,29 @@ describe("Retirer — inline confirmation, persist before retire", () => {
   });
 });
 
+describe("Recette Builder V1 — Retirer: the click is acknowledged until the draft answers", () => {
+  it("« Confirmer » says « Retrait en cours… » (aria-busy, disabled) while the save runs; a second tap writes nothing more", async () => {
+    let answer!: (v: { updatedAt: string }) => void;
+    const persist = vi.fn(() => new Promise<{ updatedAt: string }>((resolve) => (answer = resolve)));
+    const p = props({ content: contentWith(2), thumbnails: thumbsFor(2), persist });
+    render(<GalleryStep {...p} />);
+    fireEvent.click(within(rows()[0]).getByRole("button", { name: "Retirer" }));
+    const confirm = within(rows()[0]).getByRole("button", { name: "Confirmer" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(within(rows()[0]).getByText("Retrait en cours…")).toBeTruthy());
+    const busy = within(rows()[0]).getByText("Retrait en cours…").closest("button")!;
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect(busy.hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+    answer({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(p.retirePhoto).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Retrait en cours…")).toBeNull();
+  });
+});
+
 describe("Remplacer — same place, same caption, persist before retire", () => {
   it("uploads the new photograph, saves it in place, then retires the previous one", async () => {
     const p = props({ content: contentWith(3, { 2: "Tous les deux" }), thumbnails: thumbsFor(3) });

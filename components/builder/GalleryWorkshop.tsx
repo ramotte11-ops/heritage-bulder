@@ -13,6 +13,7 @@ import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { usePendingInput } from "./journey/pending-input";
+import { PendingActionLabel } from "./PendingActionLabel";
 import { precheckPhotoInput } from "@/lib/media/precheck-upload";
 import { prepareChosenPhoto } from "@/lib/media/prepare-chosen-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
@@ -162,6 +163,9 @@ export function GalleryWorkshop({
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  // The memory whose removal is being written: its « Confirmer » says so until the draft answers.
+  const [removing, setRemoving] = useState<string | null>(null);
+  const removingRef = useRef<string | null>(null);
   // B03 — photos still uploading (or failed) are not in the draft yet:
   // « Mon parcours » asks before leaving.
   usePendingInput(pending.length > 0 || committing);
@@ -321,7 +325,13 @@ export function GalleryWorkshop({
   }
 
   async function handleConfirmRemove(mediaId: string, index: number) {
+    // A second tap before React disables the button must not write the removal twice.
+    if (removingRef.current !== null) return;
+    removingRef.current = mediaId;
+    setRemoving(mediaId);
     const removed = await commitStructural((gallery) => ({ ok: true, gallery: removeGalleryMedia(gallery, mediaId) }));
+    removingRef.current = null;
+    setRemoving(null);
     if (!removed) {
       setRowErrors((errors) => ({ ...errors, [mediaId]: translate(language, "galleryStep.removeFailed") }));
       return;
@@ -364,6 +374,7 @@ export function GalleryWorkshop({
               thumbnail={thumbnails[item.mediaId] ?? null}
               replacing={replacing === item.mediaId}
               confirming={confirming === item.mediaId}
+              removing={removing === item.mediaId}
               error={rowErrors[item.mediaId] ?? null}
               captionReadOnly={frozen || committing}
               structuralLocked={structuralLocked}
@@ -439,6 +450,8 @@ interface GalleryRegisterRowProps {
   thumbnail: string | null;
   replacing: boolean;
   confirming: boolean;
+  /** Its removal is being written to the draft. */
+  removing: boolean;
   error: string | null;
   captionReadOnly: boolean;
   structuralLocked: boolean;
@@ -460,6 +473,7 @@ function GalleryRegisterRow({
   thumbnail,
   replacing,
   confirming,
+  removing,
   error,
   captionReadOnly,
   structuralLocked,
@@ -544,8 +558,10 @@ function GalleryRegisterRow({
               {translate(language, "galleryStep.removeQuestion")}
             </p>
             <div className={styles.actions}>
-              <button type="button" className={styles.confirmAction} disabled={structuralLocked} aria-describedby={itemId} onClick={() => onConfirmRemove(mediaId, index)}>
-                {translate(language, "galleryStep.removeConfirm")}
+              <button type="button" className={styles.confirmAction} disabled={structuralLocked} aria-busy={removing || undefined} aria-describedby={itemId} onClick={() => onConfirmRemove(mediaId, index)}>
+                <PendingActionLabel pending={removing} pendingLabel={translate(language, "galleryStep.removing")}>
+                  {translate(language, "galleryStep.removeConfirm")}
+                </PendingActionLabel>
               </button>
               <button ref={cancelRef} type="button" className={styles.textAction} disabled={structuralLocked} onClick={onCancelRemove}>
                 {translate(language, "common.cancel")}

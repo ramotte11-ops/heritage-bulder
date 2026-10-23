@@ -293,9 +293,9 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
                 </button>
               </div>
               {desktop ? (
-                <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} />
+                <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} withTitle />
               ) : (
-                <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} onUnavailable={closeAlbum} />
+                <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} onUnavailable={closeAlbum} withTitle />
               )}
             </div>
           ) : null}

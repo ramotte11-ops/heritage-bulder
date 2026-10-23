@@ -27,9 +27,11 @@ export interface A13DesktopFullAlbumProps {
   onViewerReport?: (report: ViewerReport) => void;
   /** Host-owned Viewer: when given, a print asks the host to open the Viewer (origin Album) instead of this section's own — so it outlives a family switch. */
   onOpenMemory?: (mediaIndex: number) => void;
+  /** Recette Builder V1 — the « Galerie de souvenirs » title above the table (product host). */
+  withTitle?: boolean;
 }
 
-export function A13DesktopFullAlbum({ media, theme, language, onViewerReport, onOpenMemory }: A13DesktopFullAlbumProps) {
+export function A13DesktopFullAlbum({ media, theme, language, onViewerReport, onOpenMemory, withTitle = false }: A13DesktopFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -44,6 +46,7 @@ export function A13DesktopFullAlbum({ media, theme, language, onViewerReport, on
           media={media.map(({ mediaId, src, alt }) => ({ mediaId, src, alt }))}
           theme={theme}
           language={language}
+          withTitle={withTitle}
           onActivate={(_mediaId, mediaIndex) => {
             if (onOpenMemory) return onOpenMemory(mediaIndex);
             const m = media[mediaIndex];

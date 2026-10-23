@@ -6,6 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { SupabaseOwnedMemorialListRepository } from "@/lib/adapters/supabase/owned-memorial-list-repository";
 import type { OwnedMemorialSummary } from "@/lib/adapters/owned-memorial-list-repository";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { PendingLinkLabel } from "@/components/auth/PendingLinkLabel";
 import styles from "./page.module.css";
 
 /**
@@ -98,7 +99,7 @@ export default async function OwnerPage() {
                 <p className={styles.itemName}>{memorial.displayName ?? "Mémorial en cours de création"}</p>
                 {createdAt ? <p className={styles.itemMeta}>Créé le {createdAt}</p> : null}
                 <Link href={`/builder/${encodeURIComponent(memorial.id)}`} className={styles.itemLink}>
-                  Ouvrir l&rsquo;atelier
+                  <PendingLinkLabel pendingLabel="Ouverture de l’atelier…">Ouvrir l&rsquo;atelier</PendingLinkLabel>
                 </Link>
               </li>
             );
