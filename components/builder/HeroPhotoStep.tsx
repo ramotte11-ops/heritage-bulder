@@ -13,7 +13,8 @@ import type { MediaDeletion } from "@/lib/media/delete-media";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
-import { precheckHeroPhotoFile } from "@/lib/media/precheck-upload";
+import { precheckPhotoInput } from "@/lib/media/precheck-upload";
+import { prepareChosenPhoto } from "@/lib/media/prepare-chosen-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import {
@@ -56,7 +57,7 @@ interface HeroPhotoStepProps {
   retireUpload: (mediaId: string) => Promise<MediaResult<MediaDeletion>>;
 }
 
-type PhotoStatus = "empty" | "uploading" | "finalizing" | "ready" | "error";
+type PhotoStatus = "empty" | "preparing" | "uploading" | "finalizing" | "ready" | "error";
 
 interface PhotoState {
   status: PhotoStatus;
@@ -106,7 +107,10 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
  *
  * ## The upload sequence, and the order QG's micro-audit corrected
  *
- * File chosen -> browser pre-check (UX only) -> `reserveUpload` (proves
+ * File chosen -> browser pre-check (UX only) -> the photo is PREPARED in
+ * the browser (Optimisation photographique V1, `prepare-chosen-photo.ts`:
+ * one optimized WebP/JPEG; the original is never sent, a failure is a
+ * human error) -> `reserveUpload` (proves
  * ownership, reserves a `pending` row + a signed, single-object Storage
  * permission) -> the browser uploads the bytes DIRECTLY to Storage
  * (`lib/supabase/browser-client.ts`'s `uploadToSignedUrl` — never through
@@ -175,7 +179,7 @@ export function HeroPhotoStep({
   const [content, setContent] = useState(initialContent);
   const [photo, setPhoto] = useState<PhotoState>(() => initialState(initialPhoto));
   // B03 — a photo still uploading is not in the draft yet.
-  usePendingInput(photo.status === "uploading" || photo.status === "finalizing");
+  usePendingInput(photo.status === "preparing" || photo.status === "uploading" || photo.status === "finalizing");
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -183,12 +187,12 @@ export function HeroPhotoStep({
 
   const read = readHeroForEditing(content);
 
-  const isBusy = photo.status === "uploading" || photo.status === "finalizing";
+  const isBusy = photo.status === "preparing" || photo.status === "uploading" || photo.status === "finalizing";
 
   async function handleFileSelected(file: File) {
     if (isBusy) return; // structural guard against a concurrent second upload.
 
-    const precheckCode = precheckHeroPhotoFile(file);
+    const precheckCode = precheckPhotoInput(file);
     if (precheckCode) {
       setPhoto((previous) => ({
         ...previous,
@@ -200,19 +204,24 @@ export function HeroPhotoStep({
 
     const previousMedia = photo.media;
     const previousDisplayUrl = photo.displayUrl;
-    const localPreviewUrl = URL.createObjectURL(file);
 
-    setPhoto({ status: "uploading", media: previousMedia, displayUrl: localPreviewUrl, errorMessage: null });
+    // The previous photo (if any) stays in view while the new one is prepared.
+    setPhoto({ status: "preparing", media: previousMedia, displayUrl: previousDisplayUrl, errorMessage: null });
 
     try {
-      const reserved = await reserveUpload(file.type);
+      // Only the optimized file goes any further — never `file` itself.
+      const prepared = await prepareChosenPhoto(file, "hero");
+      const localPreviewUrl = URL.createObjectURL(prepared);
+      setPhoto({ status: "uploading", media: previousMedia, displayUrl: localPreviewUrl, errorMessage: null });
+
+      const reserved = await reserveUpload(prepared.type);
       if (!reserved.ok) throw new MediaActionError(reserved.code);
 
       const supabase = getBrowserSupabaseClient();
       const { error: uploadError } = await supabase.storage
         .from(MEDIA_BUCKET)
-        .uploadToSignedUrl(reserved.value.storagePath, reserved.value.uploadToken, file, {
-          contentType: file.type,
+        .uploadToSignedUrl(reserved.value.storagePath, reserved.value.uploadToken, prepared, {
+          contentType: prepared.type,
         });
       if (uploadError) throw new MediaActionError("storage_unavailable");
 
@@ -298,7 +307,7 @@ export function HeroPhotoStep({
   }
 
   const progress = heroStepProgress(content, read.hero);
-  const hasPhoto = photo.status === "ready" || photo.status === "uploading" || photo.status === "finalizing";
+  const hasPhoto = photo.status === "ready" || isBusy;
   const controlDisabled = isBusy || isSubmitting;
 
   return (
@@ -339,7 +348,7 @@ export function HeroPhotoStep({
 
             {isBusy && (
               <p role="status" className={styles.statusText}>
-                {translate(language, "hero.photoUploading")}
+                {translate(language, photo.status === "preparing" ? "hero.photoPreparing" : "hero.photoUploading")}
               </p>
             )}
 

@@ -60,6 +60,33 @@
   user-select: none;
 }
 
+/*
+ * Optimisation photographique V1 — the photo is shown only WHOLE
+ * (`PolaroidPhoto.tsx`): hidden while it loads or after a failure (never
+ * half drawn, never a broken-image icon), the print's paper alone in the
+ * meantime. Visibility only: the box never changes.
+ */
+.photo[data-photo-state="loading"],
+.photo[data-photo-state="error"] {
+  visibility: hidden;
+}
+
+.photo[data-photo-state="revealed"] {
+  animation: photoReveal 240ms ease-out;
+}
+
+@keyframes photoReveal {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo[data-photo-state="revealed"] {
+    animation: none;
+  }
+}
+
 .band {
   position: absolute;
   margin: 0;
