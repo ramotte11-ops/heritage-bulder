@@ -561,6 +561,7 @@ export const TRANSLATION_KEYS = [
   "galleryStep.remove",
   "galleryStep.removeQuestion",
   "galleryStep.removeConfirm",
+  "galleryStep.removing",
   "galleryStep.moveUp",
   "galleryStep.moveDown",
   "galleryStep.moved",

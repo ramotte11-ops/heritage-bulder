@@ -1,4 +1,4 @@
-import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CAPTION_WIDENING, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
+import { A13_VIEWER_ASSETS, A13_VIEWER_CAPTION_MEASUREMENT, A13_VIEWER_CAPTION_WIDENING, A13_VIEWER_COMPACT_LANDSCAPE, A13_VIEWER_CONTRACT, VIEWER_EXTREME_RATIO_REVIEW } from "@/config/viewer-a13-desktop-v2";
 import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-measure";
 
 /**
@@ -29,7 +29,11 @@ import type { ViewerCaptionWrapFn } from "@/lib/memorial/viewer/viewer-caption-m
  * - a caption that does not fit the canonical paper widens it — symmetric,
  *   minimal, photo untouched — in a confirmed landscape for a portrait or
  *   square photo, or in a confirmed portrait for an extreme portrait photo
- *   (`A13_VIEWER_CAPTION_WIDENING`, `ViewerInput.orientation`).
+ *   (`A13_VIEWER_CAPTION_WIDENING`, `ViewerInput.orientation`);
+ * - a phone turned to landscape (window wider than tall, height ≤ 500 px,
+ *   `A13_VIEWER_COMPACT_LANDSCAPE`) starts from the real scale instead of
+ *   the 0.72 floor, so the frame shrinks to the contract minimums and the
+ *   photograph takes the height it frees.
  */
 
 const C = A13_VIEWER_CONTRACT;
@@ -213,7 +217,12 @@ function nineSlice(paperW: number, paperH: number, s: number): { box: Rect; slic
 
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-function atScale(inp: ViewerInput, s: number, sNominal: number, text: string | null, lines: 0 | 1 | 2) {
+/**
+ * `capFactor` scales the photo caps relative to `s`: 1 everywhere, except a
+ * compact landscape (`A13_VIEWER_COMPACT_LANDSCAPE`) where the caps keep the
+ * scale floor's level while the frame follows the real scale.
+ */
+function atScale(inp: ViewerInput, s: number, sNominal: number, text: string | null, lines: 0 | 1 | 2, capFactor = 1) {
   const { viewportW: vw, viewportH: vh } = inp;
   const r = inp.naturalW / inp.naturalH;
   const safeX = Math.max(C.safeArea.xMin, C.safeArea.xPerS * s);
@@ -223,8 +232,8 @@ function atScale(inp: ViewerInput, s: number, sNominal: number, text: string | n
   const fontSize = viewerFontSize(s);
   const lineHeight = C.caption.lineHeight * fontSize;
   const band = lines === 0 ? edge + C.paper.bandNoneExtraPerS * s : edge + lines * lineHeight + C.paper.bandTextExtraPerS * s;
-  const photoMaxW = Math.min(C.photo.maxW * s, vw - 2 * safeX - 2 * edge);
-  const photoMaxH = Math.min(C.photo.maxH * s, vh - 2 * safeY - topEdge - band);
+  const photoMaxW = Math.min(C.photo.maxW * s * capFactor, vw - 2 * safeX - 2 * edge);
+  const photoMaxH = Math.min(C.photo.maxH * s * capFactor, vh - 2 * safeY - topEdge - band);
   const photoW = Math.max(0, Math.min(photoMaxW, photoMaxH * r, inp.naturalW));
   const photoH = photoW / r;
   const paperW = photoW + 2 * edge;
@@ -257,21 +266,47 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
   const extremeRatio = r < rMin || r > rMax;
   if (extremeRatio) codes.push(VIEWER_EXTREME_RATIO_REVIEW);
 
+  // A phone turned to landscape: the frame follows the real scale, the photo caps keep the floor's level.
+  const compact = inp.viewportW > inp.viewportH && inp.viewportH <= A13_VIEWER_COMPACT_LANDSCAPE.maxViewportHeightCssPx;
+  const sStart = compact
+    ? Math.min(sNominal, Math.max(A13_VIEWER_COMPACT_LANDSCAPE.frameScaleMin, Math.min(inp.viewportW / C.referenceCanvas.width, inp.viewportH / C.referenceCanvas.height)))
+    : sNominal;
+  let capFactor = sNominal / sStart;
+
   // Caption line count: one line if the browser keeps the caption on one
   // line in the one-line geometry's usable width; otherwise the two-line
   // geometry (taller band → never a wider photo) and the browser's lines
   // there. Each measure runs at that geometry's displayed size.
   const solve = (s: number) => {
-    if (!text || !inp.wrap) return { g: atScale(inp, s, sNominal, text, text ? 1 : 0), lines: [] as ViewerCaptionLine[] };
-    const g1 = atScale(inp, s, sNominal, text, 1);
+    if (!text || !inp.wrap) return { g: atScale(inp, s, sNominal, text, text ? 1 : 0, capFactor), lines: [] as ViewerCaptionLine[] };
+    const g1 = atScale(inp, s, sNominal, text, 1, capFactor);
     const m1 = inp.wrap(text, g1.fontSize, g1.lineHeight, g1.usableWidth);
     if (!m1 || m1.lines.length <= 1) return { g: g1, lines: m1?.lines ?? [] };
-    const g2 = atScale(inp, s, sNominal, text, 2);
+    const g2 = atScale(inp, s, sNominal, text, 2, capFactor);
     return { g: g2, lines: inp.wrap(text, g2.fontSize, g2.lineHeight, g2.usableWidth)?.lines ?? [] };
   };
 
-  let s = sNominal;
+  let s = sStart;
   let { g, lines } = solve(s);
+  // The enlarged photo meets the close zone (a wide photo on a small phone):
+  // its caps shrink by 1 % steps until the paper clears it — never below the
+  // floored photo; otherwise exactly the geometry of the scale floor.
+  if (compact && !g.fits) {
+    capFactor = 1;
+    const floored = solve(sNominal);
+    capFactor = Math.min(sNominal / sStart, g.photoW / (C.photo.maxW * sStart), g.photoH / (C.photo.maxH * sStart));
+    let shrunk = solve(sStart);
+    while (!shrunk.g.fits && shrunk.g.photoW > floored.g.photoW) {
+      capFactor *= 0.99;
+      shrunk = solve(sStart);
+    }
+    if (shrunk.g.fits && shrunk.g.photoW > floored.g.photoW) ({ g, lines } = shrunk);
+    else {
+      capFactor = 1;
+      s = sNominal;
+      ({ g, lines } = floored);
+    }
+  }
   let viewportFitStop = false;
   while (!g.fits) {
     s = Math.round((s - 0.01) * 1000) / 1000;
@@ -403,7 +438,7 @@ export function layoutViewer(inp: ViewerInput): ViewerGeometry {
       open: { durationMs: C.motion.open.durationMs, easing: C.motion.open.easing, fromTranslateY: C.motion.open.from.translateYPerS * g.s, fromScale: C.motion.open.from.scale, fromOpacity: C.motion.open.from.opacity },
       close: { durationMs: C.motion.close.durationMs, easing: C.motion.close.easing, toTranslateY: C.motion.close.to.translateYPerS * g.s, toScale: C.motion.close.to.scale, toOpacity: C.motion.close.to.opacity },
     },
-    flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < sNominal, captionOverflow, captionLineCount, captionFontReady, viewportFitStop },
+    flags: { extremeRatio, upscaleCapped: g.upscaleCapped, fitReduced: g.s < (capFactor === 1 ? sNominal : sStart), captionOverflow, captionLineCount, captionFontReady, viewportFitStop },
     codes,
     ...(captionWidening ? { captionWidening } : {}),
   };

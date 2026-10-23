@@ -333,6 +333,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "galleryStep.remove": "Quitar",
   "galleryStep.removeQuestion": "¿Quitar esta foto de sus recuerdos?",
   "galleryStep.removeConfirm": "Confirmar",
+  "galleryStep.removing": "Retirando…",
   "galleryStep.moveUp": "Subir",
   "galleryStep.moveDown": "Bajar",
   "galleryStep.moved": "Foto movida a la posición {position} de {total}.",

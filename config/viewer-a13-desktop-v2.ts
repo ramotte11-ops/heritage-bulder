@@ -157,6 +157,27 @@ export const A13_VIEWER_CAPTION_WIDENING = {
   formerWidenCapTelemetryCssPx: 150,
 } as const;
 
+/**
+ * Recette Builder V1 (PO, 23/10) — Viewer on a phone turned to landscape.
+ *
+ * The `0.72` scale floor keeps the Desktop frame (safe areas, paper edges,
+ * caption band) on a 340–430 px tall landscape phone: it took ~40 % of the
+ * height and the photograph stayed at its portrait size. In a window wider
+ * than tall and no taller than `maxViewportHeightCssPx` (a geometric test:
+ * the same base for the caption widening and its canonical `W0`), the frame follows the
+ * real scale `min(vw/1670, vh/941)` (never under `frameScaleMin`) down to
+ * the contract's own minimums (safe areas 32 × 24, edge 14, caption 20 px,
+ * close 48 px offset 16), while the photo caps stay at the floor's level
+ * (`1112·0.72 × 622·0.72`) and shrink with the frame only if the fit loop
+ * must reduce it. If that compact frame does not fit as it is (a wide photo
+ * meeting the close zone on a small phone), the geometry is exactly the
+ * floored one, as before. Portrait, tablets and Desktop: unchanged.
+ */
+export const A13_VIEWER_COMPACT_LANDSCAPE = {
+  maxViewportHeightCssPx: 500,
+  frameScaleMin: 0.3,
+} as const;
+
 /** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */
 export const A13_VIEWER_STOPS = [
   "VIEWER_CROP_STOP",

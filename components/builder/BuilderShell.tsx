@@ -15,6 +15,7 @@ import {
 import type { DemoSectionContent } from "@/lib/builder/demo-content";
 import { useAutosave } from "@/lib/builder/use-autosave";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 import { SectionList } from "./SectionList";
 import { SectionEditor } from "./SectionEditor";
 import { MemorialPreview } from "./MemorialPreview";
@@ -80,7 +81,7 @@ export function BuilderShell({
   // truth — rather than tracking a second, parallel copy of it. See
   // use-autosave.ts for why the mount value is never itself "saved".
   const saveDraft = useRevisionedDraftPersist(persist);
-  useAutosave({ content: state.content, persist: saveDraft });
+  const autosave = useAutosave({ content: state.content, persist: saveDraft });
 
   const managedSections = getManagedSections(state);
   const previewSections = getPreviewSections(state);
@@ -98,6 +99,8 @@ export function BuilderShell({
           </p>
           <h1 className={styles.title}>{memorial.slug}</h1>
           <p className={styles.context}>{EDITORIAL_CONTEXT_LABELS[state.editorialContext]}</p>
+          {/* Recette Builder V1 — the same discreet « Enregistrement… / Enregistré » line as every Guided Flow screen. */}
+          {persist ? <AutosaveIndicator language={memorial.language} state={autosave.state} onRetry={autosave.retry} /> : null}
         </div>
 
         <div className={styles.modeSwitch} role="tablist" aria-label="Mode d'affichage">

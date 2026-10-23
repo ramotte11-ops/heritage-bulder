@@ -343,6 +343,7 @@ export const en: Record<TranslationKey, string> = {
   "galleryStep.remove": "Remove",
   "galleryStep.removeQuestion": "Remove this photo from your memories?",
   "galleryStep.removeConfirm": "Confirm",
+  "galleryStep.removing": "Removing…",
   "galleryStep.moveUp": "Move up",
   "galleryStep.moveDown": "Move down",
   "galleryStep.moved": "Photo moved to position {position} of {total}.",

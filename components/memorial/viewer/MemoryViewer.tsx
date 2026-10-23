@@ -365,6 +365,8 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
   useLayoutEffect(() => {
     cancelViewerOriginRestore();
     const s = saved.current;
+    // A remount (React Strict Mode runs this effect twice) locks again: it must be restorable again.
+    s.restored = false;
     s.t0 = performance.now();
     s.x = window.scrollX;
     s.y = window.scrollY;
@@ -466,15 +468,28 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
     return () => fonts.removeEventListener("loadingdone", onFonts);
   }, [prepared, caption, compute]);
 
-  // Resize: the same continuous formula, recomputed (no animation).
+  // Resize and rotation: the same continuous formula, recomputed (no
+  // animation). A rotation is read again on the next frame: iOS Safari may
+  // fire `resize` / `orientationchange` before the new viewport has settled.
   useEffect(() => {
-    if (!geometry) return;
-    const onResize = () => {
+    if (!prepared) return;
+    let frame = 0;
+    const recompute = () => {
       if (!closing.current) setGeometry(compute());
     };
+    const onResize = () => {
+      recompute();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(recompute);
+    };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [geometry, compute]);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [prepared, compute]);
 
   const close = useCallback(
     async (via: "button" | "escape") => {
