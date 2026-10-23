@@ -49,6 +49,8 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "journey.resume": "Reprendre où j'en étais",
   "journey.finishReview": "Terminer les modifications",
   "journey.revising": "Vous modifiez une étape déjà remplie. « Continuer » enregistre vos changements et vous ramène à cette rubrique.",
+  "journey.revisingFromPreview": "Choisissez l'ambiance de l'hommage. « Continuer » l'enregistre et vous ramène à l'aperçu.",
+  "journey.backToPreview": "Revenir à l'aperçu sans changer",
   "journey.review": "Revoir",
   "journey.continueHere": "Continuer ici",
   "journey.saveFailed": "Vos dernières modifications ne sont pas encore enregistrées. Réessayez dans un instant.",

@@ -161,9 +161,11 @@ export function JourneyRevisingNotice() {
 
 function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
   const guard = useGuardedNavigation(journey);
+  // Opened from the Preview (« Changer l'ambiance »): both ways lead back to it.
+  const fromPreview = journey.returnToPreview === true;
   return (
     <div className={styles.revising}>
-      <p className={styles.revisingText}>{translate(journey.language, "journey.revising")}</p>
+      <p className={styles.revisingText}>{translate(journey.language, fromPreview ? "journey.revisingFromPreview" : "journey.revising")}</p>
       <button
         type="button"
         className={styles.linkButton}
@@ -175,7 +177,7 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
           pending={guard.pendingKey === "resume"}
           pendingLabel={translate(journey.language, "common.pleaseWait")}
         >
-          {translate(journey.language, "journey.resume")}
+          {translate(journey.language, fromPreview ? "journey.backToPreview" : "journey.resume")}
         </PendingActionLabel>
       </button>
       {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
@@ -505,7 +507,11 @@ function ScreenDetail({ screen, journey }: { screen: JourneyScreenState; journey
 /**
  * « Changer l'ambiance » — the Preview's discreet way back to T08, opened
  * for revision exactly like « Revoir » in « Mon parcours » (same guard
- * against unsaved input, same drained autosave, same `?etape=`).
+ * against unsaved input, same drained autosave, same `?etape=`), marked
+ * as coming from the Preview so that T08 leads back to it. The click is
+ * acknowledged until the route has brought T08: the navigation runs in
+ * this control's own transition, so « Un instant… » (disabled) lasts as
+ * long as the server works, never a button that looks inert.
  * Renders nothing outside a journey, or while T08 is not reopenable.
  */
 export function ChangeAmbianceLink({ className }: { className?: string }) {
@@ -520,17 +526,22 @@ export function ChangeAmbianceLink({ className }: { className?: string }) {
 
 function ChangeAmbianceAction({ journey, className }: { journey: JourneyNavigation; className?: string }) {
   const guard = useGuardedNavigation(journey);
+  const [navigating, startNavigation] = useTransition();
+  const pending = guard.pendingKey === "ambiance" || navigating;
   return (
     <div className={styles.revising}>
       <button
         type="button"
         className={className ?? styles.linkButton}
-        onClick={() => guard.run("ambiance", () => journey.openScreen("reveal"))}
-        disabled={guard.busy}
-        aria-busy={guard.pendingKey === "ambiance" || undefined}
+        onClick={() => {
+          if (navigating) return;
+          guard.run("ambiance", () => journey.openScreen("reveal", { returnToPreview: true, startTransition: startNavigation }));
+        }}
+        disabled={guard.busy || navigating}
+        aria-busy={pending || undefined}
       >
         <PendingActionLabel
-          pending={guard.pendingKey === "ambiance"}
+          pending={pending}
           pendingLabel={translate(journey.language, "common.pleaseWait")}
         >
           {translate(journey.language, "preview.changeAmbiance")}

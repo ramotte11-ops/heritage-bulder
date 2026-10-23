@@ -248,6 +248,8 @@ export const TRANSLATION_KEYS = [
   "journey.resume",
   "journey.finishReview",
   "journey.revising",
+  "journey.revisingFromPreview",
+  "journey.backToPreview",
   "journey.review",
   "journey.continueHere",
   "journey.saveFailed",
