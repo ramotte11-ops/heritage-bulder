@@ -280,7 +280,7 @@
   cursor: pointer;
 }
 
-/* --- État « cartes » (reconstitution provisoire, non validée) ------------ */
+/* --- État « cartes » (validé en F1) -------------------------------------- */
 
 .layer {
   position: absolute;

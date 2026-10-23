@@ -52,10 +52,10 @@ export interface OfferingsV1Scene {
 export interface OfferingsV1Lines { lines: readonly string[]; size: number; baseline: number; step: number }
 
 /**
- * État « cartes » — RECONSTITUTION PROVISOIRE, NON VALIDÉE ARTISTIQUEMENT.
- * Décor de sélection validé (avec cartes, sans texte) ; textes posés
- * d'après les Masters illustrés (hauts et largeurs d'encre). Pilote
- * seulement, jusqu'à validation PO.
+ * État « cartes » — validé en F1 (partie artistique des cartes close,
+ * 4 variantes). Décor de sélection validé (avec cartes, sans texte) ;
+ * textes posés d'après les Masters illustrés (hauts et largeurs
+ * d'encre).
  */
 export interface OfferingsV1Card {
   kind: OfferingKind;

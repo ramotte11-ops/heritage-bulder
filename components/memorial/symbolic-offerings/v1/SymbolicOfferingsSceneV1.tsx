@@ -37,8 +37,8 @@ import styles from "./SymbolicOfferingsSceneV1.module.css";
  *
  * Trois états :
  *  - « cartes » : décor de sélection validé et trois cartes-boutons. Les
- *    textes posés sur ce décor sont une RECONSTITUTION PROVISOIRE, non
- *    validée artistiquement (pilote seulement) ;
+ *    textes posés sur ce décor sont validés (F1 : partie artistique des
+ *    cartes close, 4 variantes) ;
  *  - « scène » : après le choix, transition A (fondu enchaîné voilé) vers le
  *    fond de recueillement, une seule offrande et son animation (bougie :
  *    allumage depuis la mèche ; lys : dépôt ; cœur : apparition douce).
@@ -535,7 +535,8 @@ function Composition({
         </TitleTag>
       </header>
 
-      {/* État « cartes » — reconstitution provisoire, non validée (pilote). */}
+      {/* État « cartes » — validé (F1). `data-provisional` n'est plus qu'un
+          repère de test, conservé tel quel. */}
       <div
         className={styles.layer}
         data-a="selectionText"
