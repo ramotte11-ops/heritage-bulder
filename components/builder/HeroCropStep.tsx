@@ -431,7 +431,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
             type="submit"
             disabled={controlsDisabled}
             pending={isSubmitting}
-            pendingLabel={translate(language, "common.pleaseWait")}
+            pendingLabel={translate(language, "autosave.saving")}
           >
             {translate(language, "common.continue")}
           </PrimaryButton>

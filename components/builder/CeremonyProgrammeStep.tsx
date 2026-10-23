@@ -465,7 +465,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
               type="submit"
               disabled={controlsDisabled || pending || !intact || moments.length === 0}
               pending={pendingAction === "continue"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "common.continue")}
             </PrimaryButton>
@@ -480,7 +480,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
           >
             <PendingActionLabel
               pending={pendingAction === "skip"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "ceremony.skip")}
             </PendingActionLabel>

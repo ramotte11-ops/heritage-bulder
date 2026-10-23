@@ -96,7 +96,7 @@ export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
               type="submit"
               disabled={isPending}
               pending={isPending}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "welcome.cta")}
             </PrimaryButton>

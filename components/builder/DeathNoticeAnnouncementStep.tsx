@@ -175,7 +175,7 @@ export function DeathNoticeAnnouncementStep({
             type="submit"
             disabled={isSubmitting}
             pending={isSubmitting}
-            pendingLabel={translate(language, "common.pleaseWait")}
+            pendingLabel={translate(language, "autosave.saving")}
           >
             {translate(language, "common.continue")}
           </PrimaryButton>

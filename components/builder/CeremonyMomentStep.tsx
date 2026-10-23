@@ -133,7 +133,7 @@ export function CeremonyMomentStep({ language, content, persist }: CeremonyMomen
             type="submit"
             disabled={selected === null || isSubmitting}
             pending={isSubmitting}
-            pendingLabel={translate(language, "common.pleaseWait")}
+            pendingLabel={translate(language, "autosave.saving")}
           >
             {translate(language, "common.continue")}
           </PrimaryButton>
