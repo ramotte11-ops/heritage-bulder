@@ -303,7 +303,8 @@ export default async function BuilderMemorialPage({
   searchParams,
 }: {
   params: Promise<{ memorialId: string }>;
-  /** B03/#59 — `etape` and `rubrique` are navigation claims, validated below. */
+  /** B03/#59 — `etape` and `rubrique` are navigation claims, validated below;
+   * so is `apercu` (recette Builder V1: back to the Preview after T08). */
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { memorialId } = await params;
@@ -378,6 +379,11 @@ export default async function BuilderMemorialPage({
   // over `supabase`/`memorialConfigRepository` — the same reasons
   // Mission 021B already documents for the draft's `persist`.
   const query = await searchParams;
+  // Recette Builder V1 — « Changer l'ambiance » from the Preview: T08 leads
+  // back to the Preview (`?apercu=1`). A plain navigation claim: it opens
+  // nothing the family could not open with « Voir l'aperçu », writes
+  // nothing, and is honored only where the route says so below.
+  const fromPreview = query.apercu === "1";
   // Étape 3 — Preview réel. Every Guided Flow screen below is returned
   // inside the SAME `BuilderPreviewHost` wrapper (`withPreview`), locked
   // or not, so the tree's shape never changes and the host can hide —
@@ -422,6 +428,8 @@ export default async function BuilderMemorialPage({
     return (
       <BuilderPreviewHost
         available={available}
+        // Back from T08 opened from the Preview: the normal route reopens it.
+        openOnArrival={fromPreview && revising === null && available}
         language={memorialLanguage}
         loadPreview={loadPreview}
         draftRevision={initialDraft.revision ?? 0}
@@ -433,6 +441,8 @@ export default async function BuilderMemorialPage({
                 snapshot: resolveJourney(journeyContent, revising, activeReviewingSection),
                 builderPath,
                 skinVariant: memorialSkinVariant,
+                // Only T08, only when opened from the Preview, leads back to it.
+                returnToPreview: fromPreview && revising === "reveal",
                 // « Gérer les rubriques visibles »: the rows come from the
                 // same composition the Preview assembles.
                 visibility: {

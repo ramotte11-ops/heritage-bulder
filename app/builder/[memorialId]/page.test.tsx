@@ -3199,6 +3199,47 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(component);
     });
 
+    describe("recette Builder V1 — « Changer l'ambiance » from the Preview (?apercu=1)", () => {
+      beforeEach(() => resolveHeroCropStepData.mockResolvedValue({ media: { id: "m" }, readUrl: "https://signed/x" }));
+
+      it("?etape=reveal&rubrique=person&apercu=1 reopens T08 marked to lead back to the Preview", async () => {
+        resumeWith(REAL_DRAFT);
+        const raw = await callPageRaw(MEMORIAL_ID, { etape: "reveal", rubrique: "person", apercu: "1" });
+        expect(raw.props.children.type).toBe(HeroRevealStep);
+        expect(raw.props.journey.snapshot.revising).toBe("reveal");
+        expect(raw.props.journey.returnToPreview).toBe(true);
+        expect(raw.props.openOnArrival).toBe(false);
+        expect(raw.props.available).toBe(false);
+      });
+
+      it("without the flag, T08 is the ordinary revision (back to the rubrique)", async () => {
+        resumeWith(REAL_DRAFT);
+        const raw = await callPageRaw(MEMORIAL_ID, { etape: "reveal", rubrique: "person" });
+        expect(raw.props.children.type).toBe(HeroRevealStep);
+        expect(raw.props.journey.returnToPreview).toBe(false);
+      });
+
+      it("the flag never marks another screen (only T08 leads back to the Preview)", async () => {
+        resumeWith(REAL_DRAFT);
+        const raw = await callPageRaw(MEMORIAL_ID, { etape: "identity", apercu: "1" });
+        expect(raw.props.journey.snapshot.revising).toBe("identity");
+        expect(raw.props.journey.returnToPreview).toBe(false);
+        expect(raw.props.openOnArrival).toBe(false);
+      });
+
+      it("?apercu=1 on the normal route asks the host to open the Preview again — only where it is available", async () => {
+        resumeWith(REAL_DRAFT);
+        const raw = await callPageRaw(MEMORIAL_ID, { apercu: "1" });
+        expect(raw.props.children.type).toBe(GuidedFlowPause);
+        expect(raw.props.available).toBe(true);
+        expect(raw.props.openOnArrival).toBe(true);
+        resumeWith(REAL_DRAFT);
+        expect((await callPageRaw(MEMORIAL_ID)).props.openOnArrival).toBe(false);
+        resumeWith(REAL_DRAFT);
+        expect((await callPageRaw(MEMORIAL_ID, { apercu: "yes" })).props.openOnArrival).toBe(false);
+      });
+    });
+
     it("?etape=photo reopens PAGE C through its own data resolution on the raw draft", async () => {
       resolveHeroPhotoStepData.mockResolvedValue({ content: REAL_DRAFT.content, initialPhoto: null });
       resumeWith(REAL_DRAFT);

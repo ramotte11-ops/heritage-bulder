@@ -11,6 +11,7 @@ import { A13MobileGallery } from "@/components/memorial/gallery/A13MobileGallery
 import { A13DesktopFullAlbum } from "@/components/memorial/album/A13DesktopFullAlbum";
 import { A13MobileFullAlbum } from "@/components/memorial/album/A13MobileFullAlbum";
 import { useMemoryViewer, type ViewerOrigin } from "@/components/memorial/viewer/MemoryViewer";
+import { solveAlbumMobileGeometry } from "@/lib/memorial/album/album-mobile-layout";
 import styles from "./GalleryIntemporel.module.css";
 
 /**
@@ -72,6 +73,17 @@ import styles from "./GalleryIntemporel.module.css";
  *    (`common.back`, an existing validated HERITAGE label);
  *  - returning: the Gallery is shown again, the kept scroll position is
  *    restored and focus goes back to the Signature CTA (`gallery.seeMoreMemories`).
+ *
+ * ## An Album that cannot be composed (GO PO / QG 23/10/2026)
+ *
+ * The Mobile Album engine withholds a composition it cannot resolve
+ * (STOP: no Album rendered). The Gallery is then NEVER parked for it: the
+ * CTA checks the composition before switching (pure geometry, media
+ * only) and leaves the Gallery in place, focus on the CTA; should the
+ * Album still report a STOP once open (e.g. the Small Mobile
+ * compression), it returns to the Gallery exactly like "Retour" — never
+ * an empty Album, never the next section in its place.
+ *
  * No global Escape handler is added: Escape keeps its existing Preview
  * meaning (close the Preview) and the Viewer's own (close the Viewer —
  * the Viewer stops the event in the capture phase, so the two never
@@ -168,10 +180,15 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
     console.error("Gallery: width outside the A13 responsive contract (no Gallery rendered):", stop, width);
   }, [stop, width]);
 
+  const mobileAlbum = width !== null && !desktopDerived(selection);
   const openAlbum = useCallback(() => {
+    if (mobileAlbum && solveAlbumMobileGeometry(media.map(({ mediaId, width: w, height: h, caption }) => ({ mediaId, width: w, height: h, caption }))).status !== "PASS") {
+      console.error("Gallery: Mobile Album composition unresolved — the Gallery stays shown.");
+      return;
+    }
     galleryScrollY.current = window.scrollY;
     setView("album");
-  }, []);
+  }, [mobileAlbum, media]);
   const closeAlbum = useCallback(() => setView("gallery"), []);
 
   // Focus and scroll follow the transitions only.
@@ -276,9 +293,9 @@ export function GalleryIntemporel({ media, theme, title, subtitle, language }: G
                 </button>
               </div>
               {desktop ? (
-                <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} />
+                <A13DesktopFullAlbum key="desktop" media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} withTitle />
               ) : (
-                <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} />
+                <A13MobileFullAlbum key="mobile" responsive media={media} theme={theme} language={language} onOpenMemory={openAlbumMemory} onUnavailable={closeAlbum} withTitle />
               )}
             </div>
           ) : null}

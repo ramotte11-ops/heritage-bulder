@@ -50,6 +50,12 @@ import styles from "./BuilderPreviewHost.module.css";
  * (correction Light / Dark), which opens T08 for revision through the
  * journey (`ChangeAmbianceLink`, same guard and drained autosave as
  * « Revoir ») — the Preview then closes on the screen the route brings.
+ * The host stays mounted across those `?etape=` navigations (same page,
+ * new search params), so « the screen the route brings » is read from
+ * the screen's identity — its component, its key and the screen under
+ * revision — never from the component alone. T08 opened from the
+ * Preview leads back to it: the route arrives with `openOnArrival` and
+ * the Preview opens again, with the new ambiance (recette Builder V1).
  *
  * ## Opening — in this order, nothing skipped
  *
@@ -106,7 +112,13 @@ export interface BuilderPreviewHostProps {
       sections: SectionVisibilityEntry[];
       save: (sectionId: string, visible: boolean, expectedRevision: number) => Promise<DraftSaveResponse>;
     } | null;
+    /** The revised screen was opened from the Preview: it leads back to it. */
+    returnToPreview?: boolean;
   } | null;
+  /** Recette Builder V1 — the route was reached from T08 opened from the
+   * Preview (`?apercu=1`, validated by the page): the Preview opens again
+   * on arrival, through the same three steps as « Voir l'aperçu ». */
+  openOnArrival?: boolean;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -134,6 +146,7 @@ export function BuilderPreviewHost({
   draftRevision,
   draftContent,
   journey = null,
+  openOnArrival = false,
   children,
 }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
@@ -145,6 +158,9 @@ export function BuilderPreviewHost({
   const [unavailableOn, setUnavailableOn] = useState<{ screen: unknown } | null>(null);
   const screen = isValidElement(children) ? children.type : null;
   const unavailable = unavailableOn !== null && unavailableOn.screen === screen;
+  // What « another screen » means for this host, which outlives `?etape=` navigations.
+  const screenKey = isValidElement(children) ? children.key : null;
+  const revising = journey?.snapshot.revising ?? null;
 
   const entryButtonRef = useRef<HTMLButtonElement | null>(null);
   const setEntryButton = useCallback((button: HTMLButtonElement | null) => {
@@ -214,14 +230,27 @@ export function BuilderPreviewHost({
   // for revision: once the route brings that other screen, the Preview
   // closes on it, at the top of the page — never left covering it, and
   // never closed early on the screen the family is leaving.
-  const shownScreen = useRef(screen);
+  const shownScreen = useRef({ screen, screenKey, revising });
   useEffect(() => {
-    if (shownScreen.current === screen) return;
-    shownScreen.current = screen;
+    const shown = shownScreen.current;
+    if (shown.screen === screen && shown.screenKey === screenKey && shown.revising === revising) return;
+    shownScreen.current = { screen, screenKey, revising };
     builderScrollY.current = 0;
     setAssembled(null);
     setPhase("closed");
-  }, [screen]);
+  }, [screen, screenKey, revising]);
+
+  // Back from T08 opened from the Preview: the Preview opens again, once per arrival.
+  const reopened = useRef(false);
+  useEffect(() => {
+    if (!openOnArrival) {
+      reopened.current = false;
+      return;
+    }
+    if (reopened.current || !available || language === null) return;
+    reopened.current = true;
+    void open();
+  }, [openOnArrival, available, language, open]);
 
   useEffect(() => {
     if (phase !== "open") return;
@@ -284,6 +313,7 @@ export function BuilderPreviewHost({
             skinVariant={journey.skinVariant ?? null}
             visibility={journey.visibility ?? null}
             builderPath={journey.builderPath}
+            returnToPreview={journey.returnToPreview ?? false}
           >
             {content}
           </RouteJourneyProvider>

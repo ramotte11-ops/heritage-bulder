@@ -47,6 +47,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "journey.resume": "Retomar donde lo dejé",
   "journey.finishReview": "Terminar las modificaciones",
   "journey.revising": "Está modificando una etapa ya completada. «Continuar» guarda sus cambios y le devuelve a esta sección.",
+  "journey.revisingFromPreview": "Elija el ambiente del homenaje. «Continuar» lo guarda y le devuelve a la vista previa.",
+  "journey.backToPreview": "Volver a la vista previa sin cambios",
   "journey.review": "Revisar",
   "journey.continueHere": "Continuar aquí",
   "journey.saveFailed": "Sus últimos cambios aún no se han guardado. Inténtelo de nuevo en un momento.",
@@ -146,6 +148,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "hero.photoCroppingNote":
     "No se preocupe por el encuadre por ahora: podrá ajustarlo justo después.",
   "hero.photoUploading": "Añadiendo la foto…",
+  "hero.photoPreparing": "Preparando la foto…",
   "hero.photoAlt": "Foto elegida para el homenaje",
   "hero.photoErrorTooLarge": "Esta foto es demasiado grande. Pruebe con otra.",
   "hero.photoErrorUnsupportedFormat":
@@ -333,6 +336,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "galleryStep.remove": "Quitar",
   "galleryStep.removeQuestion": "¿Quitar esta foto de sus recuerdos?",
   "galleryStep.removeConfirm": "Confirmar",
+  "galleryStep.removing": "Retirando…",
   "galleryStep.moveUp": "Subir",
   "galleryStep.moveDown": "Bajar",
   "galleryStep.moved": "Foto movida a la posición {position} de {total}.",
@@ -340,6 +344,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "galleryStep.replaced": "Foto reemplazada.",
   "galleryStep.removed": "Foto quitada.",
   "galleryStep.uploading": "Añadiendo…",
+  "galleryStep.preparing": "Preparando la foto…",
   "galleryStep.replacing": "Reemplazando…",
   "galleryStep.photoUnavailable": "Esta foto no se puede mostrar por el momento.",
   "galleryStep.dismiss": "Descartar",
@@ -350,6 +355,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "gallery.seeMoreMemories": "Ver más recuerdos",
   "memory.position": "Recuerdo {index} de {total}",
   "album.label": "Álbum de recuerdos",
+  "album.title": "Galería de recuerdos",
   "viewer.close": "Cerrar el recuerdo",
   "viewer.dialogLabel": "Recuerdo — {subject}",
 };

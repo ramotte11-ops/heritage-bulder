@@ -91,7 +91,8 @@ describe("A13 Album — memory table render contracts", () => {
     const img = view.container.querySelector("img")!;
     expect(img.hasAttribute("loading")).toBe(false);
     expect(img.hasAttribute("decoding")).toBe(false);
-    expect(img.getAttributeNames().sort()).toEqual(["alt", "class", "draggable", "src", "style"]);
+    // + Optimisation photographique V1: the whole-photo state (visibility only, never geometry).
+    expect(img.getAttributeNames().sort()).toEqual(["alt", "class", "data-photo-state", "draggable", "src", "style"]);
   });
   it("Dark renders the SAME geometry DOM as Light (material only) and never processes a photo", () => {
     const fx = albumFixture(20, "natural-mix", "mixed");
@@ -117,6 +118,39 @@ describe("A13 Album — memory table render contracts", () => {
       expect(img.style.filter).toBe("");
       expect(img.style.opacity).toBe("");
       expect(img.style.mixBlendMode).toBe("");
+    }
+  });
+});
+
+describe("Recette Builder V1 — « Galerie de souvenirs » (withTitle)", () => {
+  it("absent by default: no title, no shift layer — the table as before", () => {
+    const { view } = setup(11);
+    expect(view.container.querySelector("h2")).toBeNull();
+    expect(view.container.querySelector("[data-album-shift]")).toBeNull();
+    expect(view.container.querySelector("[data-album-title-offset]")).toBeNull();
+  });
+
+  it("the title in the active language; the prints translated down by the offset, the page taller by the same amount", () => {
+    const fx = albumFixture(11, "natural-mix", "mixed");
+    const layout = layoutAlbum(fx.map(({ mediaId, width, height, caption }) => ({ mediaId, width, height, caption })), fake);
+    const media = fx.map((m, i) => ({ mediaId: m.mediaId, src: `/p${i}.jpg`, alt: `Photo ${i + 1}` }));
+    for (const [language, text] of [
+      ["fr", "Galerie de souvenirs"],
+      ["en", "Gallery of memories"],
+      ["es", "Galería de recuerdos"],
+    ] as const) {
+      const { container } = render(<AlbumMemoryTable layout={layout} media={media} language={language} withTitle />);
+      expect(container.querySelector("h2")!.textContent).toBe(text);
+      const canvas = container.querySelector<HTMLElement>("[data-album-title-offset]")!;
+      const offset = Number(canvas.dataset.albumTitleOffset);
+      expect(offset).toBeGreaterThanOrEqual(0);
+      const kOf = (v: string) => Number(/calc\(([\d.]+) \* var\(--k\)\)/.exec(v)![1]);
+      expect(kOf(canvas.style.height)).toBeCloseTo(layout.height + offset, 1);
+      const shift = container.querySelector<HTMLElement>("[data-album-shift]")!;
+      expect(kOf(shift.style.top)).toBeCloseTo(offset, 1);
+      // every print is inside the shifted layer, same family order
+      expect([...shift.querySelectorAll("[data-media-index]")].map((e) => Number(e.getAttribute("data-media-index")))).toEqual(fx.map((_, i) => i));
+      cleanup();
     }
   });
 });

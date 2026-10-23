@@ -401,7 +401,62 @@ describe("correction Light / Dark — « Changer l'ambiance » in the Preview", 
     );
     await openPreview();
     fireEvent.click(screen.getByRole("button", { name: CHANGE }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person&apercu=1"));
+  });
+
+  it("recette Builder V1 — the Preview closes when the route brings T08 under revision, even through the same screen component", async () => {
+    const view = render(
+      <BuilderPreviewHost available language="fr" loadPreview={readyResult} journey={journey}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await openPreview();
+    // The host outlives `?etape=` navigations: same element type, but another screen (T08 under revision).
+    view.rerender(
+      <BuilderPreviewHost
+        available={false}
+        language="fr"
+        loadPreview={readyResult}
+        journey={{ ...journey, snapshot: resolveJourney(fullAnnouncement(), "reveal"), returnToPreview: true }}
+      >
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    expect(view.container.querySelector("[data-memorial-preview]")).toBeNull();
+    expect(builderWrapper(view.container).hidden).toBe(false);
+  });
+
+  it("recette Builder V1 — back from T08 (`openOnArrival`): the Preview opens again, through the drained autosave and a fresh read, once", async () => {
+    const load = vi.fn(readyResult);
+    const view = render(
+      <BuilderPreviewHost available language="fr" loadPreview={load} journey={journey} openOnArrival>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).not.toBeNull());
+    expect(load).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: BACK }));
+    expect(view.container.querySelector("[data-memorial-preview]")).toBeNull();
+    // A later re-render of the same arrival (router.refresh) never reopens it on its own.
+    view.rerender(
+      <BuilderPreviewHost available language="fr" loadPreview={load} journey={journey} openOnArrival>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await act(async () => {});
+    expect(view.container.querySelector("[data-memorial-preview]")).toBeNull();
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  it("recette Builder V1 — `openOnArrival` where the Preview is not available opens nothing", async () => {
+    const load = vi.fn(readyResult);
+    render(
+      <BuilderPreviewHost available={false} language="fr" loadPreview={load} journey={journey} openOnArrival>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    await act(async () => {});
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("the Preview closes once the route brings T08 — never left covering it", async () => {

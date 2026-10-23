@@ -68,8 +68,8 @@ async function persistGallery(drafts: FakeDraftRepository, ids: string[]) {
 describe("upload → reference → remove → retire (the full cycle)", () => {
   it("a Gallery upload is ready, purpose gallery, with MEASURED natural dimensions", async () => {
     const { engine } = setup();
-    const media = await uploadGalleryPhoto(engine, 4032, 3024);
-    expect(media).toMatchObject({ purpose: "gallery", status: "ready", width: 4032, height: 3024 });
+    const media = await uploadGalleryPhoto(engine, 1600, 1200);
+    expect(media).toMatchObject({ purpose: "gallery", status: "ready", width: 1600, height: 1200 });
   });
 
   it("removing one photograph: reference gone (order kept, no hole), then the media is deleted — row and object", async () => {

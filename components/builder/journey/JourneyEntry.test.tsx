@@ -321,6 +321,17 @@ describe("useStepDone — what a step does once its Continue is saved", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
+  it("recette Builder V1 — T08 opened from the Preview: back to the Preview after the save (normal route, ?apercu=1)", () => {
+    render(
+      <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL, "reveal")} builderPath="/builder/m-1" returnToPreview>
+        <Probe />
+      </RouteJourneyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+    expect(routerReplace).toHaveBeenCalledWith("/builder/m-1?apercu=1");
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
   it("uses a custom provider's finishStep when one is given (the QG demo)", () => {
     const finishStep = vi.fn();
     render(
@@ -615,10 +626,32 @@ describe("correction Light / Dark — the saved ambiance, and « Changer l'ambia
     expect(revealRow().textContent).not.toContain("Ambiance :");
   });
 
-  it("« Changer l'ambiance » opens T08 for revision, after draining the autosave", async () => {
+  it("« Changer l'ambiance » opens T08 for revision, after draining the autosave, marked as coming from the Preview", async () => {
     renderJourney(PARTIAL, "light", <ChangeAmbianceLink />);
     fireEvent.click(screen.getByRole("button", { name: "Changer l'ambiance" }));
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=reveal&rubrique=person&apercu=1"));
+    expect(routerPush).toHaveBeenCalledOnce();
+  });
+
+  it("recette Builder V1 — the click is acknowledged at once and the button stays busy (one navigation, never two)", async () => {
+    let release!: () => void;
+    const registry = createPreviewFlushRegistry();
+    registry.register(() => new Promise<void>((resolve) => (release = resolve)));
+    render(
+      <PreviewFlushRegistryContext.Provider value={registry}>
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL)} skinVariant="light" builderPath="/builder/m-1">
+          <ChangeAmbianceLink />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+    const button = screen.getByRole("button", { name: "Changer l'ambiance" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(button.textContent).toBe("Un instant…");
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    await act(async () => release());
+    await waitFor(() => expect(routerPush).toHaveBeenCalledOnce());
   });
 
   it("« Changer l'ambiance » asks first when the screen holds incomplete input", async () => {
@@ -839,5 +872,46 @@ describe("« Gérer les rubriques visibles »", () => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
       cleanup();
     }
+  });
+});
+
+describe("recette Builder V1 — T08 opened from the Preview: the way back is the Preview", () => {
+  function renderRevising(returnToPreview: boolean) {
+    render(
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(PARTIAL, "reveal")} builderPath="/builder/m-1" returnToPreview={returnToPreview}>
+          <BuilderScreenNav />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+  }
+
+  it("says where « Continuer » leads, and « Revenir à l'aperçu sans changer » goes back to it without any write", async () => {
+    renderRevising(true);
+    expect(screen.getByText("Choisissez l'ambiance de l'hommage. « Continuer » l'enregistre et vous ramène à l'aperçu.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Revenir à l'aperçu sans changer" }));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1?apercu=1"));
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("a revision opened from « Mon parcours » keeps its notice and « Reprendre où j'en étais »", async () => {
+    renderRevising(false);
+    expect(screen.getByText(/vous ramène à cette rubrique/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reprendre où j'en étais" }));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/builder/m-1"));
+  });
+
+  it.each([
+    ["en", "Back to the preview without changes"],
+    ["es", "Volver a la vista previa sin cambios"],
+  ] as const)("%s: the way back is translated", (language, label) => {
+    render(
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider language={language} snapshot={resolveJourney(PARTIAL, "reveal")} builderPath="/builder/m-1" returnToPreview>
+          <BuilderScreenNav />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+    expect(screen.getByRole("button", { name: label })).toBeTruthy();
   });
 });

@@ -5,6 +5,7 @@ import {
   A13_ALBUM_MOBILE_DOMINANT_SLOT,
   A13_ALBUM_MOBILE_EXCEPTION_RATIO_TOLERANCE,
   A13_ALBUM_MOBILE_MINIMUM_EXCEPTIONS,
+  A13_ALBUM_MOBILE_P3_PORTRAIT_FALLBACK as P3_FALLBACK,
   A13_ALBUM_MOBILE_FRAME as FRAME,
   A13_ALBUM_MOBILE_GRAMMARS,
   A13_ALBUM_MOBILE_MATERIALS as MAT,
@@ -148,6 +149,24 @@ function sizeRules(slots: V2Slot[], sources: readonly PhotoSource[]): SizeRule[]
   return slots.map((v, i) => ({ required: profilePx(albumMobileMinimumCss375(slotOf(v), v.role as "dominant" | "secondary", sources[i].width / sources[i].height)) }));
 }
 
+/** Is this print eligible for the P3 portrait fallback (`A13_ALBUM_MOBILE_P3_PORTRAIT_FALLBACK`)? */
+export function albumMobileP3FallbackEligible(slot: AlbumMobileSlotId, role: "dominant" | "secondary", mediaRatio: number): boolean {
+  return slot === P3_FALLBACK.slotId && role === "secondary" && mediaRatio < P3_FALLBACK.mediaRatioBelow;
+}
+
+/** The same rules with the P3 portrait fallback applied — or null when no print of the group is eligible. */
+function p3FallbackRules(slots: V2Slot[], sources: readonly PhotoSource[], rules: SizeRule[]): SizeRule[] | null {
+  const relaxed = profilePx(P3_FALLBACK.outerPaperShortSideMinimumCssPx);
+  let changed = false;
+  const out = rules.map((rule, i) => {
+    const eligible = albumMobileP3FallbackEligible(slotOf(slots[i]), slots[i].role as "dominant" | "secondary", sources[i].width / sources[i].height);
+    if (!eligible || rule.required <= relaxed) return rule;
+    changed = true;
+    return { required: relaxed };
+  });
+  return changed ? out : null;
+}
+
 function mobileProfile(rules: SizeRule[]): AlbumSolverProfile {
   return {
     id: "mobile-light",
@@ -184,6 +203,8 @@ export interface AlbumMobilePrint {
   shortSideCss375: number;
   minimumCss375: number;
   minimumReached: boolean;
+  /** Present (true) only when this print was solved under the P3 portrait fallback. */
+  minimumFallback?: true;
 }
 
 export interface AlbumMobileGroup {
@@ -194,6 +215,8 @@ export interface AlbumMobileGroup {
   offsetY: number;
   status: "PASS" | "ITEM_INACCESSIBLE";
   detail: string | null;
+  /** Present (true) only when the group resolved under the P3 portrait fallback. */
+  minimumFallback?: true;
   visualTop: number;
   visualBottom: number;
   stats: { candidateRank: number; evaluated: number; repaired: boolean; ms: number };
@@ -223,9 +246,22 @@ export function solveAlbumMobileGeometry(media: readonly AlbumMobileMedia[]): Al
     const t0 = now();
     const slots = albumMobileGroupSlots(spec);
     const src = media.slice(spec.start, spec.start + spec.size);
-    const rules = sizeRules(slots, src);
-    const session = new GroupSession({ slots }, src, spec.index === 0, { profile: mobileProfile(rules), context });
-    const cand = session.structuralStop ? null : session.candidate(0);
+    let rules = sizeRules(slots, src);
+    let session = new GroupSession({ slots }, src, spec.index === 0, { profile: mobileProfile(rules), context });
+    let cand = session.structuralStop ? null : session.candidate(0);
+    // P3 portrait fallback — tried ONLY for a group the standard minimums cannot resolve.
+    let minimumFallback = false;
+    const relaxed = cand ? null : p3FallbackRules(slots, src, rules);
+    if (relaxed) {
+      const retry = new GroupSession({ slots }, src, spec.index === 0, { profile: mobileProfile(relaxed), context });
+      const retryCand = retry.structuralStop ? null : retry.candidate(0);
+      if (retryCand) {
+        rules = relaxed;
+        session = retry;
+        cand = retryCand;
+        minimumFallback = true;
+      }
+    }
     let status: AlbumMobileGroup["status"] = "PASS";
     let detail: string | null = null;
     if (!cand) {
@@ -255,6 +291,7 @@ export function solveAlbumMobileGeometry(media: readonly AlbumMobileMedia[]): Al
         shortSideCss375: ss * S375,
         minimumCss375: rules[i].required * S375,
         minimumReached: ss >= rules[i].required - 1e-6,
+        ...(minimumFallback && albumMobileP3FallbackEligible(slotOf(v), v.role as "dominant" | "secondary", src[i].width / src[i].height) ? { minimumFallback: true as const } : {}),
       };
     });
     prints.push(...groupPrints);
@@ -268,6 +305,7 @@ export function solveAlbumMobileGeometry(media: readonly AlbumMobileMedia[]): Al
       offsetY: albumMobileGroupOffset(spec),
       status,
       detail,
+      ...(minimumFallback ? { minimumFallback: true as const } : {}),
       visualTop: Math.min(...ys),
       visualBottom: Math.max(...ys),
       stats: { candidateRank: use.rank, evaluated: session.evaluated + session.repairEvaluated, repaired: session.repaired, ms: now() - t0 },
@@ -461,10 +499,12 @@ export function verifyAlbumMobile({ media, layout, groupSizes, reference, theme 
   const xs = layout.prints.flatMap((p) => p.drawnOuter.map((q) => q.x));
   const allow = A13_ALBUM_MOBILE_SHADOW_OVERFLOW_CSS / layout.scale;
   if (xs.length && (Math.min(...xs) < -1e-6 || Math.max(...xs) > FRAME.width + 1e-6)) out.push({ stop: "HORIZONTAL_SCROLL", detail: `papier ${Math.min(...xs).toFixed(1)}…${Math.max(...xs).toFixed(1)} hors 0…1024 (ombre ≤ ${allow.toFixed(1)})` });
-  // SIZE: the paper short side at the 375 profile (caption-free) never below its minimum — 96 / 72, or 69 for P3 + 9:16 (V1.2).
+  // SIZE: the paper short side at the 375 profile (caption-free) never below its minimum — 96 / 72, or 69 for P3 + 9:16 (V1.2),
+  // or 69 for a P3 portrait narrower than 3:4 solved under the fallback (GO 23/10/2026) — never claimed by an ineligible print.
   for (const p of layout.prints) {
     const m = media[p.mediaIndex];
-    const min = albumMobileMinimumCss375(p.witnessSlot, p.role, m.width / m.height);
+    const fallback = p.minimumFallback === true && albumMobileP3FallbackEligible(p.witnessSlot, p.role, m.width / m.height);
+    const min = fallback ? P3_FALLBACK.outerPaperShortSideMinimumCssPx : albumMobileMinimumCss375(p.witnessSlot, p.role, m.width / m.height);
     const ss = Math.min(p.layout.outer.width, p.layout.outer.height) * S375;
     if (ss < min - 1e-9) out.push({ stop: "ITEM_INACCESSIBLE", detail: `media ${p.mediaIndex + 1} (${p.witnessSlot}) : petit côté ${ss.toFixed(2)} px < minimum ${min} px (profil 375)` });
   }

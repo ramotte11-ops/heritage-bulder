@@ -49,6 +49,8 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "journey.resume": "Reprendre où j'en étais",
   "journey.finishReview": "Terminer les modifications",
   "journey.revising": "Vous modifiez une étape déjà remplie. « Continuer » enregistre vos changements et vous ramène à cette rubrique.",
+  "journey.revisingFromPreview": "Choisissez l'ambiance de l'hommage. « Continuer » l'enregistre et vous ramène à l'aperçu.",
+  "journey.backToPreview": "Revenir à l'aperçu sans changer",
   "journey.review": "Revoir",
   "journey.continueHere": "Continuer ici",
   "journey.saveFailed": "Vos dernières modifications ne sont pas encore enregistrées. Réessayez dans un instant.",
@@ -148,6 +150,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "hero.photoCroppingNote":
     "Ne vous inquiétez pas du cadrage pour l'instant : vous pourrez l'ajuster juste après.",
   "hero.photoUploading": "Ajout de la photo…",
+  "hero.photoPreparing": "Préparation de la photo…",
   "hero.photoAlt": "Photo choisie pour l'hommage",
   "hero.photoErrorTooLarge": "Cette photo est trop volumineuse. Essayez-en une autre.",
   "hero.photoErrorUnsupportedFormat":
@@ -328,6 +331,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "galleryStep.remove": "Retirer",
   "galleryStep.removeQuestion": "Retirer cette photo de vos souvenirs ?",
   "galleryStep.removeConfirm": "Confirmer",
+  "galleryStep.removing": "Retrait en cours…",
   "galleryStep.moveUp": "Monter",
   "galleryStep.moveDown": "Descendre",
   "galleryStep.moved": "Photo déplacée en position {position} sur {total}.",
@@ -335,6 +339,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "galleryStep.replaced": "Photo remplacée.",
   "galleryStep.removed": "Photo retirée.",
   "galleryStep.uploading": "Ajout en cours…",
+  "galleryStep.preparing": "Préparation de la photo…",
   "galleryStep.replacing": "Remplacement en cours…",
   "galleryStep.photoUnavailable": "Cette photo ne peut pas être affichée pour le moment.",
   "galleryStep.dismiss": "Ignorer",
@@ -345,6 +350,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "gallery.seeMoreMemories": "Voir plus de souvenirs",
   "memory.position": "Souvenir {index} sur {total}",
   "album.label": "Album de souvenirs",
+  "album.title": "Galerie de souvenirs",
   "viewer.close": "Fermer le souvenir",
   "viewer.dialogLabel": "Souvenir — {subject}",
 };

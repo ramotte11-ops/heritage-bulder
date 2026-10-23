@@ -13,6 +13,7 @@ import type { CaptionMeasurer } from "@/lib/memorial/gallery/caption-layout";
 import { partitionAlbumMobile } from "@/lib/memorial/album/album-partition";
 import {
   albumMobileMinimumCss375,
+  albumMobileP3FallbackEligible,
   albumMobileAccess,
   albumMobileGroupOffset,
   albumMobileMaterialPlan,
@@ -288,15 +289,17 @@ describe("V1.2 targeted exception P3 / 9:16 / 375 (≥ 69 px, never generalised)
   it("not generalised: another slot with 9:16, or P3 with another ratio, at 69 px is a STOP (72 applies)", () => {
     for (const i of [1, 3, 4, 5, 6]) expect(withShortSide(7, "9x16", i, 69).sizeStops.map((f) => f.stop), `9x16 media ${i + 1}`).toEqual(["ITEM_INACCESSIBLE"]);
     for (const r of ["3x4", "1x1", "4x3", "16x9"] as const) expect(withShortSide(7, r, 2, 69).sizeStops.map((f) => f.stop), `P3 ${r}`).toEqual(["ITEM_INACCESSIBLE"]);
-    // A real P3 media narrower than 9:16 (1:2, 9:19.5): its paper is the 9:16 one (≈ 69.3 px), out of the exception → no candidate → STOP.
+    // A real P3 media narrower than 9:16 (1:2, 9:19.5): its paper is the 9:16 one (≈ 69.3 px). Before the GO of 23/10/2026
+    // this was a STOP (the whole Album withheld); it now resolves under the P3 portrait fallback — see the describe below.
     for (const [w, h] of [
       [1000, 2000],
       [1080, 2340],
     ]) {
       const m = media(7, "9x16", "aucune").map((x, k) => (k === 2 ? { ...x, width: w, height: h } : x));
       const g = solveAlbumMobileGeometry(m);
-      expect(g.status, `${w}×${h}`).toBe("ITEM_INACCESSIBLE");
-      expect(verifyAlbumMobile({ media: m, layout: layoutAlbumMobile(m, null, 375, g) }).map((f) => f.stop)).toContain("ITEM_INACCESSIBLE");
+      expect(g.status, `${w}×${h}`).toBe("PASS");
+      expect(g.prints[2].minimumFallback, `${w}×${h}`).toBe(true);
+      expect(verifyAlbumMobile({ media: m, layout: layoutAlbumMobile(m, null, 375, g) })).toEqual([]);
     }
   });
 
@@ -308,6 +311,92 @@ describe("V1.2 targeted exception P3 / 9:16 / 375 (≥ 69 px, never generalised)
       expect(Math.min(p3.layout.outer.width, p3.layout.outer.height) * l.scale).toBeCloseTo((p3.shortSideCss375 * W) / 375, 9);
       expect(verifyAlbumMobile({ media: m, layout: l })).toEqual([]);
     }
+  });
+});
+
+describe("P3 portrait fallback (GO PO / QG 23/10/2026): a portrait narrower than 3:4 in P3 no longer withholds the Album", () => {
+  /** 7 media, the 3rd (P3) of `w × h`, the others from a natural mix of phone photographs. */
+  function withThird(w: number, h: number, others: readonly [number, number][] = [[1200, 1600], [1600, 1200], [0, 0], [1600, 1200], [1200, 1600], [1400, 1400], [1600, 1200]]) {
+    return others.map(([ow, oh], k) => ({ mediaId: `m${k}`, width: k === 2 ? w : ow, height: k === 2 ? h : oh, caption: null }));
+  }
+
+  it("eligibility: P3, secondary, width / height strictly below 3 / 4 — nothing else", () => {
+    for (const r of [2 / 3, 9 / 16, 9 / 19.5, 9 / 20, 1 / 3, 0.7499]) expect(albumMobileP3FallbackEligible("P3", "secondary", r), String(r)).toBe(true);
+    for (const r of [3 / 4, 4 / 5, 1, 4 / 3, 16 / 9]) expect(albumMobileP3FallbackEligible("P3", "secondary", r), String(r)).toBe(false);
+    for (const slot of ["P2", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"] as const) expect(albumMobileP3FallbackEligible(slot, "secondary", 2 / 3), slot).toBe(false);
+    expect(albumMobileP3FallbackEligible("P1", "dominant", 2 / 3)).toBe(false);
+  });
+
+  it("2:3, 9:19.5, 9:20 and 1:3 in P3: previously ITEM_INACCESSIBLE, now resolved at ≈ 69.3 px (the 9:16 witness), every contract check clean", () => {
+    for (const [w, h] of [
+      [1200, 1800],
+      [1170, 2532],
+      [1080, 2400],
+      [900, 2700],
+    ]) {
+      const m = withThird(w, h);
+      const g = solveAlbumMobileGeometry(m);
+      expect(g.status, `${w}×${h}`).toBe("PASS");
+      expect(g.groups[0].minimumFallback, `${w}×${h}`).toBe(true);
+      expect(g.prints[2]).toMatchObject({ witnessSlot: "P3", minimumFallback: true, minimumCss375: 69, minimumReached: true });
+      expect(g.prints[2].shortSideCss375).toBeCloseTo(69.3, 1);
+      // Only the eligible P3 print carries the fallback; every other print keeps its standard minimum.
+      expect(g.prints.filter((p) => p.minimumFallback).map((p) => p.mediaIndex)).toEqual([2]);
+      for (const W of [375, 390, 430]) expect(verifyAlbumMobile({ media: m, layout: layoutAlbumMobile(m, fake, W, g) }), `${w}×${h} @${W}`).toEqual([]);
+    }
+  });
+
+  it("a composition that resolves under the standard minimums is solved exactly as before: no fallback, same geometry (3:4, 9:16, 1:1, 4:5 in P3)", () => {
+    for (const [w, h] of [
+      [1200, 1600],
+      [1080, 1920],
+      [1400, 1400],
+      [1080, 1350],
+    ]) {
+      const g = solveAlbumMobileGeometry(withThird(w, h));
+      expect(g.status, `${w}×${h}`).toBe("PASS");
+      expect(g.groups.some((x) => x.minimumFallback), `${w}×${h}`).toBe(false);
+      expect(g.prints.some((p) => p.minimumFallback), `${w}×${h}`).toBe(false);
+    }
+    // The engine's QA matrix never needs it.
+    for (const n of ALBUM_MOBILE_COUNTS) for (const r of ALBUM_MOBILE_RATIO_SETS) expect(solveAlbumMobileGeometry(media(n, r, "aucune")).groups.some((x) => x.minimumFallback), `${n} ${r}`).toBe(false);
+  });
+
+  it("the verifier never accepts 69 px for a print the fallback did not solve, nor for an ineligible one claiming it", () => {
+    const m = withThird(1200, 1800);
+    const g = solveAlbumMobileGeometry(m);
+    const l = layoutAlbumMobile(m, null, 375, g);
+    // Without the fallback mark, the same 69.3 px P3 is under the standard 72 px → ITEM_INACCESSIBLE.
+    const unmarked = { ...l, prints: l.prints.map((p, k) => (k === 2 ? { ...p, minimumFallback: undefined } : p)) };
+    expect(verifyAlbumMobile({ media: m, layout: unmarked, reference: g }).map((f) => f.stop)).toContain("ITEM_INACCESSIBLE");
+    // A 3:4 P3 shrunk to 69 px and falsely marked: still 72 → ITEM_INACCESSIBLE.
+    const m34 = withThird(1200, 1600);
+    const l34 = layoutAlbumMobile(m34, null, 375);
+    const p = l34.prints[2];
+    const target = 69 / (375 / 1024);
+    const o = p.layout.outer;
+    const outer = o.width <= o.height ? { ...o, width: target } : { ...o, height: target };
+    const forged = { ...l34, prints: l34.prints.map((q, k) => (k === 2 ? { ...q, minimumFallback: true as const, layout: { ...q.layout, outer } } : q)) };
+    expect(verifyAlbumMobile({ media: m34, layout: forged, reference: { ...l34.geometry, prints: forged.prints } }).filter((f) => f.detail.includes("petit côté")).map((f) => f.stop)).toEqual(["ITEM_INACCESSIBLE"]);
+  });
+
+  it("realistic families (phone, phone + screenshots, camera): every composition resolves", { timeout: 600000 }, () => {
+    let seed = 23102026;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const pools: Record<string, [number, number][]> = {
+      phone: [[3024, 4032], [4032, 3024], [1400, 1400], [1920, 1080], [1080, 1920]],
+      screenshots: [[3024, 4032], [4032, 3024], [1400, 1400], [1920, 1080], [1080, 1920], [1170, 2532]],
+      camera: [[1200, 1800], [1800, 1200], [4032, 3024], [3024, 4032]],
+    };
+    for (const [name, pool] of Object.entries(pools))
+      for (let t = 0; t < 120; t++) {
+        const n = 7 + Math.floor(rand() * 18);
+        const m = Array.from({ length: n }, (_, i) => {
+          const [w, h] = pool[Math.floor(rand() * pool.length)];
+          return { mediaId: `m${i}`, width: w, height: h, caption: null };
+        });
+        expect(solveAlbumMobileGeometry(m).status, `${name} #${t}`).toBe("PASS");
+      }
   });
 });
 

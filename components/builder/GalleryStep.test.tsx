@@ -5,6 +5,7 @@ import path from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 import { MAX_MEDIA_BYTES } from "@/config/media";
+import { PHOTO_INPUT_MAX_BYTES } from "@/config/photo-profiles";
 
 /**
  * A13 — "Vos souvenirs en images": the real Builder screen, rendered
@@ -33,6 +34,19 @@ const { uploadToSignedUrl, getBrowserSupabaseClient } = vi.hoisted(() => {
   return { uploadToSignedUrl: upload, getBrowserSupabaseClient: vi.fn(() => ({ storage: { from: () => ({ uploadToSignedUrl: upload }) } })) };
 });
 vi.mock("@/lib/supabase/browser-client", () => ({ getBrowserSupabaseClient }));
+
+// Optimisation photographique V1 — the in-browser preparation needs a real
+// canvas (measured in Chromium, not here). Stand-in: every chosen photo
+// becomes one optimized WebP; the pre-checks around it stay real
+// (`lib/media/prepare-chosen-photo.ts`).
+const { preparePhotoForUpload } = vi.hoisted(() => ({
+  preparePhotoForUpload: vi.fn(async (_file: File, purpose: string) => ({
+    ok: true as const,
+    file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+    report: { purpose },
+  })),
+}));
+vi.mock("@/lib/media/photo-preparation", () => ({ preparePhotoForUpload }));
 vi.stubGlobal(
   "ResizeObserver",
   class {
@@ -95,6 +109,7 @@ beforeEach(() => {
   let blob = 0;
   URL.createObjectURL = vi.fn(() => `blob:local-${(blob += 1)}`);
   URL.revokeObjectURL = vi.fn();
+  preparePhotoForUpload.mockClear();
 });
 afterEach(cleanup);
 
@@ -252,6 +267,29 @@ describe("Retirer — inline confirmation, persist before retire", () => {
   });
 });
 
+describe("Recette Builder V1 — Retirer: the click is acknowledged until the draft answers", () => {
+  it("« Confirmer » says « Retrait en cours… » (aria-busy, disabled) while the save runs; a second tap writes nothing more", async () => {
+    let answer!: (v: { updatedAt: string }) => void;
+    const persist = vi.fn(() => new Promise<{ updatedAt: string }>((resolve) => (answer = resolve)));
+    const p = props({ content: contentWith(2), thumbnails: thumbsFor(2), persist });
+    render(<GalleryStep {...p} />);
+    fireEvent.click(within(rows()[0]).getByRole("button", { name: "Retirer" }));
+    const confirm = within(rows()[0]).getByRole("button", { name: "Confirmer" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(within(rows()[0]).getByText("Retrait en cours…")).toBeTruthy());
+    const busy = within(rows()[0]).getByText("Retrait en cours…").closest("button")!;
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect(busy.hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+    answer({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(p.retirePhoto).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Retrait en cours…")).toBeNull();
+  });
+});
+
 describe("Remplacer — same place, same caption, persist before retire", () => {
   it("uploads the new photograph, saves it in place, then retires the previous one", async () => {
     const p = props({ content: contentWith(3, { 2: "Tous les deux" }), thumbnails: thumbsFor(3) });
@@ -260,7 +298,8 @@ describe("Remplacer — same place, same caption, persist before retire", () => 
     expect(input.multiple).toBe(false);
     fireEvent.change(input, { target: { files: [file("nouvelle.png", "image/png")] } });
     await waitFor(() => expect(p.retirePhoto).toHaveBeenCalledWith(m(2)));
-    expect(p.reserveUpload).toHaveBeenCalledWith("image/png");
+    expect(p.reserveUpload).toHaveBeenCalledWith("image/webp"); // the optimized file, never the chosen PNG
+    expect(preparePhotoForUpload).toHaveBeenCalledWith(expect.objectContaining({ name: "nouvelle.png" }), "gallery");
     const saved = galleryOf(p.persist.mock.calls[0][0]);
     expect(saved.map((item) => item.mediaId)).toEqual([m(1), p.finalizeUpload.mock.calls[0][0], m(3)]);
     expect(saved[1].caption).toBe("Tous les deux");
@@ -296,7 +335,9 @@ describe("Ajouter des photos — several files, one after another, each with its
     expect(screen.getByText("b.heic")).toBeTruthy();
     expect(continueButton()).toHaveProperty("disabled", true); // uploads in progress
     await waitFor(() => expect(rows()).toHaveLength(3));
-    expect(p.reserveUpload.mock.calls).toEqual([["image/jpeg"], ["image/webp"]]); // the purpose is never the browser's to pass
+    // The optimized files' type; the purpose is never the browser's to pass.
+    expect(p.reserveUpload.mock.calls).toEqual([["image/webp"], ["image/webp"]]);
+    expect(preparePhotoForUpload.mock.calls.map(([chosen]) => (chosen as File).name)).toEqual(["a.jpg", "c.webp"]);
     const [first, second] = p.finalizeUpload.mock.calls.map((call) => call[0]);
     expect(galleryOf(p.persist.mock.calls[0][0]).map((item) => item.mediaId)).toEqual([m(1), first]);
     expect(galleryOf(p.persist.mock.calls[1][0]).map((item) => item.mediaId)).toEqual([m(1), first, second]);
@@ -323,11 +364,76 @@ describe("Ajouter des photos — several files, one after another, each with its
     uploadToSignedUrl.mockResolvedValueOnce({ data: null, error: { message: "boom" } });
     const p = props();
     render(<GalleryStep {...p} />);
-    fireEvent.change(addInput(), { target: { files: [file("grande.jpg", "image/jpeg", MAX_MEDIA_BYTES + 1), file("reseau.jpg"), file("ok.jpg")] } });
+    fireEvent.change(addInput(), { target: { files: [file("grande.jpg", "image/jpeg", PHOTO_INPUT_MAX_BYTES + 1), file("reseau.jpg"), file("ok.jpg")] } });
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(screen.getByText("Cette photo est trop volumineuse. Essayez-en une autre.")).toBeTruthy();
     expect(screen.getByText("Nous n'avons pas pu ajouter la photo pour le moment. Vous pouvez réessayer.")).toBeTruthy();
     expect(p.reserveUpload).toHaveBeenCalledTimes(2);
+  });
+
+  it("Optimisation V1: only the optimized file is uploaded, its preview appears once prepared, a heavy photo is accepted", async () => {
+    let finish: (value: unknown) => void = () => {};
+    preparePhotoForUpload.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)) as never);
+    const p = props();
+    render(<GalleryStep {...p} />);
+    fireEvent.change(addInput(), { target: { files: [file("IMG_48MP.jpg", "image/jpeg", MAX_MEDIA_BYTES + 1)] } });
+    await waitFor(() => expect(screen.getByText("Préparation de la photo…")).toBeTruthy());
+    expect(document.querySelector("ul img")).toBeNull(); // no preview decoded from the heavy original
+    expect(p.reserveUpload).not.toHaveBeenCalled();
+    const optimized = new File([new Uint8Array(64)], "photo.webp", { type: "image/webp" });
+    finish({ ok: true, file: optimized, report: {} });
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(uploadToSignedUrl.mock.calls[0][2]).toBe(optimized);
+    expect(URL.createObjectURL).toHaveBeenCalledWith(optimized);
+  });
+
+  it("a photo that cannot be prepared stays on its own line, is never sent, and the next one still goes through", async () => {
+    preparePhotoForUpload.mockResolvedValueOnce({ ok: false, code: "invalid_file" } as never);
+    const p = props();
+    render(<GalleryStep {...p} />);
+    fireEvent.change(addInput(), { target: { files: [file("tronquee.jpg"), file("ok.jpg")] } });
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(screen.getByText("tronquee.jpg")).toBeTruthy();
+    expect(screen.getByText("Nous n'avons pas pu utiliser cette photo. Essayez-en une autre.")).toBeTruthy();
+    expect(p.reserveUpload).toHaveBeenCalledTimes(1);
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("photos are prepared one after another, never two at once (phone memory)", async () => {
+    let active = 0;
+    let peak = 0;
+    preparePhotoForUpload.mockImplementation(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return { ok: true, file: new File([new Uint8Array(8)], "photo.webp", { type: "image/webp" }), report: {} } as never;
+    });
+    try {
+      const p = props();
+      render(<GalleryStep {...p} />);
+      fireEvent.change(addInput(), { target: { files: [file("a.jpg"), file("b.jpg"), file("c.jpg")] } });
+      await waitFor(() => expect(rows()).toHaveLength(3));
+      expect(peak).toBe(1);
+    } finally {
+      preparePhotoForUpload.mockReset();
+      preparePhotoForUpload.mockImplementation(async (_file: File, purpose: string) => ({
+        ok: true as const,
+        file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+        report: { purpose },
+      }));
+    }
+  });
+
+  it("a replacement that cannot be prepared keeps the previous photograph and never reaches the server", async () => {
+    preparePhotoForUpload.mockResolvedValueOnce({ ok: false, code: "file_too_large" } as never);
+    const p = props({ content: contentWith(2), thumbnails: thumbsFor(2) });
+    render(<GalleryStep {...p} />);
+    fireEvent.change(rows()[0].querySelector<HTMLInputElement>("input[type=file]")!, { target: { files: [file("x.jpg")] } });
+    await waitFor(() => expect(within(rows()[0]).getByRole("alert").textContent).toContain("trop volumineuse"));
+    expect(p.reserveUpload).not.toHaveBeenCalled();
+    expect(p.retirePhoto).not.toHaveBeenCalled();
+    expect(rows()[0].querySelector("img")!.getAttribute("src")).toBe(signed(m(1)));
   });
 
   it("content.gallery only ever holds { mediaId, caption } — no URL, no blob:, no path", async () => {

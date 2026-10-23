@@ -38,6 +38,13 @@ const { MemoryViewer, viewerOriginIdentity } = await import("./MemoryViewer");
 type Report = import("./MemoryViewer").ViewerReport;
 
 const media = { mediaId: "m1", src: "/p.jpg", alt: "Photo de test 1", naturalWidth: 1080, naturalHeight: 1920, caption: "MAMAN ET MAMIE, À MIMIZAN, 1966." };
+/**
+ * Recette Builder V1: a phone in landscape (≤ 500 px tall) now gives the photo
+ * its compact frame, where the 9:16 + 32-character caption already fits. The
+ * caption widening is exercised where it still applies: a low landscape
+ * window (1000 × 510) and a very tall portrait photo (0.45).
+ */
+const tallMedia = { ...media, naturalWidth: 900, naturalHeight: 2000 };
 
 let scrollTo: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -61,10 +68,10 @@ function host() {
   return { app, trigger, container: app.querySelector<HTMLElement>("section")! };
 }
 
-async function open(theme: "light" | "dark", h = host(), opts: { identity?: boolean; onReport?: (r: Report) => void } = {}) {
+async function open(theme: "light" | "dark", h = host(), opts: { identity?: boolean; onReport?: (r: Report) => void; media?: typeof media } = {}) {
   const onClosed = vi.fn();
   const originIdentity = opts.identity ? viewerOriginIdentity(h.trigger, "album") : null;
-  render(<MemoryViewer media={media} theme={theme} origin="album" language="fr" trigger={h.trigger} container={h.container} originIdentity={originIdentity} onClosed={onClosed} onReport={opts.onReport} />, {
+  render(<MemoryViewer media={opts.media ?? media} theme={theme} origin="album" language="fr" trigger={h.trigger} container={h.container} originIdentity={originIdentity} onClosed={onClosed} onReport={opts.onReport} />, {
     container: document.createElement("div"),
   });
   const root = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
@@ -273,20 +280,20 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
     try {
       for (const [w, h] of [
         [375, 812],
-        [812, 375],
+        [1000, 510],
       ]) {
         at(w, h);
-        const light = (await open("light")).root;
+        const light = (await open("light", host(), { media: tallMedia })).root;
         const lightDom = geometryDom(light);
         const widened = light.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerCaptionWidening ?? null;
         expect(light.dataset.a13ViewerTheme).toBe("light");
         cleanup();
         document.body.innerHTML = "";
-        const dark = (await open("dark")).root;
+        const dark = (await open("dark", host(), { media: tallMedia })).root;
         expect(dark.dataset.a13ViewerTheme).toBe("dark");
         expect(geometryDom(dark), `${w}×${h}`).toBe(lightDom);
         expect(dark.querySelector<HTMLElement>("[data-viewer-print]")!.dataset.viewerCaptionWidening ?? null).toBe(widened);
-        // Landscape: the 9:16 + 32-character caption takes the widened paper in both themes.
+        // Landscape: the tall photo + 32-character caption takes the widened paper in both themes.
         expect(widened).toBe(w > h ? "landscape" : null);
         cleanup();
         document.body.innerHTML = "";
@@ -300,8 +307,8 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
   });
 
   it("Landscape caption: a confirmed landscape widens the paper around the photo, which keeps its viewport position", async () => {
-    Object.defineProperty(document.documentElement, "clientWidth", { value: 812, configurable: true });
-    Object.defineProperty(document.documentElement, "clientHeight", { value: 375, configurable: true });
+    Object.defineProperty(document.documentElement, "clientWidth", { value: 1000, configurable: true });
+    Object.defineProperty(document.documentElement, "clientHeight", { value: 510, configurable: true });
     const inner = { w: window.innerWidth, h: window.innerHeight, matchMedia: window.matchMedia };
     let landscape = false;
     window.matchMedia = ((q: string) => ({ matches: q === "(orientation: landscape)" && landscape, media: q })) as unknown as typeof window.matchMedia;
@@ -311,14 +318,14 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
       return { print, x: parseFloat(print.style.left) + parseFloat(photo.style.left), y: parseFloat(print.style.top) + parseFloat(photo.style.top), w: photo.style.width, h: photo.style.height };
     };
     try {
-      Object.defineProperty(window, "innerWidth", { value: 812, configurable: true });
-      Object.defineProperty(window, "innerHeight", { value: 375, configurable: true });
-      const natural = photoAt((await open("light")).root);
+      Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
+      Object.defineProperty(window, "innerHeight", { value: 510, configurable: true });
+      const natural = photoAt((await open("light", host(), { media: tallMedia })).root);
       expect(natural.print.dataset.viewerCaptionWidening).toBeUndefined();
       cleanup();
       document.body.innerHTML = "";
       landscape = true;
-      const { root } = await open("light");
+      const { root } = await open("light", host(), { media: tallMedia });
       const widened = photoAt(root);
       expect(widened.print.dataset.viewerCaptionWidening).toBe("landscape");
       expect(parseFloat(widened.print.style.width)).toBeGreaterThan(parseFloat(natural.print.style.width));
@@ -345,5 +352,29 @@ describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
       if (inner.matchMedia) window.matchMedia = inner.matchMedia;
       else delete (window as { matchMedia?: unknown }).matchMedia;
     }
+  });
+});
+
+describe("Optimisation photographique V1 — the photograph is revealed only whole", () => {
+  it("the frame opens on time; the photo stays hidden (paper alone, aria-busy) until loaded and decoded, then shows", async () => {
+    const { root } = await open("light");
+    const photo = root.querySelector<HTMLImageElement>("[data-viewer-photo]")!;
+    const print = root.querySelector<HTMLElement>("[data-viewer-print]")!;
+    expect(photo.dataset.viewerPhotoState).toBe("loading");
+    expect(print.getAttribute("aria-busy")).toBe("true");
+    const box = { w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top };
+    fireEvent.load(photo);
+    await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("ready"));
+    expect(print.hasAttribute("aria-busy")).toBe(false);
+    // Visibility only: the photo's box is the same before and after.
+    expect({ w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top }).toEqual(box);
+  });
+
+  it("a photo that cannot load (expired signed URL, network) is never shown broken; the Viewer still closes normally", async () => {
+    const { root } = await open("dark");
+    const photo = root.querySelector<HTMLImageElement>("[data-viewer-photo]")!;
+    fireEvent.error(photo);
+    await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("error"));
+    expect(root.querySelector("[data-viewer-close]")).toBeTruthy();
   });
 });

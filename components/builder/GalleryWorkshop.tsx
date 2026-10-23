@@ -13,7 +13,9 @@ import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { usePendingInput } from "./journey/pending-input";
-import { precheckPhotoFile } from "@/lib/media/precheck-upload";
+import { PendingActionLabel } from "./PendingActionLabel";
+import { precheckPhotoInput } from "@/lib/media/precheck-upload";
+import { prepareChosenPhoto } from "@/lib/media/prepare-chosen-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import {
@@ -70,6 +72,13 @@ import styles from "./GalleryWorkshop.module.css";
  * file has its own state; a refused or failed file never undoes the
  * photographs already added. The purpose is never the browser's to
  * choose: the bound Gallery actions fix it server-side.
+ *
+ * Optimisation photographique V1: each chosen photo is first PREPARED in
+ * the browser (`prepare-chosen-photo.ts`) — one optimized file, the only
+ * one ever uploaded or previewed. Preparation runs inside the same
+ * sequential chain, so a phone never holds two full-size photographs
+ * decoded at once; a photo that cannot be prepared gets its own human
+ * error, never a silent upload of the original.
  */
 
 export interface GalleryWorkshopProps {
@@ -96,7 +105,13 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
 /** The counter appears only when it becomes useful — the last 8 characters before the limit. */
 const COUNTER_THRESHOLD = GALLERY_CAPTION_MAX_CHARACTERS - 8;
 
-type PendingUpload = { localId: string; fileName: string; previewUrl: string | null; status: "queued" | "uploading" | "error"; error: string | null };
+type PendingUpload = {
+  localId: string;
+  fileName: string;
+  previewUrl: string | null;
+  status: "queued" | "preparing" | "uploading" | "error";
+  error: string | null;
+};
 
 type Focus = { mediaId: string; control: "up" | "down" | "replace" } | { mediaId: null; control: "add" };
 
@@ -148,6 +163,9 @@ export function GalleryWorkshop({
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  // The memory whose removal is being written: its « Confirmer » says so until the draft answers.
+  const [removing, setRemoving] = useState<string | null>(null);
+  const removingRef = useRef<string | null>(null);
   // B03 — photos still uploading (or failed) are not in the draft yet:
   // « Mon parcours » asks before leaving.
   usePendingInput(pending.length > 0 || committing);
@@ -239,10 +257,13 @@ export function GalleryWorkshop({
     setPending((list) => list.map((upload) => (upload.localId === localId ? { ...upload, ...patch } : upload)));
   }
 
-  async function processUpload(localId: string, file: File, previewUrl: string) {
-    updatePending(localId, { status: "uploading" });
+  async function processUpload(localId: string, file: File) {
+    updatePending(localId, { status: "preparing" });
     try {
-      const media = await uploadPhoto(file, reserveUpload, finalizeUpload);
+      const prepared = await prepareChosenPhoto(file, "gallery");
+      const previewUrl = track(URL.createObjectURL(prepared));
+      updatePending(localId, { status: "uploading", previewUrl });
+      const media = await uploadPhoto(prepared, reserveUpload, finalizeUpload);
       const added = await commitStructural((gallery) => addGalleryMedia(gallery, media.id));
       if (!added) throw new MediaActionError("storage_unavailable");
       setThumbnails((current) => ({ ...current, [media.id]: previewUrl }));
@@ -259,14 +280,14 @@ export function GalleryWorkshop({
     const entries: PendingUpload[] = [];
     for (const file of files) {
       const localId = `upload-${(localIds.current += 1)}`;
-      const refused = precheckPhotoFile(file);
+      const refused = precheckPhotoInput(file);
       if (refused) {
         entries.push({ localId, fileName: file.name, previewUrl: null, status: "error", error: translate(language, mediaErrorTranslationKey(refused)) });
         continue;
       }
-      const previewUrl = track(URL.createObjectURL(file));
-      entries.push({ localId, fileName: file.name, previewUrl, status: "queued", error: null });
-      queue.current = queue.current.then(() => processUpload(localId, file, previewUrl));
+      // No preview of the original: it appears once the optimized file exists.
+      entries.push({ localId, fileName: file.name, previewUrl: null, status: "queued", error: null });
+      queue.current = queue.current.then(() => processUpload(localId, file));
     }
     setPending((list) => [...list, ...entries]);
   }
@@ -278,19 +299,20 @@ export function GalleryWorkshop({
 
   async function handleReplace(mediaId: string, file: File) {
     setRowErrors((errors) => omit(errors, mediaId));
-    const refused = precheckPhotoFile(file);
+    const refused = precheckPhotoInput(file);
     if (refused) {
       setRowErrors((errors) => ({ ...errors, [mediaId]: translate(language, mediaErrorTranslationKey(refused)) }));
       return;
     }
     setReplacing(mediaId);
     try {
-      const media = await uploadPhoto(file, reserveUpload, finalizeUpload);
+      const prepared = await prepareChosenPhoto(file, "gallery");
+      const media = await uploadPhoto(prepared, reserveUpload, finalizeUpload);
       const replaced = await commitStructural((gallery) => replaceGalleryMedia(gallery, mediaId, media.id));
       if (!replaced) throw new MediaActionError("storage_unavailable");
       // Adopted by the saved draft: only now may the previous photograph be retired.
       forget(mediaId);
-      setThumbnails((current) => ({ ...current, [media.id]: track(URL.createObjectURL(file)) }));
+      setThumbnails((current) => ({ ...current, [media.id]: track(URL.createObjectURL(prepared)) }));
       setRowKeys((keys) => ({ ...keys, [media.id]: keys[mediaId] ?? mediaId }));
       focusTarget.current = { mediaId: media.id, control: "replace" };
       setAnnouncement(translate(language, "galleryStep.replaced"));
@@ -303,7 +325,13 @@ export function GalleryWorkshop({
   }
 
   async function handleConfirmRemove(mediaId: string, index: number) {
+    // A second tap before React disables the button must not write the removal twice.
+    if (removingRef.current !== null) return;
+    removingRef.current = mediaId;
+    setRemoving(mediaId);
     const removed = await commitStructural((gallery) => ({ ok: true, gallery: removeGalleryMedia(gallery, mediaId) }));
+    removingRef.current = null;
+    setRemoving(null);
     if (!removed) {
       setRowErrors((errors) => ({ ...errors, [mediaId]: translate(language, "galleryStep.removeFailed") }));
       return;
@@ -346,6 +374,7 @@ export function GalleryWorkshop({
               thumbnail={thumbnails[item.mediaId] ?? null}
               replacing={replacing === item.mediaId}
               confirming={confirming === item.mediaId}
+              removing={removing === item.mediaId}
               error={rowErrors[item.mediaId] ?? null}
               captionReadOnly={frozen || committing}
               structuralLocked={structuralLocked}
@@ -387,7 +416,9 @@ export function GalleryWorkshop({
                     </button>
                   </>
                 ) : (
-                  <p className={styles.statusText}>{translate(language, "galleryStep.uploading")}</p>
+                  <p className={styles.statusText}>
+                    {translate(language, upload.status === "preparing" ? "galleryStep.preparing" : "galleryStep.uploading")}
+                  </p>
                 )}
               </div>
             </li>
@@ -419,6 +450,8 @@ interface GalleryRegisterRowProps {
   thumbnail: string | null;
   replacing: boolean;
   confirming: boolean;
+  /** Its removal is being written to the draft. */
+  removing: boolean;
   error: string | null;
   captionReadOnly: boolean;
   structuralLocked: boolean;
@@ -440,6 +473,7 @@ function GalleryRegisterRow({
   thumbnail,
   replacing,
   confirming,
+  removing,
   error,
   captionReadOnly,
   structuralLocked,
@@ -524,8 +558,10 @@ function GalleryRegisterRow({
               {translate(language, "galleryStep.removeQuestion")}
             </p>
             <div className={styles.actions}>
-              <button type="button" className={styles.confirmAction} disabled={structuralLocked} aria-describedby={itemId} onClick={() => onConfirmRemove(mediaId, index)}>
-                {translate(language, "galleryStep.removeConfirm")}
+              <button type="button" className={styles.confirmAction} disabled={structuralLocked} aria-busy={removing || undefined} aria-describedby={itemId} onClick={() => onConfirmRemove(mediaId, index)}>
+                <PendingActionLabel pending={removing} pendingLabel={translate(language, "galleryStep.removing")}>
+                  {translate(language, "galleryStep.removeConfirm")}
+                </PendingActionLabel>
               </button>
               <button ref={cancelRef} type="button" className={styles.textAction} disabled={structuralLocked} onClick={onCancelRemove}>
                 {translate(language, "common.cancel")}

@@ -1,4 +1,5 @@
 import { MAX_MEDIA_BYTES } from "@/config/media";
+import { PHOTO_INPUT_MAX_BYTES } from "@/config/photo-profiles";
 import { isAllowedImageMimeType } from "./image-signature";
 import type { MediaErrorCode } from "./media-errors";
 
@@ -34,3 +35,18 @@ export function precheckHeroPhotoFile(file: { type: string; size: number }): Med
  * Still only a convenience; `finalizeMediaUpload` stays the decision.
  */
 export const precheckPhotoFile = precheckHeroPhotoFile;
+
+/**
+ * Optimisation photographique V1 — le pré-contrôle de la photo CHOISIE,
+ * avant sa préparation dans le navigateur (`photo-preparation.ts`). La
+ * photo choisie n'est jamais envoyée telle quelle : sa limite est celle
+ * de ce que le navigateur peut raisonnablement préparer
+ * (`PHOTO_INPUT_MAX_BYTES`), pas celle du serveur. Le fichier PRÉPARÉ
+ * repasse ensuite par `precheckPhotoFile` — et le serveur garde, seul,
+ * la décision.
+ */
+export function precheckPhotoInput(file: { type: string; size: number }): MediaErrorCode | null {
+  if (!isAllowedImageMimeType(file.type)) return "unsupported_format";
+  if (file.size > PHOTO_INPUT_MAX_BYTES) return "file_too_large";
+  return null;
+}

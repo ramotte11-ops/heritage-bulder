@@ -1,10 +1,11 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { AlbumLayout } from "@/lib/memorial/album/album-layout";
 import { A13_ALBUM_CANVAS, A13_ALBUM_TOP_ZONE } from "@/config/album-a13-grammars";
 import { A13_ALBUM_DARK_BACKGROUNDS, type AlbumTheme } from "@/config/album-a13-dark-material";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
-import { laBelleAurore } from "@/components/builder/fonts";
+import { ebGaramond, laBelleAurore } from "@/components/builder/fonts";
+import { albumDesktopTitleBox, albumTitleOffset } from "@/lib/memorial/album/album-title";
 import { DynamicPolaroid } from "@/components/memorial/gallery/DynamicPolaroid";
 import styles from "./AlbumMemoryTable.module.css";
 
@@ -64,13 +65,30 @@ export interface AlbumMemoryTableProps {
   language: Language;
   /** Material theme (default Light). Never an input of the geometry. */
   theme?: AlbumTheme;
+  /**
+   * Recette Builder V1 — the « Galerie de souvenirs » title under the Master
+   * sprig (Gallery typography); the prints are translated down only as far
+   * as the title needs. Absent: exactly the table as before.
+   */
+  withTitle?: boolean;
 }
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 
-export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, language, theme = "light" }: AlbumMemoryTableProps) {
+/** The prints, translated down under the title (`withTitle`); otherwise no element at all. */
+function Shift({ on, offset, height, children }: { on: boolean; offset: number; height: number; children: ReactNode }) {
+  if (!on) return children;
+  return (
+    <div className={styles.shifted} style={{ top: k(offset), height: k(height) } as CSSProperties} data-album-shift="">
+      {children}
+    </div>
+  );
+}
+
+export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, qa = false, language, theme = "light", withTitle = false }: AlbumMemoryTableProps) {
   const n = layout.prints.length;
   const label = translate(language, "album.label");
+  const offset = withTitle ? albumTitleOffset(layout.prints.map((p) => p.outer), albumDesktopTitleBox()) : 0;
   return (
     <section
       className={`${styles.stage} ${laBelleAurore.variable}`}
@@ -90,8 +108,10 @@ export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, q
           }
         : {})}
     >
-      <div className={styles.canvas} style={{ height: k(layout.height) } as CSSProperties} data-album-height={layout.height.toFixed(2)}>
+      <div className={styles.canvas} style={{ height: k(layout.height + offset) } as CSSProperties} data-album-height={layout.height.toFixed(2)} {...(withTitle ? { "data-album-title-offset": offset.toFixed(2) } : {})}>
         <div className={styles.body} aria-hidden="true" />
+        {withTitle ? <h2 className={`${styles.title} ${ebGaramond.className}`}>{translate(language, "album.title")}</h2> : null}
+        <Shift on={withTitle} offset={offset} height={layout.height}>
         {layout.groups.map((g) => (
           <div
             key={g.index}
@@ -152,6 +172,7 @@ export function AlbumMemoryTable({ layout, media, onActivate, eagerGroups = 1, q
             ))}
           </svg>
         ) : null}
+        </Shift>
       </div>
     </section>
   );
