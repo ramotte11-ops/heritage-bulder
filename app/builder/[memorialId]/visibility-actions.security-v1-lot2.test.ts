@@ -62,6 +62,18 @@ describe("saveSectionVisibilityAction — atomic visibility write", () => {
     );
   });
 
+  it("Offrandes symboliques (M3.1): the same existing RPC operation, a visibility target only", async () => {
+    await saveSectionVisibilityAction("claimed-id", "symbolicOfferings", false);
+    expect(commitDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memorialId: "authorized-id",
+        operation: "visibility.changed",
+        mutationTargets: ["visibility.symbolicOfferings"],
+        content: { ...DRAFT, presentation: { hiddenSections: ["symbolicOfferings"] } },
+      }),
+    );
+  });
+
   it("remains allowed after publication while ceremony content is conservatively locked", async () => {
     load.mockResolvedValue(snapshot(DRAFT, "published"));
     await expect(saveSectionVisibilityAction("authorized-id", "ceremony", false)).resolves.toEqual({

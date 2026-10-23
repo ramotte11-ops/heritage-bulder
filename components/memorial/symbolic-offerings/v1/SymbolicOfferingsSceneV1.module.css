@@ -1,0 +1,361 @@
+/*
+ * Offrandes symboliques V1 — pilote : état « cartes », scène de recueillement
+ * et animations (M2, jouées par le composant avec l'API Web Animations).
+ * Toute géométrie est en px de canevas du fond de la variante (`--px` =
+ * 1 px de canevas à la largeur rendue) : à la largeur du fond, la scène
+ * reproduit la maquette validée. Les textes sont posés par leur ligne de
+ * base ; leur corps a un plancher en px CSS : sur un téléphone, ils
+ * gardent une taille de lecture (contrôles 320 / 390 / 430 px).
+ *
+ * Ligne de base → haut de boîte : avec `line-height: 1`, la ligne de base
+ * est à 0,8545 em du haut pour EB Garamond (ascendante 1,007, descendante
+ * 0,298) et à 0,651 em pour La Belle Aurore (1,078 / 0,776).
+ */
+
+.wrap {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.scene {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-inline: auto;
+  --px: calc(100cqw / var(--canvas-w));
+  width: 100%;
+  height: calc(var(--px) * var(--canvas-h));
+}
+
+.scene[data-layout="desktop"] {
+  display: none;
+}
+
+/* Desktop : à partir de 1024 px de largeur RÉELLE du conteneur, plafond
+   1448 px comme les autres rubriques V2. */
+@container (min-width: 1024px) {
+  .scene[data-layout="mobile"] {
+    display: none;
+  }
+
+  .scene[data-layout="desktop"] {
+    display: block;
+    width: min(100cqw, 1448px);
+    --px: calc(min(100cqw, 1448px) / var(--canvas-w));
+  }
+}
+
+.fond {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  user-select: none;
+}
+
+.offering {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.box {
+  position: absolute;
+  display: block;
+  left: calc(var(--px) * var(--l));
+  top: calc(var(--px) * var(--t));
+  width: calc(var(--px) * var(--w));
+  height: calc(var(--px) * var(--h));
+  max-width: none;
+  user-select: none;
+}
+
+/* Lueurs (halo de la flamme, lumière sur la cire) : mélange « écran »,
+   comme sur les maquettes. */
+.glow {
+  mix-blend-mode: screen;
+}
+
+/* Silhouette d'un objet comme masque (ombres, lumière de la cire, lueur du
+   cœur) : WebP sans perte, ou l'AVIF déjà téléchargé quand le navigateur
+   sait choisir. `--mask-avif` / `--mask-webp` : posés par le composant. */
+.fill {
+  position: absolute;
+  inset: 0;
+}
+
+.masked {
+  -webkit-mask: var(--mask-webp) 0 0 / 100% 100% no-repeat;
+  mask: var(--mask-webp) 0 0 / 100% 100% no-repeat;
+}
+
+@supports (mask-image: image-set(url("/assets/offrandes/v1/objets/bougie.avif") type("image/avif"))) {
+  .masked {
+    -webkit-mask-image: image-set(var(--mask-avif) type("image/avif"), var(--mask-webp) type("image/webp"));
+    mask-image: image-set(var(--mask-avif) type("image/avif"), var(--mask-webp) type("image/webp"));
+  }
+}
+
+/* Ombre portée : la silhouette masquée est floutée par son parent (le flou
+   doit précéder le masque). σ en px de canevas. */
+.blur {
+  filter: blur(calc(var(--px) * var(--sigma)));
+}
+
+/* La lumière de la cire ne touche que la bougie (masquée par sa silhouette). */
+.wax {
+  mix-blend-mode: screen;
+}
+
+.wax > .glow {
+  mix-blend-mode: normal;
+}
+
+/* Voile de la transition A : opacité statique nulle, animée seulement. */
+.veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--veil);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Lueur du cœur : opacité statique nulle (s'éteint en arrivant). */
+.heartGlow {
+  opacity: 0;
+}
+
+.wrap[data-variant="light"] {
+  --heart-glow: rgb(255 244 226);
+}
+
+.wrap[data-variant="dark"] {
+  --heart-glow: rgb(255 232 196);
+}
+
+/* --- Textes ------------------------------------------------------------- */
+
+.header {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  /* Logo HERITAGE / HOMMAGE INTEMPOREL : un seul bloc, à l'échelle `--lk`
+     (jamais moins de la moitié du Master) pour garder ses proportions ;
+     ancré sur la ligne de base de « HERITAGE ». Sur téléphone, il grandit
+     d'un bloc au lieu de laisser la seconde ligne monter sur la première. */
+  --lk: max(var(--px), 0.5px);
+}
+
+.heading {
+  margin: 0;
+  font: inherit;
+}
+
+.text {
+  position: absolute;
+  margin: 0;
+  left: calc(var(--px) * var(--axis));
+  transform: translateX(-50%);
+  white-space: nowrap;
+  line-height: 1;
+  font-kerning: normal;
+}
+
+/* Capitales espacées : l'espacement précède aussi la première lettre, pour
+   que l'encre reste centrée sur l'axe. */
+.heritage {
+  --fs: calc(var(--lk) * var(--her-size));
+  top: calc(var(--px) * var(--her-base) - var(--fs) * 0.8545);
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  font-size: var(--fs);
+  letter-spacing: calc(var(--her-track) * 1em);
+  padding-left: calc(var(--her-track) * 1em);
+  font-kerning: none;
+  color: var(--ink-lockup);
+}
+
+.subtitle {
+  --fs: calc(var(--lk) * var(--sub-size));
+  top: calc(var(--px) * var(--her-base) + var(--lk) * (var(--sub-base) - var(--her-base)) - var(--fs) * 0.8545);
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  font-size: var(--fs);
+  letter-spacing: calc(var(--sub-track) * 1em);
+  padding-left: calc(var(--sub-track) * 1em);
+  font-kerning: none;
+  color: var(--ink-body);
+}
+
+.title {
+  --fs: max(24px, calc(var(--px) * var(--title-size)));
+  top: calc(var(--px) * var(--title-base) - var(--fs) * 0.8545);
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  font-size: var(--fs);
+  color: var(--ink-title);
+}
+
+.script {
+  --fs: max(22px, calc(var(--px) * var(--script-size)));
+  top: calc(var(--px) * var(--script-base) - var(--fs) * 0.651);
+  font-family: var(--font-heritage-hero-script), cursive;
+  font-weight: 400;
+  font-size: var(--fs);
+  color: var(--ink-script);
+}
+
+/* Confirmation et bouton : dans le flux, sous l'offrande. Haut du bloc =
+   ligne de base de la première ligne − (L − 1,305) / 2 − 1,007 em, avec
+   L = 38 / 28 (pas des lignes de la maquette). */
+.confirm {
+  --cfs: max(15px, calc(var(--px) * var(--conf-size)));
+  position: absolute;
+  z-index: 2;
+  left: calc(var(--px) * var(--axis));
+  top: calc(var(--px) * var(--conf-base) - var(--cfs) * ((var(--conf-lh) - 1.305) / 2 + 1.007));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(var(--px) * var(--conf-max));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.confirmText {
+  margin: 0;
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--cfs);
+  line-height: var(--conf-lh);
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  color: var(--ink-body);
+}
+
+.line {
+  display: block;
+}
+
+/* Cibles de focus non actionnables (bloc de statut, confirmation) : elles
+   reçoivent le focus pour la lecture d'écran, sans contour visible. */
+.confirm:focus,
+.confirmText:focus {
+  outline: none;
+}
+
+/* Bouton : 246 × 62 px de canevas sur les maquettes. Cible tactile d'au
+   moins 44 px ; jamais plus large que le papier libre à sa hauteur
+   (`--button-max`) : sous les planchers, le libellé passe à la ligne. */
+.continue {
+  box-sizing: border-box;
+  margin-top: calc(var(--px) * var(--button-gap));
+  min-height: max(44px, calc(var(--px) * 62));
+  max-width: calc(var(--px) * var(--button-max));
+  padding: 4px calc(var(--px) * 32);
+  border: max(1px, calc(var(--px) * 2)) solid var(--button-line);
+  border-radius: calc(var(--px) * 6);
+  background: transparent;
+  color: var(--button-label);
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  font-size: max(15px, calc(var(--px) * 24));
+  line-height: 1.12;
+  text-wrap: balance;
+  cursor: default;
+}
+
+.continue:focus-visible {
+  outline: 2px solid var(--button-line);
+  outline-offset: 4px;
+}
+
+.continue[data-interactive] {
+  cursor: pointer;
+}
+
+/* --- État « cartes » (validé en F1) -------------------------------------- */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Bloc de lignes centrées : haut = ligne de base de la première ligne −
+   ((L − 1,305 em) / 2 + 1,007 em) ; pas des lignes L = celui du Master, ou
+   1,2 em si le plancher de lecture agrandit le corps. */
+.lines {
+  --fs: max(var(--floor), calc(var(--px) * var(--size)));
+  --lh: max(calc(var(--px) * var(--step)), calc(var(--fs) * 1.2));
+  position: absolute;
+  margin: 0;
+  left: calc(var(--px) * var(--x));
+  top: calc(var(--px) * var(--base) - ((var(--lh) - var(--fs) * 1.305) / 2 + var(--fs) * 1.007));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(var(--px) * var(--maxw));
+  font-size: var(--fs);
+  line-height: var(--lh);
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+.intro {
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  color: var(--ink-body);
+}
+
+.cardTitle {
+  font-family: var(--font-heritage-offerings-medium), serif;
+  font-weight: 500;
+  color: rgb(44 38 28);
+}
+
+.cardText {
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-weight: 400;
+  color: rgb(60 55 44);
+}
+
+/* Carte-bouton : exactement la carte du décor ; aucun fond, le décor est
+   l'image. Cible tactile très supérieure à 44 px. */
+.card {
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--px) * 10);
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--ink-script);
+  outline-offset: calc(var(--px) * 8);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

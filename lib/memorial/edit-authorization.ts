@@ -93,6 +93,7 @@ export const MEMORIAL_VISIBILITY_EDIT_TARGETS = [
   "condolences",
   "video",
   "memoryMessage",
+  "symbolicOfferings",
 ] as const satisfies readonly Exclude<SectionId, "hero">[];
 
 export type MemorialVisibilityEditTarget = (typeof MEMORIAL_VISIBILITY_EDIT_TARGETS)[number];

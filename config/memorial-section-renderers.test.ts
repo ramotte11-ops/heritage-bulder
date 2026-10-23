@@ -58,6 +58,7 @@ describe("SECTION_RENDERERS", () => {
       RecitDeVieV2: "life-story/v2",
       TraditionsV2: "traditions/v2",
       GalleryIntemporel: "gallery",
+      SymbolicOfferingsV1Section: "symbolic-offerings/v1",
     };
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);

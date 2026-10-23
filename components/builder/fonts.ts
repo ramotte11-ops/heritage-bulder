@@ -132,3 +132,16 @@ export const avisNameSerif = EB_Garamond({
   variable: "--font-heritage-avis-name",
   display: "swap",
 });
+
+/**
+ * Offrandes symboliques V1 (pilote M1) — le logo, « Un geste » et le bouton
+ * des maquettes validées sont composés en EB Garamond 500. Graisse
+ * supplémentaire d'une famille déjà chargée, en export distinct comme
+ * `avisNameSerif` : les appelants existants ne chargent rien de plus.
+ */
+export const offeringsMediumSerif = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["500"],
+  variable: "--font-heritage-offerings-medium",
+  display: "swap",
+});

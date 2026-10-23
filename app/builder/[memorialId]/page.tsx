@@ -448,6 +448,7 @@ export default async function BuilderMemorialPage({
                 visibility: {
                   sections: resolveVisibilityEntries(
                     composeMemorial({ skin: memorialSkinId, skinVariant: memorialSkinVariant, content: journeyContent }),
+                    memorialLanguage,
                   ),
                   save: saveVisibility,
                 },

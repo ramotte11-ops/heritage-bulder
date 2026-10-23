@@ -22,6 +22,7 @@ export const SECTION_IDS = [
   "condolences",
   "video",
   "memoryMessage",
+  "symbolicOfferings",
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -78,4 +79,14 @@ export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinit
  * `EDITORIAL_CONTEXT_SECTIONS` above stays for the legacy Builder shell
  * (`lib/builder/builder-state.ts`, `lib/sections.ts`) only.
  */
-export const MEMORIAL_SECTIONS: readonly SectionDefinition[] = EDITORIAL_CONTEXT_SECTIONS.announcement;
+export const MEMORIAL_SECTIONS: readonly SectionDefinition[] = [
+  ...EDITORIAL_CONTEXT_SECTIONS.announcement,
+  /**
+   * M3 — Offrandes symboliques V1 (Preview du Builder seulement). Listée
+   * ICI et pas dans `EDITORIAL_CONTEXT_SECTIONS` : ces listes-là
+   * alimentent `memorials.enabled_sections` (shell Builder historique),
+   * dont la contrainte CHECK ne connaît pas cet identifiant. Rien n'est
+   * donc jamais écrit pour elle dans `enabled_sections`.
+   */
+  { id: "symbolicOfferings", core: false },
+];

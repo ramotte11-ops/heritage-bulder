@@ -23,6 +23,7 @@ describe("MEMORIAL_SECTION_ORDER", () => {
       "traditions",
       "gallery",
       "video",
+      "symbolicOfferings",
       "testimonials",
       "condolences",
     ]);
@@ -41,16 +42,23 @@ describe("MEMORIAL_SECTION_ORDER", () => {
   });
 });
 
-describe("RESERVED_MEMORIAL_SLOTS", () => {
-  it("reserves Offrandes symboliques right after condolences in the editorial order", () => {
-    expect(RESERVED_MEMORIAL_SLOTS).toEqual(["symbolicOfferings"]);
-    expect(MEMORIAL_EDITORIAL_ORDER).toEqual([...MEMORIAL_SECTION_ORDER, "symbolicOfferings"]);
+describe("Offrandes symboliques (M3)", () => {
+  it("sits between the Galerie and the Contributions des proches (PO decision of 20 October)", () => {
+    const offerings = MEMORIAL_SECTION_ORDER.indexOf("symbolicOfferings");
+    expect(offerings).toBeGreaterThan(MEMORIAL_SECTION_ORDER.indexOf("gallery"));
+    expect(MEMORIAL_SECTION_ORDER[offerings + 1]).toBe("testimonials");
   });
 
-  it("is never a real section id — no catalog entry, nothing the composition could render", () => {
-    for (const slot of RESERVED_MEMORIAL_SLOTS) {
-      expect(SECTION_IDS as readonly string[]).not.toContain(slot);
-      expect(MEMORIAL_SECTION_ORDER as readonly string[]).not.toContain(slot);
-    }
+  it("leaves the Vidéo where it was: right after the Galerie", () => {
+    const gallery = MEMORIAL_SECTION_ORDER.indexOf("gallery");
+    expect(MEMORIAL_SECTION_ORDER[gallery + 1]).toBe("video");
+  });
+});
+
+describe("RESERVED_MEMORIAL_SLOTS", () => {
+  it("holds no reservation any more: Offrandes symboliques became a real section", () => {
+    expect(RESERVED_MEMORIAL_SLOTS).toEqual([]);
+    expect(MEMORIAL_EDITORIAL_ORDER).toEqual(MEMORIAL_SECTION_ORDER);
+    expect(SECTION_IDS).toContain("symbolicOfferings");
   });
 });

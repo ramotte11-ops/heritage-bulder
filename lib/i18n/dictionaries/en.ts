@@ -95,6 +95,7 @@ export const en: Record<TranslationKey, string> = {
   "visibility.section.condolences": "Condolences",
   "visibility.section.video": "The video",
   "visibility.section.memoryMessage": "Memory messages",
+  "visibility.section.symbolicOfferings": "Symbolic offerings",
   "memorial.archive.deathNotice": "View the death announcement",
   "memorial.archive.ceremony": "View the ceremony details",
   "journey.screen.announcementText": "The announcement text",

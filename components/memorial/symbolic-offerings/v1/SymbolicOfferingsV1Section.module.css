@@ -1,0 +1,27 @@
+/*
+ * Offrandes symboliques V1 — M3 : mention de la Preview du Builder, posée
+ * au-dessus de la composition (les Masters restent intacts).
+ */
+
+.notice {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-block: 1px solid;
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.notice[data-variant="light"] {
+  background: #f3ead9;
+  border-color: #e0d3bd;
+  color: #5a4630;
+}
+
+.notice[data-variant="dark"] {
+  background: #1d1813;
+  border-color: #3a3026;
+  color: #e6d9c5;
+}

@@ -90,7 +90,7 @@ describe("the Preview's rendering path mounts the Gallery as a Memorial section"
   it("7 photographs: sections in canonical order; the Gallery is Signature 7+ with its CTA; one <h1> (the Hero's)", async () => {
     const { container, resolver } = await renderPreviewAssembly(7);
     const sections = [...container.querySelectorAll("[data-memorial-section]")].map((el) => el.getAttribute("data-memorial-section"));
-    expect(sections).toEqual(["hero", "deathNotice", "ceremony", "story", "gallery"]);
+    expect(sections).toEqual(["hero", "deathNotice", "ceremony", "story", "gallery", "symbolicOfferings"]);
     const gallery = container.querySelector<HTMLElement>("[data-memorial-section=gallery] [data-testid=a13-desktop-gallery]")!;
     await waitFor(() => expect(gallery.dataset.galleryState).toBe("G6_SIGNATURE_7PLUS"));
     expect(gallery.querySelector("[data-testid=cta-7plus]")!.textContent).toBe("Voir plus de souvenirs");

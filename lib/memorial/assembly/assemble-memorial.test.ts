@@ -57,7 +57,7 @@ describe("consumes composeMemorial", () => {
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
 
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(ids(assembled.sections)).toEqual(assembled.composition.renderable);
     for (const section of assembled.sections) {
       const composed = assembled.composition.sections.find((s) => s.sectionId === section.sectionId);
@@ -82,7 +82,7 @@ describe("consumes composeMemorial", () => {
       .filter((s) => s.state !== "renderable")
       .map((s) => s.sectionId);
     expect(nonRenderable).toContain("ceremony");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "symbolicOfferings"]);
     for (const id of nonRenderable) expect(ids(assembled.sections)).not.toContain(id);
   });
 
@@ -105,12 +105,12 @@ describe("consumes composeMemorial", () => {
       resolveMedia: recordingResolver().resolve,
     });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "symbolicOfferings"]);
 
     const heroOnly = await assembleMemorial(input(withA00(throughA02())), {
       resolveMedia: recordingResolver().resolve,
     });
-    expect(ids(heroOnly.sections)).toEqual(["hero"]);
+    expect(ids(heroOnly.sections)).toEqual(["hero", "symbolicOfferings"]);
   });
 
   it("QG decision: a resolved Récit with all three matters empty is assembled", async () => {
@@ -239,7 +239,7 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
 
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "story", "symbolicOfferings"]);
     expect(assembled.failures).toEqual([
       { sectionId: "ceremony", rendererKey: "CeremonyV2", reason: "contentUnreadable" },
     ]);
@@ -250,14 +250,14 @@ describe("fail closed — a non-Hero section is omitted and recorded", () => {
       throw new Error("boom");
     };
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "symbolicOfferings"]);
     expect(assembled.failures).toEqual([{ sectionId: "story", rendererKey: "RecitDeVieV2", reason: "adapterError" }]);
   });
 
   it("a renderer key with no adapter is a failure (noAdapter), never another renderer", async () => {
     delete adapters.DeathNoticeV2;
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "symbolicOfferings"]);
     expect(assembled.failures).toEqual([{ sectionId: "deathNotice", rendererKey: "DeathNoticeV2", reason: "noAdapter" }]);
   });
 
@@ -319,7 +319,7 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
   it("assembles Traditions right after the Récit, through TraditionsV2, at section level", async () => {
     const assembled = await assembleMemorial(input(fullAnnouncementWithTraditions()), { resolveMedia: recordingResolver().resolve });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "traditions", "symbolicOfferings"]);
     const traditions = assembled.sections.find((section) => section.sectionId === "traditions");
     expect(traditions?.rendererKey).toBe("TraditionsV2");
     expect(traditions?.rendererKey === "TraditionsV2" && traditions.props.headingLevel).toBe("section");
@@ -334,7 +334,7 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
 
   it("no repère (A09 skipped): no Traditions section, no failure, no gap", async () => {
     const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(assembled.failures).toEqual([]);
   });
 
@@ -342,7 +342,7 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
     const hidden = setSectionVisibility(fullAnnouncementWithTraditions(), "traditions", false, "intemporel");
     if (!hidden.ok) throw new Error("fixture: traditions not hideable");
     const assembled = await assembleMemorial(input(hidden.content), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(ids(assembled.archivedSections)).toEqual([]);
   });
 
@@ -350,7 +350,7 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
     adapters.TraditionsV2 = async () => ({ ok: false, reason: "contentUnreadable" });
     const assembled = await assembleMemorial(input(fullAnnouncementWithTraditions()), { resolveMedia: recordingResolver().resolve });
     expect(assembled.status).toBe("assembled");
-    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     expect(assembled.failures).toEqual([{ sectionId: "traditions", rendererKey: "TraditionsV2", reason: "contentUnreadable" }]);
   });
 
@@ -361,6 +361,6 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
       guidedFlow: { ...(base as { guidedFlow?: object }).guidedFlow, A00: { status: "completed", answer: "no" } },
     } as MemorialContent;
     const assembled = await assembleMemorial(input(noNotice), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "symbolicOfferings"]);
   });
 });

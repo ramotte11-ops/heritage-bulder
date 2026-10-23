@@ -10,6 +10,7 @@ import { RecitDeVieIntemporel } from "@/components/memorial/life-story/RecitDeVi
 import { RecitDeVieV2 } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import { TraditionsV2 } from "@/components/memorial/traditions/v2/TraditionsV2";
 import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntemporel";
+import { SymbolicOfferingsV1Section } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsV1Section";
 
 /**
  * Étape 2 — Assembleur du Memorial: the renderer key → real component
@@ -17,6 +18,9 @@ import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntempor
  * future assembler". Exhaustive over `RendererKey`: a key added to
  * `RENDERER_KEYS` without its component fails to typecheck. Each entry
  * is the validated renderer itself — no wrapper, no fork, no fallback.
+ * One exception, by design: `SymbolicOfferingsV1Section` is the gate
+ * that keeps the validated `SymbolicOfferingsV1` inside the Builder
+ * Preview (it draws nothing elsewhere).
  */
 export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<RendererPropsMap[K]> } = {
   HeroIntemporel,
@@ -28,4 +32,5 @@ export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<R
   RecitDeVieV2,
   TraditionsV2,
   GalleryIntemporel,
+  SymbolicOfferingsV1Section,
 };

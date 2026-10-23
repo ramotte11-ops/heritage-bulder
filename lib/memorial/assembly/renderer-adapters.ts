@@ -12,6 +12,7 @@ import type { RecitDeVieIntemporelProps } from "@/components/memorial/life-story
 import type { RecitDeVieV2Props } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import type { TraditionsV2Props } from "@/components/memorial/traditions/v2/TraditionsV2";
 import type { GalleryIntemporelProps } from "@/components/memorial/gallery/GalleryIntemporel";
+import type { SymbolicOfferingsV1SectionProps } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsV1Section";
 import { inspectHero, isHeroContentComplete } from "@/lib/memorial/hero";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
 import { inspectCeremony } from "@/lib/memorial/ceremony";
@@ -21,6 +22,7 @@ import { inspectLegacy } from "@/lib/memorial/legacy";
 import { inspectTraditions } from "@/lib/memorial/traditions";
 import { inspectGallery } from "@/lib/memorial/gallery-content";
 import { translateWith } from "@/lib/i18n/translate";
+import { isSectionAvailableInLanguage } from "@/lib/memorial/section-languages";
 import type { A13FamilyMedia } from "@/lib/memorial/gallery/gallery-desktop-runtime";
 import type { MediaResolver } from "./media-resolver";
 
@@ -55,6 +57,7 @@ export interface RendererPropsMap {
   RecitDeVieV2: RecitDeVieV2Props;
   TraditionsV2: TraditionsV2Props;
   GalleryIntemporel: GalleryIntemporelProps;
+  SymbolicOfferingsV1Section: SymbolicOfferingsV1SectionProps;
 }
 
 /** One assembled section: a renderer key and the props for exactly
@@ -332,6 +335,20 @@ export const adaptGalleryIntemporel: RendererAdapter<"GalleryIntemporel"> = asyn
   };
 };
 
+/**
+ * Offrandes symboliques V1 (M3, textes FR/EN/ES en F1). No family matter:
+ * only the skin variant and the memorial's language reach the renderer —
+ * its compositions, texts and assets are HERITAGE's own. A language
+ * without validated wording (`isSectionAvailableInLanguage`) gets no
+ * rubrique (`textUnavailable`, fail closed) — never an unvalidated
+ * translation.
+ */
+export const adaptSymbolicOfferingsV1Section: RendererAdapter<"SymbolicOfferingsV1Section"> = async (context) => {
+  if (context.skin !== "intemporel") return refuse("skinMismatch");
+  if (!isSectionAvailableInLanguage("symbolicOfferings", context.language)) return refuse("textUnavailable");
+  return { ok: true, props: { skinVariant: context.skinVariant, language: context.language } };
+};
+
 /** Exhaustive over `RendererKey`: a key added to `RENDERER_KEYS` without
  * an adapter fails to typecheck. */
 export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K> } = {
@@ -344,4 +361,5 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   RecitDeVieV2: adaptRecitDeVieV2,
   TraditionsV2: adaptTraditionsV2,
   GalleryIntemporel: adaptGalleryIntemporel,
+  SymbolicOfferingsV1Section: adaptSymbolicOfferingsV1Section,
 };

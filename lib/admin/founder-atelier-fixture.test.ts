@@ -20,6 +20,7 @@ describe("Founder Atelier fixture", () => {
       ["story", "RecitDeVieV2"],
       ["traditions", "TraditionsV2"],
       ["gallery", "GalleryIntemporel"],
+      ["symbolicOfferings", "SymbolicOfferingsV1Section"],
     ]);
     expect(assembled.failures).toEqual([]);
   });

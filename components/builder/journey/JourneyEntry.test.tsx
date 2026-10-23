@@ -788,6 +788,32 @@ describe("« Gérer les rubriques visibles »", () => {
     routerRefresh.mockReset();
   });
 
+  it("Offrandes symboliques (M3.1): one more row, masked and shown again like the others", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(
+      <PreviewFlushRegistryContext.Provider value={createPreviewFlushRegistry()}>
+        <RouteJourneyProvider
+          language="fr"
+          snapshot={resolveJourney(PARTIAL)}
+          visibility={{
+            sections: [...ENTRIES, { sectionId: "symbolicOfferings" as const, hidden: false, ready: true, archivable: false }],
+            save,
+          }}
+          builderPath="/builder/m-1"
+        >
+          <BuilderScreenNav />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+    openPanel();
+    manage();
+    expect(row("symbolicOfferings").textContent).toContain("Les offrandes symboliques");
+    expect(row("symbolicOfferings").textContent).toContain("Visible");
+    fireEvent.click(screen.getByRole("button", { name: "Masquer — Les offrandes symboliques" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("symbolicOfferings", false, 0));
+    routerRefresh.mockReset();
+  });
+
   it("« Réafficher » saves (section, true)", async () => {
     const save = renderVisibility();
     manage();

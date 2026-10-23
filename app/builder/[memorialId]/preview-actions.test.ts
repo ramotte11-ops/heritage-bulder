@@ -134,7 +134,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
     expect(result.assembled.status).toBe("assembled");
-    expect(result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story"]);
+    expect(result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "deathNotice", "ceremony", "story", "symbolicOfferings"]);
     const hero = result.assembled.sections.find((s) => s.rendererKey === "HeroIntemporel");
     expect(hero?.props).toMatchObject({ photo: { readUrl: FIXTURE_READ_URL }, language: "fr", skinVariant: "light" });
   });
@@ -158,7 +158,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
   it("progression: after T08 only the Hero", async () => {
     resumable(throughA02());
     const result = await loadMemorialPreviewAction("claimed-id");
-    expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero"]);
+    expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual(["hero", "symbolicOfferings"]);
   });
 
   it("B02-L2 — a memorial with no editorial context (every new draft) gets its Preview too", async () => {
@@ -169,6 +169,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
       "deathNotice",
       "ceremony",
       "story",
+      "symbolicOfferings",
     ]);
   });
 
@@ -184,6 +185,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
       "hero",
       "ceremony",
       "story",
+      "symbolicOfferings",
     ]);
     expect(saveDraftContent).not.toHaveBeenCalled();
   });

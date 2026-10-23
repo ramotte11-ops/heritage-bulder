@@ -16,6 +16,7 @@ import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memoria
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
+import { OfferingsPreviewProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-preview";
 import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
@@ -292,7 +293,11 @@ export function BuilderPreviewHost({
             </button>
             <ChangeAmbianceLink className={styles.back} />
           </div>
-          <MemorialAssembly assembled={assembled} />
+          {/* M3 — the one place Offrandes symboliques exist: free tries,
+              simulated server response, nothing recorded. */}
+          <OfferingsPreviewProvider>
+            <MemorialAssembly assembled={assembled} />
+          </OfferingsPreviewProvider>
         </main>
       )}
     </>

@@ -159,6 +159,10 @@ type ReadinessRule = (content: MemorialContent) => boolean;
  *   has at least one confirmed repère (section-selection's content signal).
  * - gallery (dettes D2–D4): a valid `content.gallery` whose photograph
  *   count selects an A13 Gallery state (2+ photographs) — `hasGalleryMatter`.
+ * - symbolicOfferings (M3): nothing for the family to fill in (the three
+ *   gestures are HERITAGE's validated compositions), but each is offered
+ *   « en sa mémoire »: ready with the Hero (T08), never before — so the
+ *   rubrique never exists without the person it honours.
  */
 export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule>>> = {
   hero: isPageEComplete,
@@ -174,6 +178,7 @@ export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule
   story: isPersonSheetResolved,
   traditions: isA09Resolved,
   gallery: hasGalleryMatter,
+  symbolicOfferings: isPageEComplete,
 };
 
 function hasText(value: string | null): boolean {
