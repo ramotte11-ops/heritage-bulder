@@ -102,6 +102,11 @@ const SERVER_ONLY_MODULES = [
   "lib/adapters/supabase/activation-rate-limiter.ts",
   "lib/entitlement/activate-heritage-access.ts",
   "lib/entitlement/activation-session.ts",
+  // Offrandes symboliques C1: the adapter calls the service-role-only
+  // recording RPC, and the server wiring constructs the service-role
+  // client. No browser bundle may reach either; C1 wires them to no route.
+  "lib/adapters/supabase/symbolic-offering-repository.ts",
+  "lib/memorial/symbolic-offerings/server-record-symbolic-offering.ts",
   // Mission 019B: the Etsy channel's server half.
   //
   // `config.ts` reads ETSY_API_SHARED_SECRET and the bootstrap refresh

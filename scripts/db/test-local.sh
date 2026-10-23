@@ -2557,6 +2557,181 @@ POSTFLIGHT_029B_FAILURES=$($DB -t -A -f "$REPO_ROOT/supabase/checks/029b_postfli
 check "029b_postflight.sql reports zero ECHEC against these migrations" "0" "$POSTFLIGHT_029B_FAILURES"
 
 
+# --- Offrandes symboliques V1 — C1 -----------------------------------
+
+echo ""
+echo "== Offrandes symboliques C1: anonymous gestures, closed-by-default lock, ceilings =="
+
+SO_FN='public.record_symbolic_offering_v1(text,text,uuid)'
+SO_TABLES="symbolic_offerings symbolic_offering_eligibility symbolic_offering_settings symbolic_offering_rate_limits"
+
+# Privileges: nothing for anyone, except the owner's RLS-filtered read.
+for t in $SO_TABLES; do
+  check "RLS is enabled on $t" "t" "$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.$t'::regclass;")"
+  check "PUBLIC has no privilege on $t" "f" "$($DB -t -A -c "select exists (select 1 from aclexplode((select relacl from pg_class where oid='public.$t'::regclass)) where grantee=0);")"
+  for role in anon authenticated service_role; do
+    for privilege in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
+      expected="f"
+      if [ "$t" = "symbolic_offerings" ] && [ "$role" = "authenticated" ] && [ "$privilege" = "SELECT" ]; then expected="t"; fi
+      check "$role $privilege on $t" "$expected" "$($DB -t -A -c "select has_table_privilege('$role','public.$t','$privilege');")"
+    done
+  done
+done
+for role in anon authenticated; do
+  check "$role cannot execute record_symbolic_offering_v1" "f" "$($DB -t -A -c "select has_function_privilege('$role','$SO_FN','EXECUTE');")"
+done
+check "service_role alone can execute record_symbolic_offering_v1" "t" "$($DB -t -A -c "select has_function_privilege('service_role','$SO_FN','EXECUTE');")"
+check "PUBLIC has no execute privilege on record_symbolic_offering_v1" "f" "$($DB -t -A -c "select exists (select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid='$SO_FN'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE');")"
+check "record_symbolic_offering_v1 is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" "$($DB -t -A -c "select prosecdef || '|' || array_to_string(proconfig, ',') from pg_proc where oid='$SO_FN'::regprocedure;")"
+
+# Anonymity by construction: the exact column set, nothing about a visitor.
+check "symbolic_offerings carries no visitor data (exact column set)" "created_at,id,idempotency_key,kind,memorial_id,read_at" "$($DB -t -A -c "select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_schema='public' and table_name='symbolic_offerings';")"
+
+# Configurable, provisional ceilings.
+check "provisional ceilings are seeded (30 per hour, 200 per day)" "30|200" "$($DB -t -A -c "select max_per_hour || '|' || max_per_day from symbolic_offering_settings;")"
+expect_error "a second settings row is rejected" "insert into symbolic_offering_settings (id, max_per_hour, max_per_day) values (false, 1, 1);"
+expect_error "an hourly ceiling above the daily one is rejected" "update symbolic_offering_settings set max_per_hour = 300;"
+expect_error "a zero ceiling is rejected" "update symbolic_offering_settings set max_per_day = 0;"
+
+# Fixtures: one owner with a published Intemporel memorial, one stranger.
+SO_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'offrandes-owner@example.test') returning id;")
+SO_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'offrandes-other@example.test') returning id;")
+SO_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$SO_OWNER';")
+SO_OTHER_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$SO_OTHER';")
+
+so_memorial() {
+  # $1 slug, $2 status, $3 snapshot content (empty = no snapshot)
+  local ent mem
+  ent=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+  mem=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$SO_OWNER','$ent','person','announcement','intemporel','light','fr','$1','$2',case when '$2' in ('published','editing','archived') then now() else null end) returning id;")
+  if [ -n "$3" ]; then
+    $DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$mem', '$3');" >/dev/null
+  fi
+  echo "$mem"
+}
+so_open() {
+  $DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at) values ('$1', now() - interval '1 minute');" >/dev/null
+}
+so_record() {
+  # $1 slug, $2 kind, $3 idempotency key
+  svc "select outcome from record_symbolic_offering_v1('$1','$2','$3');"
+}
+so_count() {
+  $DB -t -A -c "select count(*) from symbolic_offerings where memorial_id='$1';"
+}
+SNAP='{"hero":{"displayName":"Jeanne"}}'
+
+SO_MEM=$(so_memorial offrandes-c1 published "$SNAP")
+
+# Closed by default.
+check "the eligibility lock starts empty" "0" "$($DB -t -A -c "select count(*) from symbolic_offering_eligibility;")"
+check "a published memorial with no eligibility row refuses a gesture" "refused" "$(so_record offrandes-c1 bougie "$(svc "select gen_random_uuid();")")"
+check "the closed refusal stores no gesture" "0" "$(so_count "$SO_MEM")"
+check "the closed refusal never charges the memorial's counter" "0" "$($DB -t -A -c "select count(*) from symbolic_offering_rate_limits where memorial_id='$SO_MEM';")"
+
+# Opened: recorded once, idempotently.
+so_open "$SO_MEM"
+SO_KEY=$(svc "select gen_random_uuid();")
+check "an eligible published memorial records a gesture" "recorded" "$(so_record offrandes-c1 bougie "$SO_KEY")"
+check "the gesture is stored anonymous, unread, with its kind" "bougie|true" "$($DB -t -A -c "select kind || '|' || (read_at is null) from symbolic_offerings where memorial_id='$SO_MEM';")"
+check "the same idempotency key is reported as a duplicate" "duplicate" "$(so_record offrandes-c1 bougie "$SO_KEY")"
+check "a duplicate stores nothing new" "1" "$(so_count "$SO_MEM")"
+check "a duplicate is not counted against the ceilings" "1|1" "$($DB -t -A -c "select hour_count || '|' || day_count from symbolic_offering_rate_limits where memorial_id='$SO_MEM';")"
+check "each kind is accepted (lys)" "recorded" "$(so_record offrandes-c1 lys "$(svc "select gen_random_uuid();")")"
+check "each kind is accepted (coeur)" "recorded" "$(so_record offrandes-c1 coeur "$(svc "select gen_random_uuid();")")"
+
+# Concurrent retries of one gesture: exactly one row.
+SO_RACE_KEY=$(svc "select gen_random_uuid();")
+for i in 1 2 3 4 5; do
+  (so_record offrandes-c1 coeur "$SO_RACE_KEY" > "$PGDATA_DIR/so_race_$i") &
+done
+wait
+SO_RACE_OUTCOMES=$(cat "$PGDATA_DIR"/so_race_* | sort | uniq -c | awk '{print $2 "=" $1}' | tr '\n' ' ' | sed 's/ $//')
+check "five concurrent retries of one gesture: one recorded, four duplicates" "duplicate=4 recorded=1" "$SO_RACE_OUTCOMES"
+check "five concurrent retries store exactly one gesture" "1" "$($DB -t -A -c "select count(*) from symbolic_offerings where idempotency_key='$SO_RACE_KEY';")"
+
+# Malformed calls raise (a server wiring bug, never a visitor answer).
+svc_expect_error "an unknown kind is rejected" "select * from record_symbolic_offering_v1('offrandes-c1','rose',gen_random_uuid());" "invalid symbolic offering request"
+svc_expect_error "a missing idempotency key is rejected" "select * from record_symbolic_offering_v1('offrandes-c1','lys',null);" "invalid symbolic offering request"
+svc_expect_error "a blank slug is rejected" "select * from record_symbolic_offering_v1('  ','lys',gen_random_uuid());" "invalid symbolic offering request"
+check "an unknown slug is refused" "refused" "$(so_record offrandes-inconnu lys "$(svc "select gen_random_uuid();")")"
+
+# Only a published memorial, only what the live snapshot shows.
+for st in draft ready editing archived; do
+  m=$(so_memorial "offrandes-c1-$st" "$st" "$SNAP")
+  so_open "$m"
+  check "a $st memorial refuses a gesture even when eligible" "refused" "$(so_record "offrandes-c1-$st" lys "$(svc "select gen_random_uuid();")")"
+  check "the $st refusal stores nothing" "0" "$(so_count "$m")"
+done
+SO_NOSNAP=$(so_memorial offrandes-c1-sans-instantane published "")
+so_open "$SO_NOSNAP"
+check "a published memorial without a live snapshot refuses" "refused" "$(so_record offrandes-c1-sans-instantane lys "$(svc "select gen_random_uuid();")")"
+SO_HIDDEN=$(so_memorial offrandes-c1-masquees published '{"hero":{"displayName":"Jeanne"},"presentation":{"hiddenSections":["story","symbolicOfferings"]}}')
+so_open "$SO_HIDDEN"
+check "Offrandes hidden in the published snapshot refuse a gesture" "refused" "$(so_record offrandes-c1-masquees lys "$(svc "select gen_random_uuid();")")"
+$DB -c "update memorial_drafts set content='{\"presentation\":{\"hiddenSections\":[\"symbolicOfferings\"]}}' where memorial_id='$SO_MEM';" >/dev/null
+check "hiding them in the draft only does not close the published memorial" "recorded" "$(so_record offrandes-c1 lys "$(svc "select gen_random_uuid();")")"
+SO_MALFORMED=$(so_memorial offrandes-c1-malformee published '{"hero":{"displayName":"Jeanne"},"presentation":{"hiddenSections":"symbolicOfferings"}}')
+so_open "$SO_MALFORMED"
+check "a malformed hiddenSections counts as nothing hidden (same rule as the app)" "recorded" "$(so_record offrandes-c1-malformee lys "$(svc "select gen_random_uuid();")")"
+SO_OTHER_SKIN_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','juif') returning id;")
+SO_OTHER_SKIN=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$SO_OWNER','$SO_OTHER_SKIN_ENT','person','announcement','juif','light','fr','offrandes-c1-juif','published',now()) returning id;")
+$DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$SO_OTHER_SKIN', '$SNAP');" >/dev/null
+so_open "$SO_OTHER_SKIN"
+check "a memorial of another skin refuses (the rubrique exists for Intemporel only)" "refused" "$(so_record offrandes-c1-juif lys "$(svc "select gen_random_uuid();")")"
+
+# Eligibility window.
+SO_FUTURE=$(so_memorial offrandes-c1-futur published "$SNAP")
+$DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at) values ('$SO_FUTURE', now() + interval '1 day');" >/dev/null
+check "an eligibility that has not opened yet refuses" "refused" "$(so_record offrandes-c1-futur lys "$(svc "select gen_random_uuid();")")"
+expect_error "an eligibility closing before it opens is rejected" "update symbolic_offering_eligibility set closes_at = opens_at - interval '1 second' where memorial_id='$SO_FUTURE';"
+
+# The end of the right: no new gesture, nothing received is deleted.
+SO_BEFORE_END=$(so_count "$SO_MEM")
+$DB -c "update symbolic_offering_eligibility set opens_at = now() - interval '2 days', closes_at = now() - interval '1 second' where memorial_id='$SO_MEM';" >/dev/null
+check "after the right has ended, a new gesture is refused" "refused" "$(so_record offrandes-c1 coeur "$(svc "select gen_random_uuid();")")"
+check "after the right has ended, every gesture received is kept" "$SO_BEFORE_END" "$(so_count "$SO_MEM")"
+check "after the right has ended, the owner still reads every gesture" "$SO_BEFORE_END" "$(as_owner "$SO_AUTH" "select count(*) from symbolic_offerings where memorial_id='$SO_MEM';")"
+check "no trigger exists on the Offrandes tables (nothing deletes on expiry)" "0" "$($DB -t -A -c "select count(*) from pg_trigger where not tgisinternal and tgrelid in ('public.symbolic_offerings'::regclass,'public.symbolic_offering_eligibility'::regclass,'public.symbolic_offering_settings'::regclass,'public.symbolic_offering_rate_limits'::regclass);")"
+
+# Owner-only reads.
+check "the owner reads the gestures of their memorials" "t" "$(as_owner "$SO_AUTH" "select count(*) > 0 from symbolic_offerings;")"
+check "another owner reads none of them" "0" "$(as_owner "$SO_OTHER_AUTH" "select count(*) from symbolic_offerings;")"
+expect_error "a visitor cannot read gestures" "set role anon; select count(*) from symbolic_offerings;"
+expect_error "a visitor cannot insert a gesture directly" "set role anon; insert into symbolic_offerings (memorial_id, kind, idempotency_key) values ('$SO_MEM','bougie',gen_random_uuid());"
+expect_error "a visitor cannot call the recording function" "set role anon; select * from record_symbolic_offering_v1('offrandes-c1','bougie',gen_random_uuid());"
+expect_error "the owner cannot insert a gesture directly" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; insert into symbolic_offerings (memorial_id, kind, idempotency_key) values ('$SO_MEM','bougie',gen_random_uuid());"
+expect_error "the owner cannot mark a gesture read in C1" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; update symbolic_offerings set read_at = now() where memorial_id='$SO_MEM';"
+expect_error "the owner cannot delete a gesture" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; delete from symbolic_offerings where memorial_id='$SO_MEM';"
+expect_error "the owner cannot open eligibility" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; insert into symbolic_offering_eligibility (memorial_id) values ('$SO_FUTURE');"
+expect_error "service_role cannot open eligibility directly" "set role service_role; insert into symbolic_offering_eligibility (memorial_id) values ('$SO_NOSNAP');"
+expect_error "service_role cannot loosen the ceilings" "set role service_role; update symbolic_offering_settings set max_per_hour = 1000, max_per_day = 1000;"
+
+# Table-level integrity.
+expect_error "an unknown kind cannot be stored" "insert into symbolic_offerings (memorial_id, kind, idempotency_key) values ('$SO_MEM','rose',gen_random_uuid());"
+expect_error "one idempotency key cannot be stored twice for a memorial" "insert into symbolic_offerings (memorial_id, kind, idempotency_key) values ('$SO_MEM','lys','$SO_KEY');"
+expect_error "read_at cannot precede created_at" "insert into symbolic_offerings (memorial_id, kind, idempotency_key, created_at, read_at) values ('$SO_MEM','lys',gen_random_uuid(), now(), now() - interval '1 day');"
+
+# Ceilings: configurable, per memorial, refusals never counted.
+$DB -c "update symbolic_offering_settings set max_per_hour = 2, max_per_day = 3;" >/dev/null
+SO_RATE=$(so_memorial offrandes-c1-plafond published "$SNAP")
+so_open "$SO_RATE"
+check "ceiling: 1st gesture of the hour" "recorded" "$(so_record offrandes-c1-plafond bougie "$(svc "select gen_random_uuid();")")"
+check "ceiling: 2nd gesture of the hour" "recorded" "$(so_record offrandes-c1-plafond lys "$(svc "select gen_random_uuid();")")"
+check "ceiling: the hourly ceiling refuses the 3rd" "rate_limited" "$(so_record offrandes-c1-plafond coeur "$(svc "select gen_random_uuid();")")"
+check "ceiling: the refusal stores nothing and is not counted" "2|2|2" "$($DB -t -A -c "select (select count(*) from symbolic_offerings where memorial_id='$SO_RATE') || '|' || hour_count || '|' || day_count from symbolic_offering_rate_limits where memorial_id='$SO_RATE';")"
+check "ceiling: another memorial keeps its own budget" "recorded" "$(so_record offrandes-c1-malformee coeur "$(svc "select gen_random_uuid();")")"
+$DB -c "update symbolic_offering_rate_limits set hour_window_started_at = now() - interval '61 minutes' where memorial_id='$SO_RATE';" >/dev/null
+check "ceiling: a new hour reopens the hourly budget" "recorded" "$(so_record offrandes-c1-plafond coeur "$(svc "select gen_random_uuid();")")"
+$DB -c "update symbolic_offering_rate_limits set hour_window_started_at = now() - interval '61 minutes' where memorial_id='$SO_RATE';" >/dev/null
+check "ceiling: the daily ceiling still refuses in a fresh hour" "rate_limited" "$(so_record offrandes-c1-plafond coeur "$(svc "select gen_random_uuid();")")"
+$DB -c "update symbolic_offering_rate_limits set day_window_started_at = now() - interval '25 hours' where memorial_id='$SO_RATE';" >/dev/null
+check "ceiling: a new day reopens the daily budget" "recorded" "$(so_record offrandes-c1-plafond coeur "$(svc "select gen_random_uuid();")")"
+$DB -c "delete from symbolic_offering_settings;" >/dev/null
+check "without a settings row every gesture is refused (fail closed)" "refused" "$(so_record offrandes-c1-plafond lys "$(svc "select gen_random_uuid();")")"
+$DB -c "insert into symbolic_offering_settings (max_per_hour, max_per_day) values (30, 200);" >/dev/null
+check "the provisional ceilings are restored for the rest of the suite" "30|200" "$($DB -t -A -c "select max_per_hour || '|' || max_per_day from symbolic_offering_settings;")"
+
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
