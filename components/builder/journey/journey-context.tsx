@@ -38,10 +38,18 @@ export interface JourneyNavigation {
   skinVariant: SkinVariant | null;
   /** Saves the current screen's pending autosave, then opens `id` for
    * revision. Resolves `false` (and navigates nowhere) if that save
-   * fails — the screen's own AutosaveIndicator already shows why. */
-  openScreen: (id: JourneyScreenId) => Promise<boolean>;
-  /** Saves, then goes back to where the family stopped. */
+   * fails — the screen's own AutosaveIndicator already shows why.
+   * `options.returnToPreview`: opened from the Preview (« Changer
+   * l'ambiance ») — the revised screen then leads back to the Preview.
+   * `options.startTransition`: the caller's transition, so that its
+   * pending state lasts until the route has brought the screen. */
+  openScreen: (id: JourneyScreenId, options?: OpenScreenOptions) => Promise<boolean>;
+  /** Saves, then goes back to where the family stopped (back to the
+   * Preview when the screen was opened from it). */
   resume: () => Promise<boolean>;
+  /** This screen was opened from the Preview: « Continuer » and the way
+   * back lead to the Preview again (`?apercu=1`). Absent → `false`. */
+  returnToPreview?: boolean;
   /** Explicitly leaves rubrique revision and resumes the normal route. */
   finishReview: () => Promise<boolean>;
   /** Called by a step once its own Continue (or skip) is saved. */
@@ -56,6 +64,14 @@ export interface JourneyNavigation {
    * host that does not provide it: the QG demo, unit tests). */
   visibility?: JourneyVisibility | null;
 }
+
+export interface OpenScreenOptions {
+  returnToPreview?: boolean;
+  startTransition?: (navigate: () => void) => void;
+}
+
+/** The query flag that reopens the Preview when the route arrives (validated by the page). */
+export const RETURN_TO_PREVIEW_QUERY = "apercu=1";
 
 export interface JourneyVisibility {
   /** Computed server-side from the composition (`resolveVisibilityEntries`). */
@@ -104,11 +120,14 @@ export function RouteJourneyProvider({
   skinVariant = null,
   visibility = null,
   builderPath,
+  returnToPreview = false,
   children,
 }: {
   language: Language;
   snapshot: JourneySnapshot;
   skinVariant?: SkinVariant | null;
+  /** The revised screen was opened from the Preview (validated server-side). */
+  returnToPreview?: boolean;
   /** « Gérer les rubriques visibles »: the rows, and the bound
    * `saveSectionVisibilityAction` for the AUTHORIZED memorial. */
   visibility?: {
@@ -233,17 +252,23 @@ export function RouteJourneyProvider({
       snapshot,
       skinVariant,
       backNavigationFailed,
-      async openScreen(id) {
+      returnToPreview,
+      async openScreen(id, options = {}) {
         if (!(await canLeaveCurrentScreen())) return false;
         const section = journeySectionForScreen(id);
-        const path = `${builderPath}?etape=${id}&rubrique=${section}`;
-        if (snapshot.reviewingSection === null) router.push(path);
-        else router.replace(path);
+        const path = `${builderPath}?etape=${id}&rubrique=${section}${options.returnToPreview ? `&${RETURN_TO_PREVIEW_QUERY}` : ""}`;
+        const navigate = () => {
+          if (snapshot.reviewingSection === null) router.push(path);
+          else router.replace(path);
+        };
+        if (options.startTransition) options.startTransition(navigate);
+        else navigate();
         return true;
       },
       async resume() {
         if (!(await canLeaveCurrentScreen())) return false;
-        if (snapshot.reviewingSection === null) router.push(builderPath);
+        if (returnToPreview) router.replace(`${builderPath}?${RETURN_TO_PREVIEW_QUERY}`);
+        else if (snapshot.reviewingSection === null) router.push(builderPath);
         else router.replace(builderPath);
         return true;
       },
@@ -253,7 +278,9 @@ export function RouteJourneyProvider({
         return true;
       },
       finishStep() {
-        if (snapshot.revising !== null) {
+        // Opened from the Preview: once saved, back to the Preview (the new choice in it).
+        if (snapshot.revising !== null && returnToPreview) router.replace(`${builderPath}?${RETURN_TO_PREVIEW_QUERY}`);
+        else if (snapshot.revising !== null) {
           router.replace(sectionPath(builderPath, snapshot.reviewingSection ?? journeySectionForScreen(snapshot.revising)));
         }
         else router.refresh();
@@ -288,6 +315,7 @@ export function RouteJourneyProvider({
     skinVariant,
     visibility,
     builderPath,
+    returnToPreview,
     router,
     pendingInputs,
     draftRevision,

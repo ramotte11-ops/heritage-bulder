@@ -50,6 +50,8 @@ export const en: Record<TranslationKey, string> = {
   "journey.resume": "Resume where I left off",
   "journey.finishReview": "Finish editing",
   "journey.revising": "You are changing a step you already filled in. “Continue” saves your changes and takes you back to this section.",
+  "journey.revisingFromPreview": "Choose the tribute’s ambiance. “Continue” saves it and takes you back to the preview.",
+  "journey.backToPreview": "Back to the preview without changes",
   "journey.review": "Review",
   "journey.continueHere": "Continue here",
   "journey.saveFailed": "Your latest changes are not saved yet. Please try again in a moment.",
