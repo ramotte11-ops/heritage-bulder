@@ -325,6 +325,15 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
   const captionMeasure = useRef<ViewerCaptionMeasure | null>(null);
   const captionFont = useRef<ViewerCaptionFontGate | null>(null);
   const [geometry, setGeometry] = useState<ViewerGeometry | null>(null);
+  // Optimisation photographique V1 — the frame opens on time (same 2.5 s
+  // bound as before), but the photograph is revealed only WHOLE: fully
+  // loaded, painted decoded (`decoding="sync"`). Until then the print's paper alone (a discreet state);
+  // after a failure (an expired signed URL, the network) never a
+  // half-drawn image nor a broken-image icon. Visibility only: the
+  // geometry, the timings and the opening are unchanged.
+  const [photoState, setPhotoState] = useState<"loading" | "ready" | "error">("loading");
+  const photoWhole = useRef(false);
+  const photoRef = useRef<HTMLImageElement>(null);
   const caption = normalizeViewerCaption(media.caption);
 
   const compute = useCallback(() => {
@@ -377,6 +386,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       const tasks: Promise<unknown>[] = [
         decodeImage(media.src, 2500).then((img) => {
           if (img.naturalWidth && img.naturalHeight) natural.current = { w: img.naturalWidth, h: img.naturalHeight };
+          photoWhole.current = img.complete && img.naturalWidth > 0;
         }),
         ...[A13_VIEWER_ASSETS.environment[theme].src, A13_VIEWER_ASSETS.paper[theme].src, A13_VIEWER_ASSETS.edgeMask.src].map((src) => decodeImage(src, 2500)),
       ];
@@ -391,7 +401,9 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
         );
       }
       await Promise.all(tasks);
-      if (alive) setGeometry(compute());
+      if (!alive) return;
+      if (photoWhole.current) setPhotoState("ready");
+      setGeometry(compute());
     })();
     return () => {
       alive = false;
@@ -560,6 +572,16 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
     };
   }, [close]);
 
+  // The photograph arrived after the opening: reveal it with a short fade.
+  // `decoding="sync"` already keeps the browser from painting it before it
+  // is decoded; no extra decode is forced (it would alter resampled pixels).
+  function onPhotoLoad() {
+    const img = photoRef.current;
+    if (!img || photoState !== "loading" || closing.current) return;
+    setPhotoState("ready");
+    if (!reducedMotion() && canAnimate(img)) img.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });
+  }
+
   const mat = A13_VIEWER_MATERIAL[theme];
   const rootStyle = {
     "--viewer-environment": mat.environment,
@@ -596,11 +618,13 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
             className={styles.print}
             data-viewer-print=""
             data-viewer-caption-widening={g.captionWidening ? (g.captionWidening.stop ? "stop" : g.captionWidening.profile) : undefined}
+            aria-busy={photoState === "loading" ? true : undefined}
             style={{ left: placed!.left, top: Math.round(g.paper.y), width: g.paper.w, height: g.paper.h }}
           >
             <Paper g={g} theme={theme} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              ref={photoRef}
               className={styles.photo}
               data-viewer-photo=""
               src={media.src}
@@ -610,6 +634,9 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
               style={{ left: placed!.photoLeft, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
               draggable={false}
               decoding="sync"
+              data-viewer-photo-state={photoState}
+              onLoad={onPhotoLoad}
+              onError={() => setPhotoState("error")}
             />
             {g.caption ? (
               // Same text node, class, size and width as the measured clone: the browser lays out the measured lines.

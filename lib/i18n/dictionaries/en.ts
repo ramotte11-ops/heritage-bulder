@@ -146,6 +146,7 @@ export const en: Record<TranslationKey, string> = {
   "hero.photoChangeLabel": "Change photo",
   "hero.photoCroppingNote": "Don't worry about the framing for now — you'll be able to adjust it right after.",
   "hero.photoUploading": "Adding the photo…",
+  "hero.photoPreparing": "Preparing the photo…",
   "hero.photoAlt": "Photo chosen for the tribute",
   "hero.photoErrorTooLarge": "This photo is too large. Please try another one.",
   "hero.photoErrorUnsupportedFormat":
@@ -349,6 +350,7 @@ export const en: Record<TranslationKey, string> = {
   "galleryStep.replaced": "Photo replaced.",
   "galleryStep.removed": "Photo removed.",
   "galleryStep.uploading": "Adding…",
+  "galleryStep.preparing": "Preparing the photo…",
   "galleryStep.replacing": "Replacing…",
   "galleryStep.photoUnavailable": "This photo can't be displayed right now.",
   "galleryStep.dismiss": "Dismiss",

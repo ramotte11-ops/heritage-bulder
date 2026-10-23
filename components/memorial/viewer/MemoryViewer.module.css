@@ -59,6 +59,15 @@
 }
 
 /*
+ * Optimisation photographique V1 — revealed only whole (loaded and
+ * decoded): never half drawn, never a broken-image icon. Visibility only.
+ */
+.photo[data-viewer-photo-state="loading"],
+.photo[data-viewer-photo-state="error"] {
+  visibility: hidden;
+}
+
+/*
  * The caption: ONE text node broken by the browser (A13_VIEWER_CAPTION_
  * MEASUREMENT_HANDOFF_V1). The same class styles the hidden style source
  * whose computed styles the offscreen measurement clone copies, so the
