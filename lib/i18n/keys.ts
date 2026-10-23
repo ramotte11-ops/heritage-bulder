@@ -589,6 +589,7 @@ export const TRANSLATION_KEYS = [
   "gallery.seeMoreMemories",
   "memory.position",
   "album.label",
+  "album.title",
   "viewer.close",
   "viewer.dialogLabel",
 ] as const;

@@ -362,6 +362,7 @@ export const en: Record<TranslationKey, string> = {
   "gallery.seeMoreMemories": "See more memories",
   "memory.position": "Memory {index} of {total}",
   "album.label": "Memory album",
+  "album.title": "Gallery of memories",
   "viewer.close": "Close memory",
   "viewer.dialogLabel": "Memory — {subject}",
 };

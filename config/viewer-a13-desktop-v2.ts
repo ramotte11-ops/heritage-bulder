@@ -158,24 +158,36 @@ export const A13_VIEWER_CAPTION_WIDENING = {
 } as const;
 
 /**
- * Recette Builder V1 (PO, 23/10) — Viewer on a phone turned to landscape.
+ * Recette Builder V1 (PO, 23/10) — Viewer on a phone turned to landscape:
+ * the photograph as large as the screen allows.
  *
- * The `0.72` scale floor keeps the Desktop frame (safe areas, paper edges,
- * caption band) on a 340–430 px tall landscape phone: it took ~40 % of the
- * height and the photograph stayed at its portrait size. In a window wider
- * than tall and no taller than `maxViewportHeightCssPx` (a geometric test:
- * the same base for the caption widening and its canonical `W0`), the frame follows the
- * real scale `min(vw/1670, vh/941)` (never under `frameScaleMin`) down to
- * the contract's own minimums (safe areas 32 × 24, edge 14, caption 20 px,
- * close 48 px offset 16), while the photo caps stay at the floor's level
- * (`1112·0.72 × 622·0.72`) and shrink with the frame only if the fit loop
- * must reduce it. If that compact frame does not fit as it is (a wide photo
- * meeting the close zone on a small phone), the geometry is exactly the
- * floored one, as before. Portrait, tablets and Desktop: unchanged.
+ * The Desktop frame (safe areas 32 × 24, paper edge 14–42, caption band
+ * 20–27 px) took ~40 % of a 340–430 px tall landscape phone and the
+ * photograph stayed at its portrait size. In a window wider than tall and
+ * no taller than `maxViewportHeightCssPx` (a geometric test: the same base
+ * for the caption widening and its canonical `W0`), the PO arbitration
+ * « maximiser la surface photographique » applies this compact frame:
+ * thinner margins, a thinner paper edge and band, a more discreet caption
+ * (same face, same ink, same place under the photo, never removed) and the
+ * close button closer to the corner — still a 48 × 48 target whose 64 px
+ * zone and 16 px clearance the paper never meets. The material (paper
+ * tile, deckled edge mask) follows the real scale `min(vw/1670, vh/941)`
+ * (never under `frameScaleMin`). The photo caps stay at the 0.72 floor's
+ * level; a paper that would meet the close zone shrinks its photo by 1 %
+ * steps, never below the floored photo, else the floored geometry applies
+ * as it is. Portrait, tablets and Desktop: unchanged (same geometry).
  */
 export const A13_VIEWER_COMPACT_LANDSCAPE = {
   maxViewportHeightCssPx: 500,
   frameScaleMin: 0.3,
+  safeXCssPx: 12,
+  safeYCssPx: 8,
+  edgeCssPx: 8,
+  bandNoneExtraCssPx: 4,
+  bandTextExtraCssPx: 4,
+  captionFontSizeCssPx: 16,
+  captionUsableInsetCssPx: 8,
+  closeOffsetCssPx: 8,
 } as const;
 
 /** Stop / review codes of the Handoff (§12) plus the §3.5 review signal. */

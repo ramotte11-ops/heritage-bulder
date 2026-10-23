@@ -55,9 +55,11 @@ export interface A13MobileFullAlbumProps {
   onOpenMemory?: (mediaIndex: number) => void;
   /** Called when the composition is unresolved (no Album rendered): the host returns to the Gallery instead of an empty Album. */
   onUnavailable?: () => void;
+  /** Recette Builder V1 — the « Galerie de souvenirs » title above the table (product host). */
+  withTitle?: boolean;
 }
 
-export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false, onOpenMemory, onUnavailable }: A13MobileFullAlbumProps) {
+export function A13MobileFullAlbum({ media, language, onViewerReport, onActivateMemory, onLayout, qa = false, theme = "light", responsive = false, onOpenMemory, onUnavailable, withTitle = false }: A13MobileFullAlbumProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const font = useCaptionMeasurer(rootRef);
   const viewer = useMemoryViewer(onViewerReport);
@@ -132,6 +134,7 @@ export function A13MobileFullAlbum({ media, language, onViewerReport, onActivate
           language={language}
           qa={qa}
           theme={theme}
+          withTitle={withTitle}
           onActivate={(mediaId, mediaIndex) => {
             onActivateMemory?.(mediaId, mediaIndex);
             if (onOpenMemory) return onOpenMemory(mediaIndex);

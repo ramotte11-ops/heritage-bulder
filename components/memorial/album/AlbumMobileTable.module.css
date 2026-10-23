@@ -113,3 +113,39 @@
 .stage[data-a13-theme="dark"] .material {
   background-color: #452816;
 }
+
+/*
+ * Recette Builder V1 — the « Galerie de souvenirs » title: the Gallery's
+ * Mobile title line (`A13MobileGalleryScene.module.css` `.title`, canonical
+ * block `A13_MOBILE_TITLE_BLOCK`: EB Garamond, uppercase, 0.06em, one line,
+ * same top, size and width per viewport — set inline in source px), inks
+ * Light #3d3024 / Dark #d8c39b + optical shadow. No separator art: the Album
+ * Mobile materials have none. The prints follow in `.shifted`.
+ */
+.title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  z-index: 1;
+  text-align: center;
+  color: #3d3024;
+  line-height: 1.05;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.stage[data-a13-theme="dark"] .title {
+  color: #d8c39b;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
+}
+
+/* Positioned without z-index: no stacking context, the prints keep the table's paint order. */
+.shifted {
+  position: absolute;
+  left: 0;
+  width: 100%;
+}

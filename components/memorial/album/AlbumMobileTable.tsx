@@ -1,11 +1,12 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { A13_ALBUM_MOBILE_FRAME, A13_ALBUM_MOBILE_MATERIALS } from "@/config/album-a13-mobile-light";
 import type { AlbumTheme } from "@/config/album-a13-dark-material";
 import { A13_ALBUM_MOBILE_DARK_MATERIALS } from "@/config/album-a13-mobile-dark-material";
 import type { Language } from "@/config/languages";
-import type { AlbumMobileLayout } from "@/lib/memorial/album/album-mobile-layout";
+import { albumMobileMaterialPlan, type AlbumMobileLayout } from "@/lib/memorial/album/album-mobile-layout";
+import { albumMobileTitle, albumTitleOffset } from "@/lib/memorial/album/album-title";
 import { translate, translateWith } from "@/lib/i18n/translate";
-import { laBelleAurore } from "@/components/builder/fonts";
+import { ebGaramond, laBelleAurore } from "@/components/builder/fonts";
 import { DynamicPolaroid } from "@/components/memorial/gallery/DynamicPolaroid";
 import styles from "./AlbumMobileTable.module.css";
 
@@ -54,15 +55,35 @@ export interface AlbumMobileTableProps {
   qa?: boolean;
   /** Material theme (default Light). Never an input of the layout. */
   theme?: AlbumTheme;
+  /**
+   * Recette Builder V1 — the « Galerie de souvenirs » title on the Gallery's
+   * Mobile title line; the prints are translated down only as far as the
+   * title needs, the materials follow the taller page. Absent: as before.
+   */
+  withTitle?: boolean;
 }
 
 const k = (v: number) => `calc(${v} * var(--k))`;
 
-export function AlbumMobileTable({ layout, media, language, onActivate, eagerGroups = 1, qa = false, theme = "light" }: AlbumMobileTableProps) {
+/** The prints, translated down under the title (`withTitle`); otherwise no element at all. */
+function Shift({ on, offset, height, children }: { on: boolean; offset: number; height: number; children: ReactNode }) {
+  if (!on) return children;
+  return (
+    <div className={styles.shifted} style={{ top: k(offset), height: k(height) } as CSSProperties} data-album-shift="">
+      {children}
+    </div>
+  );
+}
+
+export function AlbumMobileTable({ layout, media, language, onActivate, eagerGroups = 1, qa = false, theme = "light", withTitle = false }: AlbumMobileTableProps) {
   const dark = theme === "dark";
   const materials = dark ? A13_ALBUM_MOBILE_DARK_MATERIALS : A13_ALBUM_MOBILE_MATERIALS;
   const n = layout.prints.length;
   const g = layout.geometry;
+  const title = withTitle ? albumMobileTitle(layout.stageWidth, dark ? "dark" : "light") : null;
+  const offset = title ? albumTitleOffset(layout.prints.map((p) => p.drawnOuter), title.box) : 0;
+  const height = layout.height + offset;
+  const layers = offset > 0 ? albumMobileMaterialPlan(height) : layout.materials;
   return (
     <section
       className={`${styles.stage} ${laBelleAurore.variable}`}
@@ -74,9 +95,9 @@ export function AlbumMobileTable({ layout, media, language, onActivate, eagerGro
       data-album-status={layout.status}
       {...(dark ? { "data-a13-theme": "dark" } : {})}
     >
-      <div className={styles.canvas} style={{ height: k(layout.height) } as CSSProperties} data-album-height={layout.height.toFixed(3)} data-album-mobile-canvas="">
+      <div className={styles.canvas} style={{ height: k(height) } as CSSProperties} data-album-height={layout.height.toFixed(3)} data-album-mobile-canvas="" {...(title ? { "data-album-title-offset": offset.toFixed(3) } : {})}>
         <div className={styles.material} aria-hidden="true" data-testid="album-material">
-          {layout.materials.map((m, i) => {
+          {layers.map((m, i) => {
             const asset = materials[m.asset];
             const mask = m.fadeIn > 0 ? `linear-gradient(to bottom, transparent 0, #000 ${k(m.fadeIn)})` : undefined;
             return (
@@ -99,6 +120,12 @@ export function AlbumMobileTable({ layout, media, language, onActivate, eagerGro
             );
           })}
         </div>
+        {title ? (
+          <h2 className={`${styles.title} ${ebGaramond.className}`} style={{ top: k(title.box.top), fontSize: k(title.fontSize), maxWidth: k(title.maxWidth) }}>
+            {translate(language, "album.title")}
+          </h2>
+        ) : null}
+        <Shift on={title !== null} offset={offset} height={layout.height}>
         {g.groups.map((grp) => (
           <div key={grp.index} className={styles.group} data-album-group={grp.index} data-album-grammar={grp.grammar} data-album-size={grp.size} data-album-group-status={grp.status}>
             {layout.prints
@@ -145,6 +172,7 @@ export function AlbumMobileTable({ layout, media, language, onActivate, eagerGro
             ))}
           </svg>
         ) : null}
+        </Shift>
       </div>
     </section>
   );

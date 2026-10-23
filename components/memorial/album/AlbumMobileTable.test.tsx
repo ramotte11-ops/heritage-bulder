@@ -143,3 +143,31 @@ describe("Full Album Mobile Dark — the same table, Dark materials only", () =>
   });
 });
 
+
+describe("Recette Builder V1 — « Galerie de souvenirs » (withTitle)", () => {
+  it("absent by default: no title, no shift layer, the layout's own materials", () => {
+    const { layout, media } = tableFor(12);
+    const { container } = render(<AlbumMobileTable layout={layout} media={media} language="fr" />);
+    expect(container.querySelector("h2")).toBeNull();
+    expect(container.querySelector("[data-album-shift]")).toBeNull();
+    expect(container.querySelectorAll("[data-material]")).toHaveLength(layout.materials.length);
+  });
+
+  it("the title, the prints translated down, and the materials covering the taller page (Light and Dark)", () => {
+    const { layout, media } = tableFor(12);
+    for (const theme of ["light", "dark"] as const) {
+      const { container } = render(<AlbumMobileTable layout={layout} media={media} language="fr" theme={theme} withTitle />);
+      expect(container.querySelector("h2")!.textContent).toBe("Galerie de souvenirs");
+      const canvas = container.querySelector<HTMLElement>("[data-album-title-offset]")!;
+      const offset = Number(canvas.dataset.albumTitleOffset);
+      expect(offset).toBeGreaterThan(0);
+      const top = container.querySelector<HTMLElement>("[data-album-shift]")!.style.top;
+      expect(Number(/calc\(([\d.]+) \* var\(--k\)\)/.exec(top)![1])).toBeCloseTo(offset, 2);
+      const tiles = [...container.querySelectorAll<HTMLElement>("[data-material]")];
+      const last = tiles.at(-1)!;
+      expect(Number(last.dataset.materialY) + 1536).toBeGreaterThanOrEqual(layout.height + offset);
+      expect(tiles[0].dataset.material).toBe("top");
+      cleanup();
+    }
+  });
+});

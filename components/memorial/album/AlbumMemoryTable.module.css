@@ -128,3 +128,40 @@
     0 0,
     0 calc(941 * var(--k));
 }
+
+/*
+ * Recette Builder V1 — the « Galerie de souvenirs » title: the Gallery scene
+ * title (`A13GalleryScene.module.css` `.titleBlock` / `.title`: box x 535–1135
+ * from y 104, EB Garamond 40, small caps, 0.04em, inks Light #3d3024 / Dark
+ * #d8c39b + optical shadow), under the Master's centred sprig (painted by the
+ * Dark TOP material). The prints follow in `.shifted`, translated down by the
+ * offset the title needs (inline); without a title nothing is added.
+ */
+.title {
+  position: absolute;
+  left: calc(535 * var(--k));
+  top: calc(104 * var(--k));
+  width: calc(600 * var(--k));
+  margin: 0;
+  z-index: 1;
+  text-align: center;
+  color: #3d3024;
+  font-size: calc(40 * var(--k));
+  line-height: 1.15;
+  font-weight: 400;
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.stage[data-a13-theme="dark"] .title {
+  color: #d8c39b;
+  text-shadow: 0 calc(1 * var(--k)) calc(1 * var(--k)) rgba(0, 0, 0, 0.22);
+}
+
+/* Positioned without z-index: no stacking context, the prints keep the table's paint order. */
+.shifted {
+  position: absolute;
+  left: 0;
+  width: 100%;
+}

@@ -352,6 +352,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "gallery.seeMoreMemories": "Ver más recuerdos",
   "memory.position": "Recuerdo {index} de {total}",
   "album.label": "Álbum de recuerdos",
+  "album.title": "Galería de recuerdos",
   "viewer.close": "Cerrar el recuerdo",
   "viewer.dialogLabel": "Recuerdo — {subject}",
 };

@@ -314,11 +314,10 @@ describe("A13 Viewer caption widening (A13_VIEWER_CAPTION_FINAL_HANDOFF_V1: prof
     expect(widened).toBeGreaterThan(0);
   });
 
-  it("the canonical 9:16 + 32-character caption widens at 812 and 844 in landscape (at 932 the compact-landscape photo already holds it) and stays within two lines", () => {
+  it("the canonical 9:16 + 32-character caption: on a phone in landscape the compact-frame photo already holds it on two lines (no widening needed)", () => {
     for (const [vw, vh] of LANDSCAPE) {
       const g = at(vw, vh, 1080, 1920, c32, "landscape");
-      if (vw === 932) expect(g.captionWidening).toBeUndefined();
-      else expect(g.captionWidening?.widening).toBeGreaterThan(0);
+      expect(g.captionWidening).toBeUndefined();
       expect(g.caption!.lines).toHaveLength(2);
       expect(g.bandKind).toBe("twoLines");
       expect(g.codes).toEqual([]);
@@ -455,11 +454,13 @@ describe("Recette Builder V1 — Viewer on a phone turned to landscape (A13_VIEW
   const lay = (vw: number, vh: number, w: number, h: number, caption: string | null, orientation: "landscape" | "portrait" | null = "landscape") =>
     layoutViewer({ viewportW: vw, viewportH: vh, naturalW: w, naturalH: h, caption, wrap: caption ? wrap : null, captionFontReady: caption ? true : null, orientation });
 
-  it("the photograph takes the height the frame frees: 4:3 with caption on 844 × 340 grows from 263 px (portrait) to ≈ 318 px", () => {
+  it("the photograph takes the height the frame frees: 4:3 with caption on 844 × 340 grows from 263 px (portrait, and main in landscape) to ≈ 386 px", () => {
     const portrait = lay(390, 664, 4000, 3000, CAPTIONS.short, "portrait");
     const landscape = lay(844, 340, 4000, 3000, CAPTIONS.short);
     expect(portrait.photo.w).toBeCloseTo(263.28, 1);
-    expect(landscape.photo.w).toBeGreaterThan(portrait.photo.w * 1.2);
+    // 340 − 2·8 (safe) − 6 (top edge) − (8 + 16.8 + 4) (one-line band) = 289.2 px of photo height.
+    expect(landscape.photo.h).toBeCloseTo(289.2, 6);
+    expect(landscape.photo.w).toBeGreaterThan(portrait.photo.w * 1.45);
     expect(landscape.photo.w / landscape.photo.h).toBeCloseTo(4 / 3, 9);
     expect(landscape.codes).toEqual([]);
   });
@@ -471,12 +472,19 @@ describe("Recette Builder V1 — Viewer on a phone turned to landscape (A13_VIEW
           const g = lay(vw, vh, w, h, caption);
           const tag = `${vw}×${vh} ${w}:${h} ${caption}`;
           // Compact frame, or — a wide photo meeting the close zone on a small phone — exactly the floored geometry.
-          expect(g.s < 0.72 || g.s === viewerScale(vw, vh), tag).toBe(true);
+          const compactFrame = g.edge === 8;
+          // the floored geometry may itself be fit-reduced (as on main): its own minimums then hold
+          expect(compactFrame || g.edge >= 14, tag).toBe(true);
           expect(g.photo.w / g.photo.h, tag).toBeCloseTo(w / h, 9);
-          expect(g.safeX, tag).toBeGreaterThanOrEqual(32);
-          expect(g.safeY, tag).toBeGreaterThanOrEqual(24);
-          expect(g.edge, tag).toBeGreaterThanOrEqual(14);
-          if (g.caption) expect(g.caption.fontSize, tag).toBeGreaterThanOrEqual(20);
+          if (compactFrame) {
+            expect([g.safeX, g.safeY, g.edge, g.close.offset], tag).toEqual([12, 8, 8, 8]);
+            if (g.caption) expect(g.caption.fontSize, tag).toBe(16);
+          } else {
+            expect(g.safeX, tag).toBeGreaterThanOrEqual(32);
+            expect(g.safeY, tag).toBeGreaterThanOrEqual(24);
+          }
+          // the caption is never dropped
+          if (caption) expect(g.caption?.lines.length ?? 0, tag).toBeGreaterThan(0);
           expect(g.close.target.w, tag).toBe(48);
           expect(g.paper.x, tag).toBeGreaterThanOrEqual(g.safeX - 1e-6);
           expect(g.paper.x + g.paper.w, tag).toBeLessThanOrEqual(vw - g.safeX + 1e-6);
