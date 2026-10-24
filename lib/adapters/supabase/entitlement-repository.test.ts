@@ -188,6 +188,22 @@ function fakeInsertClient(result: { data: unknown; error: unknown }, lookup?: { 
   return { client: { from } as unknown as SupabaseClient, insert, eq };
 }
 
+function fakeInsertSequenceClient(
+  results: { data: unknown; error: unknown }[],
+  lookup?: { data: unknown; error: unknown },
+) {
+  const single = vi.fn();
+  for (const result of results) single.mockResolvedValueOnce(result);
+  const selectAfterInsert = vi.fn().mockReturnValue({ single });
+  const insert = vi.fn().mockReturnValue({ select: selectAfterInsert });
+  const maybeSingle = vi.fn().mockResolvedValue(lookup ?? { data: null, error: null });
+  const eq = vi.fn();
+  eq.mockReturnValue({ maybeSingle, eq });
+  const select = vi.fn().mockReturnValue({ eq });
+  const from = vi.fn().mockReturnValue({ insert, select });
+  return { client: { from } as unknown as SupabaseClient, insert, eq };
+}
+
 function fakeSwapClient(result: { data: unknown; error: unknown }) {
   const select = vi.fn().mockResolvedValue(result);
   const is = vi.fn().mockReturnValue({ select });
@@ -288,14 +304,56 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     ).rejects.toMatchObject({ code: "23505" });
   });
 
-  it("re-throws a schema-cache refusal (PGRST204) without reading or retrying — the M1-A deploy window", async () => {
-    // Code deployed before the migration: the API does not know
-    // access_level yet. Nothing is written; the caller's error path (the
-    // Etsy callback's "failed" redirect) lets the family retry.
-    const { client, eq } = fakeInsertClient({
-      data: null,
-      error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" },
+  it("M1-A transition: on a schema without access_level (PGRST204), retries ONCE without it — complet only", async () => {
+    // Code deployed before the migrations: the old schema has no level at
+    // all, and the migration's backfill makes every existing right complet.
+    const { client, insert } = fakeInsertSequenceClient([
+      { data: null, error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" } },
+      { data: ROW, error: null },
+    ]);
+
+    const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
+      offerId: "intemporel",
+      source: "etsy",
+      accessLevel: "complet",
+      externalOrderId: "order-1",
+      activationKeyHash: HASH,
     });
+
+    expect(outcome.status).toBe("issued");
+    expect(insert).toHaveBeenCalledTimes(2);
+    expect(insert.mock.calls[0][0]).toMatchObject({ access_level: "complet" });
+    expect(insert.mock.calls[1][0]).toEqual({
+      offer_id: "intemporel",
+      source: "etsy",
+      external_order_id: "order-1",
+      activation_key_hash: HASH,
+    });
+  });
+
+  it("M1-A transition: never retries an avis right without its level", async () => {
+    const { client, insert } = fakeInsertSequenceClient([
+      { data: null, error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" } },
+      { data: ROW, error: null },
+    ]);
+
+    await expect(
+      new SupabaseEntitlementRepository(client).issueWithActivationKey({
+        offerId: "intemporel",
+        source: "direct",
+        accessLevel: "avis",
+        externalOrderId: null,
+        activationKeyHash: HASH,
+      }),
+    ).rejects.toMatchObject({ code: "PGRST204" });
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("M1-A transition: a refused retry (M1-A schema, NOT NULL) is thrown — nothing invented, no third attempt", async () => {
+    const { client, insert } = fakeInsertSequenceClient([
+      { data: null, error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" } },
+      { data: null, error: { code: "23502", message: "null value in column \"access_level\" violates not-null constraint" } },
+    ]);
 
     await expect(
       new SupabaseEntitlementRepository(client).issueWithActivationKey({
@@ -305,8 +363,29 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
         externalOrderId: "order-1",
         activationKeyHash: HASH,
       }),
-    ).rejects.toMatchObject({ code: "PGRST204" });
-    expect(eq).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ code: "23502" });
+    expect(insert).toHaveBeenCalledTimes(2);
+  });
+
+  it("M1-A transition: a duplicate order on the retry is still explained by reading", async () => {
+    const { client, insert } = fakeInsertSequenceClient(
+      [
+        { data: null, error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" } },
+        { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } },
+      ],
+      { data: { ...ROW, external_order_id: "order-1" }, error: null },
+    );
+
+    const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
+      offerId: "intemporel",
+      source: "etsy",
+      accessLevel: "complet",
+      externalOrderId: "order-1",
+      activationKeyHash: HASH,
+    });
+
+    expect(outcome.status).toBe("duplicateExternalOrder");
+    expect(insert).toHaveBeenCalledTimes(2);
   });
 
   it("re-throws a 23505 outright when there is no external order to explain it", async () => {

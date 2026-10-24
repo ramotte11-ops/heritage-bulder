@@ -2748,13 +2748,17 @@ check "settings hold real durations (168 h, 1080 h, 168 h, 1080 h, 720 h) and B6
 M1A_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-owner@example.test') returning id;")
 M1A_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-other@example.test') returning id;")
 
-M1A_NOLEVEL_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
-expect_error "a memorial cannot be created from a right without a level (D12)" \
-  "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant) values ('$M1A_OWNER','$M1A_NOLEVEL_ENT','person','intemporel','light');"
-svc_expect_error "redeem_entitlement refuses a right without a level, nothing implicit" \
-  "select * from redeem_entitlement('$M1A_NOLEVEL_ENT','$M1A_OWNER','person','intemporel','light');" \
-  "memorial access level missing"
-check "the refused redemption leaves the right available and unowned" "available|true" "$($DB -t -A -c "select status || '|' || (owner_id is null) from entitlements where id='$M1A_NOLEVEL_ENT';")"
+M1A_RIGHTS_BEFORE=$($DB -t -A -c "select count(*) from entitlements;")
+check "a right cannot even be written without a level (D12, NOT NULL — correctif 2)" "23502" \
+  "$($DB -v VERBOSITY=verbose -c "set role service_role; insert into entitlements (source, offer_id, external_order_id) values ('etsy','intemporel','m1a-nolevel');" 2>&1 | grep -o 'ERROR:  [0-9A-Z]\{5\}' | head -1 | sed 's/ERROR:  //' || true)"
+check "that refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "select count(*) from entitlements;")"
+check "entitlements.access_level is NOT NULL" "t" "$($DB -t -A -c "select attnotnull from pg_attribute where attrelid='public.entitlements'::regclass and attname='access_level';")"
+# Backstop kept: even with NOT NULL lifted inside a rolled-back
+# transaction, a right without a level creates no memorial (HD500).
+M1A_NOLEVEL_ENT=$($DB -t -A -c "select gen_random_uuid();")
+check "redeem_entitlement refuses a right without a level, nothing implicit (HD500 backstop)" "1" \
+  "$($DB -c "begin; alter table entitlements alter column access_level drop not null; insert into entitlements (id, source, offer_id) values ('$M1A_NOLEVEL_ENT','direct','intemporel'); set role service_role; select * from redeem_entitlement('$M1A_NOLEVEL_ENT','$M1A_OWNER','person','intemporel','light');" 2>&1 | grep -c 'memorial access level missing' || true)"
+check "and nothing of it survives" "0|t" "$($DB -t -A -c "select count(*) from entitlements where id='$M1A_NOLEVEL_ENT';")|$($DB -t -A -c "select attnotnull from pg_attribute where attrelid='public.entitlements'::regclass and attname='access_level';")"
 
 expect_error "an Etsy right can never be a free one" \
   "insert into entitlements (access_level, source, offer_id) values ('avis','etsy','intemporel');"
@@ -3066,6 +3070,41 @@ check "an avis draft may reference six gallery photos" "6" "$($DB -t -A -c "sele
 $DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_COMPLETE_MEM';" >/dev/null
 check "a complete draft is not limited to six" "7" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_COMPLETE_MEM';")"
 
+# F8. QG guarantee: an existing free draft stays editable until A+45,
+# even once free publication ended at A+7 — the replacement draft too.
+M1A_KEEP_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-keep@example.test') returning id;")
+M1A_KEEP_D1=$(svc "select memorial_id from create_free_memorial_v1('$M1A_KEEP_OWNER','intemporel','light');")
+svc "select outcome from anchor_free_memorial_v1('$M1A_KEEP_D1','$M1A_KEEP_OWNER');" >/dev/null
+$DB -c "update memorials set status='archived' where id='$M1A_KEEP_D1';" >/dev/null
+M1A_KEEP=$(svc "select memorial_id from create_free_memorial_v1('$M1A_KEEP_OWNER','intemporel','light');")
+svc "select outcome from anchor_free_memorial_v1('$M1A_KEEP','$M1A_KEEP_OWNER');" >/dev/null
+m1a_ready "$M1A_KEEP" "m1a-keep"
+m1a_publish_current_sql() {
+  # $1 memorial, $2 owner, $3 slug — publishes the draft as it stands now
+  # (read as the database owner: service_role has no read on drafts)
+  local rev content
+  rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$1';")
+  content=$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$1';")
+  echo "select * from commit_memorial_publication_v1('$1','$2',$rev,'ready',null,'fr','intemporel','light','$3','$content');"
+}
+m1a_edit() {
+  # $1 memorial, $2 owner, $3 text -> new revision
+  svc "select revision from commit_memorial_draft_edit_v1('$1','$2',(select revision from memorial_drafts where memorial_id='$1'),'ready',null,'{\"hero\":{\"displayName\":\"Avis\",\"photo\":null},\"personWords\":{\"text\":\"$3\"}}','content.saved',array['content.personWords.text']);"
+}
+for age in '8 days' '36 days'; do
+  m1a_age "$M1A_KEEP_OWNER" "$age"
+  M1A_KEEP_T=$($DB -t -A -c "select round(extract(epoch from (now() - free_anchor_at)) / 86400) from memorials where id='$M1A_KEEP';")
+  M1A_KEEP_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$M1A_KEEP';")
+  check "A+$M1A_KEEP_T: the replacement draft (inherited anchor) still saves its content" "$((M1A_KEEP_REV + 1))" "$(m1a_edit "$M1A_KEEP" "$M1A_KEEP_OWNER" "Jour $M1A_KEEP_T")"
+  check "A+$M1A_KEEP_T: its configuration is still editable" "en" "$(svc "select commit_memorial_configuration_edit_v1('$M1A_KEEP','$M1A_KEEP_OWNER','ready',null,'language',(select language from memorials where id='$M1A_KEEP'),'en',array['configuration.language']);" >/dev/null; $DB -t -A -c "select language from memorials where id='$M1A_KEEP';")"
+  $DB -c "update memorials set language='fr' where id='$M1A_KEEP';" >/dev/null
+  check "A+$M1A_KEEP_T: a gallery photo can still be added" "1" "$(m1a_reserve "$M1A_KEEP" "$M1A_KEEP_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+  check "A+$M1A_KEEP_T: the draft stays the owner's one active free draft (B6)" "free_draft_limit" "$(svc "select outcome from create_free_memorial_v1('$M1A_KEEP_OWNER','intemporel','light');")"
+  svc_expect_error "A+$M1A_KEEP_T: only the free publication is closed" "$(m1a_publish_current_sql "$M1A_KEEP" "$M1A_KEEP_OWNER" m1a-keep)" "free publication window closed"
+done
+check "A+44: its deadlines are still the original ones (A+7, A+45)" "168|1080" "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_KEEP';")"
+check "A+44: the draft can still be upgraded to complete and published" "upgraded|published" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_KEEP','$M1A_KEEP_OWNER','direct_payment','pay-m1a-keep');")|$(svc "$(m1a_publish_current_sql "$M1A_KEEP" "$M1A_KEEP_OWNER" m1a-keep)" >/dev/null; $DB -t -A -c "select status from memorials where id='$M1A_KEEP';")"
+
 # --- H. upgrade_memorial_access_v1: same memorial, nothing lost ---
 M1A_UP_BEFORE=$($DB -t -A -c "select d.revision || '|' || md5(d.content::text) || '|' || coalesce(md5(s.content::text),'-') || '|' || m.status || '|' || coalesce(m.slug,'-') || '|' || (select count(*) from media where memorial_id=m.id) || '|' || m.first_published_at from memorials m join memorial_drafts d on d.memorial_id=m.id left join memorial_published_snapshots s on s.memorial_id=m.id where m.id='$M1A_FREE_MEM';")
 svc_expect_error "an unknown upgrade source is refused" "select * from upgrade_memorial_access_v1('$M1A_FREE_MEM','$M1A_OWNER','gift','ref-1');" "invalid memorial upgrade request"
@@ -3096,9 +3135,8 @@ check "m1a_preflight.sql detects that M1-A is already applied (11 rows)" "11" \
 check "m1a_preflight.sql finds its prerequisites" "0" \
   "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
 
-check "m1a_postflight.sql flags a right without a level (D12 transition)" "1" \
-  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
-$DB -c "delete from entitlements where id='$M1A_NOLEVEL_ENT';" >/dev/null
+check "m1a_postflight.sql flags a right without a level" "1" \
+  "$($DB -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -c "insert into entitlements (source, offer_id) values ('direct','intemporel');" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
 if $DB -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_postflight.sql parses and executes"
   PASS=$((PASS + 1))
@@ -3132,6 +3170,19 @@ check "m1a_correctif1_postflight.sql turns red on a grant of the window helper" 
   "$($DB -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_correctif1_postflight.sql turns red if the initial anchor function is back" "1" \
   "$($DB -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+
+# Correctif 2's complementary postflight.
+if $DB -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  echo "  [PASS] m1a_correctif2_postflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] m1a_correctif2_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+M1A_C2_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" 2>/dev/null)
+check "m1a_correctif2_postflight.sql reports 2 OK, zero ECHEC" "2|0" "$(echo "$M1A_C2_POSTFLIGHT" | grep -c "|OK$" || true)|$(echo "$M1A_C2_POSTFLIGHT" | grep -c "ECHEC" || true)"
+check "m1a_correctif2_postflight.sql turns red if the level becomes optional again" "1" \
+  "$($DB -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="

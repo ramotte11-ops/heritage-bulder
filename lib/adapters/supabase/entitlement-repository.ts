@@ -93,6 +93,21 @@ const REDEEM_ERROR_STATUS: Record<string, RedeemRefusalStatus> = {
  * collision on its own — see `issueWithActivationKey`. */
 const UNIQUE_VIOLATION = "23505";
 
+/**
+ * PostgREST: a column of the request body is not in its schema cache.
+ *
+ * HERITAGE Direct M1-A, transition only (removed with M1-B): when this
+ * code is deployed BEFORE the M1-A migrations, the schema has no
+ * `access_level` column at all. A `complet` right is then written without
+ * it, exactly as the previous code did, and the M1-A migration gives
+ * every pre-existing right `complet` (its backfill). Once the migrations
+ * are applied the column is NOT NULL, so this path can never leave a
+ * right without a level there: the retry is refused and nothing is
+ * written. An `avis` right never takes this path — the old schema has no
+ * free offer.
+ */
+const SCHEMA_CACHE_MISS = "PGRST204";
+
 export class SupabaseEntitlementRepository implements EntitlementRepository {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -151,17 +166,22 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
     // One INSERT: the right and its key hash land together or not at all.
     // No SELECT beforehand to "check whether the order exists" — that
     // would be exactly the check-then-act race the unique index removes.
-    const { data, error } = await this.client
-      .from("entitlements")
-      .insert({
-        offer_id: offerId,
-        source,
-        access_level: accessLevel,
-        external_order_id: externalOrderId ?? null,
-        activation_key_hash: activationKeyHash,
-      })
-      .select(ENTITLEMENT_COLUMNS)
-      .single<EntitlementRow>();
+    const row = {
+      offer_id: offerId,
+      source,
+      external_order_id: externalOrderId ?? null,
+      activation_key_hash: activationKeyHash,
+    };
+    const insert = (body: typeof row & { access_level?: AccessLevel }) =>
+      this.client.from("entitlements").insert(body).select(ENTITLEMENT_COLUMNS).single<EntitlementRow>();
+
+    let response = await insert({ ...row, access_level: accessLevel });
+    if (response.error?.code === SCHEMA_CACHE_MISS && accessLevel === "complet") {
+      // At most one retry, never for `avis`; its own error, if any, is the
+      // one handled below. See SCHEMA_CACHE_MISS.
+      response = await insert(row);
+    }
+    const { data, error } = response;
 
     if (error?.code === UNIQUE_VIOLATION) {
       // Which constraint fired? Established by READING, not by parsing a
