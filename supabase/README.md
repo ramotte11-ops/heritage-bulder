@@ -835,6 +835,13 @@ Both are executed by the local harness, including negative proofs (a
 suspended trigger, a client grant on the journal, a changed duration each
 turn the postflight red).
 
+`checks/m1a_correctif1_postflight.sql` complements (never replaces) that
+postflight once `20261024190000_heritage_direct_free_window_per_email.sql`
+is applied: 12 controls (the corrected functions are the ones in place,
+the window helper and the e-mail guard are executable by no role, no
+application role can update `owners.email`, the guard trigger is enabled,
+no address holds two free windows within 12 months).
+
 ## HERITAGE Direct M1-A — free / complete access
 
 Contract: « Offre gratuite / complète V2.1 », PO arbitrations B1, B6, B14.
@@ -849,16 +856,27 @@ Additive: no existing function is replaced.
   deployed right after the migration (see the postflight's
   « droits sans niveau » row).
 - **Deadlines (B1, B14).** Server-written only. The anchor is the first
-  effective e-mail confirmation (`anchor_free_memorial_v1`, idempotent).
+  effective e-mail confirmation of the ADDRESS (`anchor_free_memorial_v1`,
+  idempotent): it opens a 12-month cycle (`free.window_opened`), and any
+  free draft anchored later in that cycle inherits it — recreating a draft
+  never opens new 7 days (correctif 1,
+  `20261024190000_heritage_direct_free_window_per_email.sql`).
   Real durations from the event: +168 h free publication, +1080 h draft
   retention; from the first publication +168 h corrections, +1080 h
   public, then +720 h private. Never rounded; displayed in Paris time by
   `lib/memorial/access-state.ts`.
-- **Quotas (B6).** One active free draft per owner
+- **Quotas (B6).** Owner = verified e-mail address: `owners.email` is
+  unique case-insensitively, only ever created from a confirmed address,
+  updatable by no application role, and frozen (HD423) once the owner has
+  a free history. One active free draft per owner
   (`create_free_memorial_v1`); one free first publication per owner over
   12 months, counted in the append-only `memorial_access_events` journal
   under the owner's lock (HD403); publication refused without anchor
-  (HD428) or after the window (HD410), at the database's clock.
+  (HD428) or after the window (HD410), at the database's clock. Outside
+  the window, or once the free publication is used, creating or anchoring
+  a free draft answers `free_unavailable` and writes nothing. A new cycle
+  opens only when the previous one is over 12 months old AND no free
+  publication happened in the last 12 months.
 - **Gallery.** Six photos for `avis` (media in `pending` or `ready`, plus
   the draft's items), with a 12-row storage cap (HD413).
 - **Upgrade.** `upgrade_memorial_access_v1` turns the SAME memorial

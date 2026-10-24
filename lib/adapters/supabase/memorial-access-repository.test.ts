@@ -36,6 +36,13 @@ describe("SupabaseMemorialAccessRepository.createFreeMemorial", () => {
     ).toEqual({ outcome: "freeDraftLimit" });
   });
 
+  it("maps the address's exhausted free cycle", async () => {
+    const { client } = fakeRpcClient({ data: [{ outcome: "free_unavailable", memorial_id: null }], error: null });
+    expect(
+      await new SupabaseMemorialAccessRepository(client).createFreeMemorial({ ownerId: OWNER, skinVariant: "light" }),
+    ).toEqual({ outcome: "freeUnavailable" });
+  });
+
   it("fails CLOSED on no row, an unknown outcome, or a created row without id", async () => {
     for (const data of [[], null, [{ outcome: "accepted" }], [{ outcome: "created", memorial_id: null }]]) {
       const { client } = fakeRpcClient({ data, error: null });
@@ -83,6 +90,16 @@ describe("SupabaseMemorialAccessRepository.anchorFreeMemorial", () => {
     expect(
       await new SupabaseMemorialAccessRepository(client).anchorFreeMemorial({ memorialId: MEMORIAL, ownerId: OWNER }),
     ).toEqual({ outcome: "notFree" });
+  });
+
+  it("maps a confirmation outside the address's window to freeUnavailable, with no date", async () => {
+    const { client } = fakeRpcClient({
+      data: [{ outcome: "free_unavailable", free_anchor_at: null, free_publish_until: null, free_draft_until: null }],
+      error: null,
+    });
+    expect(
+      await new SupabaseMemorialAccessRepository(client).anchorFreeMemorial({ memorialId: MEMORIAL, ownerId: OWNER }),
+    ).toEqual({ outcome: "freeUnavailable" });
   });
 
   it("fails CLOSED on no row, an unknown outcome, or an anchor without its dates", async () => {

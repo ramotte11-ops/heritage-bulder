@@ -288,6 +288,27 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     ).rejects.toMatchObject({ code: "23505" });
   });
 
+  it("re-throws a schema-cache refusal (PGRST204) without reading or retrying — the M1-A deploy window", async () => {
+    // Code deployed before the migration: the API does not know
+    // access_level yet. Nothing is written; the caller's error path (the
+    // Etsy callback's "failed" redirect) lets the family retry.
+    const { client, eq } = fakeInsertClient({
+      data: null,
+      error: { code: "PGRST204", message: "Could not find the 'access_level' column of 'entitlements' in the schema cache" },
+    });
+
+    await expect(
+      new SupabaseEntitlementRepository(client).issueWithActivationKey({
+        offerId: "intemporel",
+        source: "etsy",
+        accessLevel: "complet",
+        externalOrderId: "order-1",
+        activationKeyHash: HASH,
+      }),
+    ).rejects.toMatchObject({ code: "PGRST204" });
+    expect(eq).not.toHaveBeenCalled();
+  });
+
   it("re-throws a 23505 outright when there is no external order to explain it", async () => {
     const { client, eq } = fakeInsertClient({
       data: null,
