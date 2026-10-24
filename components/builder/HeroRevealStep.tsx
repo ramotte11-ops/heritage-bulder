@@ -259,7 +259,7 @@ export function HeroRevealStep({
             type="submit"
             disabled={isSubmitting}
             pending={isSubmitting}
-            pendingLabel={translate(language, "common.pleaseWait")}
+            pendingLabel={translate(language, "autosave.saving")}
           >
             {translate(language, "hero.revealConfirm")}
           </PrimaryButton>

@@ -1,0 +1,18 @@
+.frame {
+  justify-content: center;
+  min-height: 18rem;
+}
+
+.status {
+  display: flex;
+  justify-content: center;
+  color: var(--heritage-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}

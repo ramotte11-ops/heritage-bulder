@@ -144,7 +144,7 @@ describe("DeathNoticePrecisionsStep — passer → skipped, rien inventé, rien 
 
     fireEvent.click(screen.getByRole("button", { name: "Passer cette étape" }));
 
-    const pending = await screen.findByRole("button", { name: "Un instant…" });
+    const pending = await screen.findByRole("button", { name: "Enregistrement…" });
     expect(pending).toHaveProperty("disabled", true);
     expect(pending.getAttribute("aria-busy")).toBe("true");
     expect(screen.getByRole("button", { name: "Continuer" })).toHaveProperty("disabled", true);

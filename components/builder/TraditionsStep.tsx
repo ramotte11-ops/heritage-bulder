@@ -382,7 +382,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
               type="submit"
               disabled={controlsDisabled || !hasEntry}
               pending={pendingAction === "continue"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "common.continue")}
             </PrimaryButton>
@@ -397,7 +397,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
           >
             <PendingActionLabel
               pending={pendingAction === "skip"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "traditions.skip")}
             </PendingActionLabel>

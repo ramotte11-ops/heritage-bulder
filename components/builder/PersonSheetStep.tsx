@@ -274,7 +274,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
               type="submit"
               disabled={controlsDisabled || nothingEntered}
               pending={pendingAction === "continue"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "common.continue")}
             </PrimaryButton>
@@ -289,7 +289,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
           >
             <PendingActionLabel
               pending={pendingAction === "skip"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "personSheet.skip")}
             </PendingActionLabel>

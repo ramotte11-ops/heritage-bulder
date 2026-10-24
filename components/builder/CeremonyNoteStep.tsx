@@ -156,7 +156,7 @@ export function CeremonyNoteStep({ language, content: initialContent, persist }:
               type="submit"
               disabled={controlsDisabled || read.ceremony.note === null}
               pending={pendingAction === "continue"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "common.continue")}
             </PrimaryButton>
@@ -171,7 +171,7 @@ export function CeremonyNoteStep({ language, content: initialContent, persist }:
           >
             <PendingActionLabel
               pending={pendingAction === "skip"}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "ceremony.skip")}
             </PendingActionLabel>

@@ -381,7 +381,7 @@ export function HeroPhotoStep({
             type="submit"
             disabled={photo.status !== "ready" || isSubmitting}
             pending={isSubmitting}
-            pendingLabel={translate(language, "common.pleaseWait")}
+            pendingLabel={translate(language, "autosave.saving")}
           >
             {translate(language, "common.continue")}
           </PrimaryButton>

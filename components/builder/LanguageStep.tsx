@@ -185,7 +185,7 @@ export function LanguageStep({ persist }: LanguageStepProps) {
             type="submit"
             disabled={selected === null || isPending}
             pending={isPending}
-            pendingLabel={translate("en", "common.pleaseWait")}
+            pendingLabel={translate(selected ?? "en", "autosave.saving")}
           >
             {translate("en", "common.continue")}
           </PrimaryButton>

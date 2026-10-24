@@ -105,7 +105,7 @@ export function AnnouncementChoiceStep({ language, content, persist }: Announcem
               type="submit"
               disabled={selected === null || isPending}
               pending={isPending}
-              pendingLabel={translate(language, "common.pleaseWait")}
+              pendingLabel={translate(language, "autosave.saving")}
             >
               {translate(language, "common.continue")}
             </PrimaryButton>
