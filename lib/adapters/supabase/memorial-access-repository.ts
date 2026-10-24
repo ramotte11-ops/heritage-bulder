@@ -67,6 +67,7 @@ export class SupabaseMemorialAccessRepository implements MemorialAccessRepositor
       return { outcome: "created", memorialId: row.memorial_id };
     }
     if (row?.outcome === "free_draft_limit") return { outcome: "freeDraftLimit" };
+    if (row?.outcome === "free_unavailable") return { outcome: "freeUnavailable" };
     return { outcome: "refused" };
   }
 
@@ -98,6 +99,7 @@ export class SupabaseMemorialAccessRepository implements MemorialAccessRepositor
       };
     }
     if (row?.outcome === "not_free") return { outcome: "notFree" };
+    if (row?.outcome === "free_unavailable") return { outcome: "freeUnavailable" };
     return { outcome: "refused" };
   }
 

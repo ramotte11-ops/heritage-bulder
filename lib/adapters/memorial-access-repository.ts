@@ -5,7 +5,8 @@ import type { SkinVariant } from "@/config/skins";
  * functions of supabase/migrations/
  * 20261024180000_heritage_direct_access_foundation.sql:
  * create_free_memorial_v1, anchor_free_memorial_v1 and
- * upgrade_memorial_access_v1.
+ * upgrade_memorial_access_v1 (create and anchor as corrected by
+ * 20261024190000_heritage_direct_free_window_per_email.sql).
  *
  * Every rule (B1 anchor, B6 quotas, B14 deadlines, D12 levels) is decided
  * in the database, at the database's clock, under lock. This port only
@@ -19,16 +20,21 @@ import type { SkinVariant } from "@/config/skins";
 /**
  * - `created`: a free (`avis`) Intemporel draft exists, not yet anchored;
  * - `freeDraftLimit`: B6 — the owner already has an active free draft;
+ * - `freeUnavailable`: the address can no longer publish for free in its
+ *   12-month cycle (7-day window over, or free publication already used);
  * - `refused`: unknown owner.
  */
 export type CreateFreeMemorialOutcome =
   | { outcome: "created"; memorialId: string }
   | { outcome: "freeDraftLimit" }
+  | { outcome: "freeUnavailable" }
   | { outcome: "refused" };
 
 /**
- * - `anchored`: B1 — this call recorded the first effective e-mail
- *   confirmation; the deadlines are the server's (B14);
+ * - `anchored`: B1 — the draft now carries its ADDRESS's anchor: the
+ *   first confirmation of the 12-month cycle opens the window, any later
+ *   draft of that cycle inherits it (no new 7 days); the deadlines are the
+ *   server's (B14);
  * - `alreadyAnchored`: anchored before — the original deadlines, unmoved;
  * - `notFree`: a complete memorial has no free anchor;
  * - `refused`: not the owner's, archived, unknown, or already published.
@@ -41,6 +47,8 @@ export type AnchorFreeMemorialOutcome =
       freeDraftUntil: string;
     }
   | { outcome: "notFree" }
+  /** Outside the address's window, or its free publication is used. */
+  | { outcome: "freeUnavailable" }
   | { outcome: "refused" };
 
 export type MemorialUpgradeSource = "direct_payment" | "admin";

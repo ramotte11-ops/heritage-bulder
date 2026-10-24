@@ -2857,10 +2857,12 @@ check "the deadlines start at the exact first publication" "$M1A_FIRST" "$($DB -
 check "the first free publication is journaled" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='free.first_published';")"
 
 # F4. B6: one free publication per owner (e-mail) over 12 months.
-M1A_SECOND=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")
-check "once the first draft is published, a new free draft may be prepared" "created" "$(echo "$M1A_SECOND" | cut -d'|' -f1)"
-M1A_SECOND_MEM=$(echo "$M1A_SECOND" | cut -d'|' -f2)
-svc "select outcome from anchor_free_memorial_v1('$M1A_SECOND_MEM','$M1A_OWNER');" >/dev/null
+check "after a free publication, a new free draft is refused for 12 months" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")"
+# Backstop: the publication guard refuses a second free publication by
+# itself, whatever path produced an anchored avis draft.
+M1A_SECOND_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$M1A_OWNER', now()) returning id;")
+M1A_SECOND_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant) values ('$M1A_OWNER','$M1A_SECOND_ENT','person','intemporel','light') returning id;")
+$DB -c "update memorials set free_anchor_at = now(), free_publish_until = now() + interval '7 days', free_draft_until = now() + interval '45 days' where id='$M1A_SECOND_MEM';" >/dev/null
 m1a_ready "$M1A_SECOND_MEM" "m1a-second"
 svc_expect_error "B6: a second free publication within 12 months is refused" "$(m1a_publish_sql "$M1A_SECOND_MEM" "$M1A_OWNER" m1a-second)" "free publication quota reached"
 check "the refused second publication changes nothing" "ready|true|0" "$($DB -t -A -c "select status || '|' || (first_published_at is null) || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$M1A_SECOND_MEM') from memorials where id='$M1A_SECOND_MEM';")"
@@ -2901,6 +2903,91 @@ wait
 check "B6 under concurrency: exactly one of two simultaneous free publications succeeds" "1" "$(cat "$M1A_CONC"/1.rc "$M1A_CONC"/2.rc | grep -c '^0$' || true)"
 check "the loser is refused by the quota, not by a crash" "1" "$(cat "$M1A_CONC"/1.err "$M1A_CONC"/2.err | grep -c 'free publication quota reached' || true)"
 check "exactly one free publication is journaled for the owner" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_RACE_OWNER' and event='free.first_published';")"
+check "the second draft inherited the address's anchor and deadlines" "1|1" "$($DB -t -A -c "select count(distinct (free_anchor_at, free_publish_until, free_draft_until)) || '|' || (select count(*) from memorial_access_events where owner_id='$M1A_RACE_OWNER' and event='free.window_opened') from memorials where id in ('$M1A_RACE_A','$M1A_RACE_B');")"
+
+# F7. One free window per verified e-mail address (correctif 1).
+m1a_age() {
+  # $1 owner, $2 interval — moves the owner's whole free history back in time
+  $DB -c "update memorial_access_events set created_at = created_at - interval '$2' where owner_id='$1'; update memorials set free_anchor_at = free_anchor_at - interval '$2', free_publish_until = free_publish_until - interval '$2', free_draft_until = free_draft_until - interval '$2', first_published_at = first_published_at - interval '$2', free_corrections_until = free_corrections_until - interval '$2', free_public_until = free_public_until - interval '$2', free_private_until = free_private_until - interval '$2' where owner_id='$1';" >/dev/null
+}
+m1a_avis_draft() {
+  # $1 owner — an avis draft made outside create_free_memorial_v1
+  local ent
+  ent=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$1', now()) returning id;")
+  $DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant) values ('$1','$ent','person','intemporel','light') returning id;"
+}
+M1A_BYP_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-bypass@example.test') returning id;")
+M1A_BYP_D1=$(svc "select memorial_id from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")
+check "the first confirmation opens the address's free window" "anchored|1" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D1','$M1A_BYP_OWNER');")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_BYP_OWNER' and event='free.window_opened';")"
+$DB -c "update memorials set status='archived' where id='$M1A_BYP_D1';" >/dev/null
+M1A_BYP_D2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")
+check "inside the window, an abandoned draft may be replaced" "created" "$(echo "$M1A_BYP_D2" | cut -d'|' -f1)"
+M1A_BYP_D2=$(echo "$M1A_BYP_D2" | cut -d'|' -f2)
+check "the replacement inherits the address's anchor: no new 7 days" "anchored|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D2','$M1A_BYP_OWNER');")|$($DB -t -A -c "select (a.free_anchor_at = b.free_anchor_at and a.free_publish_until = b.free_publish_until and a.free_draft_until = b.free_draft_until) from memorials a, memorials b where a.id='$M1A_BYP_D1' and b.id='$M1A_BYP_D2';")"
+check "the window is opened once per cycle" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_BYP_OWNER' and event='free.window_opened';")"
+
+m1a_age "$M1A_BYP_OWNER" '8 days'
+$DB -c "update memorials set status='archived' where id='$M1A_BYP_D2';" >/dev/null
+M1A_RIGHTS_BEFORE=$($DB -t -A -c "select count(*) from entitlements;")
+check "after the 7 days, recreating a free draft is refused" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")"
+check "that refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "select count(*) from entitlements;")"
+M1A_BYP_D3=$(m1a_avis_draft "$M1A_BYP_OWNER")
+check "outside the window, an unanchored draft is not anchored" "free_unavailable|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D3','$M1A_BYP_OWNER');")|$($DB -t -A -c "select free_anchor_at is null from memorials where id='$M1A_BYP_D3';")"
+m1a_ready "$M1A_BYP_D3" "m1a-bypass-3"
+svc_expect_error "and it cannot be published for free" "$(m1a_publish_sql "$M1A_BYP_D3" "$M1A_BYP_OWNER" m1a-bypass-3)" "requires a confirmed e-mail"
+$DB -c "update memorials set status='archived' where id='$M1A_BYP_D3';" >/dev/null
+
+m1a_age "$M1A_BYP_OWNER" '12 months'
+M1A_BYP_D4=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")
+check "renewal: 12 months later, without free publication, a new draft may be created" "created" "$(echo "$M1A_BYP_D4" | cut -d'|' -f1)"
+M1A_BYP_D4=$(echo "$M1A_BYP_D4" | cut -d'|' -f2)
+check "renewal: the new confirmation opens a new window, now" "anchored|2|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D4','$M1A_BYP_OWNER');")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_BYP_OWNER' and event='free.window_opened';")|$($DB -t -A -c "select free_anchor_at > now() - interval '1 minute' from memorials where id='$M1A_BYP_D4';")"
+m1a_ready "$M1A_BYP_D4" "m1a-bypass-4"
+m1a_publish "$M1A_BYP_D4" "$M1A_BYP_OWNER" m1a-bypass-4 >/dev/null
+check "renewal: the new cycle's free publication succeeds" "published" "$($DB -t -A -c "select status from memorials where id='$M1A_BYP_D4';")"
+
+# A cycle older than 12 months does not reopen while the last free
+# publication is younger than 12 months: never two free publications
+# less than 12 months apart.
+M1A_PUB_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-publisher@example.test') returning id;")
+M1A_PUB_D1=$(svc "select memorial_id from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")
+svc "select outcome from anchor_free_memorial_v1('$M1A_PUB_D1','$M1A_PUB_OWNER');" >/dev/null
+m1a_ready "$M1A_PUB_D1" "m1a-publisher-1"
+m1a_publish "$M1A_PUB_D1" "$M1A_PUB_OWNER" m1a-publisher-1 >/dev/null
+m1a_age "$M1A_PUB_OWNER" '12 months 1 day'
+$DB -c "update memorial_access_events set created_at = created_at + interval '6 days' where owner_id='$M1A_PUB_OWNER' and event='free.first_published';" >/dev/null
+check "renewal waits until the last free publication is 12 months old" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")"
+$DB -c "update memorial_access_events set created_at = created_at - interval '6 days' where owner_id='$M1A_PUB_OWNER' and event='free.first_published';" >/dev/null
+check "then it is possible again" "created" "$(svc "select outcome from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")"
+
+# Concurrency: two drafts confirmed at the same instant open ONE window.
+M1A_RACE2_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-race2@example.test') returning id;")
+M1A_RACE2_A=$(m1a_avis_draft "$M1A_RACE2_OWNER")
+M1A_RACE2_B=$(m1a_avis_draft "$M1A_RACE2_OWNER")
+M1A_CONC_A="$PGDATA_DIR/concurrency-m1a-anchor"; mkdir -p "$M1A_CONC_A"
+i=0
+for mem in "$M1A_RACE2_A" "$M1A_RACE2_B"; do
+  i=$((i + 1))
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from anchor_free_memorial_v1('$mem','$M1A_RACE2_OWNER');" >"$M1A_CONC_A/$i.out" 2>"$M1A_CONC_A/$i.err" || rc=$?
+    echo "$rc" >"$M1A_CONC_A/$i.rc"
+  ) &
+done
+wait
+check "two simultaneous confirmations: both anchored, no error" "anchored anchored|0 0" "$(cat "$M1A_CONC_A"/1.out "$M1A_CONC_A"/2.out | grep -v '^$' | tr '\n' ' ' | sed 's/ $//')|$(cat "$M1A_CONC_A"/1.rc "$M1A_CONC_A"/2.rc | tr '\n' ' ' | sed 's/ $//')"
+check "two simultaneous confirmations open exactly one window, shared" "1|1" "$($DB -t -A -c "select (select count(*) from memorial_access_events where owner_id='$M1A_RACE2_OWNER' and event='free.window_opened') || '|' || count(distinct free_anchor_at) from memorials where id in ('$M1A_RACE2_A','$M1A_RACE2_B');")"
+
+# Owner = verified e-mail address.
+expect_error "a second account cannot take the same e-mail address, whatever its case" \
+  "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'M1A-Bypass@Example.TEST');"
+check "no application role can change an owner's e-mail" "false|false|false" "$($DB -t -A -c "select has_column_privilege('anon','owners','email','UPDATE') || '|' || has_column_privilege('authenticated','owners','email','UPDATE') || '|' || has_column_privilege('service_role','owners','email','UPDATE');")"
+check "even the database owner cannot change the e-mail of an owner with a free history (HD423)" "1" \
+  "$($DB -c "update owners set email = 'm1a-bypass-new@example.test' where id='$M1A_BYP_OWNER';" 2>&1 | grep -c 'bound to its free access history' || true)"
+M1A_PLAIN_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-plain@example.test') returning id;")
+$DB -c "update owners set email = 'm1a-plain-2@example.test' where id='$M1A_PLAIN_OWNER';" >/dev/null
+check "an owner without free history is unaffected" "m1a-plain-2@example.test" "$($DB -t -A -c "select email from owners where id='$M1A_PLAIN_OWNER';")"
+check "the window helper is executable by no role" "false|false|false" "$($DB -t -A -c "select has_function_privilege('anon','public.free_access_window_v1(uuid,timestamptz)','EXECUTE') || '|' || has_function_privilege('authenticated','public.free_access_window_v1(uuid,timestamptz)','EXECUTE') || '|' || has_function_privilege('service_role','public.free_access_window_v1(uuid,timestamptz)','EXECUTE');")"
 
 # --- G. Gallery quota (6 photos in avis), media and draft ---
 M1A_GAL_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-gallery@example.test') returning id;")
@@ -3029,6 +3116,22 @@ check "m1a_postflight.sql turns red on a client grant on the journal" "1" \
   "$($DB -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql turns red on a changed duration" "1" \
   "$($DB -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+
+# Correctif 1's complementary postflight, same doctrine.
+if $DB -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  echo "  [PASS] m1a_correctif1_postflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] m1a_correctif1_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+M1A_C1_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>/dev/null)
+check "m1a_correctif1_postflight.sql reports zero ECHEC" "0" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "ECHEC" || true)"
+check "m1a_correctif1_postflight.sql grades every expected control (12 OK)" "12" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "|OK$" || true)"
+check "m1a_correctif1_postflight.sql turns red on a grant of the window helper" "1" \
+  "$($DB -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+check "m1a_correctif1_postflight.sql turns red if the initial anchor function is back" "1" \
+  "$($DB -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
