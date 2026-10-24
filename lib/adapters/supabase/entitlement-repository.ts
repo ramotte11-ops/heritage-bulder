@@ -5,6 +5,7 @@ import type {
   IssueEntitlementOutcome,
   RedeemEntitlementOutcome,
 } from "@/lib/adapters/entitlement-repository";
+import type { AccessLevel } from "@/config/access-levels";
 import type { EntitlementSource, EntitlementStatus } from "@/config/entitlements";
 import type { MemorialType } from "@/config/memorial";
 import type { OfferId } from "@/config/offers";
@@ -137,11 +138,13 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
   async issueWithActivationKey({
     offerId,
     source,
+    accessLevel,
     externalOrderId,
     activationKeyHash,
   }: {
     offerId: OfferId;
     source: EntitlementSource;
+    accessLevel: AccessLevel;
     externalOrderId?: string | null;
     activationKeyHash: string;
   }): Promise<IssueEntitlementOutcome> {
@@ -153,6 +156,7 @@ export class SupabaseEntitlementRepository implements EntitlementRepository {
       .insert({
         offer_id: offerId,
         source,
+        access_level: accessLevel,
         external_order_id: externalOrderId ?? null,
         activation_key_hash: activationKeyHash,
       })

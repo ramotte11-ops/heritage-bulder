@@ -231,6 +231,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
       offerId: "intemporel",
       source: "etsy",
+      accessLevel: "complet",
       externalOrderId: "order-1",
       activationKeyHash: HASH,
     });
@@ -239,6 +240,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     expect(insert).toHaveBeenCalledWith({
       offer_id: "intemporel",
       source: "etsy",
+      access_level: "complet",
       external_order_id: "order-1",
       activation_key_hash: HASH,
     });
@@ -254,6 +256,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
     const outcome = await new SupabaseEntitlementRepository(client).issueWithActivationKey({
       offerId: "intemporel",
       source: "etsy",
+      accessLevel: "complet",
       externalOrderId: "order-1",
       activationKeyHash: HASH,
     });
@@ -278,6 +281,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
       new SupabaseEntitlementRepository(client).issueWithActivationKey({
         offerId: "intemporel",
         source: "etsy",
+        accessLevel: "complet",
         externalOrderId: "order-1",
         activationKeyHash: HASH,
       }),
@@ -294,6 +298,7 @@ describe("SupabaseEntitlementRepository.issueWithActivationKey", () => {
       new SupabaseEntitlementRepository(client).issueWithActivationKey({
         offerId: "intemporel",
         source: "direct",
+        accessLevel: "complet",
         externalOrderId: null,
         activationKeyHash: HASH,
       }),

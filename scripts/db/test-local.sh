@@ -526,7 +526,7 @@ done
 
 # --- the parcours actually works with exactly these privileges --------
 PM_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'privmodel@example.test') returning id;")
-PM_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PM_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PM_OUT=$(svc "select outcome from redeem_entitlement('$PM_ENT','$PM_OWNER','person','intemporel','light');")
 check "redeem_entitlement succeeds as service_role with ONLY the granted privileges" "redeemed" "$PM_OUT"
 
@@ -599,8 +599,8 @@ OWNER_B=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_ran
 AUTH_UID_A=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_A';")
 AUTH_UID_B=$($DB -t -A -c "select auth_user_id from owners where id = '$OWNER_B';")
 
-ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'intemporel') returning id;")
-ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'intemporel') returning id;")
+ENT_A=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'etsy', 'intemporel') returning id;")
+ENT_B=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'etsy', 'intemporel') returning id;")
 
 MEM_A=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$OWNER_A', '$ENT_A', 'person', 'announcement', 'intemporel', 'light', 'en', 'test-memorial-a-1x2y3z', 'published') returning id;")
 MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$OWNER_B', '$ENT_B', 'person', 'remembrance', 'intemporel', 'light', 'en', 'test-memorial-b-4a5b6c', 'draft') returning id;")
@@ -626,7 +626,7 @@ expect_error "invalid skin_id is rejected" \
   "update memorials set skin_id = 'not-a-real-skin' where id = '$MEM_A';"
 
 expect_error "invalid offer_id is rejected" \
-  "insert into entitlements (source, offer_id) values ('etsy', 'not-a-real-offer');"
+  "insert into entitlements (access_level, source, offer_id) values ('complet', 'etsy', 'not-a-real-offer');"
 
 expect_error "entitlements.skin_id no longer exists (Mission 006: skin lives on memorials only)" \
   "select skin_id from entitlements limit 1;"
@@ -646,7 +646,7 @@ expect_error "invalid skin_variant is rejected" \
 # A fresh, still-unclaimed entitlement so this test's error can only come
 # from the missing skin_variant itself — never from the entitlement_id
 # collision the two tests above are already exercising.
-ENT_NO_VARIANT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('etsy', 'intemporel') returning id;")
+ENT_NO_VARIANT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'etsy', 'intemporel') returning id;")
 expect_error "missing skin_variant is rejected (NOT NULL, no DEFAULT — Mission 029B)" \
   "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, language, slug) values ('$OWNER_A', '$ENT_NO_VARIANT', 'person', 'announcement', 'intemporel', 'en', 'test-memorial-missing-variant');"
 
@@ -788,7 +788,7 @@ OWNER_C=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_ran
 OWNER_D=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'owner-d@example.test') returning id;")
 
 new_entitlement() {
-  $DB -t -A -c "insert into entitlements (source, offer_id, status) values ('direct', 'intemporel', '$1') returning id;"
+  $DB -t -A -c "insert into entitlements (access_level, source, offer_id, status) values ('complet', 'direct', 'intemporel', '$1') returning id;"
 }
 
 ENT_NULLS=$(new_entitlement available)
@@ -1069,7 +1069,7 @@ check "exact case-insensitive equality still matches the same address in any cas
 # Confirm end to end that a freshly created owner can redeem, so the
 # 011B path (resolve owner -> redeem) is proven against the real schema.
 B_OWNER=$($DB -t -A -c "select id from owners where auth_user_id = '$B_AUTH';")
-B_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct', 'juif') returning id;")
+B_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct', 'juif') returning id;")
 B_OUTCOME=$(svc "select outcome from redeem_entitlement('$B_ENT', '$B_OWNER', 'person', 'juif', 'light');")
 check "a newly created owner can redeem an entitlement (011B path, real schema)" "redeemed" "$B_OUTCOME"
 
@@ -1089,11 +1089,11 @@ echo "== Mission 013: activation keys =="
 K_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'keys@example.test') returning id;")
 K_AUTH=$($DB -t -A -c "select auth_user_id from owners where id = '$K_OWNER';")
 K_HASH=$(printf 'a%.0s' $(seq 1 64))
-K_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$K_HASH') returning id;")
+K_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('complet', 'direct','intemporel','$K_HASH') returning id;")
 # Give this owner a redeemed right too: that is the only state in which
 # entitlements_select_own matches a row at all, so it is the only state
 # where a leak could actually happen.
-K_ENT_MINE=$($DB -t -A -c "insert into entitlements (source, offer_id, status, owner_id, redeemed_at, activation_key_hash) values ('direct','juif','redeemed','$K_OWNER',now(),'$(printf 'b%.0s' $(seq 1 64))') returning id;")
+K_ENT_MINE=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at, activation_key_hash) values ('complet', 'direct','juif','redeemed','$K_OWNER',now(),'$(printf 'b%.0s' $(seq 1 64))') returning id;")
 
 expect_error "authenticated CANNOT read activation_key_hash on its own entitlement" \
   "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; select activation_key_hash from entitlements where id = '$K_ENT_MINE';"
@@ -1131,7 +1131,7 @@ HASH_WRITABLE=$($DB -t -A -c "select has_column_privilege('authenticated','publi
 check "authenticated cannot even be granted a write to activation_key_hash by a policy alone" "f" "$HASH_WRITABLE"
 
 expect_error "authenticated CANNOT insert an entitlement (permission, not just RLS)" \
-  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; insert into entitlements (source, offer_id) values ('direct','juif');"
+  "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','juif');"
 
 expect_error "authenticated CANNOT update its own entitlement" \
   "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; update entitlements set status = 'available' where id = '$K_ENT_MINE';"
@@ -1143,7 +1143,7 @@ expect_error "authenticated CANNOT delete an entitlement" \
   "set role authenticated; set local request.jwt.claim.sub = '$K_AUTH'; delete from entitlements where id = '$K_ENT_MINE';"
 
 expect_error "anon CANNOT insert an entitlement" \
-  "set role anon; insert into entitlements (source, offer_id) values ('direct','juif');"
+  "set role anon; insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','juif');"
 
 # --- PUBLIC must hold nothing, directly or by column grant ------------
 PUBLIC_TABLE=$($DB -t -A -c "select coalesce((select true from aclexplode((select relacl from pg_class where oid='public.entitlements'::regclass)) a where a.grantee = 0 limit 1), false);")
@@ -1174,15 +1174,15 @@ $DB -c "alter table entitlements drop column future_column;" >/dev/null
 
 # --- the hash column's own integrity ---
 expect_error "a non-sha256 activation_key_hash is rejected" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','not-a-hash');"
+  "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('complet', 'direct','intemporel','not-a-hash');"
 
 expect_error "an uppercase hex activation_key_hash is rejected" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$(printf 'A%.0s' $(seq 1 64))');"
+  "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('complet', 'direct','intemporel','$(printf 'A%.0s' $(seq 1 64))');"
 
 expect_error "two rights cannot share one activation key hash" \
-  "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$K_HASH');"
+  "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('complet', 'direct','intemporel','$K_HASH');"
 
-NULL_KEYS=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel'),('direct','musulman') returning 1;" | wc -l)
+NULL_KEYS=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel'),('complet', 'direct','musulman') returning 1;" | wc -l)
 check "several rights may coexist with no activation key (partial unique index)" "2" "$NULL_KEYS"
 
 # --- the wrapper's permissions ---
@@ -1208,7 +1208,7 @@ check "Mission 011A's redeem_entitlement carries Mission 029B's p_skin_variant, 
 
 # --- concurrency / linearisation, scenarios A-F ---
 new_keyed_entitlement() {
-  $DB -t -A -c "insert into entitlements (source, offer_id, activation_key_hash) values ('direct','intemporel','$1') returning id;"
+  $DB -t -A -c "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('complet', 'direct','intemporel','$1') returning id;"
 }
 HASH_A=$(printf '1%.0s' $(seq 1 64)); HASH_B=$(printf '2%.0s' $(seq 1 64))
 HASH_C=$(printf '3%.0s' $(seq 1 64)); HASH_D=$(printf '4%.0s' $(seq 1 64))
@@ -1703,19 +1703,19 @@ echo "== Mission 018: one Etsy purchase can only ever become one right =="
 
 ET_ORDER="etsy-receipt-$(date +%s%N)"
 ET_HASH=$(random_hash)
-ET_FIRST=$($DB -t -A -c "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_ORDER','$ET_HASH') returning id;")
+ET_FIRST=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, external_order_id, activation_key_hash) values ('complet', 'etsy','intemporel','$ET_ORDER','$ET_HASH') returning id;")
 check "a first Etsy provisioning inserts one right" "1" "$($DB -t -A -c "select count(*) from entitlements where source='etsy' and external_order_id='$ET_ORDER';")"
 
 expect_error "a replay of the same receipt is refused by the unique index (no second right)" \
-  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_ORDER','$(random_hash)');"
+  "insert into entitlements (access_level, source, offer_id, external_order_id, activation_key_hash) values ('complet', 'etsy','intemporel','$ET_ORDER','$(random_hash)');"
 
 expect_error "a replay is refused even when it resolves to a DIFFERENT offer" \
-  "insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','juif','$ET_ORDER','$(random_hash)');"
+  "insert into entitlements (access_level, source, offer_id, external_order_id, activation_key_hash) values ('complet', 'etsy','juif','$ET_ORDER','$(random_hash)');"
 
 # The constraint is on the PAIR, not on the order reference alone: the
 # same string arriving through a different sales channel is a different
 # order and must still be provisionable.
-$DB -c "insert into entitlements (source, offer_id, external_order_id) values ('direct','intemporel','$ET_ORDER');" >/dev/null
+$DB -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet', 'direct','intemporel','$ET_ORDER');" >/dev/null
 check "the same reference under another source is a different order (the key is the PAIR)" "1" \
   "$($DB -t -A -c "select count(*) from entitlements where source='direct' and external_order_id='$ET_ORDER';")"
 
@@ -1729,7 +1729,7 @@ mkdir -p "$CONC_DIR_018"
 for i in 1 2; do
   (
     rc=0
-    $DB -t -A -c "set role service_role; select pg_sleep(0.7); insert into entitlements (source, offer_id, external_order_id, activation_key_hash) values ('etsy','intemporel','$ET_RACE_ORDER','$(random_hash)') returning id;" \
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); insert into entitlements (access_level, source, offer_id, external_order_id, activation_key_hash) values ('complet', 'etsy','intemporel','$ET_RACE_ORDER','$(random_hash)') returning id;" \
       >"$CONC_DIR_018/$i.out" 2>"$CONC_DIR_018/$i.err" || rc=$?
     echo "$rc" >"$CONC_DIR_018/$i.rc"
   ) &
@@ -1748,7 +1748,7 @@ check "exactly one right exists after the race" "1" "$ET_RACE_ROWS"
 # The unit tests assert the adapter recognises a duplicate by SQLSTATE
 # 23505, never by parsing a message. That code is what PostgreSQL really
 # raises here.
-ET_SQLSTATE=$($DB -t -A -c "do \$\$ begin insert into entitlements (source, offer_id, external_order_id) values ('etsy','intemporel','$ET_RACE_ORDER'); exception when others then raise notice 'SQLSTATE=%', sqlstate; end \$\$;" 2>&1 | grep -c "SQLSTATE=23505" || true)
+ET_SQLSTATE=$($DB -t -A -c "do \$\$ begin insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet', 'etsy','intemporel','$ET_RACE_ORDER'); exception when others then raise notice 'SQLSTATE=%', sqlstate; end \$\$;" 2>&1 | grep -c "SQLSTATE=23505" || true)
 check "a duplicate order raises SQLSTATE 23505 (what the adapter branches on)" "1" "$ET_SQLSTATE"
 
 # Mission 018 provisions a right and stops: no owner, no memorial, no
@@ -2005,8 +2005,8 @@ M030_AUTH_A=$($DB -t -A -c "select gen_random_uuid();")
 M030_AUTH_B=$($DB -t -A -c "select gen_random_uuid();")
 M030_OWNER_A=$($DB -t -A -c "insert into owners (email, auth_user_id) values ('m030-a@heritage.test','$M030_AUTH_A') returning id;")
 M030_OWNER_B=$($DB -t -A -c "insert into owners (email, auth_user_id) values ('m030-b@heritage.test','$M030_AUTH_B') returning id;")
-M030_ENT_A=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
-M030_ENT_B=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M030_ENT_A=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
+M030_ENT_B=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 M030_MEM_A=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug) values ('$M030_OWNER_A','$M030_ENT_A','person','remembrance','intemporel','light','fr','m030-memorial-a') returning id;")
 M030_MEM_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug) values ('$M030_OWNER_B','$M030_ENT_B','person','remembrance','intemporel','light','fr','m030-memorial-b') returning id;")
 
@@ -2197,7 +2197,7 @@ echo "== Security V1 lot 2: CAS, publication race and append-only audit =="
 
 S2_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'security-v1-lot2@example.test') returning id;")
 S2_OTHER_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'security-v1-lot2-other@example.test') returning id;")
-S2_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+S2_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 S2_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$S2_OWNER','$S2_ENT','person','announcement','intemporel','light','fr','security-v1-lot2','editing',now() - interval '1 day') returning id;")
 
 S2_RESULT=$(svc "select updated_at is not null, revision from commit_memorial_draft_edit_v1('$S2_MEM','$S2_OWNER',0,'editing',(select first_published_at from memorials where id='$S2_MEM'),'{\"personWords\":{\"text\":\"Correction\"}}','content.saved',array['content.personWords.text']);")
@@ -2224,7 +2224,7 @@ svc_expect_error \
   "memorial draft changed"
 check "the visibility winner remains stored" "gallery" "$($DB -t -A -c "select content->'presentation'->'hiddenSections'->>0 from memorial_drafts where memorial_id='$S2_MEM';")"
 
-S2_PREPUB_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+S2_PREPUB_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 S2_PREPUB_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$S2_OWNER','$S2_PREPUB_ENT','person','announcement','intemporel','light','fr','security-v1-lot2-prepub','ready') returning id;")
 svc "select commit_memorial_configuration_edit_v1('$S2_PREPUB_MEM','$S2_OWNER','ready',null,'language','fr','en',array['configuration.language']);" >/dev/null
 check "a configuration edit persists its checked value" "en" "$($DB -t -A -c "select language from memorials where id='$S2_PREPUB_MEM';")"
@@ -2276,7 +2276,7 @@ echo "== Security V1 publication: atomic snapshot and Hero-retirement lease =="
 
 PUB_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'publication-owner@example.test') returning id;")
 PUB_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'publication-other@example.test') returning id;")
-PUB_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PUB_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_ENT','person','announcement','intemporel','light','fr','publication-foundation','ready') returning id;")
 $DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Jeanne\",\"photo\":null}}' where memorial_id='$PUB_MEM';" >/dev/null
 
@@ -2310,7 +2310,7 @@ PUB_REPUBLISHED=$(svc "select first_published_at from commit_memorial_publicatio
 check "republication preserves the immutable first publication date" "$PUB_FIRST_AT" "$PUB_REPUBLISHED"
 check "republication replaces the live snapshot with the exact new draft" "Jeanne Martin" "$($DB -t -A -c "select content->'hero'->>'displayName' from memorial_published_snapshots where memorial_id='$PUB_MEM';")"
 
-PUB_STALE_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_STALE_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PUB_STALE=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_STALE_ENT','person','announcement','intemporel','light','fr','publication-stale','ready') returning id;")
 svc "select * from commit_memorial_draft_edit_v1('$PUB_STALE','$PUB_OWNER',0,'ready',null,'{\"hero\":{\"displayName\":\"Fresh save\"}}','content.saved',array['content.hero.displayName']);" >/dev/null
 svc_expect_error \
@@ -2319,7 +2319,7 @@ svc_expect_error \
   "memorial draft changed"
 check "the stale publication leaves the memorial unpublished" "ready|0" "$($DB -t -A -c "select status || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$PUB_STALE') from memorials where id='$PUB_STALE';")"
 
-PUB_CONFIG_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_CONFIG_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PUB_CONFIG=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_CONFIG_ENT','person','announcement','intemporel','light','fr','publication-config-race','ready') returning id;")
 $DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Configuration race\",\"photo\":null}}' where memorial_id='$PUB_CONFIG'; update memorials set skin_variant='dark' where id='$PUB_CONFIG';" >/dev/null
 svc_expect_error \
@@ -2328,7 +2328,7 @@ svc_expect_error \
   "memorial publication configuration changed"
 check "the configuration conflict creates no false publication" "ready|dark|0" "$($DB -t -A -c "select status || '|' || skin_variant || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$PUB_CONFIG') from memorials where id='$PUB_CONFIG';")"
 
-PUB_EXPIRED_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_EXPIRED_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PUB_EXPIRED_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_EXPIRED_ENT','person','announcement','intemporel','light','fr','publication-expired-lease','ready') returning id;")
 $DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Lease recovery\",\"photo\":null}}' where memorial_id='$PUB_EXPIRED_MEM';" >/dev/null
 PUB_EXPIRED_MEDIA=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$PUB_EXPIRED_MEM','$PUB_OWNER','$PUB_EXPIRED_MEM/bbbbbbbb-cccc-4ddd-8eee-ffffffffffff/original.jpg','photo','image/jpeg','hero','ready',1024) returning id;")
@@ -2351,7 +2351,7 @@ svc "select * from commit_memorial_publication_v1('$PUB_EXPIRED_MEM','$PUB_OWNER
 check "explicit reconciliation releases an interrupted retirement" "published" "$($DB -t -A -c "select status from memorials where id='$PUB_EXPIRED_MEM';")"
 
 for forbidden_status in draft published archived; do
-  PUB_BAD_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+  PUB_BAD_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
   PUB_BAD=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$PUB_OWNER','$PUB_BAD_ENT','person','announcement','intemporel','light','fr','publication-$forbidden_status','$forbidden_status',case when '$forbidden_status' in ('published','archived') then now() else null end) returning id;")
   svc_expect_error \
     "publication refuses the forbidden $forbidden_status transition" \
@@ -2359,7 +2359,7 @@ for forbidden_status in draft published archived; do
     "memorial publication transition refused"
 done
 
-PUB_FAIL_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+PUB_FAIL_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 PUB_FAIL=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$PUB_FAIL_ENT','person','announcement','intemporel','light','fr','publication-rollback','ready') returning id;")
 $DB -c "create function test_fail_publication_snapshot() returns trigger language plpgsql as \$\$ begin if new.memorial_id='$PUB_FAIL' then raise exception 'forced snapshot failure'; end if; return new; end; \$\$; create trigger test_fail_publication_snapshot before insert or update on memorial_published_snapshots for each row execute function test_fail_publication_snapshot();" >/dev/null
 svc_expect_error \
@@ -2392,7 +2392,7 @@ check "PUBLIC has no privilege on hero_media_retirement_leases" "f" "$PUBLIC_RET
 echo ""
 echo "== Security V1 media: locked upload lifecycle and durable retirement =="
 
-M3_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M3_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 M3_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$M3_ENT','person','announcement','intemporel','light','fr','media-security-v1','ready') returning id;")
 M3_HERO=$(svc "select gen_random_uuid();")
 M3_GALLERY=$(svc "select gen_random_uuid();")
@@ -2455,7 +2455,7 @@ svc_expect_error \
   "gallery media retained for published snapshot"
 check "retained published Gallery media row remains present" "1" "$($DB -t -A -c "select count(*) from media where id='$M3_POST_GALLERY';")"
 
-M3_RET_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+M3_RET_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
 M3_RET_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$PUB_OWNER','$M3_RET_ENT','person','announcement','intemporel','light','fr','media-retirement-v1','ready') returning id;")
 M3_RET_MEDIA=$($DB -t -A -c "insert into media (memorial_id,owner_id,storage_path,media_type,mime_type,purpose,status,size_bytes) values ('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEM/cccccccc-cccc-4ccc-8ccc-cccccccccccc/original.jpg','photo','image/jpeg','hero','ready',100) returning id;")
 M3_LEASE_ONE=$(svc "select lease_id from reserve_hero_media_retirement_v1('$M3_RET_MEM','$PUB_OWNER','$M3_RET_MEDIA',0);")
@@ -2602,7 +2602,7 @@ SO_OTHER_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$SO_OTHE
 so_memorial() {
   # $1 slug, $2 status, $3 snapshot content (empty = no snapshot)
   local ent mem
-  ent=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+  ent=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
   mem=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$SO_OWNER','$ent','person','announcement','intemporel','light','fr','$1','$2',case when '$2' in ('published','editing','archived') then now() else null end) returning id;")
   if [ -n "$3" ]; then
     $DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$mem', '$3');" >/dev/null
@@ -2674,7 +2674,7 @@ check "hiding them in the draft only does not close the published memorial" "rec
 SO_MALFORMED=$(so_memorial offrandes-c1-malformee published '{"hero":{"displayName":"Jeanne"},"presentation":{"hiddenSections":"symbolicOfferings"}}')
 so_open "$SO_MALFORMED"
 check "a malformed hiddenSections counts as nothing hidden (same rule as the app)" "recorded" "$(so_record offrandes-c1-malformee lys "$(svc "select gen_random_uuid();")")"
-SO_OTHER_SKIN_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','juif') returning id;")
+SO_OTHER_SKIN_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','juif') returning id;")
 SO_OTHER_SKIN=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$SO_OWNER','$SO_OTHER_SKIN_ENT','person','announcement','juif','light','fr','offrandes-c1-juif','published',now()) returning id;")
 $DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$SO_OTHER_SKIN', '$SNAP');" >/dev/null
 so_open "$SO_OTHER_SKIN"
@@ -2731,6 +2731,304 @@ $DB -c "delete from symbolic_offering_settings;" >/dev/null
 check "without a settings row every gesture is refused (fail closed)" "refused" "$(so_record offrandes-c1-plafond lys "$(svc "select gen_random_uuid();")")"
 $DB -c "insert into symbolic_offering_settings (max_per_hour, max_per_day) values (30, 200);" >/dev/null
 check "the provisional ceilings are restored for the rest of the suite" "30|200" "$($DB -t -A -c "select max_per_hour || '|' || max_per_day from symbolic_offering_settings;")"
+
+# =====================================================================
+# HERITAGE Direct M1-A — free / complete access foundation
+# =====================================================================
+echo ""
+echo "== HERITAGE Direct M1-A: free / complete access foundation =="
+
+# --- A. Backfill, settings, D12 (no implicit level) ---
+check "every existing memorial carries an explicit access level" "0" "$($DB -t -A -c "select count(*) from memorials where access_level is null;")"
+check "every fixture right declares its level explicitly" "0" "$($DB -t -A -c "select count(*) from entitlements where access_level is null;")"
+check "settings hold real durations (168 h, 1080 h, 168 h, 1080 h, 720 h) and B6 quotas" \
+  "168:00:00|1080:00:00|168:00:00|1080:00:00|720:00:00|1 year|1|1|6|12" \
+  "$($DB -t -A -c "select free_publish_window || '|' || free_draft_retention || '|' || free_correction_window || '|' || free_public_duration || '|' || free_private_extension || '|' || free_publication_quota_window || '|' || free_publications_per_owner || '|' || free_active_drafts_per_owner || '|' || avis_gallery_limit || '|' || avis_gallery_rows_cap from memorial_access_settings;")"
+
+M1A_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-owner@example.test') returning id;")
+M1A_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-other@example.test') returning id;")
+
+M1A_NOLEVEL_ENT=$($DB -t -A -c "insert into entitlements (source, offer_id) values ('direct','intemporel') returning id;")
+expect_error "a memorial cannot be created from a right without a level (D12)" \
+  "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant) values ('$M1A_OWNER','$M1A_NOLEVEL_ENT','person','intemporel','light');"
+svc_expect_error "redeem_entitlement refuses a right without a level, nothing implicit" \
+  "select * from redeem_entitlement('$M1A_NOLEVEL_ENT','$M1A_OWNER','person','intemporel','light');" \
+  "memorial access level missing"
+check "the refused redemption leaves the right available and unowned" "available|true" "$($DB -t -A -c "select status || '|' || (owner_id is null) from entitlements where id='$M1A_NOLEVEL_ENT';")"
+
+expect_error "an Etsy right can never be a free one" \
+  "insert into entitlements (access_level, source, offer_id) values ('avis','etsy','intemporel');"
+expect_error "a free right carries no activation key" \
+  "insert into entitlements (access_level, source, offer_id, activation_key_hash) values ('avis','direct','intemporel','$(printf 'c%.0s' $(seq 1 64))');"
+expect_error "a free right carries no order reference" \
+  "insert into entitlements (access_level, source, offer_id, external_order_id) values ('avis','direct','intemporel','order-1');"
+expect_error "an unknown level is refused" \
+  "insert into entitlements (access_level, source, offer_id) values ('premium','direct','intemporel');"
+
+M1A_COMPLETE_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet','direct','intemporel') returning id;")
+expect_error "a memorial cannot claim a level different from its right" \
+  "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, access_level) values ('$M1A_OWNER','$M1A_COMPLETE_ENT','person','intemporel','light','avis');"
+M1A_FORCED=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, free_anchor_at, free_publish_until, free_draft_until) values ('$M1A_OWNER','$M1A_COMPLETE_ENT','person','intemporel','light', now(), now() + interval '1 day', now() + interval '2 days') returning id;")
+check "free deadlines can never be supplied at insertion" "complet|true" "$($DB -t -A -c "select access_level || '|' || (free_anchor_at is null and free_publish_until is null and free_draft_until is null) from memorials where id='$M1A_FORCED';")"
+
+# --- B. Etsy non-regression through the unchanged redemption ---
+M1A_ETSY_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet','etsy','intemporel','m1a-etsy-order') returning id;")
+M1A_ETSY_MEM=$(svc "select memorial_id from redeem_entitlement('$M1A_ETSY_ENT','$M1A_OWNER','person','intemporel','light');")
+check "an Etsy redemption creates a complete memorial, with no free deadline" "complet|true|redeemed" \
+  "$($DB -t -A -c "select m.access_level || '|' || (m.free_anchor_at is null and m.free_public_until is null) || '|' || e.status from memorials m join entitlements e on e.id = m.entitlement_id where m.id='$M1A_ETSY_MEM';")"
+
+# --- C. create_free_memorial_v1 and B6 (one active free draft) ---
+svc_expect_error "a free memorial is Intemporel only at launch (D8)" \
+  "select * from create_free_memorial_v1('$M1A_OWNER','juif','light');" "invalid free memorial request"
+check "an unknown owner is refused, as a value" "refused" "$(svc "select outcome from create_free_memorial_v1(gen_random_uuid(),'intemporel','light');")"
+M1A_FREE=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")
+M1A_FREE_MEM=$(echo "$M1A_FREE" | cut -d'|' -f2)
+check "a free draft is created" "created" "$(echo "$M1A_FREE" | cut -d'|' -f1)"
+check "the free memorial is an unanchored draft at level avis" "avis|draft|true" "$($DB -t -A -c "select access_level || '|' || status || '|' || (free_anchor_at is null) from memorials where id='$M1A_FREE_MEM';")"
+check "its right is a redeemed, keyless, direct free right" "avis|direct|redeemed|true" "$($DB -t -A -c "select e.access_level || '|' || e.source || '|' || e.status || '|' || (e.activation_key_hash is null and e.external_order_id is null) from entitlements e join memorials m on m.entitlement_id = e.id where m.id='$M1A_FREE_MEM';")"
+check "its draft row exists, like every memorial" "1" "$($DB -t -A -c "select count(*) from memorial_drafts where memorial_id='$M1A_FREE_MEM';")"
+check "the creation is journaled" "free.created" "$($DB -t -A -c "select string_agg(event, ',') from memorial_access_events where memorial_id='$M1A_FREE_MEM';")"
+M1A_RIGHTS_BEFORE=$($DB -t -A -c "select count(*) from entitlements;")
+check "B6: a second active free draft is refused" "free_draft_limit" "$(svc "select outcome from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")"
+check "B6: the refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "select count(*) from entitlements;")"
+
+# --- D. anchor_free_memorial_v1 (B1, B14) ---
+check "a foreign owner cannot anchor the draft" "refused" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OTHER');")"
+check "a complete memorial has no free anchor" "not_free" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_ETSY_MEM','$M1A_OWNER');")"
+check "the first confirmation anchors the draft" "anchored" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OWNER');")"
+check "B14: real durations from the anchor (7 days, 45 days), never rounded" "168|1080" \
+  "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
+M1A_ANCHOR=$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until from memorials where id='$M1A_FREE_MEM';")
+check "a second confirmation never moves the anchor" "already_anchored" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OWNER');")"
+check "the deadlines are unchanged after the second confirmation" "$M1A_ANCHOR" "$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until from memorials where id='$M1A_FREE_MEM';")"
+check "anchoring is journaled once" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='free.anchored';")"
+
+# --- E. Privileges ---
+for col in access_level access_level_changed_at free_anchor_at free_publish_until free_draft_until free_corrections_until free_public_until free_private_until; do
+  check "authenticated cannot write memorials.$col" "f" "$($DB -t -A -c "select has_column_privilege('authenticated','memorials','$col','UPDATE');")"
+done
+check "service_role cannot update memorials directly (only through functions)" "f" "$($DB -t -A -c "select has_table_privilege('service_role','memorials','UPDATE');")"
+for t in memorial_access_settings memorial_access_events; do
+  for r in anon authenticated service_role; do
+    check "$r has no privilege on $t" "f" "$($DB -t -A -c "select has_table_privilege('$r','$t','SELECT') or has_table_privilege('$r','$t','INSERT') or has_table_privilege('$r','$t','UPDATE') or has_table_privilege('$r','$t','DELETE') or has_table_privilege('$r','$t','TRUNCATE');")"
+  done
+  check "$t has RLS enabled" "t" "$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.$t'::regclass;")"
+done
+for f in "create_free_memorial_v1(uuid,text,text)" "anchor_free_memorial_v1(uuid,uuid)" "upgrade_memorial_access_v1(uuid,uuid,text,text)"; do
+  check "$f executable by service_role only" "false|false|true" "$($DB -t -A -c "select has_function_privilege('anon','public.$f','EXECUTE') || '|' || has_function_privilege('authenticated','public.$f','EXECUTE') || '|' || has_function_privilege('service_role','public.$f','EXECUTE');")"
+done
+
+# --- F. First free publication guard ---
+m1a_ready() {
+  # $1 memorial, $2 slug
+  $DB -c "update memorials set language='fr', slug='$2', status='ready' where id='$1'; update memorial_drafts set content='{\"hero\":{\"displayName\":\"Avis\",\"photo\":null}}' where memorial_id='$1';" >/dev/null
+}
+m1a_publish() {
+  # $1 memorial, $2 owner, $3 slug — returns the outcome on stdout, errors on stderr
+  svc "select first_published_at from commit_memorial_publication_v1('$1','$2',0,'ready',null,'fr','intemporel','light','$3','{\"hero\":{\"displayName\":\"Avis\",\"photo\":null}}');"
+}
+m1a_publish_sql() {
+  echo "select * from commit_memorial_publication_v1('$1','$2',0,'ready',null,'fr','intemporel','light','$3','{\"hero\":{\"displayName\":\"Avis\",\"photo\":null}}');"
+}
+
+# F1. No confirmed e-mail: no free publication.
+M1A_NOANCHOR_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-noanchor@example.test') returning id;")
+M1A_NOANCHOR_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_NOANCHOR_OWNER','intemporel','light');")
+m1a_ready "$M1A_NOANCHOR_MEM" "m1a-no-anchor"
+svc_expect_error "a free publication requires a confirmed e-mail (anchor)" "$(m1a_publish_sql "$M1A_NOANCHOR_MEM" "$M1A_NOANCHOR_OWNER" m1a-no-anchor)" "requires a confirmed e-mail"
+check "the refused publication leaves no snapshot and no first date" "0|ready|true" "$($DB -t -A -c "select (select count(*) from memorial_published_snapshots where memorial_id='$M1A_NOANCHOR_MEM') || '|' || status || '|' || (first_published_at is null) from memorials where id='$M1A_NOANCHOR_MEM';")"
+
+# F2. Window closed: no free publication, even never published.
+M1A_LATE_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-late@example.test') returning id;")
+M1A_LATE_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_LATE_OWNER','intemporel','light');")
+svc "select outcome from anchor_free_memorial_v1('$M1A_LATE_MEM','$M1A_LATE_OWNER');" >/dev/null
+$DB -c "update memorials set free_anchor_at = now() - interval '8 days', free_publish_until = now() - interval '1 day', free_draft_until = now() + interval '37 days' where id='$M1A_LATE_MEM';" >/dev/null
+m1a_ready "$M1A_LATE_MEM" "m1a-late"
+svc_expect_error "after the 7-day window the free publication is refused" "$(m1a_publish_sql "$M1A_LATE_MEM" "$M1A_LATE_OWNER" m1a-late)" "free publication window closed"
+check "the draft stays editable-state draft/ready and unpublished" "ready|true" "$($DB -t -A -c "select status || '|' || (first_published_at is null) from memorials where id='$M1A_LATE_MEM';")"
+
+# F3. Within the window: published, deadlines posed from the real first publication.
+m1a_ready "$M1A_FREE_MEM" "m1a-free"
+M1A_FIRST=$(m1a_publish "$M1A_FREE_MEM" "$M1A_OWNER" m1a-free)
+check "a free publication inside the window succeeds" "published" "$($DB -t -A -c "select status from memorials where id='$M1A_FREE_MEM';")"
+check "B14: corrections, public and private deadlines are real durations from the first publication" "168|1080|720" \
+  "$($DB -t -A -c "select extract(epoch from (free_corrections_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_public_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_private_until - free_public_until))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
+check "the deadlines start at the exact first publication" "$M1A_FIRST" "$($DB -t -A -c "select first_published_at from memorials where id='$M1A_FREE_MEM';")"
+check "the first free publication is journaled" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='free.first_published';")"
+
+# F4. B6: one free publication per owner (e-mail) over 12 months.
+M1A_SECOND=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")
+check "once the first draft is published, a new free draft may be prepared" "created" "$(echo "$M1A_SECOND" | cut -d'|' -f1)"
+M1A_SECOND_MEM=$(echo "$M1A_SECOND" | cut -d'|' -f2)
+svc "select outcome from anchor_free_memorial_v1('$M1A_SECOND_MEM','$M1A_OWNER');" >/dev/null
+m1a_ready "$M1A_SECOND_MEM" "m1a-second"
+svc_expect_error "B6: a second free publication within 12 months is refused" "$(m1a_publish_sql "$M1A_SECOND_MEM" "$M1A_OWNER" m1a-second)" "free publication quota reached"
+check "the refused second publication changes nothing" "ready|true|0" "$($DB -t -A -c "select status || '|' || (first_published_at is null) || '|' || (select count(*) from memorial_published_snapshots where memorial_id='$M1A_SECOND_MEM') from memorials where id='$M1A_SECOND_MEM';")"
+$DB -c "update memorial_access_events set created_at = created_at - interval '13 months' where owner_id='$M1A_OWNER' and event='free.first_published';" >/dev/null
+M1A_SECOND_FIRST=$(m1a_publish "$M1A_SECOND_MEM" "$M1A_OWNER" m1a-second)
+check "B6: after 12 months a new free publication is allowed" "published" "$($DB -t -A -c "select status from memorials where id='$M1A_SECOND_MEM';")"
+
+# F5. A complete memorial is untouched by the free guard.
+M1A_COMPLETE_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, language, slug, status) values ('$M1A_OTHER', (select id from entitlements where id='$M1A_COMPLETE_ENT' and not exists (select 1 from memorials where entitlement_id='$M1A_COMPLETE_ENT')), 'person','intemporel','light','fr','m1a-complete','ready') returning id;" 2>/dev/null || true)
+if [ -z "$M1A_COMPLETE_MEM" ]; then
+  M1A_COMPLETE_ENT2=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet','direct','intemporel') returning id;")
+  M1A_COMPLETE_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, language, slug, status) values ('$M1A_OTHER','$M1A_COMPLETE_ENT2','person','intemporel','light','fr','m1a-complete','ready') returning id;")
+fi
+$DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"Avis\",\"photo\":null}}' where memorial_id='$M1A_COMPLETE_MEM';" >/dev/null
+m1a_publish "$M1A_COMPLETE_MEM" "$M1A_OTHER" m1a-complete >/dev/null
+check "a complete memorial publishes without anchor nor free deadline" "published|true|0" "$($DB -t -A -c "select status || '|' || (free_public_until is null) || '|' || (select count(*) from memorial_access_events where memorial_id='$M1A_COMPLETE_MEM') from memorials where id='$M1A_COMPLETE_MEM';")"
+
+# F6. Concurrency: two free first publications of one owner, at once.
+M1A_RACE_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-race@example.test') returning id;")
+M1A_RACE_A=$(svc "select memorial_id from create_free_memorial_v1('$M1A_RACE_OWNER','intemporel','light');")
+M1A_RACE_B_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$M1A_RACE_OWNER', now()) returning id;")
+M1A_RACE_B=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant) values ('$M1A_RACE_OWNER','$M1A_RACE_B_ENT','person','intemporel','light') returning id;")
+for m in "$M1A_RACE_A" "$M1A_RACE_B"; do
+  svc "select outcome from anchor_free_memorial_v1('$m','$M1A_RACE_OWNER');" >/dev/null
+done
+m1a_ready "$M1A_RACE_A" "m1a-race-a"; m1a_ready "$M1A_RACE_B" "m1a-race-b"
+M1A_CONC="$PGDATA_DIR/concurrency-m1a-publication"; mkdir -p "$M1A_CONC"
+i=0
+for pair in "$M1A_RACE_A:m1a-race-a" "$M1A_RACE_B:m1a-race-b"; do
+  i=$((i + 1)); mem=${pair%%:*}; slug=${pair##*:}
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); $(m1a_publish_sql "$mem" "$M1A_RACE_OWNER" "$slug")" >"$M1A_CONC/$i.out" 2>"$M1A_CONC/$i.err" || rc=$?
+    echo "$rc" >"$M1A_CONC/$i.rc"
+  ) &
+done
+wait
+check "B6 under concurrency: exactly one of two simultaneous free publications succeeds" "1" "$(cat "$M1A_CONC"/1.rc "$M1A_CONC"/2.rc | grep -c '^0$' || true)"
+check "the loser is refused by the quota, not by a crash" "1" "$(cat "$M1A_CONC"/1.err "$M1A_CONC"/2.err | grep -c 'free publication quota reached' || true)"
+check "exactly one free publication is journaled for the owner" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_RACE_OWNER' and event='free.first_published';")"
+
+# --- G. Gallery quota (6 photos in avis), media and draft ---
+M1A_GAL_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-gallery@example.test') returning id;")
+M1A_GAL_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_GAL_OWNER','intemporel','light');")
+m1a_reserve() {
+  # $1 memorial, $2 owner -> media id or error
+  local id
+  id=$(svc "select gen_random_uuid();")
+  svc "select id from reserve_memorial_media_upload_v1('$1','$2','$id','$1/$id/original.jpg','gallery','image/jpeg');"
+}
+M1A_GAL_OK=0
+for n in 1 2 3 4 5 6; do
+  if m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1; then M1A_GAL_OK=$((M1A_GAL_OK + 1)); fi
+done
+check "six gallery uploads are accepted in avis" "6" "$M1A_GAL_OK"
+M1A_SEVENTH=$(svc "select gen_random_uuid();")
+svc_expect_error "the seventh gallery upload is refused by the server" \
+  "select * from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_SEVENTH','$M1A_GAL_MEM/$M1A_SEVENTH/original.jpg','gallery','image/jpeg');" \
+  "free gallery limit reached"
+M1A_DIRECT=$(svc "select gen_random_uuid();")
+svc_expect_error "a direct service_role insert cannot bypass the quota" \
+  "insert into media (id, memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M1A_DIRECT','$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_GAL_MEM/$M1A_DIRECT/original.jpg','photo','image/jpeg','gallery','pending');" \
+  "free gallery limit reached"
+M1A_HERO=$(svc "select gen_random_uuid();")
+check "the Hero photograph is not counted in the six" "$M1A_HERO" "$(svc "select id from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_HERO','$M1A_GAL_MEM/$M1A_HERO/original.jpg','hero','image/jpeg');")"
+$DB -c "update media set created_at = now() - interval '4 hours' where id = (select id from media where memorial_id='$M1A_GAL_MEM' and purpose='gallery' order by created_at limit 1);" >/dev/null
+check "an expired pending upload frees its place" "1" "$(m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+$DB -c "update media set created_at = now() - interval '4 hours' where memorial_id='$M1A_GAL_MEM' and purpose='gallery';" >/dev/null
+for n in 1 2 3 4 5; do m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1 || true; done
+check "the storage cap counts every gallery row (12)" "12" "$($DB -t -A -c "select count(*) from media where memorial_id='$M1A_GAL_MEM' and purpose='gallery';")"
+$DB -c "update media set created_at = now() - interval '4 hours' where memorial_id='$M1A_GAL_MEM' and purpose='gallery';" >/dev/null
+M1A_CAP=$(svc "select gen_random_uuid();")
+svc_expect_error "beyond 12 gallery rows the storage cap refuses, even with free places" \
+  "select * from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_CAP','$M1A_GAL_MEM/$M1A_CAP/original.jpg','gallery','image/jpeg');" \
+  "free gallery storage cap reached"
+
+# Concurrency: two uploads for the last place.
+M1A_LAST_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-last@example.test') returning id;")
+M1A_LAST_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_LAST_OWNER','intemporel','light');")
+for n in 1 2 3 4 5; do m1a_reserve "$M1A_LAST_MEM" "$M1A_LAST_OWNER" >/dev/null; done
+M1A_CONC_G="$PGDATA_DIR/concurrency-m1a-gallery"; mkdir -p "$M1A_CONC_G"
+for i in 1 2; do
+  (
+    rc=0
+    id=$(svc "select gen_random_uuid();")
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select id from reserve_memorial_media_upload_v1('$M1A_LAST_MEM','$M1A_LAST_OWNER','$id','$M1A_LAST_MEM/$id/original.jpg','gallery','image/jpeg');" >"$M1A_CONC_G/$i.out" 2>"$M1A_CONC_G/$i.err" || rc=$?
+    echo "$rc" >"$M1A_CONC_G/$i.rc"
+  ) &
+done
+wait
+check "two simultaneous uploads for the last place: exactly one wins" "1" "$(cat "$M1A_CONC_G"/1.rc "$M1A_CONC_G"/2.rc | grep -c '^0$' || true)"
+check "the memorial holds exactly six gallery rows" "6" "$($DB -t -A -c "select count(*) from media where memorial_id='$M1A_LAST_MEM' and purpose='gallery';")"
+
+# Photos retained only by the published snapshot do not consume a place (corrections).
+M1A_SNAP_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-snapshot@example.test') returning id;")
+M1A_SNAP_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$M1A_SNAP_OWNER', now()) returning id;")
+M1A_SNAP_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, language, slug, status, first_published_at) values ('$M1A_SNAP_OWNER','$M1A_SNAP_ENT','person','intemporel','light','fr','m1a-snapshot','published', now()) returning id;")
+M1A_SNAP_IDS=""
+for n in 1 2 3 4 5 6; do
+  id=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) select '$M1A_SNAP_MEM','$M1A_SNAP_OWNER','$M1A_SNAP_MEM/' || g || '/original.jpg','photo','image/jpeg','gallery','ready',100 from (select gen_random_uuid() g) x returning id;")
+  M1A_SNAP_IDS="$M1A_SNAP_IDS $id"
+done
+M1A_SNAP_ITEMS=$(for id in $M1A_SNAP_IDS; do printf '{"mediaId":"%s"},' "$id"; done | sed 's/,$//')
+M1A_DRAFT_ITEMS=$(for id in $(echo $M1A_SNAP_IDS | cut -d' ' -f1-5); do printf '{"mediaId":"%s"},' "$id"; done | sed 's/,$//')
+$DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$M1A_SNAP_MEM', '{\"gallery\":{\"items\":[$M1A_SNAP_ITEMS]}}');" >/dev/null
+$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_DRAFT_ITEMS]}}' where memorial_id='$M1A_SNAP_MEM';" >/dev/null
+check "a photo kept only by the published copy frees its place for a replacement" "1" "$(m1a_reserve "$M1A_SNAP_MEM" "$M1A_SNAP_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Draft guard.
+M1A_SEVEN_ITEMS=$(for n in 1 2 3 4 5 6 7; do printf '{"mediaId":"%s"},' "$(svc "select gen_random_uuid();")"; done | sed 's/,$//')
+M1A_SIX_ITEMS=$(for n in 1 2 3 4 5 6; do printf '{"mediaId":"%s"},' "$(svc "select gen_random_uuid();")"; done | sed 's/,$//')
+expect_error "an avis draft cannot reference seven gallery photos" \
+  "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_GAL_MEM';"
+$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SIX_ITEMS]}}' where memorial_id='$M1A_GAL_MEM';" >/dev/null
+check "an avis draft may reference six gallery photos" "6" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_GAL_MEM';")"
+$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_COMPLETE_MEM';" >/dev/null
+check "a complete draft is not limited to six" "7" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_COMPLETE_MEM';")"
+
+# --- H. upgrade_memorial_access_v1: same memorial, nothing lost ---
+M1A_UP_BEFORE=$($DB -t -A -c "select d.revision || '|' || md5(d.content::text) || '|' || coalesce(md5(s.content::text),'-') || '|' || m.status || '|' || coalesce(m.slug,'-') || '|' || (select count(*) from media where memorial_id=m.id) || '|' || m.first_published_at from memorials m join memorial_drafts d on d.memorial_id=m.id left join memorial_published_snapshots s on s.memorial_id=m.id where m.id='$M1A_FREE_MEM';")
+svc_expect_error "an unknown upgrade source is refused" "select * from upgrade_memorial_access_v1('$M1A_FREE_MEM','$M1A_OWNER','gift','ref-1');" "invalid memorial upgrade request"
+check "a foreign owner cannot upgrade" "refused" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_FREE_MEM','$M1A_OTHER','direct_payment','pay-m1a-1');")"
+check "the free memorial is upgraded" "upgraded" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_FREE_MEM','$M1A_OWNER','direct_payment','pay-m1a-1');")"
+check "the same memorial is now complete, with its change time" "complet|true" "$($DB -t -A -c "select access_level || '|' || (access_level_changed_at is not null) from memorials where id='$M1A_FREE_MEM';")"
+check "the upgrade changes no content, copy, media, status, slug nor first date" "$M1A_UP_BEFORE" "$($DB -t -A -c "select d.revision || '|' || md5(d.content::text) || '|' || coalesce(md5(s.content::text),'-') || '|' || m.status || '|' || coalesce(m.slug,'-') || '|' || (select count(*) from media where memorial_id=m.id) || '|' || m.first_published_at from memorials m join memorial_drafts d on d.memorial_id=m.id left join memorial_published_snapshots s on s.memorial_id=m.id where m.id='$M1A_FREE_MEM';")"
+check "replaying the same payment reference is idempotent" "already_complete" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_FREE_MEM','$M1A_OWNER','direct_payment','pay-m1a-1');")"
+check "one payment reference upgrades one memorial only" "refused" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','direct_payment','pay-m1a-1');")"
+check "the upgrade is journaled once, with its reference" "1|direct_payment|pay-m1a-1" "$($DB -t -A -c "select count(*) || '|' || max(source) || '|' || max(external_reference) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='access.upgraded';")"
+check "the gallery memorial is still limited until upgraded" "avis" "$($DB -t -A -c "select access_level from memorials where id='$M1A_GAL_MEM';")"
+check "after upgrade the six-photo limit no longer applies" "upgraded|1" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_LAST_MEM','$M1A_LAST_OWNER','direct_payment','pay-m1a-2');")|$(m1a_reserve "$M1A_LAST_MEM" "$M1A_LAST_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# --- I. M1-A preflight / postflight, same doctrine as Mission 030 ---
+# Both read-only. Against a database that already carries M1-A, the
+# preflight must flag every "already applied" row; the postflight must
+# report no ECHEC once the one right this section deliberately left
+# without a level (the D12 refusal test above) is gone.
+if $DB -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
+  echo "  [PASS] m1a_preflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] m1a_preflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/preflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+check "m1a_preflight.sql detects that M1-A is already applied (11 rows)" "11" \
+  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep -c "ECHEC — .*M1-A" || true)"
+check "m1a_preflight.sql finds its prerequisites" "0" \
+  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
+
+check "m1a_postflight.sql flags a right without a level (D12 transition)" "1" \
+  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
+$DB -c "delete from entitlements where id='$M1A_NOLEVEL_ENT';" >/dev/null
+if $DB -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  echo "  [PASS] m1a_postflight.sql parses and executes"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] m1a_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
+  FAIL=$((FAIL + 1))
+fi
+M1A_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null)
+check "m1a_postflight.sql reports zero ECHEC against these migrations" "0" "$(echo "$M1A_POSTFLIGHT" | grep -c "ECHEC" || true)"
+check "m1a_postflight.sql grades every expected control (42 OK)" "42" "$(echo "$M1A_POSTFLIGHT" | grep -c "|OK$" || true)"
+# Negative proofs, each rolled back: the postflight must turn red.
+check "m1a_postflight.sql turns red if the updated_at trigger stays suspended" "1" \
+  "$($DB -t -A -c "begin;" -c "alter table memorials disable trigger memorials_set_updated_at;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+check "m1a_postflight.sql turns red on a client grant on the journal" "1" \
+  "$($DB -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+check "m1a_postflight.sql turns red on a changed duration" "1" \
+  "$($DB -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 echo ""
 echo "== Results: $PASS passed, $FAIL failed =="

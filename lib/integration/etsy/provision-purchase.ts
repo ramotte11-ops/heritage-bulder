@@ -1,3 +1,4 @@
+import type { AccessLevel } from "@/config/access-levels";
 import type { EntitlementSource } from "@/config/entitlements";
 import type { OfferId } from "@/config/offers";
 import type { EntitlementRepository } from "@/lib/adapters/entitlement-repository";
@@ -34,6 +35,11 @@ import type { ValidatedEtsyPurchase } from "./validate-purchase";
 /** The channel label the schema already carries. Declared here, in the
  * Etsy layer, so nothing in `lib/entitlement/` ever has to name Etsy. */
 const ETSY_SOURCE: EntitlementSource = "etsy";
+
+/** HERITAGE Direct M1-A (D12) — every Etsy right is a complete right.
+ * Stated here, explicitly, on every issue; the schema also refuses an
+ * Etsy right at any other level (`entitlements_etsy_is_complete`). */
+const ETSY_ACCESS_LEVEL: AccessLevel = "complet";
 
 /**
  * Product rule, V1: one purchase grants one right, which grants one
@@ -124,6 +130,7 @@ export async function provisionEtsyPurchase(
     {
       offerId: purchase.offerId,
       source: ETSY_SOURCE,
+      accessLevel: ETSY_ACCESS_LEVEL,
       // Etsy's own receipt/transaction id, verbatim. This is the value
       // the unique index keys on, so it is passed through untouched —
       // never trimmed, normalised or re-derived, which would let the
