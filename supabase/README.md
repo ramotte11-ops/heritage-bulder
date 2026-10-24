@@ -841,6 +841,8 @@ is applied: 12 controls (the corrected functions are the ones in place,
 the window helper and the e-mail guard are executable by no role, no
 application role can update `owners.email`, the guard trigger is enabled,
 no address holds two free windows within 12 months).
+`checks/m1a_correctif2_postflight.sql` asserts `entitlements.access_level`
+is NOT NULL and that no right lacks a level.
 
 ## HERITAGE Direct M1-A — free / complete access
 
@@ -851,10 +853,13 @@ Additive: no existing function is replaced.
   always supplied explicitly — no default anywhere. Existing rights are
   backfilled `complet`; an Etsy right can only be `complet`; an `avis`
   right is direct, keyless and order-less. A memorial inherits its
-  right's level at creation (trigger, HD500 if missing). The column stays
-  nullable until M1-B, so the application code that supplies it must be
-  deployed right after the migration (see the postflight's
-  « droits sans niveau » row).
+  right's level at creation (trigger, HD500 if missing). The column is
+  NOT NULL (correctif 2, `20261024200000_heritage_direct_access_level_required.sql`):
+  a right written without a level is refused on the spot, never stored
+  unusable. During the switch-over only, the entitlement adapter retries a
+  `complet` right once without the column when the API does not know it
+  yet (PGRST204, schema without levels); on the M1-A schema that retry is
+  refused by NOT NULL. Apply the three M1-A migrations in one transaction.
 - **Deadlines (B1, B14).** Server-written only. The anchor is the first
   effective e-mail confirmation of the ADDRESS (`anchor_free_memorial_v1`,
   idempotent): it opens a 12-month cycle (`free.window_opened`), and any
