@@ -816,6 +816,58 @@ they parse and that the postflight reports zero `ECHEC` against a
 database built from these migrations. A typo in SQL a non-developer will
 paste into production is not something to discover in production.
 
+### HERITAGE Direct M1-A's pair
+
+`checks/m1a_preflight.sql` and `checks/m1a_postflight.sql` cover
+`migrations/20261024180000_heritage_direct_access_foundation.sql`. The
+preflight proves the migration is not yet applied, that C1 is, that the
+two `updated_at` triggers the migration suspends during its backfill
+exist, and photographs the row counts and the `md5` of the five
+functions M1-A must NOT change (`redeem_entitlement*`,
+`admin_mutate_activation_key`, `admin_revoke_entitlement`,
+`commit_memorial_publication_v1`). The postflight grades 42 controls
+(settings values in hours, D12 levels, Etsy memorials all `complet` with
+no free deadline, privileges, `SECURITY DEFINER` + empty `search_path`,
+triggers enabled) and prints the same five `md5` values for a line-by-line
+comparison with the preflight.
+
+Both are executed by the local harness, including negative proofs (a
+suspended trigger, a client grant on the journal, a changed duration each
+turn the postflight red).
+
+## HERITAGE Direct M1-A — free / complete access
+
+Contract: « Offre gratuite / complète V2.1 », PO arbitrations B1, B6, B14.
+Additive: no existing function is replaced.
+
+- **Levels (D12).** `entitlements.access_level` (`avis` | `complet`) is
+  always supplied explicitly — no default anywhere. Existing rights are
+  backfilled `complet`; an Etsy right can only be `complet`; an `avis`
+  right is direct, keyless and order-less. A memorial inherits its
+  right's level at creation (trigger, HD500 if missing). The column stays
+  nullable until M1-B, so the application code that supplies it must be
+  deployed right after the migration (see the postflight's
+  « droits sans niveau » row).
+- **Deadlines (B1, B14).** Server-written only. The anchor is the first
+  effective e-mail confirmation (`anchor_free_memorial_v1`, idempotent).
+  Real durations from the event: +168 h free publication, +1080 h draft
+  retention; from the first publication +168 h corrections, +1080 h
+  public, then +720 h private. Never rounded; displayed in Paris time by
+  `lib/memorial/access-state.ts`.
+- **Quotas (B6).** One active free draft per owner
+  (`create_free_memorial_v1`); one free first publication per owner over
+  12 months, counted in the append-only `memorial_access_events` journal
+  under the owner's lock (HD403); publication refused without anchor
+  (HD428) or after the window (HD410), at the database's clock.
+- **Gallery.** Six photos for `avis` (media in `pending` or `ready`, plus
+  the draft's items), with a 12-row storage cap (HD413).
+- **Upgrade.** `upgrade_memorial_access_v1` turns the SAME memorial
+  `complet`, touching no content; idempotent on
+  `(source, external_reference)`, HD409 on a concurrent reuse.
+
+Durations and quotas live in the one-row `memorial_access_settings`
+table, unreadable by every client role and by `service_role`.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
