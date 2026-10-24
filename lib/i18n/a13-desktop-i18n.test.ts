@@ -11,7 +11,7 @@ import { translate, translateWith, type Dictionary } from "./translate";
  * under the ONE i18n authority of the repo, FR / EN / ES.
  */
 
-const A13_KEYS = ["gallery.seeMoreMemories", "memory.position", "album.label", "viewer.close", "viewer.dialogLabel"] as const satisfies readonly TranslationKey[];
+const A13_KEYS = ["gallery.seeMoreMemories", "memory.position", "album.label", "viewer.close", "viewer.dialogLabel", "viewer.preparing", "viewer.photoUnavailable"] as const satisfies readonly TranslationKey[];
 
 describe("D5 — A13 product text, FR / EN / ES", () => {
   it("every A13 key is canonical and has its own FR, EN and ES entry (no silent fallback)", () => {
@@ -25,6 +25,8 @@ describe("D5 — A13 product text, FR / EN / ES", () => {
   it("FR is the HERITAGE wording, unchanged", () => {
     expect(translate("fr", "gallery.seeMoreMemories")).toBe("Voir plus de souvenirs");
     expect(translate("fr", "viewer.close")).toBe("Fermer le souvenir");
+    expect(translate("fr", "viewer.preparing")).toBe("Préparation de la photo…");
+    expect(translate("fr", "viewer.photoUnavailable")).toBe("Cette photo ne peut pas être chargée pour le moment.");
     expect(translate("fr", "album.label")).toBe("Album de souvenirs");
     expect(translateWith("fr", "viewer.dialogLabel", { subject: "MAMAN, 1966." })).toBe("Souvenir — MAMAN, 1966.");
     expect(translateWith("fr", "memory.position", { index: 3, total: 7 })).toBe("Souvenir 3 sur 7");
@@ -39,6 +41,10 @@ describe("D5 — A13 product text, FR / EN / ES", () => {
     expect(translate("es", "album.label")).toBe("Álbum de recuerdos");
     expect(translate("en", "viewer.close")).toBe("Close memory");
     expect(translate("es", "viewer.close")).toBe("Cerrar el recuerdo");
+    expect(translate("en", "viewer.preparing")).toBe("Preparing photo…");
+    expect(translate("es", "viewer.preparing")).toBe("Preparando la foto…");
+    expect(translate("en", "viewer.photoUnavailable")).toBe("This photo cannot be loaded at the moment.");
+    expect(translate("es", "viewer.photoUnavailable")).toBe("Esta foto no se puede cargar en este momento.");
     expect(translateWith("en", "viewer.dialogLabel", { subject: "MAMAN, 1966." })).toBe("Memory — MAMAN, 1966.");
     expect(translateWith("es", "viewer.dialogLabel", { subject: "MAMAN, 1966." })).toBe("Recuerdo — MAMAN, 1966.");
   });

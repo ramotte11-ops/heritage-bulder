@@ -15,10 +15,6 @@
   z-index: 2147483000;
 }
 
-.root[data-viewer-state="preparing"] {
-  visibility: hidden;
-}
-
 .environment {
   position: absolute;
   inset: 0;
@@ -38,6 +34,33 @@
   position: absolute;
   margin: 0;
   transform-origin: 50% 50%;
+}
+
+.preparing,
+.photoFeedback {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 1rem;
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--viewer-close-ink);
+}
+
+.preparing {
+  inset: 0;
+}
+
+.photoFeedback {
+  z-index: 1;
+}
+
+.photoError {
+  margin: 0;
 }
 
 .paper {

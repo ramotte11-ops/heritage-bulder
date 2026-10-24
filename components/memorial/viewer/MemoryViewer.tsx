@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { laBelleAurore } from "@/components/builder/fonts";
+import { PendingActionLabel } from "@/components/builder/PendingActionLabel";
 import { A13_VIEWER_ASSETS, A13_VIEWER_CONTRACT, A13_VIEWER_MATERIAL, type ViewerTheme } from "@/config/viewer-a13-desktop-v2";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
@@ -378,6 +379,7 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
     if (scrollbar > 0) html.style.paddingRight = `${parseFloat(getComputedStyle(html).paddingRight) + scrollbar}px`;
     s.inerted = [...document.body.children].filter((el) => el !== rootRef.current && !el.hasAttribute("inert"));
     for (const el of s.inerted) el.setAttribute("inert", "");
+    closeRef.current?.focus({ preventScroll: true });
     return () => restoreDocument();
   }, [restoreDocument]);
 
@@ -493,9 +495,9 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
 
   const close = useCallback(
     async (via: "button" | "escape") => {
-      if (closing.current || !geometry) return;
+      if (closing.current) return;
       closing.current = true;
-      if (!reducedMotion() && canAnimate(printRef.current)) {
+      if (geometry && !reducedMotion() && canAnimate(printRef.current)) {
         const c = geometry.motion.close;
         const opts = { duration: c.durationMs, easing: c.easing, fill: "forwards" as const };
         const anims = [
@@ -626,7 +628,20 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
       </span>
       <div ref={measureHostRef} className={styles.measureHost} aria-hidden="true" data-viewer-caption-measure-host="" />
       <div ref={envRef} className={styles.environment} aria-hidden="true" data-viewer-environment="" />
-      <div role="dialog" aria-modal="true" aria-label={label} className={styles.dialog}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        aria-busy={!g || photoState === "loading" ? true : undefined}
+        className={styles.dialog}
+      >
+        {!g ? (
+          <div className={styles.preparing} data-viewer-preparing="">
+            <PendingActionLabel pending pendingLabel={translate(language, "viewer.preparing")}>
+              {null}
+            </PendingActionLabel>
+          </div>
+        ) : null}
         {g ? (
           <figure
             ref={printRef}
@@ -653,6 +668,26 @@ export function MemoryViewer({ media, theme, origin, language, trigger, containe
               onLoad={onPhotoLoad}
               onError={() => setPhotoState("error")}
             />
+            {photoState === "loading" ? (
+              <div
+                className={styles.photoFeedback}
+                data-viewer-photo-feedback="loading"
+                style={{ left: placed!.photoLeft, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
+              >
+                <PendingActionLabel pending pendingLabel={translate(language, "viewer.preparing")}>
+                  {null}
+                </PendingActionLabel>
+              </div>
+            ) : photoState === "error" ? (
+              <p
+                role="alert"
+                className={`${styles.photoFeedback} ${styles.photoError}`}
+                data-viewer-photo-feedback="error"
+                style={{ left: placed!.photoLeft, top: g.photoLocal.y, width: g.photoLocal.w, height: g.photoLocal.h }}
+              >
+                {translate(language, "viewer.photoUnavailable")}
+              </p>
+            ) : null}
             {g.caption ? (
               // Same text node, class, size and width as the measured clone: the browser lays out the measured lines.
               <figcaption

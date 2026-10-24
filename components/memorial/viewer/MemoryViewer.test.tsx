@@ -93,6 +93,22 @@ function geometryDom(root: HTMLElement) {
 }
 
 describe("A13 Viewer Desktop V2 — MemoryViewer", () => {
+  it("shows preparation immediately and can close before geometry is ready", async () => {
+    const h = host();
+    const onClosed = vi.fn();
+    render(<MemoryViewer media={media} theme="light" origin="album" language="fr" trigger={h.trigger} container={h.container} onClosed={onClosed} />, {
+      container: document.createElement("div"),
+    });
+    const root = document.querySelector<HTMLElement>("[data-a13-viewer]")!;
+    expect(root.dataset.viewerState).toBe("preparing");
+    expect(root.textContent).toContain("Préparation de la photo…");
+    const close = root.querySelector<HTMLButtonElement>("[data-viewer-close]")!;
+    expect(document.activeElement).toBe(close);
+    fireEvent.click(close);
+    await waitFor(() => expect(onClosed).toHaveBeenCalledOnce());
+    expect(h.app.hasAttribute("inert")).toBe(false);
+  });
+
   it("opens a named modal dialog, makes the background inert, locks the document and focuses the close button", async () => {
     const { root, app } = await open("light");
     const dialog = root.querySelector("[role=dialog]")!;
@@ -362,19 +378,23 @@ describe("Optimisation photographique V1 — the photograph is revealed only who
     const print = root.querySelector<HTMLElement>("[data-viewer-print]")!;
     expect(photo.dataset.viewerPhotoState).toBe("loading");
     expect(print.getAttribute("aria-busy")).toBe("true");
+    expect(root.querySelector('[data-viewer-photo-feedback="loading"]')?.textContent).toContain("Préparation de la photo…");
     const box = { w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top };
     fireEvent.load(photo);
     await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("ready"));
     expect(print.hasAttribute("aria-busy")).toBe(false);
+    expect(root.querySelector("[data-viewer-photo-feedback]")).toBeNull();
     // Visibility only: the photo's box is the same before and after.
     expect({ w: photo.style.width, h: photo.style.height, l: photo.style.left, t: photo.style.top }).toEqual(box);
   });
 
   it("a photo that cannot load (expired signed URL, network) is never shown broken; the Viewer still closes normally", async () => {
-    const { root } = await open("dark");
+    const { root, onClosed } = await open("dark");
     const photo = root.querySelector<HTMLImageElement>("[data-viewer-photo]")!;
     fireEvent.error(photo);
     await waitFor(() => expect(photo.dataset.viewerPhotoState).toBe("error"));
-    expect(root.querySelector("[data-viewer-close]")).toBeTruthy();
+    expect(root.querySelector('[data-viewer-photo-feedback="error"]')?.textContent).toBe("Cette photo ne peut pas être chargée pour le moment.");
+    fireEvent.click(root.querySelector("[data-viewer-close]")!);
+    await waitFor(() => expect(onClosed).toHaveBeenCalledOnce());
   });
 });

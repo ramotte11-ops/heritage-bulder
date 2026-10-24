@@ -188,7 +188,7 @@ describe("opening — flush, then a fresh server read, then full screen", () => 
     let release: (value: HostResult) => void = () => {};
     renderHost({ load: () => new Promise<HostResult>((resolve) => (release = resolve)) });
     await openPreview();
-    expect(screen.getByRole("button", { name: OPEN }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("button", { name: "Ouverture de l'aperçu…" }).getAttribute("aria-busy")).toBe("true");
     await act(async () => release({ status: "unavailable" }));
     expect(screen.getByRole("button", { name: OPEN }).getAttribute("aria-busy")).toBe("false");
   });
@@ -229,7 +229,7 @@ describe("opening — flush, then a fresh server read, then full screen", () => 
 });
 
 describe("loading — the keepsake album, for exactly as long as the real work lasts", () => {
-  const LOADING = "Nous préparons votre hommage…";
+  const LOADING = "Ouverture de l'aperçu…";
   const loader = (container: HTMLElement) => container.querySelector("[data-preview-loading]");
 
   it("appears at once on the click, before the autosave drain or the read resolve", async () => {
@@ -264,9 +264,13 @@ describe("loading — the keepsake album, for exactly as long as the real work l
   it("repeated clicks while loading start a single attempt", async () => {
     let release: (value: HostResult) => void = () => {};
     const { load } = renderHost({ load: () => new Promise<HostResult>((resolve) => (release = resolve)) });
-    await openPreview();
-    await openPreview();
-    await openPreview();
+    const button = screen.getByRole("button", { name: OPEN });
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: LOADING })).toBeTruthy());
     expect(load).toHaveBeenCalledTimes(1);
     await act(async () => release(await readyResult()));
   });
@@ -293,8 +297,8 @@ describe("loading — the keepsake album, for exactly as long as the real work l
   });
 
   it.each([
-    ["en", "We are preparing your tribute…"],
-    ["es", "Estamos preparando su homenaje…"],
+    ["en", "Opening preview…"],
+    ["es", "Abriendo la vista previa…"],
   ] as const)("speaks the Builder's language (%s)", async (language, text) => {
     let release: (value: HostResult) => void = () => {};
     render(

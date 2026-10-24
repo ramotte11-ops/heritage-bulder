@@ -595,6 +595,8 @@ export const TRANSLATION_KEYS = [
   "album.title",
   "viewer.close",
   "viewer.dialogLabel",
+  "viewer.preparing",
+  "viewer.photoUnavailable",
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];
