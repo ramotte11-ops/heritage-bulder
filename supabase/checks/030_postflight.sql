@@ -250,11 +250,14 @@ union all
 
 -- media_type reste limité à 'photo' : aucune vidéo, à aucune couche.
 select 'F. contraintes media', 'media_type refuse toujours la video', 'photo uniquement',
-       coalesce((select replace(pg_get_constraintdef(oid), E'\n', ' ') from pg_constraint
+       coalesce((select string_agg(replace(pg_get_constraintdef(oid), E'\n', ' '), ' ; ' order by conname)
+                   from pg_constraint
                   where conrelid = 'public.media'::regclass
+                    and contype = 'c'
                     and pg_get_constraintdef(oid) like '%media_type%'), 'CONTRAINTE ABSENTE'),
        case when exists (select 1 from pg_constraint
                           where conrelid = 'public.media'::regclass
+                            and contype = 'c'
                             and pg_get_constraintdef(oid) like '%media_type%'
                             and pg_get_constraintdef(oid) like '%photo%'
                             and pg_get_constraintdef(oid) not like '%video%')

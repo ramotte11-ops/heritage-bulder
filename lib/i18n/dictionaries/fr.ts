@@ -41,7 +41,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "preview.backToCreation": "Revenir à la création",
   "preview.changeAmbiance": "Changer l'ambiance",
   "preview.unavailable": "L’aperçu n’est pas disponible pour le moment. Réessayez dans un instant.",
-  "preview.loading": "Nous préparons votre hommage…",
+  "preview.loading": "Ouverture de l'aperçu…",
   "journey.open": "Mon parcours",
   "journey.title": "Mon parcours",
   "journey.intro": "Retrouvez chaque étape de votre hommage. Vous pouvez revenir sur une étape déjà commencée : vos réponses sont enregistrées.",
@@ -353,4 +353,6 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "album.title": "Galerie de souvenirs",
   "viewer.close": "Fermer le souvenir",
   "viewer.dialogLabel": "Souvenir — {subject}",
+  "viewer.preparing": "Préparation de la photo…",
+  "viewer.photoUnavailable": "Cette photo ne peut pas être chargée pour le moment.",
 };

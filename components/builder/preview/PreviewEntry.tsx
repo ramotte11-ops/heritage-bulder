@@ -2,6 +2,7 @@
 
 import { useContext } from "react";
 import { translate } from "@/lib/i18n/translate";
+import { PendingActionLabel } from "../PendingActionLabel";
 import { PreviewEntryContext } from "./BuilderPreviewHost";
 import styles from "./BuilderPreviewHost.module.css";
 
@@ -23,11 +24,16 @@ export function PreviewEntry() {
         ref={registerButton}
         type="button"
         className={styles.entryButton}
+        aria-label={busy ? translate(language, "preview.loading") : undefined}
         aria-busy={busy}
         disabled={busy}
         onClick={open}
       >
-        {translate(language, "preview.view")}
+        <span aria-hidden={busy || undefined}>
+          <PendingActionLabel pending={busy} pendingLabel={translate(language, "preview.loading")}>
+            {translate(language, "preview.view")}
+          </PendingActionLabel>
+        </span>
       </button>
       {unavailable && (
         <p role="alert" className={styles.entryError}>
