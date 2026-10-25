@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { GalleryItem } from "@/types/gallery";
 import type { MemorialContent } from "@/types/memorial";
@@ -207,12 +208,28 @@ describe("M1-B1 publication policy", () => {
     expect(successfulProjection(draft, "complet").content).toEqual({});
   });
 
-  it("does not publish the Preview-only symbolic-offerings renderer", () => {
-    const projection = successfulProjection(
-      { symbolicOfferings: { visitorGesture: "private" } } as MemorialContent,
-      "complet",
-    );
-    expect(projection.content).not.toHaveProperty("symbolicOfferings");
+  it.each(["avis", "complet"] as const)(
+    "does not publish the Preview-only symbolic-offerings renderer for %s",
+    (accessLevel) => {
+      const projection = successfulProjection({}, accessLevel);
+
+      expect(projection.content).not.toHaveProperty("symbolicOfferings");
+    },
+  );
+
+  it("excludes symbolic offerings only through public-renderer availability, never the avis premium rule", () => {
+    const source = readFileSync(new URL("./publication-policy.ts", import.meta.url), "utf8");
+    const publicRenderers = source.match(
+      /const PUBLIC_RENDERERS:[\s\S]*?new Set\(\[([\s\S]*?)\]\);/,
+    )?.[1];
+    const premiumSectionIds = source.match(
+      /const PREMIUM_SECTION_IDS:[\s\S]*?new Set\(\[([\s\S]*?)\]\);/,
+    )?.[1];
+
+    expect(publicRenderers).toBeDefined();
+    expect(publicRenderers).not.toContain('"SymbolicOfferingsV1Section"');
+    expect(premiumSectionIds).toBeDefined();
+    expect(premiumSectionIds).not.toContain('"symbolicOfferings"');
   });
 
   it("preserves the private source byte-for-byte and shares no gallery references", () => {
