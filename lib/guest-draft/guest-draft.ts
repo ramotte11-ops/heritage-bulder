@@ -1,5 +1,7 @@
+import { isLanguage, type Language } from "@/config/languages";
 import type { AllowedImageMimeType, MediaPurpose } from "@/config/media";
 import { ALLOWED_IMAGE_MIME_TYPES } from "@/config/media";
+import { SKIN_VARIANTS, type SkinVariant } from "@/config/skins";
 import { GALLERY_CAPTION_MAX_CHARACTERS, normalizeGalleryCaption } from "@/lib/memorial/gallery-content";
 import type { HeroCrop } from "@/types/hero";
 import type { MemorialContent } from "@/types/memorial";
@@ -9,7 +11,8 @@ import type { MemorialContent } from "@/types/memorial";
  * unrelated to IndexedDB's physical database version and to a server draft's
  * optimistic-concurrency revision.
  */
-export const GUEST_DRAFT_SCHEMA_VERSION = 1 as const;
+export const LEGACY_GUEST_DRAFT_SCHEMA_VERSION = 1 as const;
+export const GUEST_DRAFT_SCHEMA_VERSION = 2 as const;
 
 export interface GuestDraftPhotoSource {
   blob: Blob;
@@ -33,8 +36,7 @@ export interface GuestDraftPhoto {
   placement: GuestDraftPhotoPlacement;
 }
 
-export interface GuestDraftV1 {
-  schemaVersion: typeof GUEST_DRAFT_SCHEMA_VERSION;
+interface GuestDraftCore {
   draftId: string;
   /** Stable future server idempotency key. It is persisted, never regenerated on a retry. */
   transferKey: string;
@@ -50,16 +52,45 @@ export interface GuestDraftV1 {
   photos: GuestDraftPhoto[];
 }
 
+/** Exact persisted shape of Lot 1, retained solely for lossless migration. */
+export interface GuestDraftV1 extends GuestDraftCore {
+  schemaVersion: typeof LEGACY_GUEST_DRAFT_SCHEMA_VERSION;
+}
+
+/**
+ * Minimal local checkpoint for a future idempotent hand-off. It deliberately
+ * records no memorial id and no server media id. A future transfer can look up
+ * server-side progress with `transferKey`; `sourceRevision` identifies the
+ * immutable local snapshot that attempt started from.
+ */
+export type GuestDraftTransferCheckpoint =
+  | { status: "not_started" }
+  | { status: "pending"; sourceRevision: number; startedAt: string };
+
+export interface GuestDraftV2 extends GuestDraftCore {
+  schemaVersion: typeof GUEST_DRAFT_SCHEMA_VERSION;
+  /** `null` means the family has not made (or V1 did not record) this choice. */
+  language: Language | null;
+  /** `null` means the family has not made (or V1 did not record) this choice. */
+  skinVariant: SkinVariant | null;
+  transfer: GuestDraftTransferCheckpoint;
+}
+
 export interface CreateGuestDraftInput {
   draftId: string;
   transferKey: string;
   now: string;
+  language?: Language | null;
+  skinVariant?: SkinVariant | null;
   content?: MemorialContent;
   photos?: GuestDraftPhoto[];
 }
 
 export interface UpdateGuestDraftInput {
   now: string;
+  language?: Language | null;
+  skinVariant?: SkinVariant | null;
+  transfer?: GuestDraftTransferCheckpoint;
   content?: MemorialContent;
   photos?: GuestDraftPhoto[];
 }
@@ -70,6 +101,8 @@ export type GuestDraftValidationReason =
   | "invalid_identity"
   | "invalid_revision"
   | "invalid_timestamp"
+  | "invalid_configuration"
+  | "invalid_transfer_checkpoint"
   | "invalid_content"
   | "server_media_reference"
   | "invalid_photo"
@@ -77,6 +110,10 @@ export type GuestDraftValidationReason =
   | "multiple_hero_photos";
 
 export type GuestDraftValidationResult =
+  | { ok: true; draft: GuestDraftV2 }
+  | { ok: false; reason: GuestDraftValidationReason; foundVersion?: number };
+
+export type GuestDraftV1ValidationResult =
   | { ok: true; draft: GuestDraftV1 }
   | { ok: false; reason: GuestDraftValidationReason; foundVersion?: number };
 
@@ -85,6 +122,8 @@ export interface GuestDraftTransferBundle {
   guestDraftId: string;
   idempotencyKey: string;
   sourceRevision: number;
+  language: Language | null;
+  skinVariant: SkinVariant | null;
   content: MemorialContent;
   photos: Array<{
     localPhotoId: string;
@@ -99,6 +138,7 @@ export interface GuestDraftTransferBundle {
 }
 
 const ALLOWED_MIME_TYPES = new Set<string>(ALLOWED_IMAGE_MIME_TYPES);
+const ALLOWED_SKIN_VARIANTS = new Set<string>(SKIN_VARIANTS);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -163,40 +203,95 @@ function isPhoto(value: unknown): value is GuestDraftPhoto {
     && (caption.caption === null || [...caption.caption].length <= GALLERY_CAPTION_MAX_CHARACTERS);
 }
 
-/** Defensive parser for data read from an untrusted, user-editable browser store. */
-export function validateGuestDraft(value: unknown): GuestDraftValidationResult {
+function validateCore(value: Record<string, unknown>): GuestDraftValidationReason | null {
+  if (!isNonEmptyString(value.draftId) || !isNonEmptyString(value.transferKey)) {
+    return "invalid_identity";
+  }
+  if (!Number.isSafeInteger(value.revision) || (value.revision as number) < 0) {
+    return "invalid_revision";
+  }
+  if (!isIsoTimestamp(value.createdAt) || !isIsoTimestamp(value.updatedAt)) {
+    return "invalid_timestamp";
+  }
+  if (!isPlainObject(value.content) || !isJsonValue(value.content)) {
+    return "invalid_content";
+  }
+  if (containsServerMediaReference(value.content as MemorialContent)) {
+    return "server_media_reference";
+  }
+  if (!Array.isArray(value.photos) || !value.photos.every(isPhoto)) {
+    return "invalid_photo";
+  }
+  const photos = value.photos as GuestDraftPhoto[];
+  const localIds = photos.map((photo) => photo.localId);
+  if (new Set(localIds).size !== localIds.length) return "duplicate_photo";
+  if (photos.filter((photo) => photo.placement.purpose === "hero").length > 1) {
+    return "multiple_hero_photos";
+  }
+  return null;
+}
+
+function validateVersion(
+  value: unknown,
+  expected: number,
+):
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; reason: GuestDraftValidationReason; foundVersion?: number } {
   if (!isPlainObject(value)) return { ok: false, reason: "not_an_object" };
-  if (value.schemaVersion !== GUEST_DRAFT_SCHEMA_VERSION) {
+  if (value.schemaVersion !== expected) {
     return {
       ok: false,
       reason: "unknown_schema_version",
       ...(typeof value.schemaVersion === "number" ? { foundVersion: value.schemaVersion } : {}),
     };
   }
-  if (!isNonEmptyString(value.draftId) || !isNonEmptyString(value.transferKey)) {
-    return { ok: false, reason: "invalid_identity" };
+  return { ok: true, value };
+}
+
+/** Defensive parser for a legacy V1 record read from browser storage. */
+export function validateGuestDraftV1(value: unknown): GuestDraftV1ValidationResult {
+  const versioned = validateVersion(value, LEGACY_GUEST_DRAFT_SCHEMA_VERSION);
+  if (!versioned.ok) return versioned;
+  const reason = validateCore(versioned.value);
+  return reason === null
+    ? { ok: true, draft: versioned.value as unknown as GuestDraftV1 }
+    : { ok: false, reason };
+}
+
+function isTransferCheckpoint(value: unknown, revision: number): value is GuestDraftTransferCheckpoint {
+  if (!isPlainObject(value)) return false;
+  if (value.status === "not_started") return Object.keys(value).length === 1;
+  return value.status === "pending"
+    && Number.isSafeInteger(value.sourceRevision)
+    && (value.sourceRevision as number) >= 0
+    && (value.sourceRevision as number) <= revision
+    && isIsoTimestamp(value.startedAt)
+    && Object.keys(value).length === 3;
+}
+
+/** Defensive parser for the current V2 record read from browser storage. */
+export function validateGuestDraft(value: unknown): GuestDraftValidationResult {
+  const versioned = validateVersion(value, GUEST_DRAFT_SCHEMA_VERSION);
+  if (!versioned.ok) return versioned;
+  const candidate = versioned.value;
+  const reason = validateCore(candidate);
+  if (reason !== null) return { ok: false, reason };
+  if (
+    candidate.language !== null
+    && (typeof candidate.language !== "string" || !isLanguage(candidate.language))
+  ) {
+    return { ok: false, reason: "invalid_configuration" };
   }
-  if (!Number.isSafeInteger(value.revision) || (value.revision as number) < 0) {
-    return { ok: false, reason: "invalid_revision" };
+  if (
+    candidate.skinVariant !== null
+    && (typeof candidate.skinVariant !== "string" || !ALLOWED_SKIN_VARIANTS.has(candidate.skinVariant))
+  ) {
+    return { ok: false, reason: "invalid_configuration" };
   }
-  if (!isIsoTimestamp(value.createdAt) || !isIsoTimestamp(value.updatedAt)) {
-    return { ok: false, reason: "invalid_timestamp" };
+  if (!isTransferCheckpoint(candidate.transfer, candidate.revision as number)) {
+    return { ok: false, reason: "invalid_transfer_checkpoint" };
   }
-  if (!isPlainObject(value.content) || !isJsonValue(value.content)) {
-    return { ok: false, reason: "invalid_content" };
-  }
-  if (containsServerMediaReference(value.content as MemorialContent)) {
-    return { ok: false, reason: "server_media_reference" };
-  }
-  if (!Array.isArray(value.photos) || !value.photos.every(isPhoto)) {
-    return { ok: false, reason: "invalid_photo" };
-  }
-  const localIds = value.photos.map((photo) => photo.localId);
-  if (new Set(localIds).size !== localIds.length) return { ok: false, reason: "duplicate_photo" };
-  if (value.photos.filter((photo) => photo.placement.purpose === "hero").length > 1) {
-    return { ok: false, reason: "multiple_hero_photos" };
-  }
-  return { ok: true, draft: value as unknown as GuestDraftV1 };
+  return { ok: true, draft: candidate as unknown as GuestDraftV2 };
 }
 
 export function createGuestDraft(input: CreateGuestDraftInput): GuestDraftValidationResult {
@@ -207,18 +302,37 @@ export function createGuestDraft(input: CreateGuestDraftInput): GuestDraftValida
     revision: 0,
     createdAt: input.now,
     updatedAt: input.now,
+    language: input.language ?? null,
+    skinVariant: input.skinVariant ?? null,
+    transfer: { status: "not_started" },
     content: input.content ?? {},
     photos: input.photos ?? [],
   });
 }
 
-export function updateGuestDraft(current: GuestDraftV1, input: UpdateGuestDraftInput): GuestDraftValidationResult {
+export function updateGuestDraft(current: GuestDraftV2, input: UpdateGuestDraftInput): GuestDraftValidationResult {
   return validateGuestDraft({
     ...current,
     revision: current.revision + 1,
     updatedAt: input.now,
+    language: input.language === undefined ? current.language : input.language,
+    skinVariant: input.skinVariant === undefined ? current.skinVariant : input.skinVariant,
+    transfer: input.transfer ?? current.transfer,
     content: input.content ?? current.content,
     photos: input.photos ?? current.photos,
+  });
+}
+
+/** Pure, lossless V1 -> V2 migration. No storage is touched here. */
+export function migrateGuestDraftV1ToV2(legacy: GuestDraftV1): GuestDraftValidationResult {
+  return validateGuestDraft({
+    ...structuredClone(legacy),
+    schemaVersion: GUEST_DRAFT_SCHEMA_VERSION,
+    // V1 never recorded these choices. `null` preserves that fact instead
+    // of inventing a language or an artistic ambiance during migration.
+    language: null,
+    skinVariant: null,
+    transfer: { status: "not_started" },
   });
 }
 
@@ -226,12 +340,14 @@ export function updateGuestDraft(current: GuestDraftV1, input: UpdateGuestDraftI
  * Pure future hand-off contract. Producing the bundle performs no upload,
  * authentication, fetch, Supabase call or local deletion.
  */
-export function prepareGuestDraftTransfer(draft: GuestDraftV1): GuestDraftTransferBundle {
+export function prepareGuestDraftTransfer(draft: GuestDraftV2): GuestDraftTransferBundle {
   return {
     schemaVersion: GUEST_DRAFT_SCHEMA_VERSION,
     guestDraftId: draft.draftId,
     idempotencyKey: draft.transferKey,
     sourceRevision: draft.revision,
+    language: draft.language,
+    skinVariant: draft.skinVariant,
     content: structuredClone(draft.content),
     photos: draft.photos.map((photo) => ({
       localPhotoId: photo.localId,
