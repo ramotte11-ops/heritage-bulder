@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import { useRouter } from "next/navigation";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -11,6 +10,7 @@ import { playfairDisplay, inter, ebGaramond } from "./fonts";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./WelcomeStep.module.css";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import { useStepDone } from "./journey/journey-context";
 
 /** The Ceremony title's own botanical sprig, reused as-is (never
  * modified): the one decorative image on this screen besides the
@@ -24,8 +24,7 @@ const INITIAL_STATE: WelcomeStepState = { status: "idle" };
 interface WelcomeStepProps {
   language: Language;
   content: MemorialContent;
-  /** The bound `saveDraftAction`, exactly like every Guided Flow
-   * screen's own `persist`. */
+  /** Same injected draft transport as every Guided Flow screen. */
   persist: DraftSaveTransport;
 }
 
@@ -45,7 +44,7 @@ interface WelcomeStepProps {
  */
 export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   async function submit(): Promise<WelcomeStepState> {
     try {
@@ -53,7 +52,7 @@ export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
     } catch {
       return { status: "error" };
     }
-    router.refresh();
+    stepDone();
     return { status: "idle" };
   }
 

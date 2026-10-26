@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useRouter } from "next/navigation";
 import { LANGUAGES, type Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { BuilderScreen } from "./BuilderScreen";
@@ -10,6 +9,7 @@ import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./LanguageStep.module.css";
 import type { ConfigurationSaveResponse } from "@/lib/builder/draft-revision";
+import { useStepDone } from "./journey/journey-context";
 
 /**
  * Each language's own name for itself (an autonym), not a translation
@@ -35,10 +35,9 @@ const INITIAL_STATE: LanguageStepState = { status: "idle" };
 
 interface LanguageStepProps {
   /**
-   * A bound Server Action — `saveLanguageAction.bind(null, memorialId)`
-   * from `app/builder/[memorialId]/page.tsx` — never a closure over a
-   * repository or a live Supabase client (same discipline Mission 021B
-   * established for the Builder's autosave `persist`).
+   * The configuration transport. The authenticated route injects its
+   * bound `saveLanguageAction`; the guest host injects its local V2 CAS.
+   * This screen owns neither persistence implementation.
    */
   persist: (language: Language) => Promise<ConfigurationSaveResponse | void>;
 }
@@ -89,14 +88,14 @@ interface LanguageStepProps {
  * until `Continue` is actually pressed.
  *
  * `useActionState` runs the actual persist + navigation: on submit it
- * calls the bound Server Action, and on success calls `router.refresh()`
- * so the Server Component above re-resolves the Memorial (now with a
- * real `language`) and decides what comes next — this component never
- * renders that next state itself, and never invents one.
+ * calls the injected transport, then the shared Builder completion seam.
+ * The authenticated route still resolves that seam to `router.refresh()`;
+ * a local host may advance from its newly persisted V2 snapshot instead.
+ * This component never decides what comes next and never invents it.
  */
 export function LanguageStep({ persist }: LanguageStepProps) {
   const [selected, setSelected] = useState<Language | null>(null);
-  const router = useRouter();
+  const stepDone = useStepDone();
 
   async function submit(
     _previous: LanguageStepState,
@@ -119,7 +118,7 @@ export function LanguageStep({ persist }: LanguageStepProps) {
       return { status: "error", message: translate("en", "errors.generic") };
     }
 
-    router.refresh();
+    stepDone();
     return { status: "idle" };
   }
 
