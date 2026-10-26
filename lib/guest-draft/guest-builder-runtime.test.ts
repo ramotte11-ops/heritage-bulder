@@ -56,7 +56,7 @@ function draft(): GuestDraftV3 {
 }
 
 describe("guest Builder local runtime", () => {
-  it("creates one active V2 draft and resumes the same identifiers after reload", async () => {
+  it("creates one active V3 draft and resumes the same identifiers after reload", async () => {
     const store = new MemoryStore();
     const ids = ["draft-created-once", "transfer-created-once"];
     const first = await loadOrCreateGuestDraft({ store, createId: () => ids.shift()!, now: () => T0 });
@@ -170,7 +170,7 @@ describe("guest Builder local runtime", () => {
     });
   });
 
-  it("reuses the canonical predicates and stops before the first media-dependent step", () => {
+  it("reuses the canonical predicates and reaches the local Hero photo step", () => {
     let current = draft();
     expect(resolveGuestBuilderStage(current)).toBe("language");
 
@@ -204,12 +204,14 @@ describe("guest Builder local runtime", () => {
     if (!phrase.ok) throw new Error(phrase.reason);
     updated = updateGuestDraftV3(current, { content: phrase.content, now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
-    expect(resolveGuestBuilderStage(updated.draft)).toBe("mediaPending");
+    expect(resolveGuestBuilderStage(updated.draft)).toBe("heroPhoto");
   });
 
   it("contains no guest network/Supabase/server-media boundary and is not publicly routed", () => {
     const implementation = [
       "guest-builder-runtime.ts",
+      "guest-hero-media.ts",
+      "../media/local-photo.ts",
       "../../components/builder/guest/GuestBuilderRuntime.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);

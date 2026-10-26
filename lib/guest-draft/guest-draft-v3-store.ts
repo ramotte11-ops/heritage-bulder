@@ -12,6 +12,7 @@ import {
   validateGuestDraftPhotoAsset,
   validateGuestDraftV3,
   type GuestDraftPhotoAsset,
+  type GuestDraftPhotoPlacement,
   type GuestDraftV3,
   type GuestDraftV3Migration,
   type GuestDraftV3ValidationReason,
@@ -232,7 +233,7 @@ export class GuestDraftV3Store {
 
   async replacePhoto(
     replacedLocalId: string,
-    input: Omit<PreparedGuestDraftPhotoInput, "placement">,
+    input: Omit<PreparedGuestDraftPhotoInput, "placement"> & { placement?: GuestDraftPhotoPlacement },
     expectedRevision: number,
     now: string,
   ): Promise<GuestDraftV3PhotoWriteResult> {
@@ -240,7 +241,7 @@ export class GuestDraftV3Store {
     if (!current.ok) return current;
     const replaced = current.draft.photos.find(({ localId }) => localId === replacedLocalId);
     if (replaced === undefined) return { ok: false, reason: "photo_not_found" };
-    const prepared = createPreparedGuestDraftPhoto({ ...input, placement: replaced.placement });
+    const prepared = createPreparedGuestDraftPhoto({ ...input, placement: input.placement ?? replaced.placement });
     if (!prepared.ok) return prepared;
     const updated = updateGuestDraftV3(current.draft, {
       now,
@@ -248,6 +249,31 @@ export class GuestDraftV3Store {
     });
     if (!updated.ok) return updated;
     return this.persistPhoto(updated.draft, prepared.asset, expectedRevision);
+  }
+
+  async updatePhotoPlacement(
+    localId: string,
+    placement: GuestDraftPhotoPlacement,
+    expectedRevision: number,
+    now: string,
+  ): Promise<GuestDraftV3PhotoWriteResult> {
+    const current = await this.readCurrentForMutation(expectedRevision);
+    if (!current.ok) return current;
+    if (!current.draft.photos.some((photo) => photo.localId === localId)) return { ok: false, reason: "photo_not_found" };
+    const updated = updateGuestDraftV3(current.draft, {
+      now,
+      photos: current.draft.photos.map((photo) => photo.localId === localId
+        ? { localId, placement: structuredClone(placement) }
+        : photo),
+    });
+    if (!updated.ok) return updated;
+    try {
+      const outcome = await this.driver.replace(structuredClone(updated.draft), expectedRevision);
+      if (outcome === "saved") return { ok: true, draft: updated.draft };
+      return { ok: false, reason: outcome === "missing_asset" ? "missing_photo_asset" : "revision_conflict" };
+    } catch (error) {
+      return { ok: false, reason: storageError(error).code };
+    }
   }
 
   async removePhoto(localId: string, expectedRevision: number, now: string): Promise<GuestDraftV3PhotoWriteResult> {

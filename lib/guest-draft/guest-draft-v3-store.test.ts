@@ -225,6 +225,24 @@ describe("guest draft V3 media contract", () => {
     await expect(store.readPhoto("hero-local")).resolves.toMatchObject({ ok: true, asset: { localId: "hero-local" } });
   });
 
+  it("updates a Hero crop with CAS without rewriting its Blob", async () => {
+    const driver = new MemoryDriver();
+    const store = new GuestDraftV3Store(driver);
+    await store.save(v3Draft(), null);
+    await store.addPhoto(prepared("hero-local", "hero"), 0, T1);
+    const writes = driver.database.assetWrites;
+    const crop = { focalX: 0.25, focalY: 0.75, zoom: 1.5 };
+    await expect(store.updatePhotoPlacement("hero-local", { purpose: "hero", crop }, 1, T2)).resolves.toMatchObject({
+      ok: true,
+      draft: { revision: 2, photos: [{ localId: "hero-local", placement: { purpose: "hero", crop } }] },
+    });
+    expect(driver.database.assetWrites).toBe(writes);
+    await expect(store.updatePhotoPlacement("hero-local", { purpose: "hero", crop }, 1, T2)).resolves.toEqual({
+      ok: false,
+      reason: "revision_conflict",
+    });
+  });
+
   it("refuses a metadata save that would introduce a dangling photo reference", async () => {
     const driver = new MemoryDriver();
     const store = new GuestDraftV3Store(driver);

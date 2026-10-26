@@ -3,7 +3,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createGuestDraftV3, type GuestDraftV3 } from "@/lib/guest-draft/guest-draft-v3";
-import type { GuestDraftV3ReadResult, GuestDraftV3WriteResult } from "@/lib/guest-draft/guest-draft-v3-store";
+import type {
+  GuestDraftV3PhotoWriteResult,
+  GuestDraftV3ReadResult,
+  GuestDraftV3WriteResult,
+} from "@/lib/guest-draft/guest-draft-v3-store";
 import type { GuestBuilderDraftStore } from "@/lib/guest-draft/guest-builder-runtime";
 import { translate } from "@/lib/i18n/translate";
 
@@ -45,6 +49,11 @@ class MemoryStore implements GuestBuilderDraftStore {
     this.value = structuredClone(draft);
     return { ok: true };
   }
+
+  async readPhoto() { return { ok: false as const, reason: "photo_not_found" as const }; }
+  async addPhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
+  async replacePhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
+  async updatePhotoPlacement(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
 }
 
 function newDraft(): GuestDraftV3 {
@@ -103,12 +112,16 @@ describe("GuestBuilderRuntime", () => {
   });
 
   it("surfaces an unavailable local store with existing generic copy", async () => {
-    const createStore = (): GuestBuilderDraftStore => ({
-      read: async () => ({
+    const createStore = () => ({
+      read: async (): Promise<GuestDraftV3ReadResult> => ({
         status: "error",
         error: Object.assign(new Error("unavailable"), { code: "unavailable" as const }),
       }),
-      save: async () => ({ ok: false, reason: "unavailable" }),
+      save: async (): Promise<GuestDraftV3WriteResult> => ({ ok: false, reason: "unavailable" }),
+      readPhoto: async () => ({ ok: false as const, reason: "photo_not_found" as const }),
+      addPhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
+      replacePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
+      updatePhotoPlacement: async () => ({ ok: false as const, reason: "unavailable" as const }),
     });
 
     render(

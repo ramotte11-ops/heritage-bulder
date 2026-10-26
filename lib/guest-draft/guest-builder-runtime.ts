@@ -15,6 +15,7 @@ import type {
   GuestDraftV3StorageErrorCode,
   GuestDraftV3WriteResult,
 } from "./guest-draft-v3-store";
+import { isGuestHeroCropComplete, isGuestHeroPhotoComplete } from "./guest-hero-media";
 
 /** The narrow storage surface used by the guest runtime. It has no clear(). */
 export interface GuestBuilderDraftStore {
@@ -28,7 +29,9 @@ export type GuestBuilderStage =
   | "identity"
   | "announcementChoice"
   | "phrase"
-  | "mediaPending";
+  | "heroPhoto"
+  | "heroCrop"
+  | "revealPending";
 
 export type GuestBuilderRuntimeErrorReason =
   | GuestDraftV3StorageErrorCode
@@ -110,14 +113,16 @@ export async function loadOrCreateGuestDraft({
   throw readFailure(concurrent);
 }
 
-/** The shared Builder route, deliberately stopped before T06/media. */
+/** The shared Builder route, stopped immediately before T08/reveal. */
 export function resolveGuestBuilderStage(draft: GuestDraftV3): GuestBuilderStage {
   if (draft.language === null) return "language";
   if (needsWelcome(null, draft.content)) return "welcome";
   if (needsPageA(draft.content)) return "identity";
   if (needsA00(draft.content)) return "announcementChoice";
   if (needsPageB(draft.content)) return "phrase";
-  return "mediaPending";
+  if (!isGuestHeroPhotoComplete(draft)) return "heroPhoto";
+  if (!isGuestHeroCropComplete(draft)) return "heroCrop";
+  return "revealPending";
 }
 
 function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () => string) {
@@ -127,7 +132,7 @@ function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () =
 }
 
 /**
- * Adapts the local V2 CAS store to the existing DraftRevisionProvider.
+ * Adapts the local V3 CAS store to the existing DraftRevisionProvider.
  * The store performs the revision comparison and write atomically.
  */
 export function createGuestDraftSaveTransport({
@@ -152,7 +157,7 @@ export function createGuestDraftSaveTransport({
   };
 }
 
-/** T01's local equivalent, using the same V2 CAS and stable identifiers. */
+/** T01's local equivalent, using the same V3 CAS and stable identifiers. */
 export async function saveGuestDraftLanguage(
   options: GuestDraftRuntimeOptions,
   language: Language,
