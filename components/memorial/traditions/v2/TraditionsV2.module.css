@@ -872,3 +872,55 @@
     height: calc(var(--px) * 62);
   }
 }
+
+/* =====================================================================
+ * PROTOTYPE RACCORDS V1 — Récit de vie → Traditions & repères SEULEMENT.
+ * Local, réversible, non intégré.
+ *
+ * Actif uniquement quand la rubrique rendue juste au-dessus est le Récit
+ * (attribut posé par MemorialAssembly, après masquage éventuel) : toute
+ * autre voisine laisse les Traditions strictement inchangées.
+ *
+ *  1. La section remonte de --join px de canevas sous le bas du Récit
+ *     (marge négative ; peinte après le Récit, donc par-dessus).
+ *  2. SEULES les couches .master (le Master, ancré en haut de section)
+ *     apparaissent en fondu sur ces --join px. Le contenu (.content :
+ *     textes, note manuscrite, médaillons, cartes), plus haut dans
+ *     l'empilement, n'est jamais masqué. .bottom, .paper et .edges
+ *     commencent sous la coupe interne, loin du haut : non concernés.
+ *  3. --join reste sous la distance mesurée entre le dernier texte du
+ *     Récit et son bord bas : aucun texte du Récit n'est recouvert.
+ * ===================================================================== */
+[data-previous-section="story"] .wrap .section {
+  --join: 140;
+  margin-top: calc(-1 * var(--px) * var(--join));
+}
+
+[data-previous-section="story"] .wrap[data-variant="dark"] .section {
+  --join: 80;
+}
+
+@container (min-width: 1024px) {
+  [data-previous-section="story"] .wrap[data-desktop] .section {
+    --join: 110;
+  }
+}
+
+[data-previous-section="story"] .wrap .master {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgb(0 0 0 / 0.08) calc(var(--px) * var(--join) * 0.2),
+    rgb(0 0 0 / 0.5) calc(var(--px) * var(--join) * 0.5),
+    rgb(0 0 0 / 0.92) calc(var(--px) * var(--join) * 0.8),
+    #000 calc(var(--px) * var(--join))
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgb(0 0 0 / 0.08) calc(var(--px) * var(--join) * 0.2),
+    rgb(0 0 0 / 0.5) calc(var(--px) * var(--join) * 0.5),
+    rgb(0 0 0 / 0.92) calc(var(--px) * var(--join) * 0.8),
+    #000 calc(var(--px) * var(--join))
+  );
+}

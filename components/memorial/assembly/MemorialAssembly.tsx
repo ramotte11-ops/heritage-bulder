@@ -43,8 +43,15 @@ export function MemorialAssembly({ assembled }: MemorialAssemblyProps) {
 
   return (
     <div data-memorial-assembly="">
-      {assembled.sections.map((section) => (
-        <div key={section.sectionId} data-memorial-section={section.sectionId}>
+      {assembled.sections.map((section, index) => (
+        <div
+          key={section.sectionId}
+          data-memorial-section={section.sectionId}
+          // PROTOTYPE RACCORDS V1 — la rubrique réellement rendue juste
+          // au-dessus (après masquage éventuel), lue par le seul raccord
+          // Récit → Traditions (TraditionsV2.module.css). Aucun style ici.
+          data-previous-section={index > 0 ? assembled.sections[index - 1].sectionId : undefined}
+        >
           {renderSection(section)}
         </div>
       ))}
