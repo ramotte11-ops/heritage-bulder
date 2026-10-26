@@ -5,21 +5,21 @@ import { needsWelcome } from "@/lib/builder/guided-flow/welcome-step";
 import { needsA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { needsPageA, needsPageB } from "@/lib/builder/guided-flow/hero-step";
 import {
-  createGuestDraft,
-  updateGuestDraft,
-  type GuestDraftV2,
-  type GuestDraftValidationReason,
-} from "./guest-draft";
+  createGuestDraftV3,
+  updateGuestDraftV3,
+  type GuestDraftV3,
+  type GuestDraftV3ValidationReason,
+} from "./guest-draft-v3";
 import type {
-  GuestDraftReadResult,
-  GuestDraftStorageErrorCode,
-  GuestDraftWriteResult,
-} from "./guest-draft-store";
+  GuestDraftV3ReadResult,
+  GuestDraftV3StorageErrorCode,
+  GuestDraftV3WriteResult,
+} from "./guest-draft-v3-store";
 
 /** The narrow storage surface used by the guest runtime. It has no clear(). */
 export interface GuestBuilderDraftStore {
-  read(): Promise<GuestDraftReadResult>;
-  save(draft: GuestDraftV2, expectedRevision: number | null): Promise<GuestDraftWriteResult>;
+  read(): Promise<GuestDraftV3ReadResult>;
+  save(draft: GuestDraftV3, expectedRevision: number | null): Promise<GuestDraftV3WriteResult>;
 }
 
 export type GuestBuilderStage =
@@ -31,8 +31,8 @@ export type GuestBuilderStage =
   | "mediaPending";
 
 export type GuestBuilderRuntimeErrorReason =
-  | GuestDraftStorageErrorCode
-  | GuestDraftValidationReason
+  | GuestDraftV3StorageErrorCode
+  | GuestDraftV3ValidationReason
   | "incompatible"
   | "corrupted"
   | "migration_failed"
@@ -47,8 +47,8 @@ export class GuestBuilderRuntimeError extends Error {
 
 export interface GuestDraftRuntimeOptions {
   store: GuestBuilderDraftStore;
-  getDraft: () => GuestDraftV2;
-  acceptDraft: (draft: GuestDraftV2) => void;
+  getDraft: () => GuestDraftV3;
+  acceptDraft: (draft: GuestDraftV3) => void;
   now?: () => string;
 }
 
@@ -62,7 +62,7 @@ function nowIso(now: (() => string) | undefined): string {
   return (now ?? (() => new Date().toISOString()))();
 }
 
-function readFailure(result: Exclude<GuestDraftReadResult, { status: "empty" | "ready" }>): GuestBuilderRuntimeError {
+function readFailure(result: Exclude<GuestDraftV3ReadResult, { status: "empty" | "ready" }>): GuestBuilderRuntimeError {
   switch (result.status) {
     case "incompatible":
       return new GuestBuilderRuntimeError("incompatible");
@@ -75,7 +75,7 @@ function readFailure(result: Exclude<GuestDraftReadResult, { status: "empty" | "
   }
 }
 
-function writeFailure(result: Extract<GuestDraftWriteResult, { ok: false }>): GuestBuilderRuntimeError {
+function writeFailure(result: Extract<GuestDraftV3WriteResult, { ok: false }>): GuestBuilderRuntimeError {
   return new GuestBuilderRuntimeError(result.reason);
 }
 
@@ -87,12 +87,12 @@ export async function loadOrCreateGuestDraft({
   store,
   createId,
   now,
-}: LoadGuestDraftOptions): Promise<GuestDraftV2> {
+}: LoadGuestDraftOptions): Promise<GuestDraftV3> {
   const read = await store.read();
   if (read.status === "ready") return read.draft;
   if (read.status !== "empty") throw readFailure(read);
 
-  const created = createGuestDraft({
+  const created = createGuestDraftV3({
     draftId: createId(),
     transferKey: createId(),
     now: nowIso(now),
@@ -111,7 +111,7 @@ export async function loadOrCreateGuestDraft({
 }
 
 /** The shared Builder route, deliberately stopped before T06/media. */
-export function resolveGuestBuilderStage(draft: GuestDraftV2): GuestBuilderStage {
+export function resolveGuestBuilderStage(draft: GuestDraftV3): GuestBuilderStage {
   if (draft.language === null) return "language";
   if (needsWelcome(null, draft.content)) return "welcome";
   if (needsPageA(draft.content)) return "identity";
@@ -120,8 +120,8 @@ export function resolveGuestBuilderStage(draft: GuestDraftV2): GuestBuilderStage
   return "mediaPending";
 }
 
-function updatedContent(draft: GuestDraftV2, content: MemorialContent, now: () => string) {
-  const updated = updateGuestDraft(draft, { content, now: now() });
+function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () => string) {
+  const updated = updateGuestDraftV3(draft, { content, now: now() });
   if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
   return updated.draft;
 }
@@ -156,9 +156,9 @@ export function createGuestDraftSaveTransport({
 export async function saveGuestDraftLanguage(
   options: GuestDraftRuntimeOptions,
   language: Language,
-): Promise<{ response: { status: "saved" } | { status: "conflict" }; draft?: GuestDraftV2 }> {
+): Promise<{ response: { status: "saved" } | { status: "conflict" }; draft?: GuestDraftV3 }> {
   const current = options.getDraft();
-  const updated = updateGuestDraft(current, {
+  const updated = updateGuestDraftV3(current, {
     language,
     now: nowIso(options.now),
   });

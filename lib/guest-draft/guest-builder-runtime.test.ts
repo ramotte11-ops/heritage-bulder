@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { commitA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { commitPageA, commitPageB, writeDisplayName } from "@/lib/builder/guided-flow/hero-step";
 import { commitWelcome } from "@/lib/builder/guided-flow/welcome-step";
-import { createGuestDraft, updateGuestDraft, type GuestDraftV2 } from "./guest-draft";
+import { createGuestDraftV3, updateGuestDraftV3, type GuestDraftV3 } from "./guest-draft-v3";
 import type { MemorialContent } from "@/types/memorial";
-import type { GuestDraftReadResult, GuestDraftWriteResult } from "./guest-draft-store";
+import type { GuestDraftV3ReadResult, GuestDraftV3WriteResult } from "./guest-draft-v3-store";
 import {
   GuestBuilderRuntimeError,
   createGuestDraftSaveTransport,
@@ -20,16 +20,16 @@ const T0 = "2026-10-26T08:00:00.000Z";
 const T1 = "2026-10-26T08:01:00.000Z";
 
 class MemoryStore implements GuestBuilderDraftStore {
-  value: GuestDraftV2 | null = null;
-  failNext: GuestDraftWriteResult | null = null;
+  value: GuestDraftV3 | null = null;
+  failNext: GuestDraftV3WriteResult | null = null;
 
-  async read(): Promise<GuestDraftReadResult> {
+  async read(): Promise<GuestDraftV3ReadResult> {
     return this.value === null
       ? { status: "empty" }
       : { status: "ready", draft: structuredClone(this.value) };
   }
 
-  async save(draft: GuestDraftV2, expectedRevision: number | null): Promise<GuestDraftWriteResult> {
+  async save(draft: GuestDraftV3, expectedRevision: number | null): Promise<GuestDraftV3WriteResult> {
     if (this.failNext !== null) {
       const result = this.failNext;
       this.failNext = null;
@@ -45,8 +45,8 @@ class MemoryStore implements GuestBuilderDraftStore {
   }
 }
 
-function draft(): GuestDraftV2 {
-  const result = createGuestDraft({
+function draft(): GuestDraftV3 {
+  const result = createGuestDraftV3({
     draftId: "guest-draft-stable",
     transferKey: "guest-transfer-stable",
     now: T0,
@@ -70,7 +70,7 @@ describe("guest Builder local runtime", () => {
 
     expect(reloaded).toEqual(first);
     expect(reloaded).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-created-once",
       transferKey: "transfer-created-once",
       revision: 0,
@@ -174,12 +174,12 @@ describe("guest Builder local runtime", () => {
     let current = draft();
     expect(resolveGuestBuilderStage(current)).toBe("language");
 
-    let updated = updateGuestDraft(current, { language: "fr", now: T1 });
+    let updated = updateGuestDraftV3(current, { language: "fr", now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     current = updated.draft;
     expect(resolveGuestBuilderStage(current)).toBe("welcome");
 
-    updated = updateGuestDraft(current, { content: commitWelcome(current.content), now: T1 });
+    updated = updateGuestDraftV3(current, { content: commitWelcome(current.content), now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     current = updated.draft;
     expect(resolveGuestBuilderStage(current)).toBe("identity");
@@ -188,21 +188,21 @@ describe("guest Builder local runtime", () => {
     if (!named.ok) throw new Error(named.reason);
     const identity = commitPageA(named.content);
     if (!identity.ok) throw new Error(identity.reason);
-    updated = updateGuestDraft(current, { content: identity.content, now: T1 });
+    updated = updateGuestDraftV3(current, { content: identity.content, now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     current = updated.draft;
     expect(resolveGuestBuilderStage(current)).toBe("announcementChoice");
 
     const announcement = commitA00(current.content, "no");
     if (!announcement.ok) throw new Error(announcement.reason);
-    updated = updateGuestDraft(current, { content: announcement.content, now: T1 });
+    updated = updateGuestDraftV3(current, { content: announcement.content, now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     current = updated.draft;
     expect(resolveGuestBuilderStage(current)).toBe("phrase");
 
     const phrase = commitPageB(current.content);
     if (!phrase.ok) throw new Error(phrase.reason);
-    updated = updateGuestDraft(current, { content: phrase.content, now: T1 });
+    updated = updateGuestDraftV3(current, { content: phrase.content, now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     expect(resolveGuestBuilderStage(updated.draft)).toBe("mediaPending");
   });

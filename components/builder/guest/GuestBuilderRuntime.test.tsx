@@ -2,8 +2,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createGuestDraft, type GuestDraftV2 } from "@/lib/guest-draft/guest-draft";
-import type { GuestDraftReadResult, GuestDraftWriteResult } from "@/lib/guest-draft/guest-draft-store";
+import { createGuestDraftV3, type GuestDraftV3 } from "@/lib/guest-draft/guest-draft-v3";
+import type { GuestDraftV3ReadResult, GuestDraftV3WriteResult } from "@/lib/guest-draft/guest-draft-v3-store";
 import type { GuestBuilderDraftStore } from "@/lib/guest-draft/guest-builder-runtime";
 import { translate } from "@/lib/i18n/translate";
 
@@ -23,19 +23,19 @@ vi.mock("next/font/google", () => ({
 const { GuestBuilderRuntime } = await import("./GuestBuilderRuntime");
 
 class MemoryStore implements GuestBuilderDraftStore {
-  value: GuestDraftV2 | null;
+  value: GuestDraftV3 | null;
 
-  constructor(value: GuestDraftV2 | null) {
+  constructor(value: GuestDraftV3 | null) {
     this.value = value;
   }
 
-  async read(): Promise<GuestDraftReadResult> {
+  async read(): Promise<GuestDraftV3ReadResult> {
     return this.value === null
       ? { status: "empty" }
       : { status: "ready", draft: structuredClone(this.value) };
   }
 
-  async save(draft: GuestDraftV2, expectedRevision: number | null): Promise<GuestDraftWriteResult> {
+  async save(draft: GuestDraftV3, expectedRevision: number | null): Promise<GuestDraftV3WriteResult> {
     if (
       (expectedRevision === null && this.value !== null)
       || (expectedRevision !== null && this.value?.revision !== expectedRevision)
@@ -47,8 +47,8 @@ class MemoryStore implements GuestBuilderDraftStore {
   }
 }
 
-function newDraft(): GuestDraftV2 {
-  const created = createGuestDraft({
+function newDraft(): GuestDraftV3 {
+  const created = createGuestDraftV3({
     draftId: "guest-ui-draft",
     transferKey: "guest-ui-transfer",
     now: "2026-10-26T09:00:00.000Z",

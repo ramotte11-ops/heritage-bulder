@@ -22,12 +22,12 @@ import {
   saveGuestDraftLanguage,
   type GuestBuilderDraftStore,
 } from "@/lib/guest-draft/guest-builder-runtime";
-import { createIndexedDbGuestDraftStore } from "@/lib/guest-draft/guest-draft-store";
-import type { GuestDraftV2 } from "@/lib/guest-draft/guest-draft";
+import { createIndexedDbGuestDraftV3Store } from "@/lib/guest-draft/guest-draft-v3-store";
+import type { GuestDraftV3 } from "@/lib/guest-draft/guest-draft-v3";
 
 type RuntimeState =
   | { status: "loading" }
-  | { status: "ready"; store: GuestBuilderDraftStore; draft: GuestDraftV2 }
+  | { status: "ready"; store: GuestBuilderDraftStore; draft: GuestDraftV3 }
   | { status: "error"; reason: string };
 
 export interface GuestBuilderRuntimeProps {
@@ -38,7 +38,7 @@ export interface GuestBuilderRuntimeProps {
 }
 
 function defaultCreateStore(): GuestBuilderDraftStore {
-  return createIndexedDbGuestDraftStore();
+  return createIndexedDbGuestDraftV3Store();
 }
 
 function defaultCreateId(): string {
@@ -60,7 +60,7 @@ export function GuestBuilderRuntime({
   now = defaultNow,
 }: GuestBuilderRuntimeProps) {
   const [runtime, setRuntime] = useState<RuntimeState>({ status: "loading" });
-  const draftRef = useRef<GuestDraftV2 | null>(null);
+  const draftRef = useRef<GuestDraftV3 | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,7 +84,7 @@ export function GuestBuilderRuntime({
     };
   }, [createId, createStore, now]);
 
-  const acceptDraft = useCallback((draft: GuestDraftV2) => {
+  const acceptDraft = useCallback((draft: GuestDraftV3) => {
     draftRef.current = draft;
   }, []);
 
