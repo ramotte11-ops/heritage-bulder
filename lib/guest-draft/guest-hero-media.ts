@@ -1,6 +1,9 @@
 import type { AllowedImageMimeType } from "@/config/media";
+import type { SkinVariant } from "@/config/skins";
 import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
+import { guidedFlowProgress } from "@/lib/builder/guided-flow/engine";
 import { readGuidedFlowState } from "@/lib/builder/guided-flow/hero-step";
+import { humanFlowDefinition } from "@/lib/builder/guided-flow/human-steps";
 import { writeGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import type { LocalPhotoSnapshot, PreparedLocalPhoto } from "@/lib/media/local-photo";
 import type { HeroCrop } from "@/types/hero";
@@ -40,6 +43,23 @@ export function isGuestHeroCropComplete(draft: GuestDraftV3): boolean {
   return hero?.placement.purpose === "hero"
     && hero.placement.crop !== null
     && readGuidedFlowState(draft.content).T07?.status === "completed";
+}
+
+export function isGuestHeroRevealComplete(draft: GuestDraftV3): boolean {
+  return draft.skinVariant !== null
+    && isGuestHeroCropComplete(draft)
+    && readGuidedFlowState(draft.content).T08?.status === "completed";
+}
+
+export function guestHeroStepProgress(draft: GuestDraftV3): number {
+  const flow = { ...readGuidedFlowState(draft.content) };
+  if (isGuestHeroPhotoComplete(draft)) flow.T06 = { status: "completed" };
+  else delete flow.T06;
+  if (isGuestHeroCropComplete(draft)) flow.T07 = { status: "completed" };
+  else delete flow.T07;
+  if (isGuestHeroRevealComplete(draft)) flow.T08 = { status: "completed" };
+  else delete flow.T08;
+  return guidedFlowProgress(humanFlowDefinition(), flow);
 }
 
 function snapshot(asset: GuestDraftPhotoAsset, crop: HeroCrop | null): LocalPhotoSnapshot {
@@ -183,6 +203,26 @@ export async function saveGuestHeroCrop(
 
 export function completeGuestHeroCrop(options: GuestHeroMediaOptions, crop: HeroCrop, expectedRevision: number) {
   return saveDraftUpdate(options, expectedRevision, (draft) => updateFlowAndCrop(draft, options.now(), "T07", crop));
+}
+
+export function completeGuestHeroReveal(
+  options: GuestHeroMediaOptions,
+  skinVariant: SkinVariant,
+  expectedRevision: number,
+) {
+  return saveDraftUpdate(options, expectedRevision, (draft) => {
+    if (!isGuestHeroCropComplete(draft)) return null;
+    const content = writeGuidedFlowState(draft.content, {
+      ...readGuidedFlowState(draft.content),
+      T08: { status: "completed" },
+    });
+    const updated = updateGuestDraftV3(draft, {
+      now: options.now(),
+      skinVariant,
+      content,
+    });
+    return updated.ok ? updated.draft : null;
+  });
 }
 
 export function reopenGuestHeroPhoto(options: GuestHeroMediaOptions, expectedRevision: number) {

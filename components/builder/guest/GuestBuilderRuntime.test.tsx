@@ -2,7 +2,12 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createGuestDraftV3, type GuestDraftV3 } from "@/lib/guest-draft/guest-draft-v3";
+import {
+  createGuestDraftV3,
+  updateGuestDraftV3,
+  type GuestDraftPhotoAsset,
+  type GuestDraftV3,
+} from "@/lib/guest-draft/guest-draft-v3";
 import type {
   GuestDraftV3PhotoWriteResult,
   GuestDraftV3ReadResult,
@@ -28,6 +33,7 @@ const { GuestBuilderRuntime } = await import("./GuestBuilderRuntime");
 
 class MemoryStore implements GuestBuilderDraftStore {
   value: GuestDraftV3 | null;
+  assets = new Map<string, GuestDraftPhotoAsset>();
 
   constructor(value: GuestDraftV3 | null) {
     this.value = value;
@@ -50,7 +56,12 @@ class MemoryStore implements GuestBuilderDraftStore {
     return { ok: true };
   }
 
-  async readPhoto() { return { ok: false as const, reason: "photo_not_found" as const }; }
+  async readPhoto(localId: string) {
+    const asset = this.assets.get(localId);
+    return asset === undefined
+      ? { ok: false as const, reason: "photo_not_found" as const }
+      : { ok: true as const, asset: structuredClone(asset) };
+  }
   async addPhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
   async replacePhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
   async updatePhotoPlacement(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
@@ -66,12 +77,104 @@ function newDraft(): GuestDraftV3 {
   return created.draft;
 }
 
+function revealDraft(): { draft: GuestDraftV3; asset: GuestDraftPhotoAsset } {
+  const created = createGuestDraftV3({
+    draftId: "guest-reveal-draft",
+    transferKey: "guest-reveal-transfer",
+    now: "2026-10-26T10:00:00.000Z",
+    language: "fr",
+    content: {
+      hero: {
+        displayName: "Jeanne",
+        birth: null,
+        death: null,
+        shortPhrase: "Toujours dans nos cœurs",
+        photo: null,
+      },
+      guidedFlow: {
+        T04: { status: "skipped" },
+        A00: { status: "completed", answer: "no" },
+        T05: { status: "completed" },
+        T06: { status: "completed" },
+        T07: { status: "completed" },
+      },
+    } as never,
+  });
+  if (!created.ok) throw new Error(created.reason);
+  const crop = { focalX: 0.3, focalY: 0.7, zoom: 1.4 };
+  const updated = updateGuestDraftV3(created.draft, {
+    now: "2026-10-26T10:01:00.000Z",
+    photos: [{ localId: "local-hero", placement: { purpose: "hero", crop } }],
+  });
+  if (!updated.ok) throw new Error(updated.reason);
+  return {
+    draft: updated.draft,
+    asset: {
+      localId: "local-hero",
+      source: {
+        blobRole: "prepared_high_quality",
+        mimeType: "image/webp",
+        sizeBytes: 3,
+        dimensions: { status: "known", width: 1800, height: 1200 },
+        originalFilename: "portrait.webp",
+        lastModified: 123,
+      },
+      blob: new Blob([new Uint8Array([1, 2, 3])], { type: "image/webp" }),
+    },
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe("GuestBuilderRuntime", () => {
+  it("reuses T08 locally, revokes its object URL, persists ambiance plus progress, and reloads after it", async () => {
+    const fixture = revealDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    const createObjectUrl = vi.fn(() => "blob:guest-reveal");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = render(
+      <GuestBuilderRuntime
+        createStore={() => store}
+        createId={() => "unused"}
+        now={() => "2026-10-26T10:02:00.000Z"}
+        createObjectUrl={createObjectUrl}
+        revokeObjectUrl={revokeObjectUrl}
+      />,
+    );
+    await screen.findByRole("button", { name: "Continuer avec cette ambiance" });
+    expect(first.container.querySelectorAll('img[src="blob:guest-reveal"]')).toHaveLength(3);
+    fireEvent.click(screen.getByRole("radio", { name: "Sombre" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continuer avec cette ambiance" }));
+
+    await vi.waitFor(() => expect(first.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(store.value?.skinVariant).toBe("dark");
+    expect(store.value?.content).toMatchObject({ guidedFlow: { T08: { status: "completed" } } });
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:guest-reveal");
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    first.unmount();
+    const reloaded = render(
+      <GuestBuilderRuntime
+        createStore={() => store}
+        createId={() => "unused"}
+        now={() => "2026-10-26T10:03:00.000Z"}
+        createObjectUrl={createObjectUrl}
+        revokeObjectUrl={revokeObjectUrl}
+      />,
+    );
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Continuer avec cette ambiance" })).toBeNull();
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("persists T01 and Welcome locally, advancing and resuming the same screens after reload", async () => {
     const store = new MemoryStore(newDraft());
     const fetchSpy = vi.fn();

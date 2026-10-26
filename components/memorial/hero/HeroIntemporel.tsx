@@ -3,7 +3,7 @@
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
-import type { HeroContent } from "@/types/hero";
+import type { HeroContent, HeroCrop } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
 import { formatHeroDateRange } from "@/lib/memorial/format-hero-date";
 import {
@@ -156,13 +156,13 @@ import styles from "./HeroIntemporel.module.css";
 export interface HeroIntemporelProps {
   hero: HeroContent;
   /**
-   * Only the short-lived signed URL is consumed — never the `Media` row
-   * (Étape 2, QG C1): the Memorial assembler hands this renderer a
-   * resolved `{ readUrl }` and must never ship `storagePath`/`ownerId`
-   * to the client. Callers that hold a `{ media, readUrl }` (T08) still
-   * pass it unchanged.
+   * Only a resolved display URL is consumed — a short-lived signed URL
+   * for authenticated memorials or an owned `blob:` URL for the guest
+   * draft — never the `Media` row. The optional crop is the local V3
+   * equivalent of `hero.photo.crop`; authenticated callers keep using
+   * that canonical Hero field unchanged.
    */
-  photo: { readUrl: string } | null;
+  photo: { readUrl: string; crop?: HeroCrop | null } | null;
   skinVariant: SkinVariant;
   language: Language;
 }
@@ -688,7 +688,7 @@ export function HeroIntemporel({ hero, photo, skinVariant, language }: HeroIntem
   const masterSrc = HERO_INTEMPOREL_RUNTIME_MASTER_SRC[skinVariant];
   const { desktop, mobile } = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[skinVariant];
 
-  const crop = hero.photo?.crop ?? NEUTRAL_HERO_CROP;
+  const crop = photo?.crop ?? hero.photo?.crop ?? NEUTRAL_HERO_CROP;
   const geometry = resolveHeroCropGeometry(imageSize, crop);
 
   const dateRangeText = formatHeroDateRange(hero.birth, hero.death, language);

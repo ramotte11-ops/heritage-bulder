@@ -16,6 +16,7 @@ import { AnnouncementChoiceStep } from "@/components/builder/AnnouncementChoiceS
 import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
 import { HeroCropStep } from "@/components/builder/HeroCropStep";
+import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
 import {
   GuestBuilderRuntimeError,
   createGuestDraftSaveTransport,
@@ -29,6 +30,8 @@ import type { GuestDraftV3 } from "@/lib/guest-draft/guest-draft-v3";
 import {
   completeGuestHeroCrop,
   completeGuestHeroPhoto,
+  completeGuestHeroReveal,
+  guestHeroStepProgress,
   loadGuestHeroPhoto,
   reopenGuestHeroPhoto,
   saveGuestHeroCrop,
@@ -44,7 +47,13 @@ type GuestBuilderStore = GuestBuilderDraftStore & Pick<
 
 type RuntimeState =
   | { status: "loading" }
-  | { status: "ready"; store: GuestBuilderStore; draft: GuestDraftV3; heroPhoto: LocalPhotoSnapshot | null }
+  | {
+      status: "ready";
+      store: GuestBuilderStore;
+      draft: GuestDraftV3;
+      heroPhoto: LocalPhotoSnapshot | null;
+      heroReadUrl: string | null;
+    }
   | { status: "error"; reason: string };
 
 export interface GuestBuilderRuntimeProps {
@@ -52,6 +61,8 @@ export interface GuestBuilderRuntimeProps {
   createStore?: () => GuestBuilderStore;
   createId?: () => string;
   now?: () => string;
+  createObjectUrl?: (blob: Blob) => string;
+  revokeObjectUrl?: (url: string) => void;
 }
 
 function defaultCreateStore(): GuestBuilderStore {
@@ -66,19 +77,30 @@ function defaultNow(): string {
   return new Date().toISOString();
 }
 
+function defaultCreateObjectUrl(blob: Blob): string {
+  return URL.createObjectURL(blob);
+}
+
+function defaultRevokeObjectUrl(url: string): void {
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Non-routed entry for the existing Builder screens backed by the single
- * local guest draft. C2 reuses the existing T06/T07 screens and stops
- * immediately before T08. No public route imports this component.
+ * local guest draft. C2/C3 reuse the existing T06/T07/T08 screens and
+ * stop immediately after T08. No public route imports this component.
  */
 export function GuestBuilderRuntime({
   createStore = defaultCreateStore,
   createId = defaultCreateId,
   now = defaultNow,
+  createObjectUrl = defaultCreateObjectUrl,
+  revokeObjectUrl = defaultRevokeObjectUrl,
 }: GuestBuilderRuntimeProps) {
   const [runtime, setRuntime] = useState<RuntimeState>({ status: "loading" });
   const draftRef = useRef<GuestDraftV3 | null>(null);
   const heroPhotoRef = useRef<LocalPhotoSnapshot | null>(null);
+  const heroReadUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -87,10 +109,17 @@ export function GuestBuilderRuntime({
       try {
         const draft = await loadOrCreateGuestDraft({ store, createId, now });
         const heroPhoto = await loadGuestHeroPhoto(store, draft);
-        if (!active) return;
+        const heroReadUrl = heroPhoto !== null && resolveGuestBuilderStage(draft) === "heroReveal"
+          ? createObjectUrl(heroPhoto.blob)
+          : null;
+        if (!active) {
+          if (heroReadUrl !== null) revokeObjectUrl(heroReadUrl);
+          return;
+        }
         draftRef.current = draft;
         heroPhotoRef.current = heroPhoto;
-        setRuntime({ status: "ready", store, draft, heroPhoto });
+        heroReadUrlRef.current = heroReadUrl;
+        setRuntime({ status: "ready", store, draft, heroPhoto, heroReadUrl });
       } catch (error: unknown) {
         if (!active) return;
         setRuntime({
@@ -103,8 +132,12 @@ export function GuestBuilderRuntime({
     })();
     return () => {
       active = false;
+      if (heroReadUrlRef.current !== null) {
+        revokeObjectUrl(heroReadUrlRef.current);
+        heroReadUrlRef.current = null;
+      }
     };
-  }, [createId, createStore, now]);
+  }, [createId, createObjectUrl, createStore, now, revokeObjectUrl]);
 
   const acceptDraft = useCallback((draft: GuestDraftV3) => {
     draftRef.current = draft;
@@ -113,10 +146,21 @@ export function GuestBuilderRuntime({
   const finishStep = useCallback(() => {
     const draft = draftRef.current;
     if (draft === null) return;
+    const heroPhoto = heroPhotoRef.current;
+    const nextStage = resolveGuestBuilderStage(draft);
+    let heroReadUrl = heroReadUrlRef.current;
+    if (nextStage === "heroReveal" && heroPhoto !== null && heroReadUrl === null) {
+      heroReadUrl = createObjectUrl(heroPhoto.blob);
+      heroReadUrlRef.current = heroReadUrl;
+    } else if (nextStage !== "heroReveal" && heroReadUrl !== null) {
+      revokeObjectUrl(heroReadUrl);
+      heroReadUrl = null;
+      heroReadUrlRef.current = null;
+    }
     setRuntime((current) => current.status === "ready"
-      ? { ...current, draft, heroPhoto: heroPhotoRef.current }
+      ? { ...current, draft, heroPhoto, heroReadUrl }
       : current);
-  }, []);
+  }, [createObjectUrl, revokeObjectUrl]);
 
   const store = runtime.status === "ready" ? runtime.store : null;
   const persist = useCallback<DraftSaveTransport>(async (content, expectedRevision) => {
@@ -173,7 +217,13 @@ export function GuestBuilderRuntime({
               }, language);
               if (saved.draft !== undefined) {
                 draftRef.current = saved.draft;
-                setRuntime({ status: "ready", store: runtime.store, draft: saved.draft, heroPhoto: heroPhotoRef.current });
+                setRuntime({
+                  status: "ready",
+                  store: runtime.store,
+                  draft: saved.draft,
+                  heroPhoto: heroPhotoRef.current,
+                  heroReadUrl: heroReadUrlRef.current,
+                });
               }
               return saved.response;
             }}
@@ -231,8 +281,26 @@ export function GuestBuilderRuntime({
             }}
           />
         );
-      case "revealPending":
-        return <span hidden data-guest-builder-pending="reveal" />;
+      case "heroReveal":
+        if (runtime.heroPhoto?.crop == null || runtime.heroReadUrl === null) {
+          return <span hidden data-guest-builder-error="missing-hero-reveal-photo" />;
+        }
+        return (
+          <HeroRevealStep
+            mode="local"
+            language={draft.language!}
+            content={draft.content}
+            initialSkinVariant={draft.skinVariant ?? "light"}
+            localMedia={{
+              photo: { ...runtime.heroPhoto, crop: runtime.heroPhoto.crop, readUrl: runtime.heroReadUrl },
+              progress: guestHeroStepProgress(draft),
+              completeReveal: (skinVariant, expectedRevision) =>
+                completeGuestHeroReveal(mediaOptions(), skinVariant, expectedRevision),
+            }}
+          />
+        );
+      case "postRevealPending":
+        return <span hidden data-guest-builder-pending="post-reveal" />;
     }
   })();
 

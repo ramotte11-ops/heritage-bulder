@@ -6,6 +6,7 @@ import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
+import type { LocalHeroRevealPort } from "@/lib/media/local-photo";
 import { translate } from "@/lib/i18n/translate";
 import { commitPageE, heroStepProgress, readHeroForEditing } from "@/lib/builder/guided-flow/hero-step";
 import { HeroIntemporel } from "@/components/memorial/hero/HeroIntemporel";
@@ -22,13 +23,18 @@ import {
   type DraftSaveTransport,
 } from "@/lib/builder/draft-revision";
 
-interface HeroRevealStepProps {
+interface HeroRevealStepCommonProps {
   language: Language;
   /** The memorial's current draft content — PAGE A through PAGE D are
    * already guaranteed done by the time this renders (see
    * lib/builder/guided-flow/hero-step.ts's `needsPageE` and
    * app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
+  initialSkinVariant: SkinVariant;
+}
+
+export interface AuthenticatedHeroRevealStepProps extends HeroRevealStepCommonProps {
+  mode?: "authenticated";
   /** The Hero's current photo, already resolved server-side — the exact
    * `Media` this screen re-verifies against at Continue time (the same
    * discipline `HeroCropStep`/`commitPageD` already apply), plus a
@@ -39,7 +45,6 @@ interface HeroRevealStepProps {
    * real memorial). This is only ever the STARTING point for the
    * family's local ambiance selector below, never re-read while this
    * screen is mounted. */
-  initialSkinVariant: SkinVariant;
   /** A bound Server Action — same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
   /** A bound Server Action (app/builder/[memorialId]/hero-reveal-actions.ts)
@@ -48,6 +53,13 @@ interface HeroRevealStepProps {
    * see this component's own docstring, "Preview vs. confirmation"). */
   saveSkinVariant: (skinVariant: string) => Promise<ConfigurationSaveResponse | void>;
 }
+
+interface LocalHeroRevealStepProps extends HeroRevealStepCommonProps {
+  mode: "local";
+  localMedia: LocalHeroRevealPort;
+}
+
+export type HeroRevealStepProps = AuthenticatedHeroRevealStepProps | LocalHeroRevealStepProps;
 
 /**
  * Mission 035 — PAGE E: T08, the Hero's first real reveal.
@@ -142,15 +154,10 @@ interface HeroRevealStepProps {
  * continuously-edited field here that needs debouncing — only one
  * discrete, all-or-nothing action.
  */
-export function HeroRevealStep({
-  language,
-  content,
-  photo,
-  initialSkinVariant,
-  persist,
-  saveSkinVariant,
-}: HeroRevealStepProps) {
-  const saveDraft = useRevisionedDraftPersist(persist);
+export function HeroRevealStep(props: HeroRevealStepProps) {
+  const { language, content, initialSkinVariant } = props;
+  const localMedia = props.mode === "local" ? props.localMedia : null;
+  const saveDraft = useRevisionedDraftPersist(props.mode === "local" ? undefined : props.persist);
   const draftRevision = useDraftRevisionCoordinator();
   const stepDone = useStepDone();
 
@@ -160,7 +167,7 @@ export function HeroRevealStep({
 
   const read = readHeroForEditing(content);
 
-  if (read.status !== "ready" || read.hero.photo === null) {
+  if (read.status !== "ready" || (localMedia === null && read.hero.photo === null)) {
     return (
       <BuilderScreen progress={0}>
         <p role="alert" className={styles.error}>
@@ -170,17 +177,32 @@ export function HeroRevealStep({
     );
   }
 
-  const progress = heroStepProgress(content, read.hero);
+  const progress = localMedia === null ? heroStepProgress(content, read.hero) : localMedia.progress;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(false);
     setIsSubmitting(true);
 
+    if (props.mode === "local") {
+      try {
+        if (draftRevision === null) throw new Error("Local reveal persistence is unavailable.");
+        await draftRevision.commit(content, (expectedRevision) =>
+          props.localMedia.completeReveal(previewVariant, expectedRevision),
+        );
+      } catch {
+        setSubmitError(true);
+        setIsSubmitting(false);
+        return;
+      }
+      stepDone();
+      return;
+    }
+
     try {
       // Step 1 — durable FIRST. A rejection here leaves T08 incomplete;
       // nothing below ever runs.
-      const result = await saveSkinVariant(previewVariant);
+      const result = await props.saveSkinVariant(previewVariant);
       if (result?.status === "conflict") {
         draftRevision?.reportConflict(content, { content, skinVariant: previewVariant });
         setSubmitError(true);
@@ -195,7 +217,7 @@ export function HeroRevealStep({
 
     // Step 2 — the pure content half, only attempted once step 1 has
     // actually succeeded.
-    const committed = commitPageE(content, photo.media);
+    const committed = commitPageE(content, props.photo.media);
     if (!committed.ok) {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -204,7 +226,7 @@ export function HeroRevealStep({
 
     try {
       // Step 3 — T08's own StepRecord becomes durable only here.
-      await saveDraft(committed.content);
+      await saveDraft!(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -247,7 +269,7 @@ export function HeroRevealStep({
       <div className={styles.stage} data-hero-skin-variant={previewVariant}>
         <HeroIntemporel
           hero={read.hero}
-          photo={photo}
+          photo={props.mode === "local" ? props.localMedia.photo : props.photo}
           skinVariant={previewVariant}
           language={language}
         />

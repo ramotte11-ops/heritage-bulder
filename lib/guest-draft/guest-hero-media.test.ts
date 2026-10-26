@@ -4,7 +4,10 @@ import type { GuestDraftV3PhotoWriteResult, GuestDraftV3WriteResult } from "./gu
 import {
   completeGuestHeroCrop,
   completeGuestHeroPhoto,
+  completeGuestHeroReveal,
   findGuestHeroReference,
+  guestHeroStepProgress,
+  isGuestHeroRevealComplete,
   loadGuestHeroPhoto,
   reopenGuestHeroPhoto,
   saveGuestHeroCrop,
@@ -12,6 +15,7 @@ import {
   type GuestHeroMediaOptions,
 } from "./guest-hero-media";
 import { resolveGuestBuilderStage } from "./guest-builder-runtime";
+import { readGuidedFlowState } from "@/lib/builder/guided-flow/hero-step";
 
 const T0 = "2026-10-26T10:00:00.000Z";
 const T1 = "2026-10-26T10:01:00.000Z";
@@ -39,6 +43,7 @@ class HeroMemoryStore {
   draft = readyDraft();
   assets = new Map<string, GuestDraftPhotoAsset>();
   failNext: "quota_exceeded" | null = null;
+  failSaveNext: "quota_exceeded" | null = null;
 
   async readPhoto(localId: string) {
     const asset = this.assets.get(localId);
@@ -106,6 +111,11 @@ class HeroMemoryStore {
   }
 
   async save(draft: GuestDraftV3, expectedRevision: number | null): Promise<GuestDraftV3WriteResult> {
+    if (this.failSaveNext !== null) {
+      const reason = this.failSaveNext;
+      this.failSaveNext = null;
+      return { ok: false, reason };
+    }
     if (expectedRevision === null || !this.current(expectedRevision)) return { ok: false, reason: "revision_conflict" };
     this.draft = structuredClone(draft);
     return { ok: true };
@@ -151,7 +161,7 @@ describe("guest Hero local media", () => {
     expect(resolveGuestBuilderStage(h.draft())).toBe("heroPhoto");
   });
 
-  it("persists T06, crop and T07 across a reload, then stops before T08", async () => {
+  it("persists T06, crop and T07 across a reload, then reaches the existing T08", async () => {
     const h = harness();
     await savePreparedGuestHeroPhoto(h.options(), prepared(), 0);
     await expect(completeGuestHeroPhoto(h.options(), 1)).resolves.toMatchObject({ status: "saved", revision: 2 });
@@ -163,7 +173,47 @@ describe("guest Hero local media", () => {
     expect(reloaded).toMatchObject({ localId: "local-1", crop, width: 1600, height: 1200 });
 
     await expect(completeGuestHeroCrop(h.options(), crop, 3)).resolves.toMatchObject({ status: "saved", revision: 4 });
-    expect(resolveGuestBuilderStage(h.draft())).toBe("revealPending");
+    expect(resolveGuestBuilderStage(h.draft())).toBe("heroReveal");
+  });
+
+  it("atomically persists the ambiance with T08, survives reload and stops before 2-C4", async () => {
+    const h = harness();
+    await savePreparedGuestHeroPhoto(h.options(), prepared(), 0);
+    await completeGuestHeroPhoto(h.options(), 1);
+    const crop = { focalX: 0.35, focalY: 0.7, zoom: 1.4 };
+    await saveGuestHeroCrop(h.options(), crop, 2);
+    await completeGuestHeroCrop(h.options(), crop, 3);
+    const progressBefore = guestHeroStepProgress(h.draft());
+
+    h.store.failSaveNext = "quota_exceeded";
+    await expect(completeGuestHeroReveal(h.options(), "dark", 4)).rejects.toMatchObject({ reason: "quota_exceeded" });
+    expect(h.draft().skinVariant).toBeNull();
+    expect(readGuidedFlowState(h.draft().content).T08).toBeUndefined();
+
+    await expect(completeGuestHeroReveal(h.options(), "dark", 4)).resolves.toMatchObject({
+      status: "saved",
+      revision: 5,
+    });
+    const reloaded = structuredClone(h.draft());
+    expect(reloaded.skinVariant).toBe("dark");
+    expect(readGuidedFlowState(reloaded.content).T08).toEqual({ status: "completed" });
+    expect(isGuestHeroRevealComplete(reloaded)).toBe(true);
+    expect(guestHeroStepProgress(reloaded)).toBeGreaterThan(progressBefore);
+    expect(resolveGuestBuilderStage(reloaded)).toBe("postRevealPending");
+    expect(JSON.stringify(reloaded)).not.toMatch(/mediaId|memorialId/);
+  });
+
+  it("blocks a stale reveal tab without partially changing ambiance or T08", async () => {
+    const h = harness();
+    await savePreparedGuestHeroPhoto(h.options(), prepared(), 0);
+    await completeGuestHeroPhoto(h.options(), 1);
+    const crop = { focalX: 0.5, focalY: 0.5, zoom: 1 };
+    await saveGuestHeroCrop(h.options(), crop, 2);
+    await completeGuestHeroCrop(h.options(), crop, 3);
+
+    await expect(completeGuestHeroReveal(h.options(), "dark", 3)).resolves.toEqual({ status: "conflict" });
+    expect(h.draft().skinVariant).toBeNull();
+    expect(readGuidedFlowState(h.draft().content).T08).toBeUndefined();
   });
 
   it("keeps the previous asset on replacement and resets the new Hero crop", async () => {

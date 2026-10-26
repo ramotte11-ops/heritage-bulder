@@ -1,4 +1,5 @@
 import type { AllowedImageMimeType } from "@/config/media";
+import type { SkinVariant } from "@/config/skins";
 import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
 import type { HeroCrop } from "@/types/hero";
 
@@ -33,4 +34,10 @@ export interface LocalHeroCropPort {
   saveCrop(crop: HeroCrop, expectedRevision: number): Promise<DraftSaveResponse>;
   completeCrop(crop: HeroCrop, expectedRevision: number): Promise<DraftSaveResponse>;
   reopenPhoto(expectedRevision: number): Promise<DraftSaveResponse>;
+}
+
+export interface LocalHeroRevealPort {
+  photo: LocalPhotoSnapshot & { crop: HeroCrop; readUrl: string };
+  progress: number;
+  completeReveal(skinVariant: SkinVariant, expectedRevision: number): Promise<DraftSaveResponse>;
 }

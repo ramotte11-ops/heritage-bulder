@@ -110,6 +110,38 @@ describe("HeroIntemporel — the Studio's own runtime masters, nothing recompose
 
 describe("HeroIntemporel — photo window geometry (mission 035 v4, section 4)", () => {
   it.each(["light", "dark"] as const)(
+    "renders the same local photo through the %s mobile and desktop runtimes",
+    (skinVariant) => {
+      const readUrl = "blob:guest-hero";
+      const { container } = renderHero({
+        skinVariant,
+        photo: { readUrl, crop: { focalX: 0.3, focalY: 0.7, zoom: 1.4 } },
+      });
+      expect(container.querySelectorAll(`img[src="${readUrl}"]`)).toHaveLength(3);
+      expect(container.querySelector(`img[src*="hero-runtime-${skinVariant}-mobile.png"]`)).toBeTruthy();
+      expect(container.querySelector(`img[src*="hero-runtime-${skinVariant}-desktop.png"]`)).toBeTruthy();
+    },
+  );
+
+  it("gives an explicit local crop priority and preserves the stored-Hero fallback", () => {
+    const localCrop = { focalX: 0.15, focalY: 0.85, zoom: 1.8 };
+    const local = renderHero({ photo: { readUrl: PHOTO.readUrl, crop: localCrop } });
+    const localStyle = local.container.querySelector(`img[src="${PHOTO.readUrl}"]`)?.getAttribute("style");
+    local.unmount();
+
+    const matchingHero = renderHero({
+      hero: { ...FULL_HERO, photo: { mediaId: MEDIA_ID, crop: localCrop } },
+    });
+    const fallbackStyle = matchingHero.container.querySelector(`img[src="${PHOTO.readUrl}"]`)?.getAttribute("style");
+    expect(localStyle).toBe(fallbackStyle);
+    matchingHero.unmount();
+
+    const original = renderHero();
+    const originalStyle = original.container.querySelector(`img[src="${PHOTO.readUrl}"]`)?.getAttribute("style");
+    expect(localStyle).not.toBe(originalStyle);
+  });
+
+  it.each(["light", "dark"] as const)(
     "positions the %s desktop photo window from the manifest's own photoWindowPx, as a percentage of the master canvas",
     (variant) => {
       const spec = HERO_INTEMPOREL_RUNTIME_MASTER_SPECS[variant].desktop;

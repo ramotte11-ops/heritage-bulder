@@ -15,7 +15,7 @@ import type {
   GuestDraftV3StorageErrorCode,
   GuestDraftV3WriteResult,
 } from "./guest-draft-v3-store";
-import { isGuestHeroCropComplete, isGuestHeroPhotoComplete } from "./guest-hero-media";
+import { isGuestHeroCropComplete, isGuestHeroPhotoComplete, isGuestHeroRevealComplete } from "./guest-hero-media";
 
 /** The narrow storage surface used by the guest runtime. It has no clear(). */
 export interface GuestBuilderDraftStore {
@@ -31,7 +31,8 @@ export type GuestBuilderStage =
   | "phrase"
   | "heroPhoto"
   | "heroCrop"
-  | "revealPending";
+  | "heroReveal"
+  | "postRevealPending";
 
 export type GuestBuilderRuntimeErrorReason =
   | GuestDraftV3StorageErrorCode
@@ -113,7 +114,7 @@ export async function loadOrCreateGuestDraft({
   throw readFailure(concurrent);
 }
 
-/** The shared Builder route, stopped immediately before T08/reveal. */
+/** The shared Builder route, stopped immediately after T08/reveal. */
 export function resolveGuestBuilderStage(draft: GuestDraftV3): GuestBuilderStage {
   if (draft.language === null) return "language";
   if (needsWelcome(null, draft.content)) return "welcome";
@@ -122,7 +123,8 @@ export function resolveGuestBuilderStage(draft: GuestDraftV3): GuestBuilderStage
   if (needsPageB(draft.content)) return "phrase";
   if (!isGuestHeroPhotoComplete(draft)) return "heroPhoto";
   if (!isGuestHeroCropComplete(draft)) return "heroCrop";
-  return "revealPending";
+  if (!isGuestHeroRevealComplete(draft)) return "heroReveal";
+  return "postRevealPending";
 }
 
 function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () => string) {
