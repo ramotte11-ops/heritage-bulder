@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Language } from "@/config/languages";
-import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET } from "@/config/media";
+import { ALLOWED_IMAGE_MIME_TYPES } from "@/config/media";
 import { selectGalleryState } from "@/config/gallery-a13-multi-state-manifests";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
@@ -11,13 +11,19 @@ import type { MediaResult } from "@/lib/media/media-errors";
 import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
 import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
+import { useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
+import type {
+  LocalGalleryPhotoSnapshot,
+  LocalGalleryPort,
+  LocalGallerySaveResponse,
+  PreparedLocalPhoto,
+} from "@/lib/media/local-photo";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { usePendingInput } from "./journey/pending-input";
 import { PendingActionLabel } from "./PendingActionLabel";
 import { precheckPhotoInput } from "@/lib/media/precheck-upload";
-import { prepareChosenPhoto } from "@/lib/media/prepare-chosen-photo";
+import { prepareChosenPhoto, prepareChosenPhotoWithReport } from "@/lib/media/prepare-chosen-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
-import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import {
   GALLERY_CAPTION_MAX_CHARACTERS,
   addGalleryMedia,
@@ -25,12 +31,14 @@ import {
   galleryCaptionLength,
   inspectGallery,
   moveGalleryMedia,
+  normalizeGalleryCaption,
   removeGalleryMedia,
   replaceGalleryMedia,
   setGalleryCaption,
   updateGallery,
   type GalleryEditResult,
 } from "@/lib/memorial/gallery-content";
+import { LocalBlobImage } from "./LocalBlobImage";
 import styles from "./GalleryWorkshop.module.css";
 
 /**
@@ -81,13 +89,21 @@ import styles from "./GalleryWorkshop.module.css";
  * error, never a silent upload of the original.
  */
 
-export interface GalleryWorkshopProps {
+interface GalleryWorkshopCommonProps {
   language: Language;
   /** The host's draft (owner of the one `useAutosave`). */
   content: MemorialContent;
-  setContent: Dispatch<SetStateAction<MemorialContent>>;
   /** `useAutosave(...).flush` — drains the debounced path before an explicit write. */
   flush: () => Promise<void>;
+  /** The host is submitting (Continue/Skip): every control is frozen. */
+  frozen: boolean;
+  /** Reports whether an upload, a replacement or an explicit write is in progress. */
+  onBusyChange: (busy: boolean) => void;
+}
+
+interface AuthenticatedGalleryWorkshopProps extends GalleryWorkshopCommonProps {
+  mode?: "authenticated";
+  setContent: Dispatch<SetStateAction<MemorialContent>>;
   /** The bound `saveDraftAction` — the explicit, awaited write. */
   persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
   /** Short-lived read URLs resolved server-side for the photographs already in the draft. */
@@ -95,11 +111,16 @@ export interface GalleryWorkshopProps {
   reserveUpload: (declaredMimeType: string) => Promise<MediaResult<ReservedUpload>>;
   finalizeUpload: (mediaId: string) => Promise<MediaResult<Media>>;
   retirePhoto: (mediaId: string) => Promise<MediaResult<GalleryRetirement>>;
-  /** The host is submitting (Continue/Skip): every control is frozen. */
-  frozen: boolean;
-  /** Reports whether an upload, a replacement or an explicit write is in progress. */
-  onBusyChange: (busy: boolean) => void;
 }
+
+interface LocalGalleryWorkshopProps extends GalleryWorkshopCommonProps {
+  mode: "local";
+  localPhotos: LocalGalleryPhotoSnapshot[];
+  setLocalPhotos: Dispatch<SetStateAction<LocalGalleryPhotoSnapshot[]>>;
+  localMedia: LocalGalleryPort;
+}
+
+export type GalleryWorkshopProps = AuthenticatedGalleryWorkshopProps | LocalGalleryWorkshopProps;
 
 const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
 /** The counter appears only when it becomes useful — the last 8 characters before the limit. */
@@ -113,6 +134,8 @@ type PendingUpload = {
   error: string | null;
 };
 
+type GalleryThumbnail = { kind: "url"; url: string } | { kind: "blob"; blob: Blob };
+
 type Focus = { mediaId: string; control: "up" | "down" | "replace" } | { mediaId: null; control: "add" };
 
 function applyToContent(content: MemorialContent, edit: (gallery: GalleryContent) => GalleryEditResult): MemorialContent | null {
@@ -122,18 +145,6 @@ function applyToContent(content: MemorialContent, edit: (gallery: GalleryContent
   if (!edited.ok) return null;
   const written = updateGallery(content, edited.gallery);
   return written.ok ? written.content : null;
-}
-
-async function uploadPhoto(file: File, reserveUpload: GalleryWorkshopProps["reserveUpload"], finalizeUpload: GalleryWorkshopProps["finalizeUpload"]): Promise<Media> {
-  const reserved = await reserveUpload(file.type);
-  if (!reserved.ok) throw new MediaActionError(reserved.code);
-  const { error } = await getBrowserSupabaseClient()
-    .storage.from(MEDIA_BUCKET)
-    .uploadToSignedUrl(reserved.value.storagePath, reserved.value.uploadToken, file, { contentType: file.type });
-  if (error) throw new MediaActionError("storage_unavailable");
-  const finalized = await finalizeUpload(reserved.value.mediaId);
-  if (!finalized.ok) throw new MediaActionError(finalized.code);
-  return finalized.value;
 }
 
 function omit(record: Record<string, string>, key: string): Record<string, string> {
@@ -146,20 +157,14 @@ function errorText(language: Language, error: unknown): string {
   return translate(language, mediaErrorTranslationKey(error instanceof MediaActionError ? error.code : "storage_unavailable"));
 }
 
-export function GalleryWorkshop({
-  language,
-  content,
-  setContent,
-  flush,
-  persist,
-  initialThumbnails,
-  reserveUpload,
-  finalizeUpload,
-  retirePhoto,
-  frozen,
-  onBusyChange,
-}: GalleryWorkshopProps) {
-  const [thumbnails, setThumbnails] = useState<Record<string, string | null>>(() => ({ ...initialThumbnails }));
+export function GalleryWorkshop(props: GalleryWorkshopProps) {
+  const { language, content, flush, frozen, onBusyChange } = props;
+  const revisionCoordinator = useDraftRevisionCoordinator();
+  const [thumbnails, setThumbnails] = useState<Record<string, GalleryThumbnail | null>>(() =>
+    props.mode === "local"
+      ? Object.fromEntries(props.localPhotos.map(({ localId, blob }) => [localId, { kind: "blob", blob }]))
+      : Object.fromEntries(Object.entries(props.initialThumbnails).map(([id, url]) => [id, url === null ? null : { kind: "url", url }])),
+  );
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
@@ -176,6 +181,7 @@ export function GalleryWorkshop({
   const [rowKeys, setRowKeys] = useState<Record<string, string>>({});
 
   const contentRef = useRef(content);
+  const mountedRef = useRef(true);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const blobUrls = useRef(new Set<string>());
   const focusTarget = useRef<Focus | null>(null);
@@ -188,7 +194,11 @@ export function GalleryWorkshop({
 
   useEffect(() => {
     const urls = blobUrls.current;
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+    return () => {
+      mountedRef.current = false;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
+    };
   }, []);
 
   const uploading = pending.some((upload) => upload.status !== "error");
@@ -196,7 +206,9 @@ export function GalleryWorkshop({
   useEffect(() => onBusyChange(busy), [busy, onBusyChange]);
 
   const read = inspectGallery(content);
-  const items = read.status === "corrupted" ? [] : read.gallery.items;
+  const items = props.mode === "local"
+    ? props.localPhotos.map(({ localId, caption }) => ({ mediaId: localId, caption }))
+    : read.status === "corrupted" ? [] : read.gallery.items;
   const count = items.length;
   const galleryState = selectGalleryState(count);
 
@@ -222,32 +234,65 @@ export function GalleryWorkshop({
   );
 
   function track(url: string): string {
+    if (!mountedRef.current) {
+      URL.revokeObjectURL(url);
+      return url;
+    }
     blobUrls.current.add(url);
     return url;
   }
 
-  function forget(mediaId: string) {
-    const url = thumbnails[mediaId];
-    if (url && blobUrls.current.has(url)) {
+  function release(url: string | null) {
+    if (url !== null && blobUrls.current.has(url)) {
       URL.revokeObjectURL(url);
       blobUrls.current.delete(url);
     }
   }
 
+  function forget(mediaId: string) {
+    const thumbnail = thumbnails[mediaId];
+    if (thumbnail?.kind === "url") release(thumbnail.url);
+  }
+
   /** The explicit write: flush, persist the next content, and only then adopt it. */
   async function commitStructural(edit: (gallery: GalleryContent) => GalleryEditResult): Promise<boolean> {
+    if (props.mode === "local") return false;
     setCommitting(true);
     try {
       await flush();
       const next = applyToContent(contentRef.current, edit);
       if (next === null) return false;
-      await persist(next);
+      await props.persist(next);
       // Adopted: the next explicit write starts from here even before React re-renders.
       contentRef.current = next;
-      setContent((previous) => applyToContent(previous, edit) ?? previous);
+      props.setContent((previous) => applyToContent(previous, edit) ?? previous);
       return true;
     } catch {
       return false;
+    } finally {
+      setCommitting(false);
+    }
+  }
+
+  async function commitLocal(
+    operation: (expectedRevision: number) => Promise<LocalGallerySaveResponse>,
+  ): Promise<LocalGallerySaveResponse | null> {
+    if (props.mode !== "local" || revisionCoordinator === null) return null;
+    setCommitting(true);
+    try {
+      await flush();
+      let adopted: LocalGallerySaveResponse | null = null;
+      await revisionCoordinator.commit(content, async (expectedRevision) => {
+        const result = await operation(expectedRevision);
+        if (result.status === "saved") adopted = result;
+        return result;
+      });
+      const confirmed = adopted as LocalGallerySaveResponse | null;
+      if (confirmed === null || confirmed.photos === undefined) return null;
+      props.setLocalPhotos(confirmed.photos);
+      return confirmed;
+    } catch {
+      return null;
     } finally {
       setCommitting(false);
     }
@@ -260,13 +305,36 @@ export function GalleryWorkshop({
   async function processUpload(localId: string, file: File) {
     updatePending(localId, { status: "preparing" });
     try {
-      const prepared = await prepareChosenPhoto(file, "gallery");
-      const previewUrl = track(URL.createObjectURL(prepared));
-      updatePending(localId, { status: "uploading", previewUrl });
-      const media = await uploadPhoto(prepared, reserveUpload, finalizeUpload);
-      const added = await commitStructural((gallery) => addGalleryMedia(gallery, media.id));
-      if (!added) throw new MediaActionError("storage_unavailable");
-      setThumbnails((current) => ({ ...current, [media.id]: previewUrl }));
+      if (props.mode === "local") {
+        const prepared = await prepareChosenPhotoWithReport(file, "gallery");
+        const previewUrl = track(URL.createObjectURL(prepared.file));
+        if (!mountedRef.current) return;
+        updatePending(localId, { status: "uploading", previewUrl });
+        const localPrepared: PreparedLocalPhoto = {
+          blob: prepared.file,
+          mimeType: prepared.report.type,
+          width: prepared.report.width,
+          height: prepared.report.height,
+          originalFilename: file.name || null,
+          lastModified: Number.isFinite(file.lastModified) ? file.lastModified : null,
+        };
+        const result = await commitLocal((expectedRevision) => props.localMedia.addPreparedPhoto(localPrepared, expectedRevision));
+        if (result === null) throw new MediaActionError("storage_unavailable");
+        const added = result.photo;
+        if (added === undefined) throw new MediaActionError("storage_unavailable");
+        release(previewUrl);
+        setThumbnails((current) => ({ ...current, [added.localId]: { kind: "blob", blob: added.blob } }));
+      } else {
+        const prepared = await prepareChosenPhoto(file, "gallery");
+        const previewUrl = track(URL.createObjectURL(prepared));
+        if (!mountedRef.current) return;
+        updatePending(localId, { status: "uploading", previewUrl });
+        const { uploadAuthenticatedGalleryPhoto } = await import("@/lib/media/authenticated-gallery-upload");
+        const media = await uploadAuthenticatedGalleryPhoto(prepared, props.reserveUpload, props.finalizeUpload);
+        const added = await commitStructural((gallery) => addGalleryMedia(gallery, media.id));
+        if (!added) throw new MediaActionError("storage_unavailable");
+        setThumbnails((current) => ({ ...current, [media.id]: { kind: "url", url: previewUrl } }));
+      }
       setPending((list) => list.filter((upload) => upload.localId !== localId));
       setAnnouncement(translate(language, "galleryStep.added"));
     } catch (error) {
@@ -293,7 +361,11 @@ export function GalleryWorkshop({
   }
 
   function dismissPending(localId: string) {
-    setPending((list) => list.filter((upload) => upload.localId !== localId));
+    setPending((list) => {
+      const upload = list.find((entry) => entry.localId === localId);
+      release(upload?.previewUrl ?? null);
+      return list.filter((entry) => entry.localId !== localId);
+    });
     focusTarget.current = { mediaId: null, control: "add" };
   }
 
@@ -306,17 +378,40 @@ export function GalleryWorkshop({
     }
     setReplacing(mediaId);
     try {
-      const prepared = await prepareChosenPhoto(file, "gallery");
-      const media = await uploadPhoto(prepared, reserveUpload, finalizeUpload);
-      const replaced = await commitStructural((gallery) => replaceGalleryMedia(gallery, mediaId, media.id));
-      if (!replaced) throw new MediaActionError("storage_unavailable");
-      // Adopted by the saved draft: only now may the previous photograph be retired.
-      forget(mediaId);
-      setThumbnails((current) => ({ ...current, [media.id]: track(URL.createObjectURL(prepared)) }));
-      setRowKeys((keys) => ({ ...keys, [media.id]: keys[mediaId] ?? mediaId }));
-      focusTarget.current = { mediaId: media.id, control: "replace" };
+      if (props.mode === "local") {
+        const prepared = await prepareChosenPhotoWithReport(file, "gallery");
+        const localPrepared: PreparedLocalPhoto = {
+          blob: prepared.file,
+          mimeType: prepared.report.type,
+          width: prepared.report.width,
+          height: prepared.report.height,
+          originalFilename: file.name || null,
+          lastModified: Number.isFinite(file.lastModified) ? file.lastModified : null,
+        };
+        const result = await commitLocal((expectedRevision) =>
+          props.localMedia.replacePreparedPhoto(mediaId, localPrepared, expectedRevision),
+        );
+        if (result === null) throw new MediaActionError("storage_unavailable");
+        const replacement = result.photo;
+        if (replacement === undefined) throw new MediaActionError("storage_unavailable");
+        forget(mediaId);
+        setThumbnails((current) => ({ ...current, [replacement.localId]: { kind: "blob", blob: replacement.blob } }));
+        setRowKeys((keys) => ({ ...keys, [replacement.localId]: keys[mediaId] ?? mediaId }));
+        focusTarget.current = { mediaId: replacement.localId, control: "replace" };
+      } else {
+        const prepared = await prepareChosenPhoto(file, "gallery");
+        const { uploadAuthenticatedGalleryPhoto } = await import("@/lib/media/authenticated-gallery-upload");
+        const media = await uploadAuthenticatedGalleryPhoto(prepared, props.reserveUpload, props.finalizeUpload);
+        const replaced = await commitStructural((gallery) => replaceGalleryMedia(gallery, mediaId, media.id));
+        if (!replaced) throw new MediaActionError("storage_unavailable");
+        // Adopted by the saved draft: only now may the previous photograph be retired.
+        forget(mediaId);
+        setThumbnails((current) => ({ ...current, [media.id]: { kind: "url", url: track(URL.createObjectURL(prepared)) } }));
+        setRowKeys((keys) => ({ ...keys, [media.id]: keys[mediaId] ?? mediaId }));
+        focusTarget.current = { mediaId: media.id, control: "replace" };
+        props.retirePhoto(mediaId).catch(() => {});
+      }
       setAnnouncement(translate(language, "galleryStep.replaced"));
-      retirePhoto(mediaId).catch(() => {});
     } catch (error) {
       setRowErrors((errors) => ({ ...errors, [mediaId]: errorText(language, error) }));
     } finally {
@@ -329,7 +424,9 @@ export function GalleryWorkshop({
     if (removingRef.current !== null) return;
     removingRef.current = mediaId;
     setRemoving(mediaId);
-    const removed = await commitStructural((gallery) => ({ ok: true, gallery: removeGalleryMedia(gallery, mediaId) }));
+    const removed = props.mode === "local"
+      ? await commitLocal((expectedRevision) => props.localMedia.removePhoto(mediaId, expectedRevision)) !== null
+      : await commitStructural((gallery) => ({ ok: true, gallery: removeGalleryMedia(gallery, mediaId) }));
     removingRef.current = null;
     setRemoving(null);
     if (!removed) {
@@ -343,18 +440,38 @@ export function GalleryWorkshop({
     focusTarget.current = neighbour ? { mediaId: neighbour.mediaId, control: "replace" } : { mediaId: null, control: "add" };
     setAnnouncement(translate(language, "galleryStep.removed"));
     // Removed from the saved draft: only now may the photograph itself be retired.
-    retirePhoto(mediaId).catch(() => {});
+    if (props.mode !== "local") props.retirePhoto(mediaId).catch(() => {});
   }
 
   function handleMove(mediaId: string, offset: -1 | 1) {
     const index = items.findIndex((item) => item.mediaId === mediaId);
-    setContent((previous) => applyToContent(previous, (gallery) => moveGalleryMedia(gallery, mediaId, offset)) ?? previous);
+    if (props.mode === "local") {
+      props.setLocalPhotos((previous) => {
+        const from = previous.findIndex(({ localId }) => localId === mediaId);
+        const to = from + offset;
+        if (from < 0 || to < 0 || to >= previous.length) return previous;
+        const next = [...previous];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
+    } else {
+      props.setContent((previous) => applyToContent(previous, (gallery) => moveGalleryMedia(gallery, mediaId, offset)) ?? previous);
+    }
     focusTarget.current = { mediaId, control: offset === -1 ? "up" : "down" };
     setAnnouncement(translateWith(language, "galleryStep.moved", { position: index + 1 + offset, total: count }));
   }
 
   function handleCaption(mediaId: string, value: string) {
-    setContent((previous) => applyToContent(previous, (gallery) => setGalleryCaption(gallery, mediaId, value)) ?? previous);
+    if (props.mode === "local") {
+      const normalized = normalizeGalleryCaption(value);
+      if (!normalized.ok) return;
+      props.setLocalPhotos((previous) => previous.map((photo) =>
+        photo.localId === mediaId ? { ...photo, caption: normalized.caption } : photo,
+      ));
+    } else {
+      props.setContent((previous) => applyToContent(previous, (gallery) => setGalleryCaption(gallery, mediaId, value)) ?? previous);
+    }
   }
 
   const structuralLocked = frozen || committing || replacing !== null;
@@ -447,7 +564,7 @@ interface GalleryRegisterRowProps {
   caption: string | null;
   index: number;
   total: number;
-  thumbnail: string | null;
+  thumbnail: GalleryThumbnail | null;
   replacing: boolean;
   confirming: boolean;
   /** Its removal is being written to the draft. */
@@ -514,10 +631,11 @@ function GalleryRegisterRow({
       </span>
 
       <span className={styles.thumbnail}>
-        {thumbnail && (
-          // A short-lived signed or local blob: URL, never persisted; shown whole (contain), never cropped.
+        {thumbnail?.kind === "blob" && <LocalBlobImage blob={thumbnail.blob} alt={itemLabel} className={styles.thumbnailImage} />}
+        {thumbnail?.kind === "url" && (
+          // A short-lived signed or freshly prepared blob: URL, never persisted; shown whole (contain), never cropped.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumbnail} alt={itemLabel} className={styles.thumbnailImage} />
+          <img src={thumbnail.url} alt={itemLabel} className={styles.thumbnailImage} />
         )}
       </span>
 

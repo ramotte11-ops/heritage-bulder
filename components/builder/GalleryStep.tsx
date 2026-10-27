@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
@@ -8,10 +8,15 @@ import type { Media } from "@/types/media";
 import type { MediaResult } from "@/lib/media/media-errors";
 import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
 import type { GalleryRetirement } from "@/lib/memorial/gallery-media";
+import type { LocalGalleryEditorialItem, LocalGalleryPort } from "@/lib/media/local-photo";
 import type { GalleryStepThumbnails } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
-import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import {
+  useDraftRevisionCoordinator,
+  useRevisionedDraftPersist,
+  type DraftSaveTransport,
+} from "@/lib/builder/draft-revision";
 import { commitA13, galleryStepProgress, readGalleryForEditing, skipA13 } from "@/lib/builder/guided-flow/gallery-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
@@ -21,10 +26,14 @@ import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./GalleryStep.module.css";
 
-interface GalleryStepProps {
+interface GalleryStepCommonProps {
   language: Language;
   /** The draft — the A10–A12 sheet is already behind the family. */
   content: MemorialContent;
+}
+
+export interface AuthenticatedGalleryStepProps extends GalleryStepCommonProps {
+  mode?: "authenticated";
   /** Resolved server-side (`resolveGalleryStepData`): mediaId -> short-lived read URL, never persisted. */
   thumbnails: GalleryStepThumbnails;
   persist: DraftSaveTransport;
@@ -33,6 +42,13 @@ interface GalleryStepProps {
   finalizeUpload: (mediaId: string) => Promise<MediaResult<Media>>;
   retirePhoto: (mediaId: string) => Promise<MediaResult<GalleryRetirement>>;
 }
+
+interface LocalGalleryStepProps extends GalleryStepCommonProps {
+  mode: "local";
+  localMedia: LocalGalleryPort;
+}
+
+export type GalleryStepProps = AuthenticatedGalleryStepProps | LocalGalleryStepProps;
 
 /**
  * A13 — "Vos souvenirs en images", the Guided Flow screen hosting the
@@ -50,30 +66,42 @@ interface GalleryStepProps {
  * for any upload, replacement or explicit write to finish, and drain the
  * autosave first (the PersonSheet / Traditions convention).
  */
-export function GalleryStep({
-  language,
-  content: initialContent,
-  thumbnails,
-  persist,
-  reserveUpload,
-  finalizeUpload,
-  retirePhoto,
-}: GalleryStepProps) {
-  const saveDraft = useRevisionedDraftPersist(persist);
+export function GalleryStep(props: GalleryStepProps) {
+  const { language, content: initialContent } = props;
+  const saveDraft = useRevisionedDraftPersist(props.mode === "local" ? undefined : props.persist);
+  const revisionCoordinator = useDraftRevisionCoordinator();
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
+  const [localPhotos, setLocalPhotos] = useState(() => props.mode === "local" ? props.localMedia.initialPhotos : []);
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
   const [workshopBusy, setWorkshopBusy] = useState(false);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const localEditorial = useMemo<LocalGalleryEditorialItem[]>(
+    () => localPhotos.map(({ localId, caption }) => ({ localId, caption })),
+    [localPhotos],
+  );
+  const persistLocalEditorial = useCallback(async (items: LocalGalleryEditorialItem[]) => {
+    if (props.mode !== "local" || revisionCoordinator === null) throw new Error("Local Gallery persistence is unavailable.");
+    return revisionCoordinator.commit(initialContent, (expectedRevision) =>
+      props.localMedia.saveEditorial(items, expectedRevision),
+    );
+  }, [initialContent, props, revisionCoordinator]);
+  const authenticatedAutosave = useAutosave({ content, persist: saveDraft });
+  const localAutosave = useAutosave({
+    content: localEditorial,
+    persist: props.mode === "local" ? persistLocalEditorial : undefined,
+  });
+  const { flush, state: autosaveState, retry: retryAutosave } = props.mode === "local"
+    ? localAutosave
+    : authenticatedAutosave;
 
   const read = readGalleryForEditing(content);
   const isSubmitting = pendingAction !== null;
   const controlsDisabled = isSubmitting || workshopBusy;
 
   async function resolveStep(write: typeof commitA13, action: "continue" | "skip") {
-    if (read.status !== "ready" || controlsDisabled) return;
+    if ((props.mode !== "local" && read.status !== "ready") || controlsDisabled) return;
     setSubmitError(false);
     setPendingAction(action);
     try {
@@ -84,15 +112,17 @@ export function GalleryStep({
       return;
     }
 
-    const resolved = write(content);
-    if (!resolved.ok) {
-      setSubmitError(true);
-      setPendingAction(null);
-      return;
-    }
-
     try {
-      await saveDraft(resolved.content);
+      if (props.mode === "local") {
+        if (revisionCoordinator === null) throw new Error("Local Gallery persistence is unavailable.");
+        await revisionCoordinator.commit(initialContent, (expectedRevision) =>
+          props.localMedia.resolveStep(action, expectedRevision),
+        );
+      } else {
+        const resolved = write(content);
+        if (!resolved.ok) throw new Error("Gallery content is corrupted.");
+        await saveDraft!(resolved.content);
+      }
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -102,7 +132,7 @@ export function GalleryStep({
     stepDone();
   }
 
-  if (read.status !== "ready") {
+  if (props.mode !== "local" && read.status !== "ready") {
     return (
       <BuilderScreen progress={0}>
         <p role="alert" className={styles.error}>
@@ -129,19 +159,34 @@ export function GalleryStep({
           void resolveStep(commitA13, "continue");
         }}
       >
-        <GalleryWorkshop
-          language={language}
-          content={content}
-          setContent={setContent}
-          flush={flush}
-        persist={saveDraft}
-          initialThumbnails={thumbnails}
-          reserveUpload={reserveUpload}
-          finalizeUpload={finalizeUpload}
-          retirePhoto={retirePhoto}
-          frozen={isSubmitting}
-          onBusyChange={setWorkshopBusy}
-        />
+        {props.mode === "local" ? (
+          <GalleryWorkshop
+            mode="local"
+            language={language}
+            content={content}
+            flush={flush}
+            frozen={isSubmitting}
+            onBusyChange={setWorkshopBusy}
+            localPhotos={localPhotos}
+            setLocalPhotos={setLocalPhotos}
+            localMedia={props.localMedia}
+          />
+        ) : (
+          <GalleryWorkshop
+            mode="authenticated"
+            language={language}
+            content={content}
+            flush={flush}
+            frozen={isSubmitting}
+            onBusyChange={setWorkshopBusy}
+            setContent={setContent}
+            persist={saveDraft!}
+            initialThumbnails={props.thumbnails}
+            reserveUpload={props.reserveUpload}
+            finalizeUpload={props.finalizeUpload}
+            retirePhoto={props.retirePhoto}
+          />
+        )}
 
         <div className={styles.actions}>
           <div className={screenStyles.ctaWrap}>

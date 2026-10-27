@@ -41,3 +41,32 @@ export interface LocalHeroRevealPort {
   progress: number;
   completeReveal(skinVariant: SkinVariant, expectedRevision: number): Promise<DraftSaveResponse>;
 }
+
+export interface LocalGalleryPhotoSnapshot {
+  localId: string;
+  blob: Blob;
+  mimeType: AllowedImageMimeType;
+  width: number | null;
+  height: number | null;
+  caption: string | null;
+}
+
+export interface LocalGalleryEditorialItem {
+  localId: string;
+  caption: string | null;
+}
+
+export type LocalGallerySaveResponse = DraftSaveResponse & {
+  photos?: LocalGalleryPhotoSnapshot[];
+  photo?: LocalGalleryPhotoSnapshot;
+};
+
+/** IndexedDB-backed seam used by the existing Gallery workshop in guest mode. */
+export interface LocalGalleryPort {
+  initialPhotos: LocalGalleryPhotoSnapshot[];
+  addPreparedPhoto(photo: PreparedLocalPhoto, expectedRevision: number): Promise<LocalGallerySaveResponse>;
+  replacePreparedPhoto(localId: string, photo: PreparedLocalPhoto, expectedRevision: number): Promise<LocalGallerySaveResponse>;
+  removePhoto(localId: string, expectedRevision: number): Promise<LocalGallerySaveResponse>;
+  saveEditorial(items: readonly LocalGalleryEditorialItem[], expectedRevision: number): Promise<LocalGallerySaveResponse>;
+  resolveStep(action: "continue" | "skip", expectedRevision: number): Promise<DraftSaveResponse>;
+}
