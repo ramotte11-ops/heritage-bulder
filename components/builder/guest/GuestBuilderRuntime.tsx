@@ -17,11 +17,16 @@ import { HeroPhraseStep } from "@/components/builder/HeroPhraseStep";
 import { HeroPhotoStep } from "@/components/builder/HeroPhotoStep";
 import { HeroCropStep } from "@/components/builder/HeroCropStep";
 import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
+import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
+import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
+import { DeathNoticePreviewStep } from "@/components/builder/DeathNoticePreviewStep";
 import {
+  GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
   createGuestDraftSaveTransport,
   loadOrCreateGuestDraft,
   resolveGuestBuilderStage,
+  resolveGuestPostHeroScreen,
   saveGuestDraftLanguage,
   type GuestBuilderDraftStore,
 } from "@/lib/guest-draft/guest-builder-runtime";
@@ -87,8 +92,8 @@ function defaultRevokeObjectUrl(url: string): void {
 
 /**
  * Non-routed entry for the existing Builder screens backed by the single
- * local guest draft. C2/C3 reuse the existing T06/T07/T08 screens and
- * stop immediately after T08. No public route imports this component.
+ * local guest draft. It reuses the existing T06/T07/T08 and A01/A02/A03
+ * screens, then stops before A04. No public route imports this component.
  */
 export function GuestBuilderRuntime({
   createStore = defaultCreateStore,
@@ -300,7 +305,43 @@ export function GuestBuilderRuntime({
           />
         );
       case "postRevealPending":
-        return <span hidden data-guest-builder-pending="post-reveal" />;
+        switch (resolveGuestPostHeroScreen(draft)) {
+          case "announcementText":
+            return (
+              <DeathNoticeAnnouncementStep
+                language={draft.language!}
+                content={draft.content}
+                persist={persist}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
+          case "announcementDetails":
+            return (
+              <DeathNoticePrecisionsStep
+                language={draft.language!}
+                content={draft.content}
+                persist={persist}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
+          case "announcementPreview":
+            if (draft.skinVariant === null) {
+              return <span hidden data-guest-builder-error="missing-skin-variant" />;
+            }
+            return (
+              <DeathNoticePreviewStep
+                language={draft.language!}
+                content={draft.content}
+                skin={GUEST_BUILDER_V1_SKIN}
+                skinVariant={draft.skinVariant}
+                persist={persist}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
+          default:
+            // A04 and every later canonical screen remain outside this lot.
+            return <span hidden data-guest-builder-pending="post-reveal" />;
+        }
     }
   })();
 

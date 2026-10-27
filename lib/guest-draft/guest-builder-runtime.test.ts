@@ -286,6 +286,10 @@ describe("guest Builder local runtime", () => {
       "guest-hero-media.ts",
       "../media/local-photo.ts",
       "../../components/builder/guest/GuestBuilderRuntime.tsx",
+      "../../components/builder/DeathNoticeAnnouncementStep.tsx",
+      "../../components/builder/DeathNoticePrecisionsStep.tsx",
+      "../../components/builder/DeathNoticePreviewStep.tsx",
+      "../../components/memorial/death-notice/v2/DeathNoticeV2.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);
 

@@ -30,6 +30,9 @@ interface DeathNoticePrecisionsStepProps {
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
+  /** Optional local-runtime progress. Authenticated callers keep the
+   * canonical content-derived calculation by omitting it. */
+  progress?: number;
 }
 
 /** The five precisions, in the order the mission brief's own UX map
@@ -88,6 +91,7 @@ export function DeathNoticePrecisionsStep({
   language,
   content: initialContent,
   persist,
+  progress: progressOverride,
 }: DeathNoticePrecisionsStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -181,7 +185,7 @@ export function DeathNoticePrecisionsStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(content);
+  const progress = progressOverride ?? deathNoticeStepProgress(content);
   const hasAnyPrecision = PRECISION_FIELDS.some(({ field }) => read.deathNotice.precisions[field] !== null);
 
   return (

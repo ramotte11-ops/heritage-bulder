@@ -14,7 +14,17 @@ import type {
   GuestDraftV3WriteResult,
 } from "@/lib/guest-draft/guest-draft-v3-store";
 import type { GuestBuilderDraftStore } from "@/lib/guest-draft/guest-builder-runtime";
+import { guestHeroStepProgress } from "@/lib/guest-draft/guest-hero-media";
 import { translate } from "@/lib/i18n/translate";
+
+type GuestFlowContent = {
+  guidedFlow: Record<string, { status: string; answer?: string }>;
+  hero: { photo: unknown };
+};
+
+function localContent(draft: GuestDraftV3): GuestFlowContent {
+  return draft.content as unknown as GuestFlowContent;
+}
 
 const { useRouter } = vi.hoisted(() => ({
   useRouter: vi.fn(() => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() })),
@@ -124,12 +134,128 @@ function revealDraft(): { draft: GuestDraftV3; asset: GuestDraftPhotoAsset } {
   };
 }
 
+function postRevealDraft(answer: "yes" | "no" | "later", skinVariant: "light" | "dark" = "light") {
+  const fixture = revealDraft();
+  const content = localContent(fixture.draft);
+  const updated = updateGuestDraftV3(fixture.draft, {
+    now: "2026-10-26T10:02:00.000Z",
+    skinVariant,
+    content: {
+      ...content,
+      guidedFlow: {
+        ...content.guidedFlow,
+        A00: { status: "completed", answer },
+        T08: { status: "completed" },
+      },
+    } as never,
+  });
+  if (!updated.ok) throw new Error(updated.reason);
+  return { draft: updated.draft, asset: fixture.asset };
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe("GuestBuilderRuntime", () => {
+  it.each(["no", "later"] as const)(
+    "keeps A00=%s data and stops before A04 without rendering A01-A03",
+    async (answer) => {
+      const fixture = postRevealDraft(answer);
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const view = render(
+        <GuestBuilderRuntime
+          createStore={() => store}
+          createId={() => "unused"}
+          now={() => "2026-10-26T10:03:00.000Z"}
+        />,
+      );
+
+      await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+      expect(screen.queryByText(translate("fr", "deathNotice.announcementTitle"))).toBeNull();
+      expect(localContent(store.value!).guidedFlow.A00).toEqual({ status: "completed", answer });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("runs the canonical A01-A03 branch locally, reloads and reopens without stale data, then stops before A04", async () => {
+    const fixture = postRevealDraft("yes", "dark");
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const props = {
+      createStore: () => store,
+      createId: () => "unused",
+      now: () => "2026-10-26T10:03:00.000Z",
+    };
+
+    const first = render(<GuestBuilderRuntime {...props} />);
+    const announcement = await screen.findByLabelText(translate("fr", "deathNotice.announcementTitle"));
+    const expectedProgress = `${guestHeroStepProgress(fixture.draft) * 100}%`;
+    expect(first.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style")).toContain(expectedProgress);
+    fireEvent.change(announcement, { target: { value: "Elle restera dans nos mémoires." } });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await screen.findByRole("heading", { name: translate("fr", "deathNotice.precisionsTitle") });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "deathNotice.precisionsSkip") }));
+
+    await screen.findByText("Elle restera dans nos mémoires.");
+    expect(first.container.querySelector('[data-testid="death-notice-v2"]')?.closest("[data-variant]")?.getAttribute("data-variant")).toBe("dark");
+    expect(localContent(store.value!).guidedFlow).toMatchObject({
+      A01: { status: "completed" },
+      A02: { status: "skipped" },
+    });
+
+    first.unmount();
+    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByText("Elle restera dans nos mémoires.");
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "deathNotice.editAnnouncement") }));
+
+    const reopened = await screen.findByLabelText(translate("fr", "deathNotice.announcementTitle"));
+    expect((reopened as HTMLTextAreaElement).value).toBe("Elle restera dans nos mémoires.");
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+    // A02 remains resolved as skipped: the canonical resolver returns to A03.
+    await screen.findByText("Elle restera dans nos mémoires.");
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A03?.status).toBe("completed");
+    expect(store.value?.skinVariant).toBe("dark");
+    expect(localContent(store.value!).hero.photo).toBeNull();
+    expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("blocks a stale A01 write and preserves the newer draft from another tab", async () => {
+    const fixture = postRevealDraft("yes");
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    render(
+      <GuestBuilderRuntime
+        createStore={() => store}
+        createId={() => "unused"}
+        now={() => "2026-10-26T10:03:00.000Z"}
+      />,
+    );
+    const announcement = await screen.findByLabelText(translate("fr", "deathNotice.announcementTitle"));
+    const concurrent = updateGuestDraftV3(store.value!, { now: "2026-10-26T10:04:00.000Z" });
+    if (!concurrent.ok) throw new Error(concurrent.reason);
+    store.value = concurrent.draft;
+
+    fireEvent.change(announcement, { target: { value: "Écriture devenue périmée" } });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await screen.findByText(translate("fr", "autosave.conflictTitle"));
+    expect(store.value).toEqual(concurrent.draft);
+    expect(screen.getByLabelText(translate("fr", "deathNotice.announcementTitle"))).toBeTruthy();
+  });
+
   it("reuses T08 locally, revokes its object URL, persists ambiance plus progress, and reloads after it", async () => {
     const fixture = revealDraft();
     const store = new MemoryStore(fixture.draft);
