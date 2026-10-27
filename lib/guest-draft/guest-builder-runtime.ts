@@ -1,9 +1,14 @@
 import type { Language } from "@/config/languages";
+import { GUEST_BUILDER_V1_SKIN } from "@/config/guest-builder";
 import type { MemorialContent } from "@/types/memorial";
 import type { DraftSaveResponse, DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { needsWelcome } from "@/lib/builder/guided-flow/welcome-step";
 import { needsA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { needsPageA, needsPageB } from "@/lib/builder/guided-flow/hero-step";
+import {
+  currentJourneyScreenAfter,
+  type JourneyScreenId,
+} from "@/lib/builder/guided-flow/journey";
 import {
   createGuestDraftV3,
   updateGuestDraftV3,
@@ -126,6 +131,23 @@ export function resolveGuestBuilderStage(draft: GuestDraftV3): GuestBuilderStage
   if (!isGuestHeroRevealComplete(draft)) return "heroReveal";
   return "postRevealPending";
 }
+
+/**
+ * Prepared post-T08 navigation for the guest Builder.
+ *
+ * The local Hero contract is authoritative for T06-T08, so this never asks
+ * the authenticated gates to find a server `mediaId`. Once that local Hero is
+ * complete, every later decision comes directly from `JOURNEY_SCREENS` via
+ * `currentJourneyScreenAfter`: no second A00/A04 condition chain exists here.
+ * The UI runtime deliberately does not consume this resolver yet.
+ */
+export function resolveGuestPostHeroScreen(draft: GuestDraftV3): JourneyScreenId | null {
+  if (!isGuestHeroRevealComplete(draft)) return null;
+  return currentJourneyScreenAfter(draft.content, "reveal");
+}
+
+/** Re-exported product authority for future guest screen adapters. */
+export { GUEST_BUILDER_V1_SKIN };
 
 function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () => string) {
   const updated = updateGuestDraftV3(draft, { content, now: now() });

@@ -8,10 +8,12 @@ import { createGuestDraftV3, updateGuestDraftV3, type GuestDraftV3 } from "./gue
 import type { MemorialContent } from "@/types/memorial";
 import type { GuestDraftV3ReadResult, GuestDraftV3WriteResult } from "./guest-draft-v3-store";
 import {
+  GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
   createGuestDraftSaveTransport,
   loadOrCreateGuestDraft,
   resolveGuestBuilderStage,
+  resolveGuestPostHeroScreen,
   saveGuestDraftLanguage,
   type GuestBuilderDraftStore,
 } from "./guest-builder-runtime";
@@ -55,7 +57,40 @@ function draft(): GuestDraftV3 {
   return result.draft;
 }
 
+function postHeroDraft(
+  answer: "yes" | "no" | "later",
+  extraFlow: Record<string, unknown> = {},
+): GuestDraftV3 {
+  return {
+    ...draft(),
+    language: "fr",
+    skinVariant: "light",
+    content: {
+      hero: { displayName: "Jeanne Dupont", birth: null, death: null, shortPhrase: null, photo: null },
+      guidedFlow: {
+        T04: { status: "skipped" },
+        A00: { status: answer === "later" ? "skipped" : "completed", answer },
+        T05: { status: "skipped" },
+        T06: { status: "completed" },
+        T07: { status: "completed" },
+        T08: { status: "completed" },
+        ...extraFlow,
+      },
+    } as MemorialContent,
+    photos: [{
+      localId: "local-hero",
+      placement: { purpose: "hero", crop: { focalX: 0.5, focalY: 0.5, zoom: 1 } },
+    }],
+  };
+}
+
 describe("guest Builder local runtime", () => {
+  it("centralizes the fixed V1 cultural skin independently from Light/Dark", () => {
+    expect(GUEST_BUILDER_V1_SKIN).toBe("intemporel");
+    expect(postHeroDraft("no").skinVariant).toBe("light");
+    expect({ ...postHeroDraft("no"), skinVariant: "dark" as const }.skinVariant).toBe("dark");
+  });
+
   it("creates one active V3 draft and resumes the same identifiers after reload", async () => {
     const store = new MemoryStore();
     const ids = ["draft-created-once", "transfer-created-once"];
@@ -205,6 +240,44 @@ describe("guest Builder local runtime", () => {
     updated = updateGuestDraftV3(current, { content: phrase.content, now: T1 });
     if (!updated.ok) throw new GuestBuilderRuntimeError(updated.reason);
     expect(resolveGuestBuilderStage(updated.draft)).toBe("heroPhoto");
+  });
+
+  it.each([
+    ["yes", "announcementText"],
+    ["no", "ceremonyMoment"],
+    ["later", "ceremonyMoment"],
+  ] as const)("uses the canonical post-T08 catalog when A00 = %s", (answer, expected) => {
+    const guest = postHeroDraft(answer);
+    const before = structuredClone(guest);
+
+    expect(resolveGuestPostHeroScreen(guest)).toBe(expected);
+    expect(guest).toEqual(before);
+    expect(JSON.stringify(guest)).not.toMatch(/mediaId|memorialId/);
+    expect(resolveGuestBuilderStage(guest)).toBe("postRevealPending");
+  });
+
+  it.each([
+    ["no", "personSheet"],
+    ["undecided", "personSheet"],
+    ["yes", "ceremonyDateTime"],
+  ] as const)("uses the canonical ceremony branch when A04 = %s", (answer, expected) => {
+    const guest = postHeroDraft("no", { A04: { status: "completed", answer } });
+    expect(resolveGuestPostHeroScreen(guest)).toBe(expected);
+  });
+
+  it("does not expose post-Hero navigation before the real local Hero is complete", () => {
+    const guest = postHeroDraft("yes");
+    expect(resolveGuestPostHeroScreen({ ...guest, photos: [] })).toBeNull();
+    expect(resolveGuestPostHeroScreen({ ...guest, skinVariant: null })).toBeNull();
+  });
+
+  it("keeps hidden branch data intact while resolving the next guest screen", () => {
+    const guest = postHeroDraft("no", { A01: { status: "completed" } });
+    guest.content.deathNotice = { text: "Contenu conservé" };
+    const before = structuredClone(guest.content);
+
+    expect(resolveGuestPostHeroScreen(guest)).toBe("ceremonyMoment");
+    expect(guest.content).toEqual(before);
   });
 
   it("contains no guest network/Supabase/server-media boundary and is not publicly routed", () => {
