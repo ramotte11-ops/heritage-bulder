@@ -20,6 +20,7 @@ import { HeroRevealStep } from "@/components/builder/HeroRevealStep";
 import { DeathNoticeAnnouncementStep } from "@/components/builder/DeathNoticeAnnouncementStep";
 import { DeathNoticePrecisionsStep } from "@/components/builder/DeathNoticePrecisionsStep";
 import { DeathNoticePreviewStep } from "@/components/builder/DeathNoticePreviewStep";
+import { CeremonyMomentStep } from "@/components/builder/CeremonyMomentStep";
 import {
   GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
@@ -92,8 +93,9 @@ function defaultRevokeObjectUrl(url: string): void {
 
 /**
  * Non-routed entry for the existing Builder screens backed by the single
- * local guest draft. It reuses the existing T06/T07/T08 and A01/A02/A03
- * screens, then stops before A04. No public route imports this component.
+ * local guest draft. It reuses the existing T06/T07/T08, A01/A02/A03 and
+ * A04 screens, then stops before A05 or any later canonical screen. No
+ * public route imports this component.
  */
 export function GuestBuilderRuntime({
   createStore = defaultCreateStore,
@@ -338,8 +340,17 @@ export function GuestBuilderRuntime({
                 progress={guestHeroStepProgress(draft)}
               />
             );
+          case "ceremonyMoment":
+            return (
+              <CeremonyMomentStep
+                language={draft.language!}
+                content={draft.content}
+                persist={persist}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
           default:
-            // A04 and every later canonical screen remain outside this lot.
+            // A05 and every later canonical screen remain outside this lot.
             return <span hidden data-guest-builder-pending="post-reveal" />;
         }
     }
