@@ -16,6 +16,7 @@ import type {
 import type { GuestBuilderDraftStore } from "@/lib/guest-draft/guest-builder-runtime";
 import { guestHeroStepProgress } from "@/lib/guest-draft/guest-hero-media";
 import { translate } from "@/lib/i18n/translate";
+import type { CeremonyContent } from "@/types/ceremony";
 import type { MemorialContent } from "@/types/memorial";
 
 type GuestFlowContent = {
@@ -154,16 +155,7 @@ function postRevealDraft(answer: "yes" | "no" | "later", skinVariant: "light" | 
   return { draft: updated.draft, asset: fixture.asset };
 }
 
-type CeremonyFixtureFields = {
-  date: string | null;
-  time: string | null;
-  venueName: string | null;
-  address: string | null;
-  access: string | null;
-  note: string | null;
-};
-
-const EMPTY_CEREMONY: CeremonyFixtureFields = {
+const EMPTY_CEREMONY: CeremonyContent = {
   date: null,
   time: null,
   venueName: null,
@@ -177,7 +169,7 @@ function ceremonyDraft({
   ceremony = {},
 }: {
   records?: Record<string, { status: "completed" | "skipped"; answer?: string }>;
-  ceremony?: Partial<CeremonyFixtureFields>;
+  ceremony?: Partial<CeremonyContent>;
 } = {}) {
   const fixture = postRevealDraft("no");
   const content = localContent(fixture.draft);
@@ -272,7 +264,7 @@ describe("GuestBuilderRuntime", () => {
     },
   );
 
-  it("runs A05-A07 with partial values, reloads between screens and stops before A14", async () => {
+  it("runs A05-A07 with partial values, reloads between screens, reaches A14 and stops before A08", async () => {
     const fixture = ceremonyDraft();
     const store = new MemoryStore(fixture.draft);
     store.assets.set(fixture.asset.localId, fixture.asset);
@@ -321,7 +313,9 @@ describe("GuestBuilderRuntime", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-    await vi.waitFor(() => expect(third.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.programmeTitle") });
+    expect(third.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
     expect((store.value!.content as MemorialContent).ceremony).toMatchObject({
       date: null,
       time: "09:15",
@@ -334,11 +328,15 @@ describe("GuestBuilderRuntime", () => {
       A06: { status: "completed" },
       A07: { status: "completed" },
     });
-    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeNull();
     expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
     expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
     expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
+    await vi.waitFor(() => expect(third.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A14).toEqual({ status: "skipped" });
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
   });
 
   it.each([
@@ -347,7 +345,7 @@ describe("GuestBuilderRuntime", () => {
     ["A07", "ceremony.addressTitle", {
       A05: { status: "skipped" as const },
       A06: { status: "skipped" as const },
-    }, null],
+    }, "ceremony.programmeTitle"],
   ] as const)("skips %s durably without deleting ceremony fields", async (step, titleKey, records, nextTitleKey) => {
     const preservedCeremony = {
       date: "2027-04-12",
@@ -378,6 +376,157 @@ describe("GuestBuilderRuntime", () => {
     }
     expect(localContent(store.value!).guidedFlow[step]).toEqual({ status: "skipped" });
     expect((store.value!.content as MemorialContent).ceremony).toEqual(preservedCeremony);
+  });
+
+  it("persists A14 add, edit, remove and order operations, reloads them, then stops before A08", async () => {
+    const fixture = ceremonyDraft({
+      records: {
+        A05: { status: "skipped" },
+        A06: { status: "skipped" },
+        A07: { status: "skipped" },
+      },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const props = {
+      createStore: () => store,
+      createId: () => "unused",
+      now: () => "2026-10-26T10:03:00.000Z",
+    };
+
+    const first = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.programmeTitle") });
+    expect(first.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(fixture.draft) * 100}%`);
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.programmeAddAction") }));
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.programmeLabelLabel")), {
+      target: { value: "Accueil" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.programmeConfirmAdd") }));
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.programmeAddAction") }));
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.programmeLabelLabel")), {
+      target: { value: "Hommage" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.programmeConfirmAdd") }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Monter « Hommage »" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Modifier « Accueil »" }));
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.programmeDetailLabel")), {
+      target: { value: "Parvis" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.save") }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Supprimer « Hommage »" }));
+    await vi.waitFor(() => expect(
+      ((store.value!.content as MemorialContent).ceremony as CeremonyContent).programme?.map((moment) => moment.label),
+    ).toEqual(["Accueil"]), { timeout: 3_000 });
+    expect(((store.value!.content as MemorialContent).ceremony as CeremonyContent).programme?.[0]?.detail).toBe("Parvis");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
+
+    first.unmount();
+    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByText("Accueil");
+    expect(screen.getByText("Parvis")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A14).toEqual({ status: "completed" });
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("preserves an A14 programme through the A04 yes → no → yes cycle", async () => {
+    const moment = { id: "moment-stable", time: "14:00", label: "Accueil", detail: null };
+    const fixture = ceremonyDraft({
+      records: {
+        A05: { status: "skipped" },
+        A06: { status: "skipped" },
+        A07: { status: "skipped" },
+      },
+      ceremony: { programme: [moment] },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+
+    const hiddenContent = structuredClone(store.value!.content) as MemorialContent;
+    (hiddenContent as unknown as GuestFlowContent).guidedFlow.A04 = { status: "completed", answer: "no" };
+    const hidden = updateGuestDraftV3(store.value!, { content: hiddenContent, now: "2026-10-26T10:03:00.000Z" });
+    if (!hidden.ok) throw new Error(hidden.reason);
+    store.value = hidden.draft;
+
+    const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await vi.waitFor(() => expect(hiddenView.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).programme).toEqual([moment]);
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeNull();
+    hiddenView.unmount();
+
+    const visibleContent = structuredClone(store.value.content) as MemorialContent;
+    (visibleContent as unknown as GuestFlowContent).guidedFlow.A04 = { status: "completed", answer: "yes" };
+    const visible = updateGuestDraftV3(store.value, { content: visibleContent, now: "2026-10-26T10:04:00.000Z" });
+    if (!visible.ok) throw new Error(visible.reason);
+    store.value = visible.draft;
+
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.programmeTitle") });
+    expect(screen.getByText("Accueil")).toBeTruthy();
+    expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).programme).toEqual([moment]);
+  });
+
+  it("blocks a stale A14 write and preserves the newer draft from another tab", async () => {
+    const fixture = ceremonyDraft({
+      records: {
+        A05: { status: "skipped" },
+        A06: { status: "skipped" },
+        A07: { status: "skipped" },
+      },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.programmeTitle") });
+
+    const concurrent = updateGuestDraftV3(store.value!, { now: "2026-10-26T10:04:00.000Z" });
+    if (!concurrent.ok) throw new Error(concurrent.reason);
+    store.value = concurrent.draft;
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
+
+    await screen.findByText(translate("fr", "autosave.conflictTitle"));
+    expect(store.value).toEqual(concurrent.draft);
+    expect(localContent(store.value!).guidedFlow.A14).toBeUndefined();
+    expect(screen.getByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeTruthy();
+  });
+
+  it("repairs a damaged local programme only after the explicit family action", async () => {
+    const storedProgramme = [
+      { id: "valid", time: null, label: "Accueil", detail: null },
+      { id: "damaged", time: "25:99", label: "Illisible", detail: null },
+    ];
+    const fixture = ceremonyDraft({
+      records: {
+        A05: { status: "skipped" },
+        A06: { status: "skipped" },
+        A07: { status: "skipped" },
+      },
+      ceremony: { programme: storedProgramme as unknown as CeremonyContent["programme"] },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+
+    await screen.findByRole("button", { name: translate("fr", "ceremony.programmeRepairAction") });
+    expect(((store.value!.content as MemorialContent).ceremony as Record<string, unknown>).programme).toEqual(storedProgramme);
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.programmeRepairAction") }));
+
+    await vi.waitFor(() => expect(
+      ((store.value!.content as MemorialContent).ceremony as CeremonyContent).programme,
+    ).toEqual([{ id: "valid", time: null, label: "Accueil", detail: null }]), { timeout: 3_000 });
+    expect(screen.queryByRole("button", { name: translate("fr", "ceremony.programmeRepairAction") })).toBeNull();
   });
 
   it("blocks a stale A05 write and preserves the newer draft from another tab", async () => {

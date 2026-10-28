@@ -265,6 +265,25 @@ describe("guest Builder local runtime", () => {
     expect(resolveGuestPostHeroScreen(guest)).toBe(expected);
   });
 
+  it("keeps the canonical A07 → A14 → A08 order without inventing guest gates", () => {
+    const afterA07 = postHeroDraft("no", {
+      A04: { status: "completed", answer: "yes" },
+      A05: { status: "skipped" },
+      A06: { status: "skipped" },
+      A07: { status: "skipped" },
+    });
+    expect(resolveGuestPostHeroScreen(afterA07)).toBe("ceremonyProgramme");
+
+    const afterA14 = postHeroDraft("no", {
+      A04: { status: "completed", answer: "yes" },
+      A05: { status: "skipped" },
+      A06: { status: "skipped" },
+      A07: { status: "skipped" },
+      A14: { status: "skipped" },
+    });
+    expect(resolveGuestPostHeroScreen(afterA14)).toBe("ceremonyNote");
+  });
+
   it("does not expose post-Hero navigation before the real local Hero is complete", () => {
     const guest = postHeroDraft("yes");
     expect(resolveGuestPostHeroScreen({ ...guest, photos: [] })).toBeNull();
@@ -293,6 +312,7 @@ describe("guest Builder local runtime", () => {
       "../../components/builder/CeremonyDateTimeStep.tsx",
       "../../components/builder/CeremonyVenueStep.tsx",
       "../../components/builder/CeremonyAddressStep.tsx",
+      "../../components/builder/CeremonyProgrammeStep.tsx",
       "../../components/memorial/death-notice/v2/DeathNoticeV2.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);
