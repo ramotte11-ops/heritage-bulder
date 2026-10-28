@@ -123,7 +123,14 @@
   max-width: none;
 }
 
-/* --- Handoff V1.2: Mobile Light photo runtime, 320–430px only ------
+/* Hero photo alignment (QG/PO decision) — the Mobile Light (clean plate +
+   mask) and Mobile Dark (authoritative overlay) photo runtimes, with their
+   REV1 text contract, cover every width below the 960px Desktop breakpoint,
+   no longer 320–430px only. No axis-aligned legacy photo window remains below
+   960px: the photo follows the Polaroid's tilt everywhere. The validated
+   geometries are unchanged; only the band they apply to grew. */
+
+/* --- Handoff V1.2: Mobile Light photo runtime, below 960px --------
    The SVG's 941×1672 viewBox is the single uniformly-scaled reference
    scene. Inside it, a 400×500 logical 4:5 raster receives the exact
    projective matrix from the contract and the resulting pixels are
@@ -137,7 +144,7 @@
   display: none;
 }
 
-@media (min-width: 320px) and (max-width: 430px) {
+@media (max-width: 959.98px) {
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .photoWindow,
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterMobile {
     display: none;
@@ -174,7 +181,7 @@
   transform-origin: 0 0;
 }
 
-/* --- QG Handoff Runtime V1: Mobile Dark V2, 320–430px only --------
+/* --- QG Handoff Runtime V1: Mobile Dark V2, below 960px -----------
    The SVG supplies the single uniformly-scaled 982×1602 reference
    scene. Its 400×500 logical photo plane receives the exact Dark V2
    homography; the byte-identical RGBA overlay then supplies every
@@ -185,7 +192,7 @@
   display: none;
 }
 
-@media (min-width: 320px) and (max-width: 430px) {
+@media (max-width: 959.98px) {
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .hero {
     aspect-ratio: 982 / 1602;
   }
@@ -374,8 +381,8 @@
    name, dates and phrase never move: the empty `::before` is a flex item
    exactly as tall as the label's former one-line box (13px × 1.2), and the
    existing 0.3em flex gap still follows it. Desktop (≥960px) keeps its own
-   15px × 1.2 spacer below; mobile 320–430px never showed the label and
-   reserves nothing. */
+   15px × 1.2 spacer below; below 960px the text contract never shows the
+   label and reserves nothing. */
 .textZone::before {
   content: "";
   display: block;
@@ -446,7 +453,7 @@
   max-width: 100%;
 }
 
-/* --- Mobile Text Contract V1 REV1 — 320–430px only ---------------------
+/* --- Mobile Text Contract V1 REV1 — below 960px ------------------------
    Same band as the Mobile Light/Dark photo runtimes above, so the text
    always sits on the exact scene it was mapped against. Every box comes
    from HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT (config/hero-intemporel-
@@ -468,7 +475,7 @@
   display: none;
 }
 
-@media (min-width: 320px) and (max-width: 430px) {
+@media (max-width: 959.98px) {
   .hero {
     container-type: inline-size;
   }

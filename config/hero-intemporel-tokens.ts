@@ -31,9 +31,9 @@ import type { SkinVariant } from "@/config/skins";
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
 /**
- * Handoff V1.2 — the contract applies only to the Mobile Light scene
- * rendered between 320px and 430px. The existing masters and geometry
- * remain authoritative everywhere else.
+ * Handoff V1.2 — the Mobile Light scene, contracted for 320–430px
+ * (`contractedWidthCssPx`) and applied below the 960px Desktop breakpoint
+ * since the QG/PO Hero photo alignment decision. The geometry is unchanged.
  */
 export const HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME = {
   contractedWidthCssPx: { min: 320, max: 430 },
@@ -54,17 +54,18 @@ export const HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME = {
     [0.00652662597, -0.017417454681, 1],
   ],
   plateSrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V1.png",
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V2.png",
   maskSrc:
     "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_MASK_RUNTIME_CLEAN_V1.png",
-  plateSha256: "6a8f555310613e6dc13b7714c8887c7e4b632c9cea9528d1c2b5ab55e0082980",
+  plateSha256: "91c902ee25725b0fafbccb4a2f4138026947a30fc06f94ae0132c0710fc14a6e",
   maskSha256: "8df35f9e9222e0dca243e70e629c600cf9c0f1ff72028735f459db2ed82653f8",
 } as const;
 
 /**
  * QG Handoff Runtime V1 — Mobile Dark V2 photo runtime. These values
- * are transcribed from the authoritative 982×1602 contract and apply
- * only inside its explicitly supported 320–430px width band.
+ * are transcribed from the authoritative 982×1602 contract (supported band
+ * 320–430px) and apply below the 960px Desktop breakpoint since the QG/PO
+ * Hero photo alignment decision. The geometry is unchanged.
  */
 export const HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME = {
   contractedWidthCssPx: { min: 320, max: 430 },
@@ -123,8 +124,8 @@ export const HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME = {
     [-0.00015384940226202226, -0.0017096147467908099, 1],
   ],
   overlaySrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V1(1).png",
-  overlaySha256: "216818582aa1b6c58bd750a2fe4e936f433213b3645eb9a1292f15ebc6e49995",
+    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V2.png",
+  overlaySha256: "6a614a9db6367eb7a9ad11a353df167504140b3d16455bd31615315382b86651",
   fullyTransparentPixels: 295048,
 } as const;
 
@@ -287,10 +288,10 @@ export const HERO_INTEMPOREL_TYPOGRAPHY = {
  * (`HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT_V1_REV1.zip`, SHA-256
  * `2c9f7fc5269f93e70354cdd311f54b13a3610390af8764d73ac4df8cd5086ae8`).
  *
- * Applies ONLY inside the contracted 320–430px band — the same band the
- * Mobile Light/Dark photo runtimes above already own, so the text and
- * the scene it sits on are always switched together. Below 320px,
- * 431–959px and Desktop keep `HERO_INTEMPOREL_TYPOGRAPHY` and the
+ * Contracted for 320–430px; applied, like the Mobile Light/Dark photo
+ * runtimes above, below the 960px Desktop breakpoint (QG/PO Hero photo
+ * alignment decision), so the text and the scene it sits on are always
+ * switched together. Desktop keeps `HERO_INTEMPOREL_TYPOGRAPHY` and the
  * legacy `textZoneNormalized` flow, untouched.
  *
  * Every box is `[x0, y0, x1, y1]` in its variant's OWN native scene:
@@ -365,7 +366,7 @@ export const HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY = {
 } as const;
 
 /**
- * Mobile Dark only (320–430px) — the NAME's free territory in the frozen
+ * Mobile Dark only (below 960px) — the NAME's free territory in the frozen
  * 982×1602 overlay, measured (read-only) by
  * `scripts/pilot/hero-mobile-dark-name-territory.py` from
  * `HERO_INTEMPOREL_MOBILE_DARK_ALPHA_RUNTIME_ASSET_V2(1).png` (its SHA-256

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { HeroContent } from "@/types/hero";
 import type { Media } from "@/types/media";
 import {
+  HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX,
   HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME,
   HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME,
   HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY,
@@ -227,8 +228,8 @@ describe("HeroIntemporel — Handoff V1.2 Mobile Light photo runtime", () => {
     }
   });
 
-  it("scopes the replacement to Light at exactly the contracted 320–430px band", () => {
-    expect(CSS_SOURCE).toContain("@media (min-width: 320px) and (max-width: 430px)");
+  it("scopes the replacement to Light below the 960px Desktop breakpoint", () => {
+    expect(CSS_SOURCE).toContain("@media (max-width: 959.98px)");
     expect(CSS_SOURCE).toContain('[data-heritage-skin-variant="light"] .mobileLightPhotoRuntime');
     expect(CSS_SOURCE).toContain('[data-heritage-skin-variant="light"] .mobileLightRuntimePlate');
     expect(CSS_SOURCE).not.toContain('[data-heritage-skin-variant="dark"] .mobileLightPhotoRuntime');
@@ -291,8 +292,8 @@ describe("HeroIntemporel — Mobile Dark V2 Handoff Runtime V1", () => {
     expect(container.querySelector('[data-hero-mobile-dark-part="seal"]')).toBeNull();
   });
 
-  it("scopes the 982×1602 runtime to Dark 320–430 only", () => {
-    expect(CSS_SOURCE).toContain("@media (min-width: 320px) and (max-width: 430px)");
+  it("scopes the 982×1602 runtime to Dark below the 960px Desktop breakpoint", () => {
+    expect(CSS_SOURCE).toContain("@media (max-width: 959.98px)");
     expect(CSS_SOURCE).toContain('[data-heritage-skin-variant="dark"] .mobileDarkPhotoRuntime');
     expect(CSS_SOURCE).toContain("aspect-ratio: 982 / 1602;");
     expect(CSS_SOURCE).not.toContain('[data-heritage-skin-variant="light"] .mobileDarkPhotoRuntime');
@@ -781,7 +782,7 @@ describe("HeroIntemporel — Étape 2 assembler contract", () => {
 });
 
 /**
- * HERO INTEMPOREL — MOBILE TEXT CONTRACT V1 REV1 (320–430px). Same
+ * HERO INTEMPOREL — MOBILE TEXT CONTRACT V1 REV1 (below 960px). Same
  * discipline as the rest of this file: render/state contracts plus
  * source-level CSS checks; the real-browser geometry is QA'd against the
  * contract with real witnesses, not here.
@@ -791,7 +792,7 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     /\/\*[\s\S]*?\*\//g,
     "",
   );
-  const MOBILE_BLOCKS = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)").slice(1).join("\n");
+  const MOBILE_BLOCKS = CSS_SOURCE.split("@media (max-width: 959.98px)").slice(1).join("\n");
 
   describe("fitMobileContractName — deterministic REV1 engine", () => {
     it("keeps a name that fits at the nominal 10vw — never the legacy 72px", () => {
@@ -902,7 +903,7 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     expect(MOBILE_BLOCKS).toMatch(
       /\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="dark"\] \.displayedName\s*\{\s*text-wrap:\s*balance;\s*\}/,
     );
-    expect(CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0]).not.toMatch(/text-wrap/);
+    expect(CSS_SOURCE.split("@media (max-width: 959.98px)")[0]).not.toMatch(/text-wrap/);
     expect(CSS_SOURCE.match(/text-wrap/g)).toHaveLength(1);
   });
 
@@ -971,13 +972,13 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     expect(c.typography.phrase).toMatchObject({ vw: 5.15, lineHeight: 1.15, maxWidthVw: 72 });
   });
 
-  it("applies the corrected sizes only inside the 320–430px band", () => {
+  it("applies the corrected sizes only below 960px", () => {
     expect(MOBILE_BLOCKS).toContain("font-size: 10cqw;");
     expect(MOBILE_BLOCKS).toContain("font-size: 3.25cqw;");
     expect(MOBILE_BLOCKS).toContain("font-size: 5.15cqw;");
     expect(MOBILE_BLOCKS).toContain("width: 72%;");
     expect(MOBILE_BLOCKS).toContain("container-type: inline-size;");
-    const outside = CSS_SOURCE.split("@media (min-width: 320px) and (max-width: 430px)")[0];
+    const outside = CSS_SOURCE.split("@media (max-width: 959.98px)")[0];
     expect(outside).not.toMatch(/cqw/);
   });
 
@@ -986,12 +987,12 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     expect(CSS_SOURCE).not.toMatch(/max-width:\s*959px/);
   });
 
-  it("B02-L2 — <320px and 431–959px keep the label's former one-line box (13px × 1.2) as an empty spacer", () => {
+  it("B02-L2 — the base rule keeps the label's former one-line box (13px × 1.2) as an empty spacer", () => {
     // A top-level rule (unindented — never inside a media block).
     expect(CSS_SOURCE).toMatch(/^\.textZone::before\s*\{\s*content:\s*"";\s*display:\s*block;\s*flex:\s*none;\s*height:\s*calc\(13px \* 1\.2\);\s*\}/m);
   });
 
-  it("B02-L2 — the 320–430px band reserves nothing (it never showed the label)", () => {
+  it("B02-L2 — below 960px the text contract reserves nothing (it never shows the label)", () => {
     expect(MOBILE_BLOCKS).toMatch(/\.textZone::before\s*\{\s*display:\s*none;\s*\}/);
   });
 
@@ -1002,7 +1003,97 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
     expect(desktopBlocks).toMatch(/\.textZone::before\s*\{\s*height:\s*calc\(15px \* 1\.2\);\s*\}/);
   });
 
-  it("the runtime separator is laid out nowhere outside the 320–430px band", () => {
+  it("the runtime separator is laid out nowhere at or above 960px", () => {
     expect(CSS_SOURCE).toMatch(/^\.mobileSeparator\s*\{\s*display:\s*none;\s*\}/m);
+  });
+});
+
+/**
+ * Hero photo alignment (QG/PO decision) — below the 960px Desktop breakpoint
+ * the photo is always placed by a Mobile photo runtime (projective, tilted
+ * with the Polaroid), never by the legacy axis-aligned `photoWindow`, in
+ * Light as in Dark. Desktop (>= 960px) is untouched. Source-level contracts;
+ * the real-browser geometry is QA'd with captures, not here.
+ */
+describe("HeroIntemporel — photo alignment below 960px (Light and Dark)", () => {
+  const CSS = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const SUB_DESKTOP = "@media (max-width: 959.98px)";
+  const SUB_DESKTOP_BLOCKS = CSS.split(SUB_DESKTOP).slice(1).join("\n");
+  const RUNTIME_DIR = path.resolve(import.meta.dirname, "../../../public/assets/hero/intemporel/runtime");
+
+  it("no rule is scoped to the former 320–430px band any more", () => {
+    expect(CSS).not.toContain("(min-width: 320px) and (max-width: 430px)");
+  });
+
+  it("the Light photo runtime, the Dark photo runtime and the text contract share the sub-960px band", () => {
+    expect(CSS.split(SUB_DESKTOP).length - 1).toBe(3);
+    expect(SUB_DESKTOP).toBe(`@media (max-width: ${HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX - 0.02}px)`);
+  });
+
+  it.each(["light", "dark"] as const)("%s: the legacy axis-aligned window and mobile master are hidden below 960px", (variant) => {
+    const scope = `[data-heritage-skin="intemporel"][data-heritage-skin-variant="${variant}"]`;
+    expect(SUB_DESKTOP_BLOCKS).toContain(`${scope} .photoWindow,\n  ${scope} .masterMobile {\n    display: none;\n  }`);
+  });
+
+  it("Light shows its projected photo and clean plate below 960px; Dark its projected photo and overlay", () => {
+    expect(SUB_DESKTOP_BLOCKS).toMatch(/\[data-heritage-skin-variant="light"\] \.mobileLightPhotoRuntime,\s*\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="light"\] \.mobileLightRuntimePlate\s*\{\s*display:\s*block;/);
+    expect(SUB_DESKTOP_BLOCKS).toMatch(/\[data-heritage-skin-variant="dark"\] \.mobileDarkPhotoRuntime,\s*\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="dark"\] \.mobileDarkRuntimeOverlay\s*\{\s*display:\s*block;/);
+  });
+
+  it("Dark keeps its 982×1602 scene ratio below 960px", () => {
+    expect(SUB_DESKTOP_BLOCKS).toMatch(/\[data-heritage-skin-variant="dark"\] \.hero\s*\{\s*aspect-ratio:\s*982 \/ 1602;\s*\}/);
+  });
+
+  it("the Desktop runtimes still start exactly at the 960px breakpoint", () => {
+    expect(HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX).toBe(960);
+    expect(CSS).toContain("@media (min-width: 960px)");
+  });
+
+  it.each(["light", "dark"] as const)("%s: the name-fitting engine follows the same sub-960px band", (variant) => {
+    const queries: string[] = [];
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (query: string) => {
+        queries.push(query);
+        return {
+          matches: false,
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        } as MediaQueryList;
+      },
+    });
+    try {
+      renderHero({ skinVariant: variant });
+    } finally {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
+    expect(queries).toContain("(max-width: 959.98px)");
+    expect(queries.some((q) => q.includes("max-width: 430px"))).toBe(false);
+  });
+
+  it("Light uses the validated V2 plate and Desktop overlay, the V1 files stay on disk", () => {
+    expect(HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.plateSrc).toMatch(/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V2\.png$/);
+    expect(HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc).toMatch(/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V2\.png$/);
+    expect(HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.maskSrc).toMatch(/_MASK_RUNTIME_CLEAN_V1\.png$/);
+    for (const v1 of [
+      "HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V1.png",
+      "HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V1(1).png",
+    ]) {
+      expect(existsSync(path.join(RUNTIME_DIR, v1))).toBe(true);
+    }
+  });
+
+  it("Dark keeps its authoritative overlays byte-for-byte (no Dark asset swapped)", () => {
+    expect(HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySha256).toBe("aab7752aad7d707a0db4c46cef344d852b32dfd86ee3dcfa4eeac1e09c1a36c0");
+    expect(HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySha256).toBe("9e8419e9446838367210893897f1f02434e30a34e61f1231f04634d95a2d2f8b");
   });
 });
