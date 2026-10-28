@@ -154,6 +154,48 @@ function postRevealDraft(answer: "yes" | "no" | "later", skinVariant: "light" | 
   return { draft: updated.draft, asset: fixture.asset };
 }
 
+type CeremonyFixtureFields = {
+  date: string | null;
+  time: string | null;
+  venueName: string | null;
+  address: string | null;
+  access: string | null;
+  note: string | null;
+};
+
+const EMPTY_CEREMONY: CeremonyFixtureFields = {
+  date: null,
+  time: null,
+  venueName: null,
+  address: null,
+  access: null,
+  note: null,
+};
+
+function ceremonyDraft({
+  records = {},
+  ceremony = {},
+}: {
+  records?: Record<string, { status: "completed" | "skipped"; answer?: string }>;
+  ceremony?: Partial<CeremonyFixtureFields>;
+} = {}) {
+  const fixture = postRevealDraft("no");
+  const content = localContent(fixture.draft);
+  fixture.draft = {
+    ...fixture.draft,
+    content: {
+      ...fixture.draft.content,
+      ceremony: { ...EMPTY_CEREMONY, ...ceremony },
+      guidedFlow: {
+        ...content.guidedFlow,
+        A04: { status: "completed", answer: "yes" },
+        ...records,
+      },
+    } as MemorialContent,
+  };
+  return fixture;
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -200,12 +242,16 @@ describe("GuestBuilderRuntime", () => {
       fireEvent.click(screen.getByRole("radio", { name: translate("fr", labelKey) }));
       fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-      await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+      if (answer === "yes") {
+        await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
+      } else {
+        await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+        expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeNull();
+        expect(screen.queryByRole("heading", { name: translate("fr", "personSheet.title") })).toBeNull();
+      }
       expect(localContent(store.value!).guidedFlow.A04).toEqual({ status: "completed", answer });
       expect(localContent(store.value!).guidedFlow.A00).toEqual({ status: "completed", answer: announcementAnswer });
       expect((store.value!.content as MemorialContent).ceremony).toEqual(preservedCeremony);
-      expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeNull();
-      expect(screen.queryByRole("heading", { name: translate("fr", "personSheet.title") })).toBeNull();
       expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
       expect(fetchSpy).not.toHaveBeenCalled();
 
@@ -217,10 +263,146 @@ describe("GuestBuilderRuntime", () => {
           now={() => "2026-10-26T10:04:00.000Z"}
         />,
       );
-      await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+      if (answer === "yes") {
+        await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
+      } else {
+        await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+      }
       expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.momentTitle") })).toBeNull();
     },
   );
+
+  it("runs A05-A07 with partial values, reloads between screens and stops before A14", async () => {
+    const fixture = ceremonyDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const props = {
+      createStore: () => store,
+      createId: () => "unused",
+      now: () => "2026-10-26T10:03:00.000Z",
+    };
+
+    const first = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
+    expect(first.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(fixture.draft) * 100}%`);
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.timeLabel")), {
+      target: { value: "09:15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.venueTitle") });
+    expect(first.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
+    expect((store.value!.content as MemorialContent).ceremony).toMatchObject({ date: null, time: "09:15" });
+    expect(localContent(store.value!).guidedFlow.A05).toEqual({ status: "completed" });
+
+    first.unmount();
+    const second = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.venueTitle") });
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.venueLabel")), {
+      target: { value: "Maison des familles" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.addressTitle") });
+    expect(second.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
+    expect((store.value!.content as MemorialContent).ceremony).toMatchObject({ venueName: "Maison des familles" });
+    expect(localContent(store.value!).guidedFlow.A06).toEqual({ status: "completed" });
+
+    second.unmount();
+    const third = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.addressTitle") });
+    fireEvent.change(screen.getByLabelText(translate("fr", "ceremony.accessLabel")), {
+      target: { value: "Entrée par la cour" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await vi.waitFor(() => expect(third.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect((store.value!.content as MemorialContent).ceremony).toMatchObject({
+      date: null,
+      time: "09:15",
+      venueName: "Maison des familles",
+      address: null,
+      access: "Entrée par la cour",
+    });
+    expect(localContent(store.value!).guidedFlow).toMatchObject({
+      A05: { status: "completed" },
+      A06: { status: "completed" },
+      A07: { status: "completed" },
+    });
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeNull();
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
+    expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
+    expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["A05", "ceremony.dateTimeTitle", {}, "ceremony.venueTitle"],
+    ["A06", "ceremony.venueTitle", { A05: { status: "skipped" as const } }, "ceremony.addressTitle"],
+    ["A07", "ceremony.addressTitle", {
+      A05: { status: "skipped" as const },
+      A06: { status: "skipped" as const },
+    }, null],
+  ] as const)("skips %s durably without deleting ceremony fields", async (step, titleKey, records, nextTitleKey) => {
+    const preservedCeremony = {
+      date: "2027-04-12",
+      time: "14:30",
+      venueName: "Lieu conservé",
+      address: "Adresse conservée",
+      access: "Accès conservé",
+      note: "Note conservée",
+    };
+    const fixture = ceremonyDraft({ records, ceremony: preservedCeremony });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const view = render(
+      <GuestBuilderRuntime
+        createStore={() => store}
+        createId={() => "unused"}
+        now={() => "2026-10-26T10:03:00.000Z"}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: translate("fr", titleKey) });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
+
+    if (nextTitleKey === null) {
+      await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    } else {
+      await screen.findByRole("heading", { name: translate("fr", nextTitleKey) });
+    }
+    expect(localContent(store.value!).guidedFlow[step]).toEqual({ status: "skipped" });
+    expect((store.value!.content as MemorialContent).ceremony).toEqual(preservedCeremony);
+  });
+
+  it("blocks a stale A05 write and preserves the newer draft from another tab", async () => {
+    const fixture = ceremonyDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    render(
+      <GuestBuilderRuntime
+        createStore={() => store}
+        createId={() => "unused"}
+        now={() => "2026-10-26T10:03:00.000Z"}
+      />,
+    );
+    await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
+    const concurrent = updateGuestDraftV3(store.value!, { now: "2026-10-26T10:04:00.000Z" });
+    if (!concurrent.ok) throw new Error(concurrent.reason);
+    store.value = concurrent.draft;
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
+
+    await screen.findByText(translate("fr", "autosave.conflictTitle"));
+    expect(store.value).toEqual(concurrent.draft);
+    expect(localContent(store.value!).guidedFlow.A05).toBeUndefined();
+    expect(screen.getByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeTruthy();
+  });
 
   it("runs the canonical A01-A03 branch locally, reloads without stale data, then reaches A04", async () => {
     const fixture = postRevealDraft("yes", "dark");

@@ -78,7 +78,8 @@ describe("CeremonyMomentStep", () => {
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
-    const saved = persist.mock.calls[0][0] as unknown as {
+    const noContent = persist.mock.calls[0][0] as unknown as MemorialContent;
+    const saved = noContent as unknown as {
       guidedFlow: Record<string, unknown>;
       ceremony: unknown;
     };
@@ -87,5 +88,23 @@ describe("CeremonyMomentStep", () => {
       A05: { status: "completed" },
     });
     expect(saved.ceremony).toEqual(CEREMONY);
+
+    view.unmount();
+    routerRefresh.mockClear();
+    const persistAgain = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:01:00.000Z" });
+    render(<CeremonyMomentStep language="fr" content={noContent} persist={persistAgain} />);
+    fireEvent.click(screen.getByRole("radio", { name: translate("fr", "ceremony.momentYes") }));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    const restored = persistAgain.mock.calls[0][0] as unknown as {
+      guidedFlow: Record<string, unknown>;
+      ceremony: unknown;
+    };
+    expect(restored.guidedFlow).toMatchObject({
+      A04: { status: "completed", answer: "yes" },
+      A05: { status: "completed" },
+    });
+    expect(restored.ceremony).toEqual(CEREMONY);
   });
 });

@@ -29,6 +29,9 @@ interface CeremonyDateTimeStepProps {
    * already guaranteed done by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Optional host progress override; authenticated callers keep the
+   * canonical calculation while the guest host includes its local Hero. */
+  progress?: number;
 }
 
 /**
@@ -48,7 +51,7 @@ interface CeremonyDateTimeStepProps {
  * available regardless, and never touches `content.ceremony` itself —
  * mirrors `DeathNoticePrecisionsStep`'s own two-outcomes discipline.
  */
-export function CeremonyDateTimeStep({ language, content: initialContent, persist }: CeremonyDateTimeStepProps) {
+export function CeremonyDateTimeStep({ language, content: initialContent, persist, progress }: CeremonyDateTimeStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -140,12 +143,12 @@ export function CeremonyDateTimeStep({ language, content: initialContent, persis
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const resolvedProgress = progress ?? ceremonyStepProgress(content);
   const hasAnyValue = read.ceremony.date !== null || read.ceremony.time !== null;
 
   return (
     <BuilderScreen
-      progress={progress}
+      progress={resolvedProgress}
       status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
     >
       <div className={styles.copy}>

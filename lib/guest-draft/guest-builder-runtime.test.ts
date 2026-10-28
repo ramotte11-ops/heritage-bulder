@@ -290,6 +290,9 @@ describe("guest Builder local runtime", () => {
       "../../components/builder/DeathNoticePrecisionsStep.tsx",
       "../../components/builder/DeathNoticePreviewStep.tsx",
       "../../components/builder/CeremonyMomentStep.tsx",
+      "../../components/builder/CeremonyDateTimeStep.tsx",
+      "../../components/builder/CeremonyVenueStep.tsx",
+      "../../components/builder/CeremonyAddressStep.tsx",
       "../../components/memorial/death-notice/v2/DeathNoticeV2.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);

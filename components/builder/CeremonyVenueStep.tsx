@@ -27,6 +27,9 @@ interface CeremonyVenueStepProps {
    * resolved by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Optional host progress override; authenticated callers keep the
+   * canonical calculation while the guest host includes its local Hero. */
+  progress?: number;
 }
 
 /**
@@ -34,7 +37,7 @@ interface CeremonyVenueStepProps {
  * own découpage) — never a full address (that is A07's own field).
  * Facultatif, passable.
  */
-export function CeremonyVenueStep({ language, content: initialContent, persist }: CeremonyVenueStepProps) {
+export function CeremonyVenueStep({ language, content: initialContent, persist, progress }: CeremonyVenueStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -121,11 +124,11 @@ export function CeremonyVenueStep({ language, content: initialContent, persist }
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const resolvedProgress = progress ?? ceremonyStepProgress(content);
 
   return (
     <BuilderScreen
-      progress={progress}
+      progress={resolvedProgress}
       status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
     >
       <div className={styles.copy}>
