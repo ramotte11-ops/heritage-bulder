@@ -85,17 +85,17 @@ import styles from "./HeroIntemporel.module.css";
  * that same saved 4:5 crop as its source plane before applying its
  * validated homography and mask/clip.
  *
- * ## Mobile text contract REV1 (320–430px only)
+ * ## Mobile text contract REV1 (below 960px)
  *
- * Inside the 320–430px band — the band the four-layer Mobile Light/Dark
- * photo runtimes already own — the text follows
+ * Below the 960px Desktop breakpoint — the territory the Mobile Light/Dark
+ * photo runtimes own (originally contracted for 320–430px, extended by the
+ * QG/PO Hero photo alignment decision) — the text follows
  * `HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT` (config/hero-intemporel-tokens.ts)
  * instead of the legacy flow below: NAME → DATES → TRAITS+CŒUR → optional
  * phrase, each centered on its variant's native box, sized in Hero-width
  * units, no context label. Light uses the separator baked into its frozen
  * plate (never a second one); Dark draws the runtime separator
- * reproduced from that same ornament. Below 320px, 431–959px and Desktop
- * keep the legacy flow.
+ * reproduced from that same ornament. Desktop keeps the legacy flow.
  *
  * ## Text zone (mission sections 1, 5, 10)
  *
@@ -297,7 +297,8 @@ export interface FitDisplayNameResult {
 /** The Mobile Text Contract REV1 band, in the exact form the CSS module
  * switches on — so the fitting engine and the layout can never disagree
  * about which contract applies. */
-const MOBILE_TEXT_CONTRACT_MEDIA_QUERY = `(min-width: ${HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.contractedWidthCssPx.min}px) and (max-width: ${HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT.contractedWidthCssPx.max}px)`;
+// The Mobile photo runtimes' territory: every width below the Desktop breakpoint.
+const MOBILE_TEXT_CONTRACT_MEDIA_QUERY = `(max-width: ${HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX - 0.02}px)`;
 
 export interface MobileContractNameFit {
   fontSizePx: number;
@@ -345,7 +346,7 @@ export function fitMobileContractName(
 }
 
 /**
- * Mobile Dark only (320–430px, QG final execution order) — the NAME is
+ * Mobile Dark only (below 960px, QG final execution order) — the NAME is
  * sized against the frozen art itself. `HERO_INTEMPOREL_MOBILE_DARK_NAME_TERRITORY`
  * gives, per native column, the lowest point the art reaches above the
  * NAME's bottom anchor; a layout is CLEAN when every glyph's real ink top
@@ -482,7 +483,7 @@ export function useFitDisplayName(text: string, skinVariant: SkinVariant = "ligh
     function fit() {
       if (!el) return;
 
-      // Mobile Text Contract REV1 (320–430px): its own engine, sized
+      // Mobile Text Contract REV1 (below 960px): its own engine, sized
       // against the Hero's own width, never the legacy tiers below.
       if (mobileContract?.matches) {
         el.style.maxWidth = "";
@@ -545,7 +546,7 @@ export function useFitDisplayName(text: string, skinVariant: SkinVariant = "ligh
       // wider one, or a text change) before measuring anything below —
       // Tiers 1-3 must always measure against the element's normal,
       // uncapped width. Same for the Mobile Dark engine's balanced-layout
-      // inset (a resize out of the 320–430px band).
+      // inset (a resize out of the sub-960px band).
       el.style.maxWidth = "";
       el.style.paddingInline = "";
 
@@ -638,7 +639,7 @@ function contractBoxVars(prefix: string, box: readonly [number, number, number, 
 }
 
 /** Mobile Text Contract REV1 — the variant's native boxes as CSS custom
- * properties, consumed only inside the 320–430px media query. */
+ * properties, consumed only inside the sub-960px media query. */
 function mobileTextContractVars(skinVariant: SkinVariant): CSSProperties {
   const m = HERO_INTEMPOREL_MOBILE_TEXT_CONTRACT[skinVariant];
   const [canvasW, canvasH] = m.canvasPx;
@@ -658,7 +659,7 @@ function mobileTextContractVars(skinVariant: SkinVariant): CSSProperties {
 /** Dark only (REV1 `MAPPING_DARK.md`): the runtime traits+cœur — the
  * Light plate's own baked ornament, reproduced from its measured
  * geometry (`HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY`). Purely
- * decorative; laid out (and visible) only inside the 320–430px band. */
+ * decorative; laid out (and visible) only below 960px. */
 function MobileRuntimeSeparator() {
   const g = HERO_INTEMPOREL_MOBILE_SEPARATOR_GEOMETRY;
   return (
