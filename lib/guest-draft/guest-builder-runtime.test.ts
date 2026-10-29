@@ -337,6 +337,7 @@ describe("guest Builder local runtime", () => {
       "../../components/builder/CeremonyAddressStep.tsx",
       "../../components/builder/CeremonyProgrammeStep.tsx",
       "../../components/builder/CeremonyNoteStep.tsx",
+      "../../components/builder/TraditionsStep.tsx",
       "../../components/memorial/death-notice/v2/DeathNoticeV2.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);

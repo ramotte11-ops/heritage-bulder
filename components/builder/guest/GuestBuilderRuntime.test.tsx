@@ -20,6 +20,7 @@ import { translate } from "@/lib/i18n/translate";
 import { EMPTY_DEATH_NOTICE_CONTENT } from "@/types/death-notice";
 import type { CeremonyContent } from "@/types/ceremony";
 import type { MemorialContent } from "@/types/memorial";
+import type { TraditionsContent } from "@/types/traditions";
 
 type GuestFlowContent = {
   guidedFlow: Record<string, { status: string; answer?: string }>;
@@ -189,6 +190,37 @@ function ceremonyDraft({
       },
     } as MemorialContent,
   };
+  return fixture;
+}
+
+function announcementCeremonyDraft({
+  records = {},
+  ceremony = {},
+  traditions = { entries: [] },
+}: {
+  records?: Record<string, { status: "completed" | "skipped"; answer?: string }>;
+  ceremony?: Partial<CeremonyContent>;
+  traditions?: TraditionsContent;
+} = {}) {
+  const fixture = ceremonyDraft({
+    announcementAnswer: "yes",
+    records: {
+      A01: { status: "completed" },
+      A02: { status: "skipped" },
+      ...records,
+    },
+    ceremony,
+  });
+  const verified = commitA03({
+    ...fixture.draft.content,
+    deathNotice: {
+      ...EMPTY_DEATH_NOTICE_CONTENT,
+      announcementText: "Elle restera dans nos mémoires.",
+    },
+    traditions,
+  });
+  if (!verified.ok) throw new Error(verified.reason);
+  fixture.draft = { ...fixture.draft, content: verified.content };
   return fixture;
 }
 
@@ -556,12 +588,9 @@ describe("GuestBuilderRuntime", () => {
     expect(screen.getByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeTruthy();
   });
 
-  it("stops before the applicable A09 screen after A08", async () => {
-    const fixture = ceremonyDraft({
-      announcementAnswer: "yes",
+  it("renders A09 after A08 with Intemporel and local Hero progress, then stops before A10", async () => {
+    const fixture = announcementCeremonyDraft({
       records: {
-        A01: { status: "completed" },
-        A02: { status: "skipped" },
         A05: { status: "skipped" },
         A06: { status: "skipped" },
         A07: { status: "skipped" },
@@ -569,26 +598,148 @@ describe("GuestBuilderRuntime", () => {
       },
       ceremony: { note: "Accès côté jardin" },
     });
-    const withAnnouncement = {
-      ...fixture.draft.content,
-      deathNotice: {
-        ...EMPTY_DEATH_NOTICE_CONTENT,
-        announcementText: "Elle restera dans nos mémoires.",
-      },
-    } as MemorialContent;
-    const verified = commitA03(withAnnouncement);
-    if (!verified.ok) throw new Error(verified.reason);
-    fixture.draft = { ...fixture.draft, content: verified.content };
     const store = new MemoryStore(fixture.draft);
     store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
     const view = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
     await screen.findByRole("heading", { name: translate("fr", "ceremony.noteTitle") });
 
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
     expect(localContent(store.value!).guidedFlow.A08).toEqual({ status: "completed" });
+    expect(view.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.skip") }));
+    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A09).toEqual({ status: "skipped" });
+  });
+
+  it.each(["no", "undecided"] as const)("renders A09 directly after A04=%s when A00=yes", async (answer) => {
+    const fixture = announcementCeremonyDraft({ records: { A04: { status: "completed", answer } } });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
+    expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeNull();
+  });
+
+  it("persists A09 add, edit, remove and order operations, then reloads the confirmed entries", async () => {
+    const fixture = announcementCeremonyDraft({
+      records: {
+        A05: { status: "skipped" },
+        A06: { status: "skipped" },
+        A07: { status: "skipped" },
+        A14: { status: "skipped" },
+        A08: { status: "skipped" },
+      },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const ids = vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000001")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000002");
+    const props = { createStore: () => store, createId: () => "unused" };
+
+    const first = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.addCustomAction") }));
+    fireEvent.change(screen.getByLabelText(translate("fr", "traditions.textFieldLabel")), {
+      target: { value: "Premier repère" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.confirmAdd") }));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.addCustomAction") }));
+    fireEvent.change(screen.getByLabelText(translate("fr", "traditions.textFieldLabel")), {
+      target: { value: "Second repère" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.confirmAdd") }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: translate("fr", "traditions.editAction") })[0]);
+    fireEvent.change(screen.getByLabelText(translate("fr", "traditions.textFieldLabel")), {
+      target: { value: "Premier repère corrigé" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.saveEdit") }));
+    fireEvent.click(screen.getAllByRole("button", { name: translate("fr", "traditions.removeAction") })[1]);
+
+    await vi.waitFor(() => expect(
+      ((store.value!.content as MemorialContent).traditions as TraditionsContent).entries.map((entry) => entry.text),
+    ).toEqual(["Premier repère corrigé"]), { timeout: 3_000 });
+    expect(((store.value!.content as MemorialContent).traditions as TraditionsContent).entries[0].id)
+      .toBe("00000000-0000-4000-8000-000000000001");
+
+    first.unmount();
+    render(<GuestBuilderRuntime {...props} />);
+    await screen.findByText("Premier repère corrigé");
+    expect(screen.queryByText("Second repère")).toBeNull();
+    ids.mockRestore();
+  });
+
+  it("preserves confirmed A09 entries through A00 yes → no → yes", async () => {
+    const entry = {
+      id: "entry-stable",
+      origin: "custom" as const,
+      suggestionId: null,
+      title: null,
+      text: "Repère conservé",
+    };
+    const fixture = announcementCeremonyDraft({
+      records: { A04: { status: "completed", answer: "no" } },
+      traditions: { entries: [entry] },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+
+    const hiddenContent = structuredClone(store.value!.content) as MemorialContent;
+    (hiddenContent as unknown as GuestFlowContent).guidedFlow.A00 = { status: "completed", answer: "no" };
+    const hidden = updateGuestDraftV3(store.value!, { content: hiddenContent, now: "2026-10-26T10:05:00.000Z" });
+    if (!hidden.ok) throw new Error(hidden.reason);
+    store.value = hidden.draft;
+    const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await vi.waitFor(() => expect(hiddenView.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(((store.value.content as MemorialContent).traditions as TraditionsContent).entries).toEqual([entry]);
     expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
+    hiddenView.unmount();
+
+    const visibleContent = structuredClone(store.value.content) as MemorialContent;
+    (visibleContent as unknown as GuestFlowContent).guidedFlow.A00 = { status: "completed", answer: "yes" };
+    const visible = updateGuestDraftV3(store.value, { content: visibleContent, now: "2026-10-26T10:06:00.000Z" });
+    if (!visible.ok) throw new Error(visible.reason);
+    store.value = visible.draft;
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await screen.findByText("Repère conservé");
+  });
+
+  it("blocks a stale A09 write and surfaces corrupted traditions without replacement", async () => {
+    const fixture = announcementCeremonyDraft({
+      records: { A04: { status: "completed", answer: "no" } },
+    });
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const view = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
+    const concurrent = updateGuestDraftV3(store.value!, { now: "2026-10-26T10:07:00.000Z" });
+    if (!concurrent.ok) throw new Error(concurrent.reason);
+    store.value = concurrent.draft;
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.skip") }));
+    await screen.findByText(translate("fr", "autosave.conflictTitle"));
+    expect(store.value).toEqual(concurrent.draft);
+    expect(localContent(store.value!).guidedFlow.A09).toBeUndefined();
+    view.unmount();
+
+    const damaged = structuredClone(store.value!.content) as MemorialContent;
+    damaged.traditions = { entries: "damaged" } as never;
+    const damagedDraft = updateGuestDraftV3(store.value!, { content: damaged, now: "2026-10-26T10:08:00.000Z" });
+    if (!damagedDraft.ok) throw new Error(damagedDraft.reason);
+    store.value = damagedDraft.draft;
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((store.value.content as MemorialContent).traditions).toEqual({ entries: "damaged" });
   });
 
   it("preserves an A14 programme through the A04 yes → no → yes cycle", async () => {

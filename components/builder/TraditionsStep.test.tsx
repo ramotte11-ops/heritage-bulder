@@ -93,6 +93,15 @@ describe("TraditionsStep — rendering: catalogue vide", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.queryByText("Traditions & repères")).toBeNull();
   });
+
+  it("accepts guest Hero progress and Intemporel without changing the authenticated defaults", () => {
+    const { container, rerender } = render(<TraditionsStep {...baseProps()} progress={0.73} />);
+    expect(container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style")).toContain("73%");
+    expect(resolveAvailableTraditionSuggestions).toHaveBeenLastCalledWith({ skin: "intemporel" });
+
+    rerender(<TraditionsStep {...baseProps()} />);
+    expect(container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style")).not.toContain("73%");
+  });
 });
 
 describe("TraditionsStep — repère personnalisé", () => {
@@ -225,6 +234,28 @@ describe("TraditionsStep — passer → skipped, rien inventé", () => {
     const persistedContent = persist.mock.calls.at(-1)?.[0];
     expect(persistedContent.guidedFlow.A09).toEqual({ status: "skipped" });
     expect(persistedContent.traditions.entries).toEqual([]);
+  });
+
+  it("marks A09 skipped without deleting an already confirmed entry", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const entry = {
+      id: "entry-stable",
+      origin: "custom" as const,
+      suggestionId: null,
+      title: null,
+      text: "Repère conservé",
+    };
+    render(<TraditionsStep {...baseProps({
+      persist,
+      content: { ...CONTENT, traditions: { entries: [entry] } },
+    })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Passer cette étape" }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    const persistedContent = persist.mock.calls.at(-1)?.[0];
+    expect(persistedContent.guidedFlow.A09).toEqual({ status: "skipped" });
+    expect(persistedContent.traditions.entries).toEqual([entry]);
   });
 });
 
