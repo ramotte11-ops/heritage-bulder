@@ -1,4 +1,5 @@
 import type { EntitlementRepository } from "@/lib/adapters/entitlement-repository";
+import type { AccessLevel } from "@/config/access-levels";
 import type { EntitlementSource } from "@/config/entitlements";
 import { OFFERS, type OfferId } from "@/config/offers";
 import type { Entitlement } from "@/types/entitlement";
@@ -24,6 +25,10 @@ import { generateActivationKey } from "./activation-key";
 export interface IssueEntitlementWithActivationKeyInput {
   offerId: OfferId;
   source: EntitlementSource;
+  /** HERITAGE Direct M1-A (D12) — the level this right grants. Required,
+   * never defaulted: the caller states it, and the schema refuses to
+   * create a memorial from a right that does not carry one. */
+  accessLevel: AccessLevel;
   /** The channel's own order reference, when it has one. Unique per
    * source — a second issue for the same order is refused, never
    * duplicated into a second right. */
@@ -54,7 +59,7 @@ export interface IssueEntitlementDeps {
 
 export async function issueEntitlementWithActivationKey(
   { entitlementRepository }: IssueEntitlementDeps,
-  { offerId, source, externalOrderId }: IssueEntitlementWithActivationKeyInput,
+  { offerId, source, accessLevel, externalOrderId }: IssueEntitlementWithActivationKeyInput,
 ): Promise<IssueEntitlementWithActivationKeyResult> {
   // Mission 006's configuration is the authority on what an offer is.
   // Checked before anything is generated or written.
@@ -69,6 +74,7 @@ export async function issueEntitlementWithActivationKey(
   const outcome = await entitlementRepository.issueWithActivationKey({
     offerId,
     source,
+    accessLevel,
     externalOrderId: externalOrderId ?? null,
     activationKeyHash: hash,
   });
