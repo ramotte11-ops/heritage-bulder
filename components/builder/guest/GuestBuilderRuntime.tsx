@@ -28,6 +28,7 @@ import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeSte
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
+import { GuestGalleryStepAdapter } from "@/components/builder/guest/GuestGalleryStepAdapter";
 import {
   GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
@@ -55,7 +56,7 @@ import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
   GuestDraftV3Store,
-  "readPhoto" | "addPhoto" | "replacePhoto" | "updatePhotoPlacement"
+  "readPhoto" | "addPhoto" | "replacePhoto" | "updatePhotoPlacement" | "removePhoto"
 >;
 
 type RuntimeState =
@@ -101,8 +102,8 @@ function defaultRevokeObjectUrl(url: string): void {
 /**
  * Non-routed entry for the existing Builder screens backed by the single
  * local guest draft. It reuses the existing T06/T07/T08, A01/A02/A03 and
- * A04-A09 and A14 screens, then stops before A10 or any later canonical screen.
- * No public route imports this component.
+ * A04-A14 screens through the existing A13 Gallery, then stops before the
+ * final unpublished stages. No public route imports this component.
  */
 export function GuestBuilderRuntime({
   createStore = defaultCreateStore,
@@ -420,8 +421,21 @@ export function GuestBuilderRuntime({
                 progress={guestHeroStepProgress(draft)}
               />
             );
+          case "gallery":
+            return (
+              <GuestGalleryStepAdapter
+                language={draft.language!}
+                draft={draft}
+                store={runtime.store}
+                getDraft={() => draftRef.current ?? draft}
+                acceptDraft={acceptDraft}
+                createId={createId}
+                now={now}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
           default:
-            // A13 and every later canonical screen remain outside this lot.
+            // Final publication/account stages remain outside this lot.
             return <span hidden data-guest-builder-pending="post-reveal" />;
         }
     }

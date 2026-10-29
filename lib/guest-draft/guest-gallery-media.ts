@@ -76,6 +76,13 @@ export interface GuestGalleryMediaOptions {
   now: () => string;
 }
 
+/**
+ * Product authority: creation has no commercial photo cap. A future server
+ * publication policy may require a family choosing the free notice to select
+ * at most six Gallery memories, while retaining every other local/draft photo.
+ * That publication selection must never be enforced or destructively inferred
+ * by this Builder storage adapter.
+ */
 export function guestGalleryReferences(draft: GuestDraftV3): GuestDraftPhotoReference[] {
   return draft.photos.filter((photo) => photo.placement.purpose === "gallery");
 }

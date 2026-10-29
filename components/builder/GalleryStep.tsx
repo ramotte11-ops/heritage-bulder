@@ -30,6 +30,8 @@ interface GalleryStepCommonProps {
   language: Language;
   /** The draft — the A10–A12 sheet is already behind the family. */
   content: MemorialContent;
+  /** Guest drafts own Hero completion without a server media reference. */
+  progress?: number;
 }
 
 export interface AuthenticatedGalleryStepProps extends GalleryStepCommonProps {
@@ -144,7 +146,7 @@ export function GalleryStep(props: GalleryStepProps) {
 
   return (
     <BuilderScreen
-      progress={galleryStepProgress(content)}
+      progress={props.progress ?? galleryStepProgress(content)}
       status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
     >
       <div className={styles.copy}>

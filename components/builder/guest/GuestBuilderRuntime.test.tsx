@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import {
   createGuestDraftV3,
   updateGuestDraftV3,
@@ -80,6 +80,21 @@ class MemoryStore implements GuestBuilderDraftStore {
   async addPhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
   async replacePhoto(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
   async updatePhotoPlacement(): Promise<GuestDraftV3PhotoWriteResult> { return { ok: false, reason: "photo_not_found" }; }
+  async removePhoto(localId: string, expectedRevision: number, now: string): Promise<GuestDraftV3PhotoWriteResult> {
+    if (this.value === null || this.value.revision !== expectedRevision) {
+      return { ok: false, reason: "revision_conflict" };
+    }
+    if (!this.value.photos.some((photo) => photo.localId === localId)) {
+      return { ok: false, reason: "photo_not_found" };
+    }
+    const updated = updateGuestDraftV3(this.value, {
+      now,
+      photos: this.value.photos.filter((photo) => photo.localId !== localId),
+    });
+    if (!updated.ok) return { ok: false, reason: updated.reason };
+    this.value = structuredClone(updated.draft);
+    return { ok: true, draft: structuredClone(updated.draft) };
+  }
 }
 
 function newDraft(): GuestDraftV3 {
@@ -231,6 +246,42 @@ function personSheetDraft() {
       A09: { status: "skipped" },
     },
   });
+}
+
+function galleryDraft(count = 0) {
+  const fixture = personSheetDraft();
+  const flow = localContent(fixture.draft).guidedFlow;
+  const photos = Array.from({ length: count }, (_, index) => ({
+    localId: `gallery-${index + 1}`,
+    placement: { purpose: "gallery" as const, caption: index === 0 ? "Souvenir initial" : null },
+  }));
+  const updated = updateGuestDraftV3(fixture.draft, {
+    now: "2026-10-26T10:11:00.000Z",
+    content: {
+      ...fixture.draft.content,
+      guidedFlow: {
+        ...flow,
+        A10: { status: "skipped" },
+        A11: { status: "skipped" },
+        A12: { status: "skipped" },
+      },
+    } as MemorialContent,
+    photos: [...fixture.draft.photos, ...photos],
+  });
+  if (!updated.ok) throw new Error(updated.reason);
+  const galleryAssets: GuestDraftPhotoAsset[] = photos.map(({ localId }, index) => ({
+    localId,
+    source: {
+      blobRole: "prepared_high_quality",
+      mimeType: "image/webp",
+      sizeBytes: 1,
+      dimensions: { status: "known", width: 1600, height: 1067 },
+      originalFilename: `souvenir-${index + 1}.webp`,
+      lastModified: index + 1,
+    },
+    blob: new Blob([new Uint8Array([index + 1])], { type: "image/webp" }),
+  }));
+  return { draft: updated.draft, asset: fixture.asset, galleryAssets };
 }
 
 afterEach(() => {
@@ -769,7 +820,7 @@ describe("GuestBuilderRuntime", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "galleryStep.title") });
     expect(store.value!.content).toMatchObject({
       personWords: { text: "Elle savait accueillir chacun avec douceur." },
       legacy: { text: "Une attention sincère aux autres." },
@@ -779,6 +830,9 @@ describe("GuestBuilderRuntime", () => {
         A12: { status: "completed" },
       },
     });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
+    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A13).toEqual({ status: "skipped" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -799,7 +853,7 @@ describe("GuestBuilderRuntime", () => {
     expect(await screen.findByDisplayValue("Les longues tablées du dimanche.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "personSheet.skip") }));
 
-    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "galleryStep.title") });
     expect(store.value!.content).toMatchObject({
       lovedThings: { text: "Les longues tablées du dimanche." },
       guidedFlow: {
@@ -808,6 +862,77 @@ describe("GuestBuilderRuntime", () => {
         A12: { status: "skipped" },
       },
     });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+  });
+
+  it("loads an uncapped local A13, persists order and captions, reloads blobs, removes safely, then stops", async () => {
+    const fixture = galleryDraft(8);
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    fixture.galleryAssets.forEach((asset) => store.assets.set(asset.localId, asset));
+    let urlSequence = 0;
+    const createObjectURL = vi.fn(() => `blob:gallery-${++urlSequence}`);
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const props = { createStore: () => store, createId: () => "unused", now: () => "2026-10-26T10:12:00.000Z" };
+
+    const first = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByRole("heading", { name: translate("fr", "galleryStep.title") });
+    let list = screen.getByRole("list", { name: translate("fr", "galleryStep.listLabel") });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(8);
+    expect(first.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
+
+    let rows = within(list).getAllByRole("listitem");
+    fireEvent.click(within(rows[0]).getByRole("button", { name: translate("fr", "galleryStep.moveDown") }));
+    rows = within(list).getAllByRole("listitem");
+    fireEvent.change(within(rows[1]).getByLabelText(translate("fr", "galleryStep.captionLabel")), {
+      target: { value: "  Légende conservée  " },
+    });
+    await vi.waitFor(() => {
+      const gallery = store.value!.photos.filter((photo) => photo.placement.purpose === "gallery");
+      expect(gallery.slice(0, 2)).toEqual([
+        { localId: "gallery-2", placement: { purpose: "gallery", caption: null } },
+        { localId: "gallery-1", placement: { purpose: "gallery", caption: "Légende conservée" } },
+      ]);
+    }, { timeout: 3_000 });
+
+    first.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledTimes(8);
+    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    await screen.findByDisplayValue("Légende conservée");
+    list = screen.getByRole("list", { name: translate("fr", "galleryStep.listLabel") });
+    rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(8);
+
+    fireEvent.click(within(rows[0]).getByRole("button", { name: translate("fr", "galleryStep.remove") }));
+    fireEvent.click(within(rows[0]).getByRole("button", { name: translate("fr", "galleryStep.removeConfirm") }));
+    await vi.waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(7));
+    expect(store.assets.has("gallery-2")).toBe(true);
+    expect(store.value!.photos.filter((photo) => photo.placement.purpose === "gallery")).toHaveLength(7);
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(localContent(store.value!).guidedFlow.A13).toEqual({ status: "completed" });
+    expect((store.value!.content as unknown as { gallery?: unknown }).gallery).toBeUndefined();
+    expect(JSON.stringify(store.value!.content)).not.toMatch(/mediaId|memorialId|blob:/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an A13 blob is missing and preserves the valid draft", async () => {
+    const fixture = galleryDraft(1);
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const before = structuredClone(store.value);
+
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("data-guest-gallery-error")).toBe("photo_not_found");
+    expect(store.value).toEqual(before);
   });
 
   it("blocks stale A10-A12 writes and never replaces corrupted life-story data", async () => {
@@ -1143,6 +1268,7 @@ describe("GuestBuilderRuntime", () => {
       addPhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
       replacePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
       updatePhotoPlacement: async () => ({ ok: false as const, reason: "unavailable" as const }),
+      removePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
     });
 
     render(
