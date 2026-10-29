@@ -17,6 +17,8 @@ import {
   saveGuestDraftLanguage,
   type GuestBuilderDraftStore,
 } from "./guest-builder-runtime";
+import { commitA03 } from "@/lib/builder/guided-flow/death-notice-step";
+import { EMPTY_DEATH_NOTICE_CONTENT } from "@/types/death-notice";
 
 const T0 = "2026-10-26T08:00:00.000Z";
 const T1 = "2026-10-26T08:01:00.000Z";
@@ -282,6 +284,27 @@ describe("guest Builder local runtime", () => {
       A14: { status: "skipped" },
     });
     expect(resolveGuestPostHeroScreen(afterA14)).toBe("ceremonyNote");
+
+    const beforeA03 = postHeroDraft("yes", {
+      A01: { status: "completed" },
+      A02: { status: "skipped" },
+      A04: { status: "completed", answer: "yes" },
+      A05: { status: "skipped" },
+      A06: { status: "skipped" },
+      A07: { status: "skipped" },
+      A14: { status: "skipped" },
+      A08: { status: "completed" },
+    });
+    const verified = commitA03({
+      ...beforeA03.content,
+      deathNotice: {
+        ...EMPTY_DEATH_NOTICE_CONTENT,
+        announcementText: "Elle restera dans nos mémoires.",
+      },
+    });
+    if (!verified.ok) throw new Error(verified.reason);
+    const afterA08 = { ...beforeA03, content: verified.content };
+    expect(resolveGuestPostHeroScreen(afterA08)).toBe("traditions");
   });
 
   it("does not expose post-Hero navigation before the real local Hero is complete", () => {
@@ -313,6 +336,7 @@ describe("guest Builder local runtime", () => {
       "../../components/builder/CeremonyVenueStep.tsx",
       "../../components/builder/CeremonyAddressStep.tsx",
       "../../components/builder/CeremonyProgrammeStep.tsx",
+      "../../components/builder/CeremonyNoteStep.tsx",
       "../../components/memorial/death-notice/v2/DeathNoticeV2.tsx",
     ].map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);
