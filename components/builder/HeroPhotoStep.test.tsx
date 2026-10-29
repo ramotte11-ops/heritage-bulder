@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { AuthenticatedHeroPhotoStepProps } from "./HeroPhotoStep";
 
 /**
  * Mission 033 — contract tests for PAGE C (T06, the Hero photo). Same
@@ -113,7 +114,7 @@ function jpegFile(name = "photo.jpg", size = 1024) {
   return file;
 }
 
-function baseProps(overrides: Partial<Parameters<typeof HeroPhotoStep>[0]> = {}) {
+function baseProps(overrides: Partial<AuthenticatedHeroPhotoStepProps> = {}): AuthenticatedHeroPhotoStepProps {
   return {
     language: "fr" as const,
     content: CONTENT,
@@ -458,7 +459,7 @@ describe("HeroPhotoStep — human errors, never technical ones", () => {
 });
 
 describe("HeroPhotoStep — QG micro-audit: adopt before retiring", () => {
-  function replacementProps(overrides: Partial<Parameters<typeof HeroPhotoStep>[0]> = {}) {
+  function replacementProps(overrides: Partial<AuthenticatedHeroPhotoStepProps> = {}): AuthenticatedHeroPhotoStepProps {
     return baseProps({
       content: CONTENT_WITH_PHOTO,
       initialPhoto: { media: READY_MEDIA, readUrl: "https://storage.test/signed/original" },

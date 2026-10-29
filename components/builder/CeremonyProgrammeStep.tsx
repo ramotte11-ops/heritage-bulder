@@ -33,6 +33,10 @@ interface CeremonyProgrammeStepProps {
   /** The memorial's current draft content. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 /** A moment being written or edited — lives only in this component's
@@ -76,8 +80,8 @@ function draftInput(draft: MomentDraft) {
  * an optional precision; the family adds, edits, removes and reorders
  * them, then continues (at least one moment) or skips.
  *
- * Built but NOT routed yet: no Builder gate renders it before GO C5 (see
- * lib/builder/guided-flow/ceremony-step.ts, « A14 »).
+ * Routed by the canonical A14 gate in both authenticated and local guest
+ * transports; this component owns no navigation condition of its own.
  *
  * ## Nothing unconfirmed is ever saved — nor lost silently
  *
@@ -94,7 +98,12 @@ function draftInput(draft: MomentDraft) {
  * readers), each named after its moment. After a move, focus follows the
  * moved moment and a polite live region announces its new position.
  */
-export function CeremonyProgrammeStep({ language, content: initialContent, persist }: CeremonyProgrammeStepProps) {
+export function CeremonyProgrammeStep({
+  language,
+  content: initialContent,
+  persist,
+  progress: progressOverride,
+}: CeremonyProgrammeStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -295,7 +304,7 @@ export function CeremonyProgrammeStep({ language, content: initialContent, persi
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const progress = progressOverride ?? ceremonyStepProgress(content);
   const showPendingHint = pending || nativeBlocked;
 
   return (

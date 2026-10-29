@@ -46,6 +46,9 @@ interface DeathNoticePreviewStepProps {
   skinVariant: SkinVariant;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
+  /** Optional local-runtime progress. Authenticated callers keep the
+   * canonical content-derived calculation by omitting it. */
+  progress?: number;
 }
 
 /**
@@ -120,6 +123,7 @@ export function DeathNoticePreviewStep({
   skin,
   skinVariant,
   persist,
+  progress: progressOverride,
 }: DeathNoticePreviewStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -140,7 +144,7 @@ export function DeathNoticePreviewStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(content);
+  const progress = progressOverride ?? deathNoticeStepProgress(content);
 
   const skinResolution = resolveSkinRuntime(skin);
   const canRenderA03 = skinResolution.status === "resolved" && A03_BUILT_SKINS.includes(skinResolution.skin);

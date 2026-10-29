@@ -27,6 +27,10 @@ interface CeremonyNoteStepProps {
    * resolved by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 /**
@@ -37,7 +41,12 @@ interface CeremonyNoteStepProps {
  * étape" lets the family move on without one, and once a note is
  * entered "Continuer" becomes available and commits A08 as completed.
  */
-export function CeremonyNoteStep({ language, content: initialContent, persist }: CeremonyNoteStepProps) {
+export function CeremonyNoteStep({
+  language,
+  content: initialContent,
+  persist,
+  progress: progressOverride,
+}: CeremonyNoteStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -124,7 +133,7 @@ export function CeremonyNoteStep({ language, content: initialContent, persist }:
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const progress = progressOverride ?? ceremonyStepProgress(content);
 
   return (
     <BuilderScreen

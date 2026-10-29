@@ -28,9 +28,15 @@ vi.mock("next/font/google", () => ({
 
 const { HeroRevealStep } = await import("./HeroRevealStep");
 const { JourneyContext } = await import("./journey/journey-context");
+const { BuilderStepCompletionProvider } = await import("./journey/journey-context");
+const { DraftRevisionProvider } = await import("@/lib/builder/draft-revision");
+const { DraftConflictNotice } = await import("./DraftConflictNotice");
 const { resolveJourney } = await import("@/lib/builder/guided-flow/journey");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 beforeEach(() => routerRefresh.mockClear());
 
 const MEDIA_ID = "cccccccc-cccc-4ccc-8ccc-000000000001";
@@ -82,6 +88,66 @@ describe("HeroRevealStep — the real Hero, rendered", () => {
     render(<HeroRevealStep {...baseProps({ content: { hero: "garbage" } as never })} />);
 
     expect(screen.getByRole("alert")).toBeTruthy();
+  });
+});
+
+describe("HeroRevealStep — local guest mode", () => {
+  const LOCAL_CONTENT = {
+    ...CONTENT,
+    hero: { ...CONTENT.hero, photo: null },
+  } as never;
+  const LOCAL_PHOTO = {
+    localId: "local-hero",
+    blob: new Blob([new Uint8Array([1, 2, 3])], { type: "image/webp" }),
+    mimeType: "image/webp" as const,
+    width: 1800,
+    height: 1200,
+    crop: { focalX: 0.25, focalY: 0.75, zoom: 1.6 },
+    readUrl: "blob:guest-hero",
+  };
+
+  function renderLocal(completeReveal = vi.fn().mockResolvedValue({
+    status: "saved" as const,
+    updatedAt: "2026-10-26T11:00:00.000Z",
+    revision: 5,
+  })) {
+    const done = vi.fn();
+    const view = render(
+      <DraftRevisionProvider initialRevision={4} initialContent={LOCAL_CONTENT}>
+        <DraftConflictNotice language="fr" />
+        <BuilderStepCompletionProvider finishStep={done}>
+          <HeroRevealStep
+            mode="local"
+            language="fr"
+            content={LOCAL_CONTENT}
+            initialSkinVariant="light"
+            localMedia={{ photo: LOCAL_PHOTO, progress: 0.5, completeReveal }}
+          />
+        </BuilderStepCompletionProvider>
+      </DraftRevisionProvider>,
+    );
+    return { completeReveal, done, view };
+  }
+
+  it("renders the existing immersive T08 with the local photo and crop, then confirms the selected ambiance", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { completeReveal, done, view } = renderLocal();
+
+    expect(screen.getByText("Jean Dupont")).toBeTruthy();
+    expect(view.container.querySelectorAll('img[src="blob:guest-hero"]')).toHaveLength(3);
+    fireEvent.click(screen.getByRole("radio", { name: "Sombre" }));
+    fireEvent.click(screen.getByRole("button", { name: /continuer avec cette ambiance/i }));
+
+    await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+    expect(completeReveal).toHaveBeenCalledWith("dark", 4);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the existing blocking conflict notice for a stale local tab", async () => {
+    renderLocal(vi.fn().mockResolvedValue({ status: "conflict" as const }));
+    fireEvent.click(screen.getByRole("button", { name: /continuer avec cette ambiance/i }));
+    await screen.findByText("Une version plus récente a été enregistrée ailleurs.");
   });
 });
 

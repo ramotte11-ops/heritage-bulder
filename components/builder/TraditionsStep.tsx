@@ -37,6 +37,10 @@ interface TraditionsStepProps {
    * pre-select a practice (mission brief section 3/7). */
   skin: Skin;
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 /** A not-yet-confirmed repère the family is composing — lives only in
@@ -92,7 +96,13 @@ function newSuggestionComposer(suggestion: TraditionSuggestion, language: Langua
  * one edit is open at once — never a big form. Already-confirmed
  * entries render as their own small cards with "Modifier"/"Supprimer".
  */
-export function TraditionsStep({ language, content: initialContent, skin, persist }: TraditionsStepProps) {
+export function TraditionsStep({
+  language,
+  content: initialContent,
+  skin,
+  persist,
+  progress: progressOverride,
+}: TraditionsStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -215,7 +225,7 @@ export function TraditionsStep({ language, content: initialContent, skin, persis
     );
   }
 
-  const progress = traditionsStepProgress(content);
+  const progress = progressOverride ?? traditionsStepProgress(content);
   const hasEntry = read.traditions.entries.length > 0;
 
   return (

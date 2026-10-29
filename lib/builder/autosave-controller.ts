@@ -92,22 +92,22 @@ import type { MemorialContent } from "@/types/memorial";
  * already relies on — no second save mechanism, no new concurrency
  * rule.
  */
-export interface AutosaveControllerOptions {
+export interface AutosaveControllerOptions<T = MemorialContent> {
   /** Persists one full content snapshot. Resolves with the new
    * `updatedAt` on success, rejects on any failure — exactly
    * `DraftRepository.saveDraftContent`'s shape, minus the
    * `memorialId` the caller has already bound. */
-  persist: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+  persist: (content: T) => Promise<{ updatedAt: string }>;
   /** Overrides AUTOSAVE_DEBOUNCE_MS — for tests only; real callers
    * should never need this. */
   debounceMs?: number;
 }
 
-export interface AutosaveController {
+export interface AutosaveController<T = MemorialContent> {
   /** Call on every Builder content change. Never throws, never
    * returns a promise — scheduling and persistence happen entirely in
    * the background; observe outcomes via `subscribe`/`getState`. */
-  notifyContentChanged(content: MemorialContent): void;
+  notifyContentChanged(content: T): void;
   /** The current autosave status. Matches `useSyncExternalStore`'s
    * `getSnapshot` shape, so a thin hook can bind directly to it (see
    * use-autosave.ts). */
@@ -130,7 +130,7 @@ export interface AutosaveController {
    * inside an effect — never by handing this controller a React ref to
    * read from later, which the project's lint rules for refs disallow
    * touching (even indirectly) during render. */
-  setPersist(persist: AutosaveControllerOptions["persist"]): void;
+  setPersist(persist: AutosaveControllerOptions<T>["persist"]): void;
   /** Mission 010 — explicitly retries the last known content after a
    * failed save. No-op unless the current status is `error`: calling it
    * while idle/pending/saving/saved does nothing, since there is either
@@ -158,14 +158,14 @@ export interface AutosaveController {
   flush(): Promise<void>;
 }
 
-export function createAutosaveController(
-  options: AutosaveControllerOptions,
-): AutosaveController {
+export function createAutosaveController<T = MemorialContent>(
+  options: AutosaveControllerOptions<T>,
+): AutosaveController<T> {
   let persist = options.persist;
   const { debounceMs = AUTOSAVE_DEBOUNCE_MS } = options;
 
   let state: AutosaveState = INITIAL_AUTOSAVE_STATE;
-  let latestContent: MemorialContent | null = null;
+  let latestContent: T | null = null;
   let generation = 0;
   let inFlightGeneration: number | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -206,7 +206,7 @@ export function createAutosaveController(
     const generationToSave = generation;
     // Non-null: reaching "pending" only ever happens via
     // notifyContentChanged, which always sets latestContent first.
-    const contentToSave = latestContent as MemorialContent;
+    const contentToSave = latestContent as T;
 
     inFlightGeneration = generationToSave;
     retryRequested = false;
@@ -236,7 +236,7 @@ export function createAutosaveController(
     );
   }
 
-  function notifyContentChanged(content: MemorialContent): void {
+  function notifyContentChanged(content: T): void {
     if (destroyed) return;
 
     latestContent = content;
@@ -281,7 +281,7 @@ export function createAutosaveController(
     // retry happen after this point, even once that promise settles.
   }
 
-  function setPersist(next: AutosaveControllerOptions["persist"]): void {
+  function setPersist(next: AutosaveControllerOptions<T>["persist"]): void {
     persist = next;
   }
 

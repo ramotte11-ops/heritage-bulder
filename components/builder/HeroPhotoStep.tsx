@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStepDone } from "./journey/journey-context";
 import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
-import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET } from "@/config/media";
+import { ALLOWED_IMAGE_MIME_TYPES, MEDIA_BUCKET, type AllowedImageMimeType } from "@/config/media";
 import type { MemorialContent } from "@/types/memorial";
 import type { Media } from "@/types/media";
 import type { MediaResult } from "@/lib/media/media-errors";
@@ -12,9 +12,14 @@ import type { ReservedUpload } from "@/lib/media/upload-lifecycle";
 import type { MediaDeletion } from "@/lib/media/delete-media";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
-import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import {
+  useDraftRevisionCoordinator,
+  useRevisionedDraftPersist,
+  type DraftSaveTransport,
+} from "@/lib/builder/draft-revision";
 import { precheckPhotoInput } from "@/lib/media/precheck-upload";
-import { prepareChosenPhoto } from "@/lib/media/prepare-chosen-photo";
+import { prepareChosenPhoto, prepareChosenPhotoWithReport } from "@/lib/media/prepare-chosen-photo";
+import type { LocalHeroPhotoPort, LocalPhotoSnapshot } from "@/lib/media/local-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import {
@@ -26,10 +31,11 @@ import {
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PrimaryButton } from "./PrimaryButton";
+import { LocalBlobImage } from "./LocalBlobImage";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./HeroPhotoStep.module.css";
 
-interface HeroPhotoStepProps {
+interface HeroPhotoStepCommonProps {
   language: Language;
   /** The memorial's current draft content — PAGE A/PAGE B are already
    * guaranteed done, and any section-14 reconciliation already applied,
@@ -37,6 +43,10 @@ interface HeroPhotoStepProps {
    * lib/builder/guided-flow/resolve-hero-photo-step.ts, called from
    * app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
+}
+
+export interface AuthenticatedHeroPhotoStepProps extends HeroPhotoStepCommonProps {
+  mode?: "authenticated";
   /** The Hero's current photo, already resolved server-side and ready
    * to display — `null` when there is none yet. Its `readUrl` is a
    * short-lived signed URL, never persisted by this component (mission
@@ -57,6 +67,13 @@ interface HeroPhotoStepProps {
   retireUpload: (mediaId: string) => Promise<MediaResult<MediaDeletion>>;
 }
 
+interface LocalHeroPhotoStepProps extends HeroPhotoStepCommonProps {
+  mode: "local";
+  localMedia: LocalHeroPhotoPort;
+}
+
+export type HeroPhotoStepProps = AuthenticatedHeroPhotoStepProps | LocalHeroPhotoStepProps;
+
 type PhotoStatus = "empty" | "preparing" | "uploading" | "finalizing" | "ready" | "error";
 
 interface PhotoState {
@@ -64,21 +81,26 @@ interface PhotoState {
   /** The currently READY media, if any — survives an error state so a
    * failed "Changer la photo" attempt leaves the old photo visibly
    * intact (mission brief section 15). */
-  media: Media | null;
+  selection: { kind: "authenticated"; media: Media } | { kind: "local"; photo: LocalPhotoSnapshot } | null;
   /** What the `<img>` should show right now — a local `blob:` preview
    * while uploading, or the server-provided signed URL once resolved. */
   displayUrl: string | null;
   errorMessage: string | null;
 }
 
-function initialState(initialPhoto: HeroPhotoStepProps["initialPhoto"]): PhotoState {
-  if (initialPhoto === null) {
-    return { status: "empty", media: null, displayUrl: null, errorMessage: null };
+function initialState(props: HeroPhotoStepProps): PhotoState {
+  if (props.mode === "local") {
+    const initial = props.localMedia.initialPhoto;
+    if (initial === null) return { status: "empty", selection: null, displayUrl: null, errorMessage: null };
+    return { status: "ready", selection: { kind: "local", photo: initial }, displayUrl: null, errorMessage: null };
+  }
+  if (props.initialPhoto === null) {
+    return { status: "empty", selection: null, displayUrl: null, errorMessage: null };
   }
   return {
     status: "ready",
-    media: initialPhoto.media,
-    displayUrl: initialPhoto.readUrl,
+    selection: { kind: "authenticated", media: props.initialPhoto.media },
+    displayUrl: props.initialPhoto.readUrl,
     errorMessage: null,
   };
 }
@@ -164,20 +186,22 @@ const ACCEPT = ALLOWED_IMAGE_MIME_TYPES.join(",");
  * `"ready"` before ever writing T06's `StepRecord` — the same defensive
  * discipline `commitPageA` already applies to `displayName`.
  */
-export function HeroPhotoStep({
-  language,
-  content: initialContent,
-  initialPhoto,
-  persist,
-  reserveUpload,
-  finalizeUpload,
-  retireUpload,
-}: HeroPhotoStepProps) {
-  const saveDraft = useRevisionedDraftPersist(persist);
+export function HeroPhotoStep(props: HeroPhotoStepProps) {
+  const { language, content: initialContent } = props;
+  const saveDraft = useRevisionedDraftPersist(props.mode === "local" ? undefined : props.persist);
+  const revisionCoordinator = useDraftRevisionCoordinator();
   const stepDone = useStepDone();
 
+  const ownedUrls = useRef(new Set<string>());
   const [content, setContent] = useState(initialContent);
-  const [photo, setPhoto] = useState<PhotoState>(() => initialState(initialPhoto));
+  const [photo, setPhoto] = useState<PhotoState>(() => initialState(props));
+  useEffect(() => {
+    const urls = ownedUrls.current;
+    return () => {
+      for (const url of urls) URL.revokeObjectURL(url);
+      urls.clear();
+    };
+  }, []);
   // B03 — a photo still uploading is not in the draft yet.
   usePendingInput(photo.status === "preparing" || photo.status === "uploading" || photo.status === "finalizing");
   const [submitError, setSubmitError] = useState(false);
@@ -196,25 +220,54 @@ export function HeroPhotoStep({
     if (precheckCode) {
       setPhoto((previous) => ({
         ...previous,
-        status: previous.media ? "ready" : "error",
+        status: previous.selection ? "ready" : "error",
         errorMessage: translate(language, mediaErrorTranslationKey(precheckCode)),
       }));
       return;
     }
 
-    const previousMedia = photo.media;
+    const previousSelection = photo.selection;
     const previousDisplayUrl = photo.displayUrl;
 
     // The previous photo (if any) stays in view while the new one is prepared.
-    setPhoto({ status: "preparing", media: previousMedia, displayUrl: previousDisplayUrl, errorMessage: null });
+    setPhoto({ status: "preparing", selection: previousSelection, displayUrl: previousDisplayUrl, errorMessage: null });
 
+    let candidateUrl: string | null = null;
     try {
+      if (props.mode === "local") {
+        const prepared = await prepareChosenPhotoWithReport(file, "hero");
+        setPhoto({ status: "uploading", selection: previousSelection, displayUrl: previousDisplayUrl, errorMessage: null });
+        if (revisionCoordinator === null) throw new MediaActionError("storage_unavailable");
+        let savedPhoto: LocalPhotoSnapshot | null = null;
+        await revisionCoordinator.commit(content, async (expectedRevision) => {
+          const result = await props.localMedia.savePreparedPhoto({
+            blob: prepared.file,
+            mimeType: prepared.file.type as AllowedImageMimeType,
+            width: prepared.report.width,
+            height: prepared.report.height,
+            originalFilename: file.name || null,
+            lastModified: Number.isFinite(file.lastModified) ? file.lastModified : null,
+          }, expectedRevision);
+          if (result.status === "saved") savedPhoto = result.photo ?? null;
+          return result;
+        });
+        if (savedPhoto === null) throw new MediaActionError("storage_unavailable");
+        setPhoto({
+          status: "ready",
+          selection: { kind: "local", photo: savedPhoto },
+          displayUrl: null,
+          errorMessage: null,
+        });
+        return;
+      }
+
       // Only the optimized file goes any further — never `file` itself.
       const prepared = await prepareChosenPhoto(file, "hero");
-      const localPreviewUrl = URL.createObjectURL(prepared);
-      setPhoto({ status: "uploading", media: previousMedia, displayUrl: localPreviewUrl, errorMessage: null });
+      candidateUrl = URL.createObjectURL(prepared);
+      ownedUrls.current.add(candidateUrl);
+      setPhoto({ status: "uploading", selection: previousSelection, displayUrl: candidateUrl, errorMessage: null });
 
-      const reserved = await reserveUpload(prepared.type);
+      const reserved = await props.reserveUpload(prepared.type);
       if (!reserved.ok) throw new MediaActionError(reserved.code);
 
       const supabase = getBrowserSupabaseClient();
@@ -227,7 +280,7 @@ export function HeroPhotoStep({
 
       setPhoto((current) => ({ ...current, status: "finalizing" }));
 
-      const finalized = await finalizeUpload(reserved.value.mediaId);
+      const finalized = await props.finalizeUpload(reserved.value.mediaId);
       if (!finalized.ok) throw new MediaActionError(finalized.code);
       const finalizedMedia = finalized.value;
 
@@ -240,27 +293,31 @@ export function HeroPhotoStep({
       // never merely `setContent` handed to the debounced autosave —
       // because only this gives a definite yes/no to gate the retire on.
       await flush();
-      await saveDraft(written.content);
+      await saveDraft!(written.content);
 
       setContent(written.content);
-      setPhoto({ status: "ready", media: finalizedMedia, displayUrl: localPreviewUrl, errorMessage: null });
+      setPhoto({ status: "ready", selection: { kind: "authenticated", media: finalizedMedia }, displayUrl: candidateUrl, errorMessage: null });
+      if (previousDisplayUrl !== null && ownedUrls.current.delete(previousDisplayUrl)) {
+        URL.revokeObjectURL(previousDisplayUrl);
+      }
 
       // Only now, and only best-effort: the new photo is already the
       // Hero's canonical one, so a retire failure here is a stale row to
       // clean up later, never a reason to tell the family anything went
       // wrong (mission brief section 15).
-      if (previousMedia) {
-        retireUpload(previousMedia.id).catch(() => {});
+      if (previousSelection?.kind === "authenticated") {
+        props.retireUpload(previousSelection.media.id).catch(() => {});
       }
     } catch (error) {
+      if (candidateUrl !== null && ownedUrls.current.delete(candidateUrl)) URL.revokeObjectURL(candidateUrl);
       const code = error instanceof MediaActionError ? error.code : "storage_unavailable";
       setPhoto({
         // The previous ready photo, if any, survives a failed attempt —
         // mission brief section 15: never a hole where the family has no
         // photo because a replacement failed.
-        status: previousMedia ? "ready" : "error",
-        media: previousMedia,
-        displayUrl: previousMedia ? previousDisplayUrl : null,
+        status: previousSelection ? "ready" : "error",
+        selection: previousSelection,
+        displayUrl: previousSelection ? previousDisplayUrl : null,
         errorMessage: translate(language, mediaErrorTranslationKey(code)),
       });
     }
@@ -277,7 +334,27 @@ export function HeroPhotoStep({
     event.preventDefault();
     if (photo.status !== "ready") return;
 
-    const committed = commitPageC(content, photo.media);
+    if (props.mode === "local") {
+      if (revisionCoordinator === null || photo.selection?.kind !== "local") {
+        setSubmitError(true);
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        await revisionCoordinator.commit(content, props.localMedia.completePhoto);
+      } catch {
+        setSubmitError(true);
+        setIsSubmitting(false);
+        return;
+      }
+      stepDone();
+      return;
+    }
+
+    const committed = commitPageC(
+      content,
+      photo.selection?.kind === "authenticated" ? photo.selection.media : null,
+    );
     if (!committed.ok) {
       setSubmitError(true);
       return;
@@ -286,7 +363,7 @@ export function HeroPhotoStep({
     setIsSubmitting(true);
     try {
       await flush();
-      await saveDraft(committed.content);
+      await saveDraft!(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -336,7 +413,14 @@ export function HeroPhotoStep({
 
         {hasPhoto && (
           <div className={styles.preview}>
-            {photo.displayUrl && (
+            {photo.selection?.kind === "local" && (
+              <LocalBlobImage
+                blob={photo.selection.photo.blob}
+                alt={translate(language, "hero.photoAlt")}
+                className={styles.previewImage}
+              />
+            )}
+            {photo.selection?.kind !== "local" && photo.displayUrl && (
               // A signed/blob URL, never a static asset next/image can optimize, and never persisted.
               // eslint-disable-next-line @next/next/no-img-element
               <img

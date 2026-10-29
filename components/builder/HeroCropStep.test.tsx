@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { AuthenticatedHeroCropStepProps } from "./HeroCropStep";
 
 /**
  * Mission 034 — contract tests for PAGE D (T07, the Hero photo crop).
@@ -65,14 +66,14 @@ const READY_MEDIA = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-function baseProps(overrides: Partial<Parameters<typeof HeroCropStep>[0]> = {}) {
+function baseProps(overrides: Partial<AuthenticatedHeroCropStepProps> = {}): AuthenticatedHeroCropStepProps {
   return {
     language: "fr" as const,
     content: CONTENT_NO_CROP,
     photo: { media: READY_MEDIA, readUrl: "https://storage.test/signed/x" },
     persist: vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" }),
     ...overrides,
-  } as Parameters<typeof HeroCropStep>[0];
+  };
 }
 
 beforeEach(() => {

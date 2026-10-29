@@ -74,9 +74,9 @@ import { useRegisterPreviewFlush } from "./preview-flush-registry";
  * `retry` is also returned directly, for a future explicit "try again"
  * affordance — no UI for that is built in this mission.
  */
-export interface UseAutosaveOptions {
-  content: MemorialContent;
-  persist?: (content: MemorialContent) => Promise<{ updatedAt: string }>;
+export interface UseAutosaveOptions<T = MemorialContent> {
+  content: T;
+  persist?: (content: T) => Promise<{ updatedAt: string }>;
 }
 
 export interface UseAutosaveResult {
@@ -134,7 +134,7 @@ export function applyBeforeUnloadGuard(event: Pick<BeforeUnloadEvent, "preventDe
   event.returnValue = true;
 }
 
-export function useAutosave({ content, persist }: UseAutosaveOptions): UseAutosaveResult {
+export function useAutosave<T = MemorialContent>({ content, persist }: UseAutosaveOptions<T>): UseAutosaveResult {
   // Decided once, from the first render's persist — see this file's
   // docstring: real callers pass a stable "is autosave enabled at all"
   // answer for a given mount (either always a function, or always
