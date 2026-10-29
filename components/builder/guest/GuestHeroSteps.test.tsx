@@ -127,7 +127,7 @@ describe("HeroPhotoStep — local guest port", () => {
       originalFilename: "portrait.jpg",
       lastModified: 123,
     });
-    expect((screen.getByRole("img") as HTMLImageElement).src).toContain("blob:guest-1");
+    await waitFor(() => expect((screen.getByRole("img") as HTMLImageElement).src).toContain("blob:guest-1"));
     expect(getBrowserSupabaseClient).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
 
