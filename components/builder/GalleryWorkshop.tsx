@@ -194,6 +194,9 @@ export function GalleryWorkshop(props: GalleryWorkshopProps) {
 
   useEffect(() => {
     const urls = blobUrls.current;
+    // StrictMode (development) unmounts then remounts once: re-arm the guard,
+    // or every later upload would stop silently after its preparation.
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       urls.forEach((url) => URL.revokeObjectURL(url));

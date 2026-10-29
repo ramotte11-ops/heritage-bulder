@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -685,5 +686,104 @@ describe("FR / EN / ES and the Preview", () => {
     await waitFor(() => expect(loadPreview).toHaveBeenCalled());
     expect(galleryOf(p.persist.mock.calls[0][0])[0].caption).toBe("Maman");
     expect(p.persist.mock.invocationCallOrder[0]).toBeLessThan(loadPreview.mock.invocationCallOrder[0]);
+  });
+});
+
+/**
+ * React StrictMode (development) mounts, unmounts and remounts every
+ * component once. The workshop's "still mounted?" guard must survive that
+ * simulated cycle — otherwise every chosen photo stops silently after its
+ * preparation and stays "Préparation de la photo…" forever — while a REAL
+ * unmount must still stop an in-flight upload and release its object URL.
+ */
+describe("GalleryWorkshop — StrictMode remount and real unmount", () => {
+  const preparedReport = (purpose: string) => ({
+    ok: true as const,
+    file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+    report: {
+      purpose,
+      inputBytes: 2048,
+      inputWidth: 2400,
+      inputHeight: 1600,
+      outputBytes: 512,
+      width: 1600,
+      height: 1067,
+      type: "image/webp" as const,
+      quality: 0.9,
+      attempts: 1,
+      targetMet: true,
+      heavierThanInput: false,
+      durationMs: 5,
+    },
+  });
+
+  beforeEach(() => {
+    preparePhotoForUpload.mockImplementation(async (_chosen: File, purpose: string) => preparedReport(purpose));
+  });
+
+  afterEach(() => {
+    preparePhotoForUpload.mockReset();
+    preparePhotoForUpload.mockImplementation(async (_file: File, purpose: string) => ({
+      ok: true as const,
+      file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+      report: { purpose },
+    }));
+  });
+
+  it("authenticated: photos chosen after the StrictMode remount are prepared, uploaded and saved", async () => {
+    const p = props();
+    render(
+      <StrictMode>
+        <GalleryStep {...p} />
+      </StrictMode>,
+    );
+    fireEvent.change(addInput(), { target: { files: [file("a.jpg"), file("b.jpg")] } });
+
+    await waitFor(() => expect(p.finalizeUpload).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(galleryOf(lastPersisted(p.persist))).toHaveLength(2));
+    expect(screen.queryByText("Préparation de la photo…")).toBeNull();
+  });
+
+  it("local guest: photos chosen after the StrictMode remount are prepared, stored and displayed", async () => {
+    const h = localPort();
+    const content = {} as MemorialContent;
+    render(
+      <StrictMode>
+        <DraftRevisionProvider initialRevision={0} initialContent={content}>
+          <GalleryStep mode="local" language="fr" content={content} localMedia={h.port} />
+        </DraftRevisionProvider>
+      </StrictMode>,
+    );
+    fireEvent.change(addInput(), { target: { files: [file("a.jpg"), file("b.jpg"), file("c.jpg")] } });
+
+    await waitFor(() => expect(h.port.addPreparedPhoto).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    await waitFor(() => expect(rows().every((row) => row.querySelector("img")?.getAttribute("src")?.startsWith("blob:"))).toBe(true));
+    expect(screen.queryByText("Préparation de la photo…")).toBeNull();
+  });
+
+  it("a real unmount during preparation writes nothing and releases the temporary object URL", async () => {
+    let finishPreparation: () => void = () => {};
+    preparePhotoForUpload.mockImplementation(
+      (_chosen: File, purpose: string) =>
+        new Promise((resolve) => {
+          finishPreparation = () => resolve(preparedReport(purpose));
+        }),
+    );
+    const h = localPort();
+    const view = renderLocal(h.port);
+    fireEvent.change(addInput(), { target: { files: [file("a.jpg")] } });
+    await waitFor(() => expect(preparePhotoForUpload).toHaveBeenCalledTimes(1));
+
+    view.unmount();
+    finishPreparation();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(h.port.addPreparedPhoto).not.toHaveBeenCalled();
+    const created = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.results.map((r) => r.value as string);
+    expect(created.length).toBeGreaterThan(0);
+    for (const url of created) expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
   });
 });
