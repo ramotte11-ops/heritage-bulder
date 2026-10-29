@@ -224,6 +224,15 @@ function announcementCeremonyDraft({
   return fixture;
 }
 
+function personSheetDraft() {
+  return announcementCeremonyDraft({
+    records: {
+      A04: { status: "completed", answer: "no" },
+      A09: { status: "skipped" },
+    },
+  });
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -235,7 +244,7 @@ describe("GuestBuilderRuntime", () => {
     ["no", "ceremony.momentNo", "later"],
     ["undecided", "ceremony.momentUndecided", "no"],
   ] as const)(
-    "persists A04=%s locally, keeps hidden ceremony data and stops before later screens",
+    "persists A04=%s locally, keeps hidden ceremony data and continues canonically",
     async (answer, labelKey, announcementAnswer) => {
       const fixture = postRevealDraft(announcementAnswer);
       const preservedCeremony = {
@@ -273,9 +282,8 @@ describe("GuestBuilderRuntime", () => {
       if (answer === "yes") {
         await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
       } else {
-        await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+        await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
         expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeNull();
-        expect(screen.queryByRole("heading", { name: translate("fr", "personSheet.title") })).toBeNull();
       }
       expect(localContent(store.value!).guidedFlow.A04).toEqual({ status: "completed", answer });
       expect(localContent(store.value!).guidedFlow.A00).toEqual({ status: "completed", answer: announcementAnswer });
@@ -284,7 +292,7 @@ describe("GuestBuilderRuntime", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
 
       view.unmount();
-      const reloaded = render(
+      render(
         <GuestBuilderRuntime
           createStore={() => store}
           createId={() => "unused"}
@@ -294,13 +302,13 @@ describe("GuestBuilderRuntime", () => {
       if (answer === "yes") {
         await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
       } else {
-        await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+        await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
       }
       expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.momentTitle") })).toBeNull();
     },
   );
 
-  it("runs A05-A08 with partial values, reloads between screens, and stops before A09", async () => {
+  it("runs A05-A08 with partial values, reloads between screens, and continues to the person sheet", async () => {
     const fixture = ceremonyDraft();
     const store = new MemoryStore(fixture.draft);
     store.assets.set(fixture.asset.localId, fixture.asset);
@@ -375,7 +383,7 @@ describe("GuestBuilderRuntime", () => {
     expect(third.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
       .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
-    await vi.waitFor(() => expect(third.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(localContent(store.value!).guidedFlow.A08).toEqual({ status: "skipped" });
   });
 
@@ -398,7 +406,7 @@ describe("GuestBuilderRuntime", () => {
     const fixture = ceremonyDraft({ records, ceremony: preservedCeremony });
     const store = new MemoryStore(fixture.draft);
     store.assets.set(fixture.asset.localId, fixture.asset);
-    const view = render(
+    render(
       <GuestBuilderRuntime
         createStore={() => store}
         createId={() => "unused"}
@@ -410,7 +418,7 @@ describe("GuestBuilderRuntime", () => {
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
 
     if (nextTitleKey === null) {
-      await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+      await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     } else {
       await screen.findByRole("heading", { name: translate("fr", nextTitleKey) });
     }
@@ -480,7 +488,7 @@ describe("GuestBuilderRuntime", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("persists and reloads A08 locally, then stops strictly before A09", async () => {
+  it("persists and reloads A08 locally, then continues to the person sheet when A09 is not applicable", async () => {
     const fixture = ceremonyDraft({
       records: {
         A05: { status: "skipped" },
@@ -511,12 +519,12 @@ describe("GuestBuilderRuntime", () => {
     ).toBe("Stationnement derrière la mairie"), { timeout: 3_000 });
 
     first.unmount();
-    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    render(<GuestBuilderRuntime {...props} />);
     const restored = await screen.findByLabelText(translate("fr", "ceremony.noteLabel"));
     expect((restored as HTMLTextAreaElement).value).toBe("Stationnement derrière la mairie");
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(localContent(store.value!).guidedFlow.A08).toEqual({ status: "completed" });
     expect(((store.value!.content as MemorialContent).ceremony as CeremonyContent).note)
       .toBe("Stationnement derrière la mairie");
@@ -545,7 +553,7 @@ describe("GuestBuilderRuntime", () => {
     store.value = hidden.draft;
 
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await vi.waitFor(() => expect(hiddenView.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).note).toBe("Note stable");
     expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
     hiddenView.unmount();
@@ -588,7 +596,7 @@ describe("GuestBuilderRuntime", () => {
     expect(screen.getByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeTruthy();
   });
 
-  it("renders A09 after A08 with Intemporel and local Hero progress, then stops before A10", async () => {
+  it("renders A09 after A08 with Intemporel and local Hero progress, then reaches A10-A12", async () => {
     const fixture = announcementCeremonyDraft({
       records: {
         A05: { status: "skipped" },
@@ -614,7 +622,7 @@ describe("GuestBuilderRuntime", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "traditions.skip") }));
-    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(localContent(store.value!).guidedFlow.A09).toEqual({ status: "skipped" });
   });
 
@@ -700,7 +708,7 @@ describe("GuestBuilderRuntime", () => {
     if (!hidden.ok) throw new Error(hidden.reason);
     store.value = hidden.draft;
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await vi.waitFor(() => expect(hiddenView.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(((store.value.content as MemorialContent).traditions as TraditionsContent).entries).toEqual([entry]);
     expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
     hiddenView.unmount();
@@ -742,6 +750,94 @@ describe("GuestBuilderRuntime", () => {
     expect((store.value.content as MemorialContent).traditions).toEqual({ entries: "damaged" });
   });
 
+  it("renders the single A10-A12 sheet with local Hero progress, persists it, and stops before A13", async () => {
+    const fixture = personSheetDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const view = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    expect(view.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
+    fireEvent.change(screen.getByLabelText(translate("fr", "personSheet.a10Question")), {
+      target: { value: "Elle savait accueillir chacun avec douceur." },
+    });
+    fireEvent.change(screen.getByLabelText(translate("fr", "personSheet.a12Question")), {
+      target: { value: "Une attention sincère aux autres." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(store.value!.content).toMatchObject({
+      personWords: { text: "Elle savait accueillir chacun avec douceur." },
+      legacy: { text: "Une attention sincère aux autres." },
+      guidedFlow: {
+        A10: { status: "completed" },
+        A11: { status: "skipped" },
+        A12: { status: "completed" },
+      },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reloads A10-A12 autosaved text and Skip preserves it while stopping before A13", async () => {
+    const fixture = personSheetDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const props = { createStore: () => store, createId: () => "unused" };
+    const first = render(<GuestBuilderRuntime {...props} />);
+
+    const lovedThings = await screen.findByLabelText(translate("fr", "personSheet.a11Question"));
+    fireEvent.change(lovedThings, { target: { value: "Les longues tablées du dimanche." } });
+    await vi.waitFor(() => expect((store.value!.content as unknown as { lovedThings?: unknown }).lovedThings)
+      .toEqual({ text: "Les longues tablées du dimanche." }), { timeout: 3_000 });
+    first.unmount();
+
+    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    expect(await screen.findByDisplayValue("Les longues tablées du dimanche.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "personSheet.skip") }));
+
+    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    expect(store.value!.content).toMatchObject({
+      lovedThings: { text: "Les longues tablées du dimanche." },
+      guidedFlow: {
+        A10: { status: "skipped" },
+        A11: { status: "skipped" },
+        A12: { status: "skipped" },
+      },
+    });
+  });
+
+  it("blocks stale A10-A12 writes and never replaces corrupted life-story data", async () => {
+    const fixture = personSheetDraft();
+    const store = new MemoryStore(fixture.draft);
+    store.assets.set(fixture.asset.localId, fixture.asset);
+    const first = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    const concurrent = updateGuestDraftV3(store.value!, { now: "2026-10-26T10:09:00.000Z" });
+    if (!concurrent.ok) throw new Error(concurrent.reason);
+    store.value = concurrent.draft;
+
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "personSheet.skip") }));
+    await screen.findByText(translate("fr", "autosave.conflictTitle"));
+    expect(store.value).toEqual(concurrent.draft);
+    expect(localContent(store.value!).guidedFlow.A10).toBeUndefined();
+    first.unmount();
+
+    const damaged = structuredClone(store.value!.content) as MemorialContent;
+    (damaged as unknown as { personWords: unknown }).personWords = { text: "présent", extra: "incompatible" };
+    const damagedDraft = updateGuestDraftV3(store.value!, { content: damaged, now: "2026-10-26T10:10:00.000Z" });
+    if (!damagedDraft.ok) throw new Error(damagedDraft.reason);
+    store.value = damagedDraft.draft;
+    render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((store.value.content as unknown as { personWords?: unknown }).personWords)
+      .toEqual({ text: "présent", extra: "incompatible" });
+  });
+
   it("preserves an A14 programme through the A04 yes → no → yes cycle", async () => {
     const moment = { id: "moment-stable", time: "14:00", label: "Accueil", detail: null };
     const fixture = ceremonyDraft({
@@ -762,7 +858,7 @@ describe("GuestBuilderRuntime", () => {
     store.value = hidden.draft;
 
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await vi.waitFor(() => expect(hiddenView.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
     expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).programme).toEqual([moment]);
     expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeNull();
     hiddenView.unmount();

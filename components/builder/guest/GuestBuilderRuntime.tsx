@@ -27,6 +27,7 @@ import { CeremonyAddressStep } from "@/components/builder/CeremonyAddressStep";
 import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeStep";
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
+import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import {
   GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
@@ -410,8 +411,17 @@ export function GuestBuilderRuntime({
                 progress={guestHeroStepProgress(draft)}
               />
             );
+          case "personSheet":
+            return (
+              <PersonSheetStep
+                language={draft.language!}
+                content={draft.content}
+                persist={persist}
+                progress={guestHeroStepProgress(draft)}
+              />
+            );
           default:
-            // A10 and every later canonical screen remain outside this lot.
+            // A13 and every later canonical screen remain outside this lot.
             return <span hidden data-guest-builder-pending="post-reveal" />;
         }
     }

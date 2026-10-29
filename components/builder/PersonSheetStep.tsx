@@ -35,6 +35,8 @@ interface PersonSheetStepProps {
    * resolved by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Guest drafts own Hero completion without a server media reference. */
+  progress?: number;
 }
 
 /**
@@ -128,7 +130,12 @@ function LifeStoryField({ id, language, label, helper, initialValue, disabled, o
   );
 }
 
-export function PersonSheetStep({ language, content: initialContent, persist }: PersonSheetStepProps) {
+export function PersonSheetStep({
+  language,
+  content: initialContent,
+  persist,
+  progress: progressOverride,
+}: PersonSheetStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -225,7 +232,7 @@ export function PersonSheetStep({ language, content: initialContent, persist }: 
     );
   }
 
-  const progress = personSheetProgress(content);
+  const progress = progressOverride ?? personSheetProgress(content);
   const nothingEntered = read.personWords.text === null && read.lovedThings.text === null && read.legacy.text === null;
 
   return (
