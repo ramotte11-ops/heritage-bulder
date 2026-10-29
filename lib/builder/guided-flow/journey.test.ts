@@ -9,6 +9,7 @@ import {
   JOURNEY_SCREENS,
   JOURNEY_SECTIONS,
   JOURNEY_SECTION_MEMORIAL_SECTION,
+  currentJourneyScreenAfter,
   currentJourneyScreen,
   isJourneyScreenId,
   resolveJourney,
@@ -53,6 +54,13 @@ describe("catalog", () => {
     for (const value of ["", "IDENTITY", "T03", "javascript:alert(1)", ["identity"], 3, undefined, null]) {
       expect(isJourneyScreenId(value)).toBe(false);
     }
+  });
+
+  it("resolves from any completed screen through the same ordered catalog", () => {
+    const content = throughA03();
+    expect(currentJourneyScreenAfter(content, "reveal")).toBe("ceremonyMoment");
+    expect(currentJourneyScreenAfter(content, "announcementText")).toBe("ceremonyMoment");
+    expect(currentJourneyScreenAfter(content, "gallery")).toBeNull();
   });
 });
 

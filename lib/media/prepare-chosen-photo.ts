@@ -1,6 +1,7 @@
 import type { MediaPurpose } from "@/config/media";
 import { MediaActionError } from "./media-error-copy";
 import { preparePhotoForUpload } from "./photo-preparation";
+import type { PhotoPreparationReport } from "./photo-preparation";
 import { precheckPhotoFile } from "./precheck-upload";
 
 /**
@@ -15,7 +16,12 @@ import { precheckPhotoFile } from "./precheck-upload";
  * Le parcours d'envoi sécurisé qui suit (réservation → envoi signé →
  * finalisation, avec ses vérifications côté serveur) est inchangé.
  */
-export async function prepareChosenPhoto(file: File, purpose: MediaPurpose): Promise<File> {
+export interface PreparedChosenPhoto {
+  file: File;
+  report: PhotoPreparationReport;
+}
+
+export async function prepareChosenPhotoWithReport(file: File, purpose: MediaPurpose): Promise<PreparedChosenPhoto> {
   let prepared: Awaited<ReturnType<typeof preparePhotoForUpload>>;
   try {
     prepared = await preparePhotoForUpload(file, purpose);
@@ -27,5 +33,9 @@ export async function prepareChosenPhoto(file: File, purpose: MediaPurpose): Pro
   if (!prepared.ok) throw new MediaActionError(prepared.code);
   const refused = precheckPhotoFile(prepared.file);
   if (refused) throw new MediaActionError(refused);
-  return prepared.file;
+  return prepared;
+}
+
+export async function prepareChosenPhoto(file: File, purpose: MediaPurpose): Promise<File> {
+  return (await prepareChosenPhotoWithReport(file, purpose)).file;
 }

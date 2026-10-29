@@ -26,6 +26,9 @@ interface DeathNoticeAnnouncementStepProps {
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
+  /** Optional local-runtime progress. Authenticated callers keep the
+   * canonical content-derived calculation by omitting it. */
+  progress?: number;
 }
 
 /**
@@ -76,6 +79,7 @@ export function DeathNoticeAnnouncementStep({
   language,
   content: initialContent,
   persist,
+  progress: progressOverride,
 }: DeathNoticeAnnouncementStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -142,7 +146,7 @@ export function DeathNoticeAnnouncementStep({
     );
   }
 
-  const progress = deathNoticeStepProgress(content);
+  const progress = progressOverride ?? deathNoticeStepProgress(content);
   const showRequiredError = attemptedSubmit && read.deathNotice.announcementText === null;
 
   return (

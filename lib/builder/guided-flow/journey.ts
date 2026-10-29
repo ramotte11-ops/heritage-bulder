@@ -203,6 +203,22 @@ export function currentJourneyScreen(content: MemorialContent): JourneyScreenId 
 }
 
 /**
+ * The first open screen strictly after an already completed catalog screen.
+ *
+ * Local runtimes can own media completion without manufacturing the server
+ * media references read by the earlier Hero gates. Starting after the locally
+ * completed screen preserves the canonical order and every existing `needs`
+ * predicate for the remainder of the one Builder journey.
+ */
+export function currentJourneyScreenAfter(
+  content: MemorialContent,
+  completedScreen: JourneyScreenId,
+): JourneyScreenId | null {
+  const completedIndex = JOURNEY_SCREENS.findIndex((screen) => screen.id === completedScreen);
+  return JOURNEY_SCREENS.slice(completedIndex + 1).find((screen) => screen.needs(content))?.id ?? null;
+}
+
+/**
  * - `done`: treated once (completed or explicitly skipped);
  * - `current`: the screen the route shows right now;
  * - `toComplete`: reached but not (or no longer) done — e.g. the

@@ -63,6 +63,18 @@ describe("PersonSheetStep — rendering", () => {
     expect(screen.getByText(/Une valeur, une expression, un geste/)).toBeTruthy();
   });
 
+  it("accepts local Hero progress without changing the authenticated default", () => {
+    const defaultView = render(<PersonSheetStep {...baseProps()} />);
+    const defaultWidth = defaultView.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style");
+    defaultView.unmount();
+
+    const localView = render(<PersonSheetStep {...baseProps({ progress: 0.375 })} />);
+    expect(localView.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
+      .toContain("37.5%");
+    expect(defaultWidth).not.toBeNull();
+    expect(defaultWidth).not.toContain("37.5%");
+  });
+
   it("Continue starts disabled — nothing has been entered in any of the three fields", () => {
     render(<PersonSheetStep {...baseProps()} />);
     expect(screen.getByRole("button", { name: /continuer/i })).toHaveProperty("disabled", true);

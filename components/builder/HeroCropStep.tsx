@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
@@ -8,7 +8,12 @@ import type { Media } from "@/types/media";
 import type { HeroCrop } from "@/types/hero";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
-import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import {
+  useDraftRevisionCoordinator,
+  useRevisionedDraftPersist,
+  type DraftSaveTransport,
+} from "@/lib/builder/draft-revision";
+import type { LocalHeroCropPort } from "@/lib/media/local-photo";
 import {
   commitPageD,
   heroStepProgress,
@@ -30,16 +35,21 @@ import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
+import { LocalBlobImage } from "./LocalBlobImage";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./HeroCropStep.module.css";
 
-interface HeroCropStepProps {
+interface HeroCropStepCommonProps {
   language: Language;
   /** The memorial's current draft content — PAGE A/PAGE B/PAGE C are
    * already guaranteed done by the time this renders (see
    * lib/builder/guided-flow/hero-step.ts's `needsPageD` and
    * app/builder/[memorialId]/page.tsx). */
   content: MemorialContent;
+}
+
+export interface AuthenticatedHeroCropStepProps extends HeroCropStepCommonProps {
+  mode?: "authenticated";
   /** The Hero's current photo, already resolved server-side — the exact
    * `Media` this screen re-verifies against at Continue time (mission
    * brief section 16), plus a short-lived signed URL to actually display
@@ -49,6 +59,17 @@ interface HeroCropStepProps {
   /** A bound Server Action — same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
 }
+
+interface LocalHeroCropStepProps extends HeroCropStepCommonProps {
+  mode: "local";
+  localMedia: LocalHeroCropPort;
+}
+
+export type HeroCropStepProps = AuthenticatedHeroCropStepProps | LocalHeroCropStepProps;
+
+type CropAutosaveValue =
+  | { kind: "authenticated"; content: MemorialContent }
+  | { kind: "local"; crop: HeroCrop };
 
 /** One directional nudge, as a percent of the crop window's own
  * width/height — deliberately small enough for fine control, large
@@ -137,17 +158,34 @@ const UNRESOLVED_IMAGE_SIZE: HeroCropImageSize = { naturalWidth: 0, naturalHeigh
  * starting inside that one box — the page's own scroll is never
  * blocked anywhere else.
  */
-export function HeroCropStep({ language, content: initialContent, photo, persist }: HeroCropStepProps) {
-  const saveDraft = useRevisionedDraftPersist(persist);
+export function HeroCropStep(props: HeroCropStepProps) {
+  const { language, content: initialContent } = props;
+  const localMedia = props.mode === "local" ? props.localMedia : null;
+  const saveDraft = useRevisionedDraftPersist(props.mode === "local" ? undefined : props.persist);
+  const revisionCoordinator = useDraftRevisionCoordinator();
   const stepDone = useStepDone();
 
   const [content, setContent] = useState(initialContent);
-  const [imageSize, setImageSize] = useState<HeroCropImageSize>(UNRESOLVED_IMAGE_SIZE);
+  const [localCrop, setLocalCrop] = useState<HeroCrop | null>(() => localMedia?.photo.crop ?? null);
+  const [imageSize, setImageSize] = useState<HeroCropImageSize>(() => localMedia === null
+    ? UNRESOLVED_IMAGE_SIZE
+    : { naturalWidth: localMedia.photo.width, naturalHeight: localMedia.photo.height });
   const [submitError, setSubmitError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const autosaveValue = useMemo<CropAutosaveValue>(() => localMedia === null
+    ? { kind: "authenticated", content }
+    : { kind: "local", crop: localCrop ?? NEUTRAL_HERO_CROP }, [content, localCrop, localMedia]);
+  const persistCropValue = useCallback(async (value: CropAutosaveValue) => {
+    if (value.kind === "authenticated") return saveDraft!(value.content);
+    if (revisionCoordinator === null || localMedia === null) throw new Error("Local crop persistence is unavailable.");
+    return revisionCoordinator.commit(content, (expectedRevision) => localMedia.saveCrop(value.crop, expectedRevision));
+  }, [content, localMedia, revisionCoordinator, saveDraft]);
+  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({
+    content: autosaveValue,
+    persist: persistCropValue,
+  });
 
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
@@ -156,6 +194,10 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
   const controlsDisabled = isSubmitting || isReturning;
 
   function applyCrop(nextCrop: HeroCrop) {
+    if (localMedia !== null) {
+      setLocalCrop(nextCrop);
+      return;
+    }
     const written = writeHeroCrop(content, nextCrop);
     if (written.ok) setContent(written.content);
   }
@@ -205,10 +247,14 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
   async function handleChangePhoto() {
     if (controlsDisabled) return;
 
-    const reopened = reopenPageC(content);
-    if (!reopened.ok) {
-      setSubmitError(true);
-      return;
+    let reopenedContent: MemorialContent | null = null;
+    if (localMedia === null) {
+      const reopened = reopenPageC(content);
+      if (!reopened.ok) {
+        setSubmitError(true);
+        return;
+      }
+      reopenedContent = reopened.content;
     }
 
     // Disabled FIRST — before flush() ever awaits anything — so no new
@@ -229,7 +275,12 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     }
 
     try {
-      await saveDraft(reopened.content);
+      if (localMedia === null) {
+        await saveDraft!(reopenedContent!);
+      } else {
+        if (revisionCoordinator === null) throw new Error("Local crop persistence is unavailable.");
+        await revisionCoordinator.commit(content, localMedia.reopenPhoto);
+      }
     } catch {
       setSubmitError(true);
       setIsReturning(false);
@@ -241,6 +292,22 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (localMedia !== null) {
+      const cropToCommit = localCrop ?? NEUTRAL_HERO_CROP;
+      setIsSubmitting(true);
+      try {
+        if (localCrop !== null) await flush();
+        if (revisionCoordinator === null) throw new Error("Local crop persistence is unavailable.");
+        await revisionCoordinator.commit(content, (expectedRevision) => localMedia.completeCrop(cropToCommit, expectedRevision));
+      } catch {
+        setSubmitError(true);
+        setIsSubmitting(false);
+        return;
+      }
+      stepDone();
+      return;
+    }
 
     let toCommit = content;
     if (read.status === "ready" && read.hero.photo?.crop === null) {
@@ -284,7 +351,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
       return;
     }
 
-    const committed = commitPageD(toCommit, photo.media);
+    const committed = commitPageD(toCommit, props.mode === "local" ? null : props.photo.media);
     if (!committed.ok) {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -292,7 +359,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     }
 
     try {
-      await saveDraft(committed.content);
+      await saveDraft!(committed.content);
     } catch {
       setSubmitError(true);
       setIsSubmitting(false);
@@ -302,7 +369,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     stepDone();
   }
 
-  if (read.status !== "ready" || read.hero.photo === null) {
+  if (read.status !== "ready" || (localMedia === null && read.hero.photo === null)) {
     return (
       <BuilderScreen progress={0}>
         <p role="alert" className={styles.error}>
@@ -312,7 +379,7 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
     );
   }
 
-  const crop = read.hero.photo.crop ?? NEUTRAL_HERO_CROP;
+  const crop = localMedia === null ? read.hero.photo!.crop ?? NEUTRAL_HERO_CROP : localCrop ?? NEUTRAL_HERO_CROP;
   const geometry = resolveHeroCropGeometry(imageSize, crop);
   const progress = heroStepProgress(content, read.hero);
 
@@ -335,21 +402,37 @@ export function HeroCropStep({ language, content: initialContent, photo, persist
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          {/* A signed/blob URL, never a static asset next/image can optimize, and never persisted. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photo.readUrl}
-            alt={translate(language, "hero.photoAlt")}
-            className={styles.image}
-            draggable={false}
-            onLoad={handleImageLoad}
-            style={{
-              left: `${geometry.leftPercent}%`,
-              top: `${geometry.topPercent}%`,
-              width: `${geometry.widthPercent}%`,
-              height: `${geometry.heightPercent}%`,
-            }}
-          />
+          {props.mode === "local" ? (
+            <LocalBlobImage
+              blob={props.localMedia.photo.blob}
+              alt={translate(language, "hero.photoAlt")}
+              className={styles.image}
+              draggable={false}
+              onLoad={handleImageLoad}
+              style={{
+                left: `${geometry.leftPercent}%`,
+                top: `${geometry.topPercent}%`,
+                width: `${geometry.widthPercent}%`,
+                height: `${geometry.heightPercent}%`,
+              }}
+            />
+          ) : (
+            // A signed URL, never a static asset next/image can optimize, and never persisted.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={props.photo.readUrl}
+              alt={translate(language, "hero.photoAlt")}
+              className={styles.image}
+              draggable={false}
+              onLoad={handleImageLoad}
+              style={{
+                left: `${geometry.leftPercent}%`,
+                top: `${geometry.topPercent}%`,
+                width: `${geometry.widthPercent}%`,
+                height: `${geometry.heightPercent}%`,
+              }}
+            />
+          )}
         </div>
 
         <div className={styles.moveControls} role="group" aria-label={translate(language, "hero.cropTitle")}>

@@ -118,6 +118,14 @@ describe("CeremonyProgrammeStep — rendu", () => {
     expect(screen.queryByText("Le déroulement de la cérémonie")).toBeNull();
   });
 
+  it("accepts guest Hero progress without changing the authenticated default", () => {
+    const { container, rerender } = render(<CeremonyProgrammeStep {...baseProps()} progress={0.73} />);
+    expect(container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style")).toContain("73%");
+
+    rerender(<CeremonyProgrammeStep {...baseProps()} />);
+    expect(container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style")).not.toContain("73%");
+  });
+
   it.each([
     ["en", "The order of the ceremony", "+ Add a moment", "Skip this step"],
     ["es", "El desarrollo de la ceremonia", "+ Añadir un momento", "Omitir este paso"],

@@ -29,6 +29,9 @@ interface CeremonyMomentStepProps {
   content: MemorialContent;
   /** A bound Server Action — the same seam every Guided Flow screen uses. */
   persist: DraftSaveTransport;
+  /** Optional host progress override. The authenticated Builder keeps the
+   * canonical calculation; the guest host includes its local Hero photo. */
+  progress?: number;
 }
 
 const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momentUndecided" | "ceremony.momentNo"> = {
@@ -54,7 +57,7 @@ const ANSWER_LABEL_KEY: Record<A04Answer, "ceremony.momentYes" | "ceremony.momen
  * yet made — the same "no intermediate autosave" shape A00's own
  * `AnnouncementChoiceStep` uses for the identical reason.
  */
-export function CeremonyMomentStep({ language, content, persist }: CeremonyMomentStepProps) {
+export function CeremonyMomentStep({ language, content, persist, progress }: CeremonyMomentStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [selected, setSelected] = useState<A04Answer | null>(() => readCeremonyMomentAnswer(content));
@@ -98,10 +101,10 @@ export function CeremonyMomentStep({ language, content, persist }: CeremonyMomen
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const resolvedProgress = progress ?? ceremonyStepProgress(content);
 
   return (
-    <BuilderScreen progress={progress}>
+    <BuilderScreen progress={resolvedProgress}>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "ceremony.momentTitle")}</h1>
         <p className={styles.subtitle}>{translate(language, "ceremony.momentSubtitle")}</p>

@@ -26,9 +26,10 @@ import { translate } from "@/lib/i18n/translate";
  * B03 — « Mon parcours »: what the entry (`JourneyEntry`, rendered by
  * `BuilderScreen`) and every Guided Flow step read.
  *
- * Outside a provider (T01, the Welcome, the unit tests of a single
- * step) the context is `null`: the entry renders nothing and
- * `useStepDone` falls back to the historical `router.refresh()`.
+ * Outside a route journey the context is `null`: the entry renders
+ * nothing. `useStepDone` may still use the narrow local completion
+ * provider; without either provider it falls back to the historical
+ * `router.refresh()`.
  */
 export interface JourneyNavigation {
   language: Language;
@@ -84,6 +85,27 @@ export interface JourneyVisibility {
 
 export const JourneyContext = createContext<JourneyNavigation | null>(null);
 
+/**
+ * Small common seam for a Builder host whose progression is not driven by
+ * an App Router refresh. The authenticated route does not provide it and
+ * therefore keeps its historical Journey/router behaviour unchanged.
+ */
+const BuilderStepCompletionContext = createContext<(() => void) | null>(null);
+
+export function BuilderStepCompletionProvider({
+  finishStep,
+  children,
+}: {
+  finishStep: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <BuilderStepCompletionContext.Provider value={finishStep}>
+      {children}
+    </BuilderStepCompletionContext.Provider>
+  );
+}
+
 export function useJourney(): JourneyNavigation | null {
   return useContext(JourneyContext);
 }
@@ -98,10 +120,12 @@ export function useJourney(): JourneyNavigation | null {
 export function useStepDone(): () => void {
   const router = useRouter();
   const journey = useContext(JourneyContext);
+  const localCompletion = useContext(BuilderStepCompletionContext);
   return useCallback(() => {
-    if (journey !== null) journey.finishStep();
+    if (localCompletion !== null) localCompletion();
+    else if (journey !== null) journey.finishStep();
     else router.refresh();
-  }, [journey, router]);
+  }, [journey, localCompletion, router]);
 }
 
 function sectionPath(builderPath: string, section: JourneySection): string {

@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { MemorialContent } from "@/types/memorial";
 import { MAX_MEDIA_BYTES } from "@/config/media";
 import { PHOTO_INPUT_MAX_BYTES } from "@/config/photo-profiles";
+import type { LocalGalleryEditorialItem, LocalGalleryPhotoSnapshot, LocalGalleryPort, PreparedLocalPhoto } from "@/lib/media/local-photo";
 
 /**
  * A13 — "Vos souvenirs en images": the real Builder screen, rendered
@@ -58,6 +59,7 @@ vi.stubGlobal(
 
 const { GalleryStep } = await import("./GalleryStep");
 const { BuilderPreviewHost } = await import("./preview/BuilderPreviewHost");
+const { DraftRevisionProvider } = await import("@/lib/builder/draft-revision");
 
 const m = (n: number) => `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, "0")}`;
 const signed = (id: string) => `https://storage.test/signed/${id}`;
@@ -349,7 +351,7 @@ describe("Ajouter des photos — several files, one after another, each with its
 
   it("a failure on one file never undoes the ones already added, and the next file still goes through", async () => {
     const finalizeUpload = vi.fn(async (id: string) => (finalizeUpload.mock.calls.length === 2 ? { ok: false, code: "invalid_file" } : finalized(id)));
-    const p = props({ finalizeUpload: finalizeUpload as unknown as Parameters<typeof GalleryStep>[0]["finalizeUpload"] });
+    const p = props({ finalizeUpload: finalizeUpload as unknown as import("./GalleryStep").AuthenticatedGalleryStepProps["finalizeUpload"] });
     render(<GalleryStep {...p} />);
     fireEvent.change(addInput(), { target: { files: [file("a.jpg"), file("b.jpg"), file("c.jpg")] } });
     await waitFor(() => expect(finalizeUpload).toHaveBeenCalledTimes(3));
@@ -444,6 +446,173 @@ describe("Ajouter des photos — several files, one after another, each with its
     const items = galleryOf(lastPersisted(p.persist));
     expect(Object.keys(items[0]).sort()).toEqual(["caption", "mediaId"]);
     expect(JSON.stringify(lastPersisted(p.persist))).not.toMatch(/blob:|https?:|original\./);
+  });
+});
+
+function localPhoto(localId: string, caption: string | null = null, byte = 1): LocalGalleryPhotoSnapshot {
+  return {
+    localId,
+    blob: new Blob([new Uint8Array([byte])], { type: "image/webp" }),
+    mimeType: "image/webp",
+    width: 1600,
+    height: 1067,
+    caption,
+  };
+}
+
+function localPort(initialPhotos: LocalGalleryPhotoSnapshot[] = []) {
+  let photos = [...initialPhotos];
+  let revision = 0;
+  let sequence = initialPhotos.length;
+  let failAddAt: number | null = null;
+  let addCount = 0;
+
+  const saved = () => ({
+    status: "saved" as const,
+    updatedAt: "2026-10-27T08:00:00.000Z",
+    revision: ++revision,
+    photos: [...photos],
+  });
+  const check = (expectedRevision: number) => expectedRevision === revision;
+  const port: LocalGalleryPort = {
+    initialPhotos: [...photos],
+    addPreparedPhoto: vi.fn(async (prepared: PreparedLocalPhoto, expectedRevision: number) => {
+      addCount += 1;
+      if (!check(expectedRevision)) return { status: "conflict" as const };
+      if (failAddAt === addCount) throw new Error("quota exceeded");
+      const photo = { ...prepared, localId: `local-${++sequence}`, caption: null };
+      photos = [...photos, photo];
+      return { ...saved(), photo };
+    }),
+    replacePreparedPhoto: vi.fn(async (localId: string, prepared: PreparedLocalPhoto, expectedRevision: number) => {
+      if (!check(expectedRevision)) return { status: "conflict" as const };
+      const previous = photos.find((photo) => photo.localId === localId)!;
+      const replacement = { ...prepared, localId: `local-${++sequence}`, caption: previous.caption };
+      photos = photos.map((photo) => photo.localId === localId ? replacement : photo);
+      return { ...saved(), photo: replacement };
+    }),
+    removePhoto: vi.fn(async (localId: string, expectedRevision: number) => {
+      if (!check(expectedRevision)) return { status: "conflict" as const };
+      photos = photos.filter((photo) => photo.localId !== localId);
+      return saved();
+    }),
+    saveEditorial: vi.fn(async (items: readonly LocalGalleryEditorialItem[], expectedRevision: number) => {
+      if (!check(expectedRevision)) return { status: "conflict" as const };
+      photos = items.map((item) => ({ ...photos.find((photo) => photo.localId === item.localId)!, caption: item.caption }));
+      return saved();
+    }),
+    resolveStep: vi.fn(async (_action, expectedRevision) => check(expectedRevision)
+      ? { status: "saved" as const, updatedAt: "2026-10-27T08:00:00.000Z", revision: ++revision }
+      : { status: "conflict" as const }),
+  };
+  return {
+    port,
+    photos: () => photos,
+    failNextNumber: (number: number) => { failAddAt = number; },
+  };
+}
+
+function renderLocal(port: LocalGalleryPort, initialRevision = 0) {
+  const content = {} as MemorialContent;
+  return render(
+    <DraftRevisionProvider initialRevision={initialRevision} initialContent={content}>
+      <GalleryStep mode="local" language="fr" content={content} localMedia={port} />
+    </DraftRevisionProvider>,
+  );
+}
+
+describe("A13 local guest foundation — the same workshop over IndexedDB V3", () => {
+  beforeEach(() => {
+    getBrowserSupabaseClient.mockClear();
+    uploadToSignedUrl.mockClear();
+    preparePhotoForUpload.mockImplementation(async (_chosen: File, purpose: string) => ({
+      ok: true as const,
+      file: new File([new Uint8Array(512)], "photo.webp", { type: "image/webp" }),
+      report: {
+        purpose,
+        inputBytes: 2048,
+        inputWidth: 2400,
+        inputHeight: 1600,
+        outputBytes: 512,
+        width: 1600,
+        height: 1067,
+        type: "image/webp" as const,
+        quality: 0.9,
+        attempts: 1,
+        targetMet: true,
+        heavierThanInput: false,
+        durationMs: 5,
+      },
+    }));
+  });
+
+  it("keeps multi-file writes sequential, preserves earlier successes after quota failure, and never loads Supabase", async () => {
+    const h = localPort();
+    h.failNextNumber(2);
+    renderLocal(h.port);
+    fireEvent.change(addInput(), { target: { files: [file("a.jpg"), file("b.jpg"), file("c.jpg")] } });
+
+    await waitFor(() => expect(h.port.addPreparedPhoto).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(h.photos().map(({ localId }) => localId)).toEqual(["local-1", "local-2"]);
+    expect(screen.getByText("b.jpg")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("photo");
+    expect(getBrowserSupabaseClient).not.toHaveBeenCalled();
+    expect(uploadToSignedUrl).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.photos())).not.toMatch(/mediaId|memorialId/);
+  });
+
+  it("replaces in place, retains the caption, removes only after the durable answer, and revokes object URLs", async () => {
+    const h = localPort([localPhoto("local-1", "Ensemble", 1), localPhoto("local-2", null, 2)]);
+    const view = renderLocal(h.port);
+    await waitFor(() => expect(rows()[0].querySelector("img")?.getAttribute("src")).toMatch(/^blob:/));
+
+    fireEvent.change(rows()[0].querySelector<HTMLInputElement>("input[type=file]")!, {
+      target: { files: [file("replacement.jpg")] },
+    });
+    await waitFor(() => expect(h.port.replacePreparedPhoto).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((within(rows()[0]).getByLabelText("Légende (facultative)") as HTMLInputElement).value).toBe("Ensemble"));
+    expect(h.photos().map(({ localId }) => localId)).toEqual(["local-3", "local-2"]);
+
+    fireEvent.click(within(rows()[1]).getByRole("button", { name: "Retirer" }));
+    fireEvent.click(within(rows()[1]).getByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(h.port.removePhoto).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(h.photos().map(({ localId }) => localId)).toEqual(["local-3"]);
+    view.unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it("persists local order and normalized captions with CAS while leaving content.gallery untouched", async () => {
+    const h = localPort([localPhoto("local-1", "Maman"), localPhoto("local-2")]);
+    renderLocal(h.port);
+    fireEvent.click(screen.getAllByRole("button", { name: "Descendre" })[0]);
+    fireEvent.change(within(rows()[1]).getByLabelText("Légende (facultative)"), { target: { value: " Tous les deux " } });
+
+    await waitFor(() => expect(h.port.saveEditorial).toHaveBeenCalled(), { timeout: 2500 });
+    expect(h.photos().map(({ localId, caption }) => [localId, caption])).toEqual([
+      ["local-2", null],
+      ["local-1", "Tous les deux"],
+    ]);
+    expect(JSON.stringify((h.port.saveEditorial as ReturnType<typeof vi.fn>).mock.calls)).not.toMatch(/mediaId|memorialId/);
+  });
+
+  it("surfaces a stale-tab conflict and never adopts the rejected photograph", async () => {
+    const h = localPort();
+    h.port.addPreparedPhoto = vi.fn().mockResolvedValue({ status: "conflict" });
+    renderLocal(h.port);
+    fireEvent.change(addInput(), { target: { files: [file("stale.jpg")] } });
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(rows()).toHaveLength(0);
+    expect(h.photos()).toHaveLength(0);
+  });
+
+  it("keeps the authenticated upload module behind a dynamic boundary and the guest adapter network-free", () => {
+    const workshop = readFileSync(path.join(import.meta.dirname, "GalleryWorkshop.tsx"), "utf8");
+    const guestAdapter = readFileSync(path.join(import.meta.dirname, "../../lib/guest-draft/guest-gallery-media.ts"), "utf8");
+    expect(workshop).not.toMatch(/from\s+["']@\/lib\/supabase/);
+    expect(workshop).toContain('await import("@/lib/media/authenticated-gallery-upload")');
+    expect(guestAdapter).not.toMatch(/supabase|fetch\(|XMLHttpRequest|mediaId|memorialId/i);
   });
 });
 

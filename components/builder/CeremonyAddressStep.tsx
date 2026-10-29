@@ -28,6 +28,9 @@ interface CeremonyAddressStepProps {
    * resolved by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Optional host progress override; authenticated callers keep the
+   * canonical calculation while the guest host includes its local Hero. */
+  progress?: number;
 }
 
 /**
@@ -35,7 +38,7 @@ interface CeremonyAddressStepProps {
  * pratiques, grouped in one small screen (mission brief's own
  * découpage). Facultatif, passable.
  */
-export function CeremonyAddressStep({ language, content: initialContent, persist }: CeremonyAddressStepProps) {
+export function CeremonyAddressStep({ language, content: initialContent, persist, progress }: CeremonyAddressStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
@@ -127,12 +130,12 @@ export function CeremonyAddressStep({ language, content: initialContent, persist
     );
   }
 
-  const progress = ceremonyStepProgress(content);
+  const resolvedProgress = progress ?? ceremonyStepProgress(content);
   const hasAnyValue = read.ceremony.address !== null || read.ceremony.access !== null;
 
   return (
     <BuilderScreen
-      progress={progress}
+      progress={resolvedProgress}
       status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
     >
       <div className={styles.copy}>
