@@ -14,8 +14,18 @@ export function pageExtensionsFor(nodeEnv: string | undefined): string[] {
   return nodeEnv === "production" ? standard : [DEV_ONLY_PAGE_EXTENSION, ...standard];
 }
 
+/**
+ * Preview Server Netlify : Next.js 16 bloque en développement les requêtes
+ * cross-origin vers ses ressources internes (`/_next/*`, HMR). Servi depuis
+ * l'hôte Netlify, `next dev` refusait JS et HMR : écran blanc sur
+ * `/pilote/builder-invite` (incident QG 004-G). Seul cet hôte exact est
+ * autorisé — aucun joker, aucun `*.netlify.app`. Sans effet sur `next build`.
+ */
+export const NETLIFY_PREVIEW_DEV_ORIGIN = "devserver-main--hommages.netlify.app";
+
 const nextConfig: NextConfig = {
   pageExtensions: pageExtensionsFor(process.env.NODE_ENV),
+  allowedDevOrigins: [NETLIFY_PREVIEW_DEV_ORIGIN],
 };
 
 export default nextConfig;
