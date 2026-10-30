@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { DEV_ONLY_PAGE_EXTENSION, pageExtensionsFor } from "./next.config";
+import { isCsrfOriginAllowed } from "next/dist/server/app-render/csrf-protection";
+import nextConfig, {
+  DEV_ONLY_PAGE_EXTENSION,
+  NETLIFY_PREVIEW_DEV_ORIGIN,
+  pageExtensionsFor,
+} from "./next.config";
 
 /**
  * Pages de développement (`page.dev.tsx`) : routées par `next dev` seulement,
@@ -29,4 +34,35 @@ describe("pageExtensionsFor", () => {
       expect(readdirSync(dir).filter((f) => /^page\.(tsx|ts|jsx|js)$/.test(f))).toEqual([]);
     },
   );
+});
+
+/**
+ * Preview Server Netlify (incident QG 004-G) : l'hôte exact du serveur de
+ * développement Netlify est autorisé, et lui seul. Le contrôle passe par le
+ * matcher de Next.js lui-même, celui qu'utilise `next dev`.
+ */
+describe("allowedDevOrigins", () => {
+  const allowed = nextConfig.allowedDevOrigins ?? [];
+
+  it("autorise exactement l'hôte du Preview Server Netlify, sans schéma ni port", () => {
+    expect(NETLIFY_PREVIEW_DEV_ORIGIN).toBe("devserver-main--hommages.netlify.app");
+    expect(allowed).toEqual([NETLIFY_PREVIEW_DEV_ORIGIN]);
+    expect(isCsrfOriginAllowed("devserver-main--hommages.netlify.app", allowed)).toBe(true);
+  });
+
+  it("n'utilise aucun joker", () => {
+    for (const entry of allowed) expect(entry).not.toMatch(/\*/);
+  });
+
+  it.each([
+    "hommages.netlify.app",
+    "autre--hommages.netlify.app",
+    "deploy-preview-1--hommages.netlify.app",
+    "evil.netlify.app",
+    "netlify.app",
+    "x.devserver-main--hommages.netlify.app",
+    "devserver-main--hommages.netlify.app.evil.com",
+  ])("refuse l'origine Netlify ou voisine %s", (origin) => {
+    expect(isCsrfOriginAllowed(origin, allowed)).toBe(false);
+  });
 });
