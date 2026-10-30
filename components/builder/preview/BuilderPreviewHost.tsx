@@ -123,6 +123,12 @@ export interface BuilderPreviewHostProps {
    * la création », Escape, or another screen arriving). The guest Builder
    * revokes the opening's local `blob:` URLs here. */
   onClosed?: () => void;
+  /** QG 005-B — « Mon parcours » for a host whose navigation is not
+   * route-driven (the guest Builder): its own `JourneyContext` provider,
+   * rendered exactly where the route's `RouteJourneyProvider` is — inside
+   * this host's flush registry, so the journey drains the step's autosave
+   * before moving. Ignored when `journey` is set. */
+  localJourney?: (content: ReactNode) => ReactNode;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -152,6 +158,7 @@ export function BuilderPreviewHost({
   journey = null,
   openOnArrival = false,
   onClosed,
+  localJourney,
   children,
 }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
@@ -327,6 +334,8 @@ export function BuilderPreviewHost({
           >
             {content}
           </RouteJourneyProvider>
+        ) : localJourney !== undefined ? (
+          localJourney(content)
         ) : (
           content
         )}

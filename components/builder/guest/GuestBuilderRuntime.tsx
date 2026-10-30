@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translate } from "@/lib/i18n/translate";
 import { DraftRevisionProvider } from "@/lib/builder/draft-revision";
 import type { DraftSaveTransport } from "@/lib/builder/draft-revision";
@@ -30,13 +30,13 @@ import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GuestGalleryStepAdapter } from "@/components/builder/guest/GuestGalleryStepAdapter";
+import { GuestJourneyProvider, type GuestJourneyMoves } from "@/components/builder/guest/GuestJourneyProvider";
 import {
   GUEST_BUILDER_V1_SKIN,
   GuestBuilderRuntimeError,
   createGuestDraftSaveTransport,
   loadOrCreateGuestDraft,
   resolveGuestBuilderStage,
-  resolveGuestPostHeroScreen,
   saveGuestDraftLanguage,
   type GuestBuilderDraftStore,
 } from "@/lib/guest-draft/guest-builder-runtime";
@@ -58,12 +58,35 @@ import {
   toMemorialPreviewResult,
   type GuestPreviewSession,
 } from "@/lib/guest-draft/guest-preview";
+import {
+  guestCurrentJourneyScreen,
+  hasGuestJourney,
+  resolveGuestJourney,
+  resolveGuestReviewingSection,
+  resolveGuestRevisionTarget,
+} from "@/lib/guest-draft/guest-journey";
+import { journeySectionForScreen, type JourneyScreenId, type JourneySection } from "@/lib/builder/guided-flow/journey";
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
   GuestDraftV3Store,
   "readPhoto" | "addPhoto" | "replacePhoto" | "updatePhotoPlacement" | "removePhoto"
 >;
+
+/**
+ * QG 005-B — the guest's stand-in for the route's URL: `revising` is its
+ * `?etape=`, `reviewingSection` its `?rubrique=`, `returnToPreview` and
+ * `reopenPreview` its `?apercu=1` (a screen opened from the Preview, and
+ * the Preview to reopen on arrival).
+ */
+interface JourneyView {
+  revising: JourneyScreenId | null;
+  reviewingSection: JourneySection | null;
+  returnToPreview: boolean;
+  reopenPreview: boolean;
+}
+
+const NORMAL_VIEW: JourneyView = { revising: null, reviewingSection: null, returnToPreview: false, reopenPreview: false };
 
 type RuntimeState =
   | { status: "loading" }
@@ -73,8 +96,33 @@ type RuntimeState =
       draft: GuestDraftV3;
       heroPhoto: LocalPhotoSnapshot | null;
       heroReadUrl: string | null;
+      view: JourneyView;
     }
   | { status: "error"; reason: string };
+
+/** The view as the draft allows it: a revision target that is no longer
+ * reopenable (and its way back to the Preview) is dropped, exactly like
+ * the route ignores an invalid `?etape=`. */
+function validView(draft: GuestDraftV3, view: JourneyView): JourneyView {
+  if (!hasGuestJourney(draft)) return NORMAL_VIEW;
+  const revising = resolveGuestRevisionTarget(draft, view.revising);
+  return {
+    revising,
+    reviewingSection: resolveGuestReviewingSection(draft, view.reviewingSection),
+    returnToPreview: revising !== null && view.returnToPreview,
+    reopenPreview: view.reopenPreview,
+  };
+}
+
+/** The catalog screen shown: the revised one, else where the family stopped. */
+function shownScreen(draft: GuestDraftV3, view: JourneyView): JourneyScreenId | null {
+  return view.revising ?? guestCurrentJourneyScreen(draft);
+}
+
+/** Only T08 renders the Hero from a `blob:` read URL. */
+function showsReveal(draft: GuestDraftV3, view: JourneyView): boolean {
+  return hasGuestJourney(draft) && shownScreen(draft, view) === "reveal";
+}
 
 export interface GuestBuilderRuntimeProps {
   /** Injection points exist for deterministic browser-contract tests only. */
@@ -118,6 +166,13 @@ function defaultRevokeObjectUrl(url: string): void {
  * Supabase. Each opening's `blob:` URLs are revoked when the Preview
  * closes, before the next opening, and on unmount.
  *
+ * QG 005-B — from the first Hero question on, « Mon parcours » works as on
+ * the authenticated route (`GuestJourneyProvider`, the journey computed
+ * from the local draft by `resolveGuestJourney`): any reached screen can be
+ * reopened with « Revoir », its Continue leads back to the rubrique, then
+ * the normal progression resumes; « Changer l'ambiance » leads from the
+ * Preview to T08 and back to the Preview.
+ *
  * Only a development page routes it (`app/pilote/builder-invite/page.dev.tsx`);
  * no production route imports this component.
  */
@@ -132,6 +187,7 @@ export function GuestBuilderRuntime({
   const draftRef = useRef<GuestDraftV3 | null>(null);
   const heroPhotoRef = useRef<LocalPhotoSnapshot | null>(null);
   const heroReadUrlRef = useRef<string | null>(null);
+  const viewRef = useRef<JourneyView>(NORMAL_VIEW);
   const previewSessionRef = useRef<GuestPreviewSession | null>(null);
   const mountedRef = useRef(true);
 
@@ -142,7 +198,7 @@ export function GuestBuilderRuntime({
       try {
         const draft = await loadOrCreateGuestDraft({ store, createId, now });
         const heroPhoto = await loadGuestHeroPhoto(store, draft);
-        const heroReadUrl = heroPhoto !== null && resolveGuestBuilderStage(draft) === "heroReveal"
+        const heroReadUrl = heroPhoto !== null && showsReveal(draft, NORMAL_VIEW)
           ? createObjectUrl(heroPhoto.blob)
           : null;
         if (!active) {
@@ -152,7 +208,8 @@ export function GuestBuilderRuntime({
         draftRef.current = draft;
         heroPhotoRef.current = heroPhoto;
         heroReadUrlRef.current = heroReadUrl;
-        setRuntime({ status: "ready", store, draft, heroPhoto, heroReadUrl });
+        viewRef.current = NORMAL_VIEW;
+        setRuntime({ status: "ready", store, draft, heroPhoto, heroReadUrl, view: NORMAL_VIEW });
       } catch (error: unknown) {
         if (!active) return;
         setRuntime({
@@ -189,24 +246,56 @@ export function GuestBuilderRuntime({
     draftRef.current = draft;
   }, []);
 
-  const finishStep = useCallback(() => {
+  /** Shows the latest saved draft under `view` — the one place the
+   * displayed screen changes. */
+  const show = useCallback((nextView: (view: JourneyView) => JourneyView) => {
     const draft = draftRef.current;
     if (draft === null) return;
+    const view = validView(draft, nextView(viewRef.current));
+    viewRef.current = view;
     const heroPhoto = heroPhotoRef.current;
-    const nextStage = resolveGuestBuilderStage(draft);
+    const onReveal = showsReveal(draft, view);
     let heroReadUrl = heroReadUrlRef.current;
-    if (nextStage === "heroReveal" && heroPhoto !== null && heroReadUrl === null) {
+    if (onReveal && heroPhoto !== null && heroReadUrl === null) {
       heroReadUrl = createObjectUrl(heroPhoto.blob);
       heroReadUrlRef.current = heroReadUrl;
-    } else if (nextStage !== "heroReveal" && heroReadUrl !== null) {
+    } else if (!onReveal && heroReadUrl !== null) {
       revokeObjectUrl(heroReadUrl);
       heroReadUrl = null;
       heroReadUrlRef.current = null;
     }
     setRuntime((current) => current.status === "ready"
-      ? { ...current, draft, heroPhoto, heroReadUrl }
+      ? { ...current, draft, heroPhoto, heroReadUrl, view }
       : current);
   }, [createObjectUrl, revokeObjectUrl]);
+
+  // A step's Continue is saved. On the normal progression: the next open
+  // screen. On a revised screen (the route's `finishStep`): back to the
+  // Preview when opened from it, otherwise back to the rubrique's list.
+  const finishStep = useCallback(() => {
+    show((view) => {
+      if (view.revising === null) return view;
+      if (view.returnToPreview) return { ...NORMAL_VIEW, reopenPreview: true };
+      return { ...NORMAL_VIEW, reviewingSection: view.reviewingSection ?? journeySectionForScreen(view.revising) };
+    });
+  }, [show]);
+
+  const journeyMoves = useMemo<GuestJourneyMoves>(() => ({
+    openScreen: (id, returnToPreview) => show(() => ({
+      revising: id,
+      reviewingSection: journeySectionForScreen(id),
+      returnToPreview,
+      reopenPreview: false,
+    })),
+    resume: () => show((view) => (view.returnToPreview ? { ...NORMAL_VIEW, reopenPreview: true } : NORMAL_VIEW)),
+    finishReview: () => show(() => NORMAL_VIEW),
+    finishStep,
+  }), [finishStep, show]);
+
+  const previewClosed = useCallback(() => {
+    releasePreview();
+    if (viewRef.current.reopenPreview) show((view) => ({ ...view, reopenPreview: false }));
+  }, [releasePreview, show]);
 
   const store = runtime.status === "ready" ? runtime.store : null;
   const persist = useCallback<DraftSaveTransport>(async (content, expectedRevision) => {
@@ -250,11 +339,12 @@ export function GuestBuilderRuntime({
     );
   }
 
-  const { draft } = runtime;
+  const { draft, view } = runtime;
   const stage = resolveGuestBuilderStage(draft);
-  const postHeroScreen = stage === "postRevealPending" ? resolveGuestPostHeroScreen(draft) : null;
+  const journeyOn = hasGuestJourney(draft);
+  const shown = journeyOn ? shownScreen(draft, view) : null;
   // The authenticated rule: from T08 on, never on a Reveal (T08, A03).
-  const previewAvailable = stage === "postRevealPending" && postHeroScreen !== "announcementPreview";
+  const previewAvailable = stage === "postRevealPending" && shown !== "reveal" && shown !== "announcementPreview";
   const mediaOptions = (): GuestHeroMediaOptions => ({
     store: runtime.store,
     getDraft: () => {
@@ -267,8 +357,9 @@ export function GuestBuilderRuntime({
     now,
   });
 
+  const screenId = stage === "language" || stage === "welcome" ? stage : shown;
   const screen = (() => {
-    switch (stage) {
+    switch (screenId) {
       case "language":
         return (
           <LanguageStep
@@ -287,6 +378,7 @@ export function GuestBuilderRuntime({
                   draft: saved.draft,
                   heroPhoto: heroPhotoRef.current,
                   heroReadUrl: heroReadUrlRef.current,
+                  view: NORMAL_VIEW,
                 });
               }
               return saved.response;
@@ -296,12 +388,19 @@ export function GuestBuilderRuntime({
       case "welcome":
         return <WelcomeStep language={draft.language!} content={draft.content} persist={persist} />;
       case "identity":
-        return <HeroIdentityStep language={draft.language!} content={draft.content} persist={persist} />;
+        return <HeroIdentityStep language={draft.language!} content={draft.content} persist={persist} progress={guestHeroStepProgress(draft)} />;
       case "announcementChoice":
-        return <AnnouncementChoiceStep language={draft.language!} content={draft.content} persist={persist} />;
+        return (
+          <AnnouncementChoiceStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
       case "phrase":
-        return <HeroPhraseStep language={draft.language!} content={draft.content} persist={persist} />;
-      case "heroPhoto":
+        return <HeroPhraseStep language={draft.language!} content={draft.content} persist={persist} progress={guestHeroStepProgress(draft)} />;
+      case "photo":
         return (
           <HeroPhotoStep
             mode="local"
@@ -318,7 +417,7 @@ export function GuestBuilderRuntime({
             }}
           />
         );
-      case "heroCrop":
+      case "crop":
         if (runtime.heroPhoto === null) return <span hidden data-guest-builder-error="missing-hero-photo" />;
         return (
           <HeroCropStep
@@ -345,7 +444,7 @@ export function GuestBuilderRuntime({
             }}
           />
         );
-      case "heroReveal":
+      case "reveal":
         if (runtime.heroPhoto?.crop == null || runtime.heroReadUrl === null) {
           return <span hidden data-guest-builder-error="missing-hero-reveal-photo" />;
         }
@@ -363,136 +462,133 @@ export function GuestBuilderRuntime({
             }}
           />
         );
-      case "postRevealPending":
-        switch (postHeroScreen) {
-          case "announcementText":
-            return (
-              <DeathNoticeAnnouncementStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "announcementDetails":
-            return (
-              <DeathNoticePrecisionsStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "announcementPreview":
-            if (draft.skinVariant === null) {
-              return <span hidden data-guest-builder-error="missing-skin-variant" />;
-            }
-            return (
-              <DeathNoticePreviewStep
-                language={draft.language!}
-                content={draft.content}
-                skin={GUEST_BUILDER_V1_SKIN}
-                skinVariant={draft.skinVariant}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyMoment":
-            return (
-              <CeremonyMomentStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyDateTime":
-            return (
-              <CeremonyDateTimeStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyVenue":
-            return (
-              <CeremonyVenueStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyAddress":
-            return (
-              <CeremonyAddressStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyProgramme":
-            return (
-              <CeremonyProgrammeStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "ceremonyNote":
-            return (
-              <CeremonyNoteStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "traditions":
-            return (
-              <TraditionsStep
-                language={draft.language!}
-                content={draft.content}
-                skin={GUEST_BUILDER_V1_SKIN}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "personSheet":
-            return (
-              <PersonSheetStep
-                language={draft.language!}
-                content={draft.content}
-                persist={persist}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          case "gallery":
-            return (
-              <GuestGalleryStepAdapter
-                language={draft.language!}
-                draft={draft}
-                store={runtime.store}
-                getDraft={() => draftRef.current ?? draft}
-                acceptDraft={acceptDraft}
-                createId={createId}
-                now={now}
-                progress={guestHeroStepProgress(draft)}
-              />
-            );
-          default:
-            // Every built step is behind the family: the existing pause,
-            // with « Voir l'aperçu » as the way forward. Account and
-            // publication stages remain outside QG 003.
-            return (
-              <div data-guest-builder-pending="post-reveal">
-                <GuidedFlowPause language={draft.language!} progress={guestHeroStepProgress(draft)} ownerSpace={false} />
-              </div>
-            );
+      case "announcementText":
+        return (
+          <DeathNoticeAnnouncementStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "announcementDetails":
+        return (
+          <DeathNoticePrecisionsStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "announcementPreview":
+        if (draft.skinVariant === null) {
+          return <span hidden data-guest-builder-error="missing-skin-variant" />;
         }
+        return (
+          <DeathNoticePreviewStep
+            language={draft.language!}
+            content={draft.content}
+            skin={GUEST_BUILDER_V1_SKIN}
+            skinVariant={draft.skinVariant}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyMoment":
+        return (
+          <CeremonyMomentStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyDateTime":
+        return (
+          <CeremonyDateTimeStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyVenue":
+        return (
+          <CeremonyVenueStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyAddress":
+        return (
+          <CeremonyAddressStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyProgramme":
+        return (
+          <CeremonyProgrammeStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "ceremonyNote":
+        return (
+          <CeremonyNoteStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "traditions":
+        return (
+          <TraditionsStep
+            language={draft.language!}
+            content={draft.content}
+            skin={GUEST_BUILDER_V1_SKIN}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "personSheet":
+        return (
+          <PersonSheetStep
+            language={draft.language!}
+            content={draft.content}
+            persist={persist}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "gallery":
+        return (
+          <GuestGalleryStepAdapter
+            language={draft.language!}
+            draft={draft}
+            store={runtime.store}
+            getDraft={() => draftRef.current ?? draft}
+            acceptDraft={acceptDraft}
+            createId={createId}
+            now={now}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      default:
+        // Every built step is behind the family: the existing pause, with
+        // « Mon parcours » and « Voir l'aperçu » (QG 005-B). Account and
+        // publication stages remain outside QG 003.
+        return (
+          <div data-guest-builder-pending="post-reveal">
+            <GuidedFlowPause language={draft.language!} progress={guestHeroStepProgress(draft)} ownerSpace={false} />
+          </div>
+        );
     }
   })();
 
@@ -504,6 +600,12 @@ export function GuestBuilderRuntime({
     );
   }
 
+  // Keyed like the route's revised screens (`revision-<id>`): a revised
+  // screen always mounts fresh from the saved draft, and the host closes an
+  // open Preview when the screen changes.
+  const screenKey = `${view.revising !== null ? "revision-" : ""}${screenId ?? "pause"}`;
+  const keyedScreen = isValidElement(screen) ? cloneElement(screen, { key: screenKey }) : screen;
+
   // The host renders the draft conflict notice inside its Builder wrapper.
   return (
     <DraftRevisionProvider initialRevision={draft.revision} initialContent={draft.content}>
@@ -512,9 +614,23 @@ export function GuestBuilderRuntime({
           available={previewAvailable}
           language={draft.language}
           loadPreview={loadPreview}
-          onClosed={releasePreview}
+          onClosed={previewClosed}
+          openOnArrival={view.reopenPreview && previewAvailable}
+          localJourney={journeyOn && draft.language !== null
+            ? (content) => (
+                <GuestJourneyProvider
+                  language={draft.language!}
+                  snapshot={resolveGuestJourney(draft, view.revising, view.reviewingSection)}
+                  skinVariant={draft.skinVariant}
+                  returnToPreview={view.returnToPreview}
+                  moves={journeyMoves}
+                >
+                  {content}
+                </GuestJourneyProvider>
+              )
+            : undefined}
         >
-          {screen}
+          {keyedScreen}
         </BuilderPreviewHost>
       </BuilderStepCompletionProvider>
     </DraftRevisionProvider>

@@ -2,10 +2,11 @@ import type { AllowedImageMimeType } from "@/config/media";
 import type { SkinVariant } from "@/config/skins";
 import type { DraftSaveResponse } from "@/lib/builder/draft-revision";
 import { guidedFlowProgress } from "@/lib/builder/guided-flow/engine";
-import { readGuidedFlowState } from "@/lib/builder/guided-flow/hero-step";
+import { readGuidedFlowState, resolveHeroFlowState } from "@/lib/builder/guided-flow/hero-step";
 import { humanFlowDefinition } from "@/lib/builder/guided-flow/human-steps";
 import { writeGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import type { LocalPhotoSnapshot, PreparedLocalPhoto } from "@/lib/media/local-photo";
+import { readHero } from "@/lib/memorial/hero";
 import type { HeroCrop } from "@/types/hero";
 import { updateGuestDraftV3, type GuestDraftPhotoAsset, type GuestDraftV3 } from "./guest-draft-v3";
 import type { GuestDraftV3PhotoWriteResult, GuestDraftV3Store, GuestDraftV3WriteResult } from "./guest-draft-v3-store";
@@ -51,8 +52,12 @@ export function isGuestHeroRevealComplete(draft: GuestDraftV3): boolean {
     && readGuidedFlowState(draft.content).T08?.status === "completed";
 }
 
+/** The route's own Hero flow state (`resolveHeroFlowState`: T03/T04
+ * derived from the Hero content), with only T06-T08 read from the local
+ * Hero contract — QG 005-B: the same progress the authenticated route
+ * shows for the same answers. */
 export function guestHeroStepProgress(draft: GuestDraftV3): number {
-  const flow = { ...readGuidedFlowState(draft.content) };
+  const flow = resolveHeroFlowState(draft.content, readHero(draft.content));
   if (isGuestHeroPhotoComplete(draft)) flow.T06 = { status: "completed" };
   else delete flow.T06;
   if (isGuestHeroCropComplete(draft)) flow.T07 = { status: "completed" };

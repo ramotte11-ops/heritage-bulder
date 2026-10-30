@@ -30,6 +30,10 @@ interface HeroPhraseStepProps {
   content: MemorialContent;
   /** A bound Server Action — same seam as HeroIdentityStep's `persist`. */
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 /**
@@ -62,6 +66,7 @@ export function HeroPhraseStep({
   language,
   content: initialContent,
   persist,
+  progress: progressOverride,
 }: HeroPhraseStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -119,7 +124,7 @@ export function HeroPhraseStep({
     ? "hero.phraseSubtitleAnnouncement"
     : "hero.phraseSubtitleRemembrance";
 
-  const progress = heroStepProgress(content, read.hero);
+  const progress = progressOverride ?? heroStepProgress(content, read.hero);
 
   return (
     <BuilderScreen
