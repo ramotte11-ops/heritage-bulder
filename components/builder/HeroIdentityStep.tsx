@@ -33,6 +33,10 @@ interface HeroIdentityStepProps {
    * the exact same seam BuilderShell's autosave already uses (Mission
    * 021B). Never a closure over a repository or a live Supabase client. */
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 type DateErrorKind = "date" | "chronology" | null;
@@ -84,6 +88,7 @@ export function HeroIdentityStep({
   language,
   content: initialContent,
   persist,
+  progress: progressOverride,
 }: HeroIdentityStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -171,7 +176,7 @@ export function HeroIdentityStep({
     );
   }
 
-  const progress = heroStepProgress(content, read.hero);
+  const progress = progressOverride ?? heroStepProgress(content, read.hero);
   const showDisplayNameError = attemptedSubmit && read.hero.displayName === null;
 
   return (

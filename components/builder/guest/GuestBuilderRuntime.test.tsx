@@ -284,6 +284,17 @@ function galleryDraft(count = 0) {
   return { draft: updated.draft, asset: fixture.asset, galleryAssets };
 }
 
+function completedDraft() {
+  const fixture = galleryDraft(0);
+  const flow = localContent(fixture.draft).guidedFlow;
+  const updated = updateGuestDraftV3(fixture.draft, {
+    now: "2026-10-26T10:12:00.000Z",
+    content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" } } } as MemorialContent,
+  });
+  if (!updated.ok) throw new Error(updated.reason);
+  return { draft: updated.draft, asset: fixture.asset };
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -1285,17 +1296,6 @@ describe("GuestBuilderRuntime", () => {
   });
 
   describe("QG 003 — the real Preview of the local draft", () => {
-    function completedDraft() {
-      const fixture = galleryDraft(0);
-      const flow = localContent(fixture.draft).guidedFlow;
-      const updated = updateGuestDraftV3(fixture.draft, {
-        now: "2026-10-26T10:12:00.000Z",
-        content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" } } } as MemorialContent,
-      });
-      if (!updated.ok) throw new Error(updated.reason);
-      return { draft: updated.draft, asset: fixture.asset };
-    }
-
     it("rests after A13 on the existing pause, without the owner space, and opens the assembled Memorial", async () => {
       const fixture = completedDraft();
       const store = new MemoryStore(fixture.draft);
@@ -1355,6 +1355,128 @@ describe("GuestBuilderRuntime", () => {
       render(<GuestBuilderRuntime createStore={() => reveal} createId={() => "unused"} />);
       await screen.findByRole("button", { name: translate("fr", "deathNotice.editAnnouncement") });
       expect(screen.queryByRole("button", { name: translate("fr", "preview.view") })).toBeNull();
+    });
+  });
+
+  describe("QG 005-B — « Mon parcours » in the guest Builder", () => {
+    function renderRuntime(store: MemoryStore) {
+      let sequence = 0;
+      const createObjectUrl = vi.fn(() => `blob:guest-${++sequence}`);
+      const revokeObjectUrl = vi.fn();
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+      const view = render(
+        <GuestBuilderRuntime
+          createStore={() => store}
+          createId={() => "unused"}
+          now={() => "2026-10-30T10:00:00.000Z"}
+          createObjectUrl={createObjectUrl}
+          revokeObjectUrl={revokeObjectUrl}
+        />,
+      );
+      return { view, fetchSpy, revokeObjectUrl };
+    }
+
+    function openJourneyRubrique(name: string) {
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "journey.open") }));
+      const panel = screen.getByRole("dialog");
+      fireEvent.click(within(panel).getByRole("button", { name: new RegExp(name) }));
+      return panel;
+    }
+
+    function review(label: string) {
+      fireEvent.click(screen.getByRole("button", { name: `${translate("fr", "journey.review")} — ${label}` }));
+    }
+
+    it("reopens Nom et dates from the resting screen, saves it, and resumes at the notice to re-verify", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const { view, fetchSpy } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      const panel = openJourneyRubrique(translate("fr", "journey.section.person"));
+      // The whole local Hero reads done: every person screen is reopenable.
+      expect(within(panel).getAllByRole("button", { name: new RegExp(`^${translate("fr", "journey.review")} — `) }))
+        .toHaveLength(6);
+      review(translate("fr", "journey.screen.identity"));
+
+      await screen.findByRole("heading", { name: translate("fr", "hero.identityTitle") });
+      expect(screen.getByText(translate("fr", "journey.revising"))).toBeTruthy();
+      fireEvent.change(view.container.querySelector("#hero-display-name")!, { target: { value: "Jeanne Martin" } });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+      // The notice shows the name: A03 is « à compléter » again and is now
+      // where the family stopped — the route's own gates, with the
+      // rubrique still open (its `?rubrique=`).
+      await screen.findByRole("button", { name: translate("fr", "deathNotice.editAnnouncement") });
+      expect((store.value!.content as unknown as { hero: { displayName: string } }).hero.displayName).toBe("Jeanne Martin");
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "journey.finishReview") }));
+      await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("button", { name: translate("fr", "deathNotice.editAnnouncement") })).toBeTruthy();
+      expect(store.value!.photos).toEqual(fixture.draft.photos);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("revises an earlier answer mid-flow and comes back to the screen where the family stopped", async () => {
+      const fixture = postRevealDraft("no");
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "ceremony.momentTitle") });
+      openJourneyRubrique(translate("fr", "journey.section.person"));
+      review(translate("fr", "journey.screen.phrase"));
+      await screen.findByRole("heading", { name: translate("fr", "hero.phraseTitleRemembrance") });
+      fireEvent.change(document.querySelector("textarea")!, { target: { value: "Pour toujours" } });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+
+      await screen.findByRole("heading", { name: translate("fr", "ceremony.momentTitle") });
+      expect((store.value!.content as unknown as { hero: { shortPhrase: string } }).hero.shortPhrase).toBe("Pour toujours");
+      expect(store.value!.photos).toEqual(fixture.draft.photos);
+    });
+
+    it("keeps « Mon parcours » after the Preview closes and changes the ambiance from it, back to the Preview", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const { view, fetchSpy } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      fireEvent.click(await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") }));
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeNull());
+      expect(screen.getByRole("button", { name: translate("fr", "journey.open") })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      fireEvent.click(await screen.findByRole("button", { name: translate("fr", "preview.changeAmbiance") }));
+      await screen.findByRole("button", { name: translate("fr", "hero.revealConfirm") });
+      expect(screen.getByText(translate("fr", "journey.revisingFromPreview"))).toBeTruthy();
+      fireEvent.click(screen.getByRole("radio", { name: translate("fr", "hero.ambianceDark") }));
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "hero.revealConfirm") }));
+
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
+      expect(store.value!.skinVariant).toBe("dark");
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.backToCreation") }));
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      expect(screen.getByRole("button", { name: translate("fr", "journey.open") })).toBeTruthy();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("leaves a revised screen opened from the Preview without changes, straight back to the Preview", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const before = structuredClone(store.value);
+      const { view } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      fireEvent.click(await screen.findByRole("button", { name: translate("fr", "preview.changeAmbiance") }));
+      fireEvent.click(await screen.findByRole("button", { name: translate("fr", "journey.backToPreview") }));
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
+      expect(store.value).toEqual(before);
     });
   });
 });

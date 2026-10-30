@@ -34,6 +34,10 @@ interface AnnouncementChoiceStepProps {
   content: MemorialContent;
   /** The bound `saveDraftAction`, exactly like every Guided Flow screen. */
   persist: DraftSaveTransport;
+  /** Guest drafts have a local Hero without a server media id. Their
+   * canonical progress is injected; authenticated callers keep the
+   * existing content-derived calculation by default. */
+  progress?: number;
 }
 
 /**
@@ -45,7 +49,7 @@ interface AnnouncementChoiceStepProps {
  * language. Nothing is preselected the first time; a choice already
  * recorded is restored when the screen is shown again.
  */
-export function AnnouncementChoiceStep({ language, content, persist }: AnnouncementChoiceStepProps) {
+export function AnnouncementChoiceStep({ language, content, persist, progress }: AnnouncementChoiceStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const [selected, setSelected] = useState<A00Answer | null>(() => readAnnouncementChoice(content));
   const stepDone = useStepDone();
@@ -70,7 +74,7 @@ export function AnnouncementChoiceStep({ language, content, persist }: Announcem
   const [state, formAction, isPending] = useActionState(submit, INITIAL_STATE);
 
   return (
-    <BuilderScreen progress={announcementChoiceProgress(content)}>
+    <BuilderScreen progress={progress ?? announcementChoiceProgress(content)}>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "announcementChoice.title")}</h1>
         <p className={styles.subtitle}>{translate(language, "announcementChoice.subtitle")}</p>

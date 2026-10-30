@@ -248,3 +248,57 @@ describe("section revision context — validated server-side", () => {
     });
   });
 });
+
+describe("QG 005-B — a local runtime's Hero overrides", () => {
+  // Past A00 = no with T06/T07 recorded but no server photo: the route's
+  // own reading stops at the photo/crop gates.
+  const LOCAL_HERO = {
+    hero: { ...HERO, shortPhrase: "Toujours là" },
+    guidedFlow: {
+      T04: { status: "skipped" },
+      A00: { status: "completed", answer: "no" },
+      T05: { status: "completed" },
+      T06: { status: "completed" },
+      T07: { status: "completed" },
+      T08: { status: "completed" },
+    },
+  } as unknown as MemorialContent;
+
+  it("without overrides, nothing changes: the route's own gates decide", () => {
+    expect(resolveJourney(LOCAL_HERO)).toEqual(resolveJourney(LOCAL_HERO, null, null, undefined));
+    expect(resolveJourney(LOCAL_HERO).current).toBe(currentJourneyScreen(LOCAL_HERO));
+    expect(currentJourneyScreen(LOCAL_HERO)).not.toBe("ceremonyMoment");
+  });
+
+  it("supplies the current screen and T06-T08 completion; every other rule stays the catalog's", () => {
+    const overrides = { current: "ceremonyMoment" as const, resolved: { photo: true, crop: true, reveal: true } };
+    const journey = resolveJourney(LOCAL_HERO, null, null, overrides);
+    expect(journey.current).toBe("ceremonyMoment");
+    const screens = Object.fromEntries(resolveJourneyScreens(LOCAL_HERO, overrides).map((s) => [s.id, s.status]));
+    expect(screens).toMatchObject({
+      identity: "done",
+      announcementChoice: "done",
+      phrase: "done",
+      photo: "done",
+      crop: "done",
+      reveal: "done",
+      announcementText: "hidden",
+      ceremonyMoment: "current",
+      ceremonyDateTime: "upcoming",
+      gallery: "upcoming",
+    });
+    expect(journey.sections.find((s) => s.id === "person")?.status).toBe("done");
+  });
+
+  it("an unresolved override keeps a reached screen « à compléter », never done", () => {
+    const overrides = { current: "ceremonyMoment" as const, resolved: { photo: true, crop: false, reveal: true } };
+    const crop = resolveJourneyScreens(LOCAL_HERO, overrides).find((s) => s.id === "crop")!;
+    expect(crop).toMatchObject({ status: "toComplete", accessible: true });
+  });
+
+  it("a null current screen means every built screen is behind the family", () => {
+    const overrides = { current: null, resolved: { photo: true, crop: true, reveal: true } };
+    expect(resolveJourney(LOCAL_HERO, null, null, overrides).current).toBeNull();
+    expect(resolveJourneyScreens(LOCAL_HERO, overrides).some((s) => s.status === "current")).toBe(false);
+  });
+});

@@ -257,8 +257,21 @@ export interface JourneySnapshot {
   reviewingSection: JourneySection | null;
 }
 
-export function resolveJourneyScreens(content: MemorialContent): JourneyScreenState[] {
-  const current = currentJourneyScreen(content);
+/**
+ * QG 005-B — a local runtime that owns Hero media completion (the guest
+ * Builder: T06-T08 live in its local draft, not in server media refs the
+ * Hero gates read) supplies its own current screen and those screens'
+ * completion. Everything else — the catalog, its order, every other
+ * screen's predicates and the status rules below — stays this module's.
+ * Absent → the route's own reading, unchanged.
+ */
+export interface JourneyOverrides {
+  current: JourneyScreenId | null;
+  resolved?: Partial<Record<JourneyScreenId, boolean>>;
+}
+
+export function resolveJourneyScreens(content: MemorialContent, overrides?: JourneyOverrides): JourneyScreenState[] {
+  const current = overrides === undefined ? currentJourneyScreen(content) : overrides.current;
   const currentIndex = current === null ? JOURNEY_SCREENS.length : JOURNEY_SCREENS.findIndex((s) => s.id === current);
 
   return JOURNEY_SCREENS.map((screen, index): JourneyScreenState => {
@@ -268,7 +281,7 @@ export function resolveJourneyScreens(content: MemorialContent): JourneyScreenSt
     else if (applicable === "undecided") status = "upcoming";
     else if (applicable === "deferred") status = "deferred";
     else if (screen.id === current) status = "current";
-    else if (screen.resolved(content)) status = "done";
+    else if (overrides?.resolved?.[screen.id] ?? screen.resolved(content)) status = "done";
     else status = index < currentIndex ? "toComplete" : "upcoming";
     const accessible = status === "done" || status === "current" || status === "toComplete";
     return { id: screen.id, section: screen.section, status, accessible };
@@ -291,13 +304,15 @@ export function resolveJourney(
   content: MemorialContent,
   revising: JourneyScreenId | null = null,
   reviewingSection: JourneySection | null = revising === null ? null : journeySectionForScreen(revising),
+  overrides?: JourneyOverrides,
 ): JourneySnapshot {
-  const screens = resolveJourneyScreens(content);
+  const screens = resolveJourneyScreens(content, overrides);
   const sections = JOURNEY_SECTIONS.map((id): JourneySectionState => {
     const own = screens.filter((s) => s.section === id);
     return { id, status: sectionStatus(own), screens: own };
   }).filter((section) => section.screens.length > 0);
-  return { sections, current: currentJourneyScreen(content), revising, reviewingSection };
+  const current = overrides === undefined ? currentJourneyScreen(content) : overrides.current;
+  return { sections, current, revising, reviewingSection };
 }
 
 /**
