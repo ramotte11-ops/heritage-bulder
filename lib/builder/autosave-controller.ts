@@ -123,6 +123,13 @@ export interface AutosaveController<T = MemorialContent> {
    * mission builds the save mechanism itself, not "don't lose work on
    * the way out" — that is Mission 010's job. */
   destroy(): void;
+  /** QG 003 — undoes `destroy()` for the SAME mounted component: React
+   * StrictMode (every `next dev` page) runs an effect's cleanup and then
+   * the effect again without remounting, so a controller kept in state
+   * would otherwise stay destroyed and silently ignore every later edit.
+   * The state, the latest content and an in-flight save are kept as they
+   * are. Never called after a real unmount. Idempotent. */
+  resume(): void;
   /** Replaces the persist callback for any future save (an in-flight
    * one keeps using whichever callback it already started with). Exists
    * so use-autosave.ts can keep the controller's persist function in
@@ -281,6 +288,10 @@ export function createAutosaveController<T = MemorialContent>(
     // retry happen after this point, even once that promise settles.
   }
 
+  function resume(): void {
+    destroyed = false;
+  }
+
   function setPersist(next: AutosaveControllerOptions<T>["persist"]): void {
     persist = next;
   }
@@ -325,5 +336,5 @@ export function createAutosaveController<T = MemorialContent>(
     });
   }
 
-  return { notifyContentChanged, getState, subscribe, destroy, setPersist, retry, flush };
+  return { notifyContentChanged, getState, subscribe, destroy, resume, setPersist, retry, flush };
 }
