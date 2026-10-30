@@ -7,8 +7,9 @@ import type { DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   BuilderStepCompletionProvider,
 } from "@/components/builder/journey/journey-context";
-import { DraftConflictNotice } from "@/components/builder/DraftConflictNotice";
 import { BuilderScreen } from "@/components/builder/BuilderScreen";
+import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
+import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { LanguageStep } from "@/components/builder/LanguageStep";
 import { WelcomeStep } from "@/components/builder/WelcomeStep";
 import { HeroIdentityStep } from "@/components/builder/HeroIdentityStep";
@@ -52,6 +53,11 @@ import {
   savePreparedGuestHeroPhoto,
   type GuestHeroMediaOptions,
 } from "@/lib/guest-draft/guest-hero-media";
+import {
+  loadGuestPreview,
+  toMemorialPreviewResult,
+  type GuestPreviewSession,
+} from "@/lib/guest-draft/guest-preview";
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
@@ -100,10 +106,20 @@ function defaultRevokeObjectUrl(url: string): void {
 }
 
 /**
- * Non-routed entry for the existing Builder screens backed by the single
- * local guest draft. It reuses the existing T06/T07/T08, A01/A02/A03 and
- * A04-A14 screens through the existing A13 Gallery, then stops before the
- * final unpublished stages. No public route imports this component.
+ * Entry for the existing Builder screens backed by the single local guest
+ * draft. It reuses the existing T06/T07/T08, A01/A02/A03 and A04-A14
+ * screens through the existing A13 Gallery, then rests on the existing
+ * Guided Flow pause (without the owner space a guest does not have yet).
+ *
+ * QG 003 — from T08 on, every screen sits in the one `BuilderPreviewHost`,
+ * exactly like the authenticated route: « Voir l'aperçu » drains the
+ * step's local autosave, then `loadGuestPreview` re-reads the SAVED local
+ * draft and its blobs and assembles the real Memorial — no network, no
+ * Supabase. Each opening's `blob:` URLs are revoked when the Preview
+ * closes, before the next opening, and on unmount.
+ *
+ * Only a development page routes it (`app/pilote/builder-invite/page.dev.tsx`);
+ * no production route imports this component.
  */
 export function GuestBuilderRuntime({
   createStore = defaultCreateStore,
@@ -116,6 +132,8 @@ export function GuestBuilderRuntime({
   const draftRef = useRef<GuestDraftV3 | null>(null);
   const heroPhotoRef = useRef<LocalPhotoSnapshot | null>(null);
   const heroReadUrlRef = useRef<string | null>(null);
+  const previewSessionRef = useRef<GuestPreviewSession | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +171,19 @@ export function GuestBuilderRuntime({
       }
     };
   }, [createId, createObjectUrl, createStore, now, revokeObjectUrl]);
+
+  const releasePreview = useCallback(() => {
+    previewSessionRef.current?.release();
+    previewSessionRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      releasePreview();
+    };
+  }, [releasePreview]);
 
   const acceptDraft = useCallback((draft: GuestDraftV3) => {
     draftRef.current = draft;
@@ -193,6 +224,21 @@ export function GuestBuilderRuntime({
     return transport(content, expectedRevision);
   }, [acceptDraft, now, store]);
 
+  const loadPreview = useCallback(async () => {
+    if (store === null) return { status: "unavailable" as const };
+    // The previous opening is closed (or was never shown): its URLs go now.
+    releasePreview();
+    const result = await loadGuestPreview({ store, createObjectUrl, revokeObjectUrl });
+    if (result.status === "ready") {
+      if (!mountedRef.current) {
+        result.session.release();
+        return { status: "unavailable" as const };
+      }
+      previewSessionRef.current = result.session;
+    }
+    return toMemorialPreviewResult(result);
+  }, [createObjectUrl, releasePreview, revokeObjectUrl, store]);
+
   if (runtime.status === "loading") return null;
   if (runtime.status === "error") {
     return (
@@ -206,6 +252,9 @@ export function GuestBuilderRuntime({
 
   const { draft } = runtime;
   const stage = resolveGuestBuilderStage(draft);
+  const postHeroScreen = stage === "postRevealPending" ? resolveGuestPostHeroScreen(draft) : null;
+  // The authenticated rule: from T08 on, never on a Reveal (T08, A03).
+  const previewAvailable = stage === "postRevealPending" && postHeroScreen !== "announcementPreview";
   const mediaOptions = (): GuestHeroMediaOptions => ({
     store: runtime.store,
     getDraft: () => {
@@ -315,7 +364,7 @@ export function GuestBuilderRuntime({
           />
         );
       case "postRevealPending":
-        switch (resolveGuestPostHeroScreen(draft)) {
+        switch (postHeroScreen) {
           case "announcementText":
             return (
               <DeathNoticeAnnouncementStep
@@ -435,24 +484,39 @@ export function GuestBuilderRuntime({
               />
             );
           default:
-            // Final publication/account stages remain outside this lot.
-            return <span hidden data-guest-builder-pending="post-reveal" />;
+            // Every built step is behind the family: the existing pause,
+            // with « Voir l'aperçu » as the way forward. Account and
+            // publication stages remain outside QG 003.
+            return (
+              <div data-guest-builder-pending="post-reveal">
+                <GuidedFlowPause language={draft.language!} progress={guestHeroStepProgress(draft)} ownerSpace={false} />
+              </div>
+            );
         }
     }
   })();
 
-  const hosted = (
-    <BuilderStepCompletionProvider finishStep={finishStep}>
-      {screen}
-    </BuilderStepCompletionProvider>
-  );
+  if (stage === "language") {
+    return (
+      <BuilderStepCompletionProvider finishStep={finishStep}>
+        {screen}
+      </BuilderStepCompletionProvider>
+    );
+  }
 
-  if (stage === "language") return hosted;
-
+  // The host renders the draft conflict notice inside its Builder wrapper.
   return (
     <DraftRevisionProvider initialRevision={draft.revision} initialContent={draft.content}>
-      <DraftConflictNotice language={draft.language} />
-      {hosted}
+      <BuilderStepCompletionProvider finishStep={finishStep}>
+        <BuilderPreviewHost
+          available={previewAvailable}
+          language={draft.language}
+          loadPreview={loadPreview}
+          onClosed={releasePreview}
+        >
+          {screen}
+        </BuilderPreviewHost>
+      </BuilderStepCompletionProvider>
     </DraftRevisionProvider>
   );
 }

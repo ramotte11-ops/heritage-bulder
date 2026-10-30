@@ -21,9 +21,12 @@ describe("pageExtensionsFor", () => {
     }
   });
 
-  it("le pilote Offrandes n'existe que comme page de développement", () => {
-    const dir = path.resolve(import.meta.dirname, "app/pilote/offrandes");
-    expect(existsSync(path.join(dir, "page.dev.tsx"))).toBe(true);
-    expect(readdirSync(dir).filter((f) => /^page\.(tsx|ts|jsx|js)$/.test(f))).toEqual([]);
-  });
+  it.each(["app/pilote/offrandes", "app/pilote/builder-invite"])(
+    "%s n'existe que comme page de développement",
+    (route) => {
+      const dir = path.resolve(import.meta.dirname, route);
+      expect(existsSync(path.join(dir, "page.dev.tsx"))).toBe(true);
+      expect(readdirSync(dir).filter((f) => /^page\.(tsx|ts|jsx|js)$/.test(f))).toEqual([]);
+    },
+  );
 });

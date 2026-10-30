@@ -326,6 +326,7 @@ describe("guest Builder local runtime", () => {
     const implementation = [
       "guest-builder-runtime.ts",
       "guest-hero-media.ts",
+      "guest-preview.ts",
       "../media/local-photo.ts",
       "../../components/builder/guest/GuestBuilderRuntime.tsx",
       "../../components/builder/DeathNoticeAnnouncementStep.tsx",
@@ -343,8 +344,10 @@ describe("guest Builder local runtime", () => {
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);
 
     const appRoot = join(import.meta.dirname, "../../app");
+    // QG 003: the one routed entry is a development page (`page.dev.tsx`),
+    // never compiled by a production build (next.config.ts).
     const publicRouteSources = readdirSync(appRoot, { recursive: true })
-      .filter((path) => typeof path === "string" && /\.(?:ts|tsx)$/.test(path))
+      .filter((path) => typeof path === "string" && /\.(?:ts|tsx)$/.test(path) && !/\.dev\.tsx$/.test(path))
       .map((path) => readFileSync(join(appRoot, String(path)), "utf8"))
       .join("\n");
     expect(publicRouteSources).not.toMatch(/GuestBuilderRuntime/);

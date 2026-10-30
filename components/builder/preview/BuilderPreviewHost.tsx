@@ -119,6 +119,10 @@ export interface BuilderPreviewHostProps {
    * Preview (`?apercu=1`, validated by the page): the Preview opens again
    * on arrival, through the same three steps as « Voir l'aperçu ». */
   openOnArrival?: boolean;
+  /** QG 003 — called once each time an open Preview closes (« Revenir à
+   * la création », Escape, or another screen arriving). The guest Builder
+   * revokes the opening's local `blob:` URLs here. */
+  onClosed?: () => void;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -147,6 +151,7 @@ export function BuilderPreviewHost({
   draftContent,
   journey = null,
   openOnArrival = false,
+  onClosed,
   children,
 }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
@@ -170,6 +175,10 @@ export function BuilderPreviewHost({
   const builderScrollY = useRef(0);
   const previousPhase = useRef<Phase>("closed");
   const busy = useRef(false);
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  }, [onClosed]);
 
   const open = useCallback(async () => {
     if (busy.current || !available) return;
@@ -223,6 +232,7 @@ export function BuilderPreviewHost({
     } else if (phase === "closed" && previous === "open") {
       window.scrollTo(0, builderScrollY.current);
       entryButtonRef.current?.focus();
+      onClosedRef.current?.();
     }
   }, [phase]);
 

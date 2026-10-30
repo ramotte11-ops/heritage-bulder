@@ -21,7 +21,6 @@ import { precheckPhotoInput } from "@/lib/media/precheck-upload";
 import { prepareChosenPhoto, prepareChosenPhotoWithReport } from "@/lib/media/prepare-chosen-photo";
 import type { LocalHeroPhotoPort, LocalPhotoSnapshot } from "@/lib/media/local-photo";
 import { MediaActionError, mediaErrorTranslationKey } from "@/lib/media/media-error-copy";
-import { getBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import {
   commitPageC,
   heroStepProgress,
@@ -270,6 +269,9 @@ export function HeroPhotoStep(props: HeroPhotoStepProps) {
       const reserved = await props.reserveUpload(prepared.type);
       if (!reserved.ok) throw new MediaActionError(reserved.code);
 
+      // Loaded only on this authenticated path (GalleryWorkshop's pattern):
+      // the guest Builder's bundle never carries the Supabase client.
+      const { getBrowserSupabaseClient } = await import("@/lib/supabase/browser-client");
       const supabase = getBrowserSupabaseClient();
       const { error: uploadError } = await supabase.storage
         .from(MEDIA_BUCKET)
