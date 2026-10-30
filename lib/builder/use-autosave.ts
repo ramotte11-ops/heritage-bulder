@@ -146,6 +146,9 @@ export function useAutosave<T = MemorialContent>({ content, persist }: UseAutosa
   });
 
   useEffect(() => {
+    // StrictMode re-runs this effect after its cleanup on the same
+    // controller: resume it, or every later edit would be ignored.
+    controller?.resume();
     return () => controller?.destroy();
   }, [controller]);
 

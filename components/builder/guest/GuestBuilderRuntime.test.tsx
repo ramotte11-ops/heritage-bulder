@@ -1283,4 +1283,78 @@ describe("GuestBuilderRuntime", () => {
     expect(alert.textContent).toBe(translate("en", "errors.generic"));
     expect(alert.getAttribute("data-guest-builder-error")).toBe("unavailable");
   });
+
+  describe("QG 003 — the real Preview of the local draft", () => {
+    function completedDraft() {
+      const fixture = galleryDraft(0);
+      const flow = localContent(fixture.draft).guidedFlow;
+      const updated = updateGuestDraftV3(fixture.draft, {
+        now: "2026-10-26T10:12:00.000Z",
+        content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" } } } as MemorialContent,
+      });
+      if (!updated.ok) throw new Error(updated.reason);
+      return { draft: updated.draft, asset: fixture.asset };
+    }
+
+    it("rests after A13 on the existing pause, without the owner space, and opens the assembled Memorial", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const before = structuredClone(store.value);
+      let sequence = 0;
+      const createObjectURL = vi.fn(() => `blob:preview-${++sequence}`);
+      const revokeObjectURL = vi.fn();
+      vi.stubGlobal("URL", Object.assign(globalThis.URL, { createObjectURL, revokeObjectURL }));
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const view = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy();
+      expect(screen.queryByText(translate("fr", "flowPause.body"))).toBeNull();
+      expect(screen.queryByRole("link", { name: translate("fr", "flowPause.backToSpace") })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      const back = await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") });
+      const preview = view.container.querySelector("[data-memorial-preview]")!;
+      expect([...preview.querySelectorAll("[data-memorial-section]")].map((node) => node.getAttribute("data-memorial-section")))
+        .toEqual(["hero", "deathNotice", "story", "symbolicOfferings"]);
+      expect(preview.querySelector('[data-memorial-section="hero"]')?.innerHTML).toContain("blob:preview-1");
+      expect(view.container.querySelector("[data-builder-screen]")?.hasAttribute("hidden")).toBe(true);
+
+      fireEvent.click(back);
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeNull());
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+      expect(screen.getByRole("heading", { name: translate("fr", "flowPause.title") })).toBeTruthy();
+      expect(store.value).toEqual(before);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("offers « Voir l'aperçu » from T08 on, never on the A03 Reveal, and keeps a missing blob visible", async () => {
+      const fixture = personSheetDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const before = structuredClone(store.value);
+      render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+      await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+      // The local blob disappears after the Builder loaded it.
+      store.assets.delete(fixture.asset.localId);
+
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      const alert = await screen.findByText(translate("fr", "preview.unavailable"));
+      expect(alert.getAttribute("role")).toBe("alert");
+      expect(document.querySelector("[data-memorial-preview]")).toBeNull();
+      expect(store.value).toEqual(before);
+
+      cleanup();
+      const announcement = announcementCeremonyDraft();
+      const flow = localContent(announcement.draft).guidedFlow;
+      delete flow.A03;
+      const reveal = new MemoryStore({ ...announcement.draft, content: { ...announcement.draft.content, guidedFlow: flow } as MemorialContent });
+      reveal.assets.set(announcement.asset.localId, announcement.asset);
+      render(<GuestBuilderRuntime createStore={() => reveal} createId={() => "unused"} />);
+      await screen.findByRole("button", { name: translate("fr", "deathNotice.editAnnouncement") });
+      expect(screen.queryByRole("button", { name: translate("fr", "preview.view") })).toBeNull();
+    });
+  });
 });

@@ -9,6 +9,11 @@ interface GuidedFlowPauseProps {
   /** 0 to 1 — the real engine's progress for this memorial (never 1
    * while steps not yet built are still ahead of the family). */
   progress: number;
+  /** QG 003 — `false` for the guest Builder: there is no owner space to
+   * return to yet, so neither the body (which promises one) nor the
+   * `/owner` link is shown. The way forward is « Voir l'aperçu », which
+   * the surrounding `BuilderPreviewHost` places in the chrome. */
+  ownerSpace?: boolean;
 }
 
 /**
@@ -31,17 +36,19 @@ interface GuidedFlowPauseProps {
  *
  * A Server Component: no state, no autosave, nothing to persist.
  */
-export function GuidedFlowPause({ language, progress }: GuidedFlowPauseProps) {
+export function GuidedFlowPause({ language, progress, ownerSpace = true }: GuidedFlowPauseProps) {
   return (
     <BuilderScreen progress={progress}>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "flowPause.title")}</h1>
-        <p className={styles.body}>{translate(language, "flowPause.body")}</p>
+        {ownerSpace && <p className={styles.body}>{translate(language, "flowPause.body")}</p>}
       </div>
 
-      <Link href="/owner" className={styles.link}>
-        {translate(language, "flowPause.backToSpace")}
-      </Link>
+      {ownerSpace && (
+        <Link href="/owner" className={styles.link}>
+          {translate(language, "flowPause.backToSpace")}
+        </Link>
+      )}
     </BuilderScreen>
   );
 }

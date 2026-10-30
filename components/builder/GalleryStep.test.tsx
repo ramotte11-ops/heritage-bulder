@@ -764,6 +764,41 @@ describe("GalleryWorkshop — StrictMode remount and real unmount", () => {
     expect(screen.queryByText("Préparation de la photo…")).toBeNull();
   });
 
+  // QG 003 — `useAutosave` kept its controller in state but destroyed it in
+  // the StrictMode cleanup: every debounced edit (captions, order) was then
+  // silently dropped in `next dev`, and Continue's flush drained nothing.
+  it("local guest: a caption typed after the StrictMode remount is autosaved, then kept by Continue", async () => {
+    const h = localPort([localPhoto("local-1"), localPhoto("local-2")]);
+    const content = {} as MemorialContent;
+    render(
+      <StrictMode>
+        <DraftRevisionProvider initialRevision={0} initialContent={content}>
+          <GalleryStep mode="local" language="fr" content={content} localMedia={h.port} />
+        </DraftRevisionProvider>
+      </StrictMode>,
+    );
+    fireEvent.change(within(rows()[0]).getByLabelText("Légende (facultative)"), { target: { value: "Été 1972" } });
+
+    await waitFor(() => expect(h.port.saveEditorial).toHaveBeenCalled(), { timeout: 2500 });
+    expect(h.photos().map(({ caption }) => caption)).toEqual(["Été 1972", null]);
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(h.port.resolveStep).toHaveBeenCalled());
+    expect(h.photos().map(({ caption }) => caption)).toEqual(["Été 1972", null]);
+  });
+
+  it("authenticated: a caption typed after the StrictMode remount reaches persist", async () => {
+    const p = props({ content: contentWith(2), thumbnails: thumbsFor(2) });
+    render(
+      <StrictMode>
+        <GalleryStep {...p} />
+      </StrictMode>,
+    );
+    fireEvent.change(within(rows()[0]).getByLabelText("Légende (facultative)"), { target: { value: "Maman" } });
+
+    await waitFor(() => expect(p.persist).toHaveBeenCalled(), { timeout: 2500 });
+    expect(galleryOf(lastPersisted(p.persist))[0].caption).toBe("Maman");
+  });
+
   it("a real unmount during preparation writes nothing and releases the temporary object URL", async () => {
     let finishPreparation: () => void = () => {};
     preparePhotoForUpload.mockImplementation(

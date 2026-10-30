@@ -211,6 +211,19 @@ describe("Test E — cleanup", () => {
     expect(() => controller.destroy()).not.toThrow();
   });
 
+  it("resumes after a StrictMode cleanup: later edits are saved again", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+
+    controller.destroy();
+    controller.resume();
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(persist).toHaveBeenCalledExactlyOnceWith(CONTENT_A);
+    expect(controller.getState().status).toBe("saved");
+  });
+
   it("ignores a notifyContentChanged call after destroy", async () => {
     const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
     const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
