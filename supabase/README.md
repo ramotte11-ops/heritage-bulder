@@ -940,8 +940,10 @@ applied after the three M1-A migrations.
   an already active draft), and `anchor_free_memorial_v1` anchors a draft
   of an address that cannot publish for free with a ZERO-length free
   window (`free_publish_until = free_anchor_at`,
-  `anchored_without_free_publication`) and its own 45 days of
-  preparation, so the family prepares or buys the complete offer at once;
+  `anchored_without_free_publication`) and 45 days of preparation —
+  unless it replaces a still-running free draft of the address, whose
+  preparation end it inherits, never extended — so the family prepares or
+  buys the complete offer at once;
   no window is opened, nothing is consumed. An anchored, never-published
   draft whose window is closed receives a window (`free_window_opened`)
   only when the address genuinely regains one: a new 12-month cycle or an

@@ -3510,6 +3510,22 @@ check "no 12-month wait: the same draft is upgraded and published complete right
   "$(svc "select outcome from upgrade_memorial_access_v1('$Q8_CPL_2','$Q8_CPL_OWNER','direct_payment','pay-q8-complete-path');")|$(svc "$(q8_v2_sql "$Q8_CPL_2" "$Q8_CPL_OWNER" q8-complete-path-2 complet "$Q8_PREM_DRAFT")" >/dev/null; q8_status "$Q8_CPL_2")|$($DB -t -A -c "select (content ? 'video')::text from memorial_published_snapshots where memorial_id='$Q8_CPL_2';")"
 check "the complete publication touches no free counter" "$Q8_CPL_EVENTS|0" \
   "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_CPL_OWNER' and event in ('free.window_opened','free.first_published');")|$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$Q8_CPL_2' and event='free.first_published';")"
+# Final review (QG 008): replacing an IN-PROGRESS draft after the free
+# window closed never extends its preparation; a draft created after the
+# previous one EXPIRED gets its own 45 days (QG decision).
+Q8_RPL_OWNER=$(q8_owner q8-replace-in-progress)
+Q8_RPL_1=$(q8_draft "$Q8_RPL_OWNER"); q8_anchor "$Q8_RPL_1" "$Q8_RPL_OWNER" >/dev/null
+m1a_age "$Q8_RPL_OWNER" '20 days'
+$DB -c "update memorials set status='archived' where id='$Q8_RPL_1';" >/dev/null
+Q8_RPL_2=$(q8_draft "$Q8_RPL_OWNER")
+check "J20: replacing the in-progress draft gives no free window and keeps its J45 (no reset)" "anchored_without_free_publication|t" \
+  "$(q8_anchor "$Q8_RPL_2" "$Q8_RPL_OWNER")|$($DB -t -A -c "select a.free_draft_until = b.free_draft_until and a.free_draft_recovery_until = b.free_draft_recovery_until from memorials a, memorials b where a.id='$Q8_RPL_1' and b.id='$Q8_RPL_2';")"
+m1a_age "$Q8_RPL_OWNER" '26 days'
+$DB -c "update memorials set status='archived' where id='$Q8_RPL_2';" >/dev/null
+Q8_RPL_3=$(q8_draft "$Q8_RPL_OWNER")
+check "after the previous draft expired, a new draft gets its own 45 days, still without free window" "anchored_without_free_publication|1080|t" \
+  "$(q8_anchor "$Q8_RPL_3" "$Q8_RPL_OWNER")|$($DB -t -A -c "select extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$Q8_RPL_3';")|$($DB -t -A -c "select free_publish_until = free_anchor_at from memorials where id='$Q8_RPL_3';")"
+
 # A draft anchored inside an OPEN window keeps the address's anchor (no
 # reset), even though zero-window anchoring exists.
 Q8_OPEN_OWNER=$(q8_owner q8-open-window)
