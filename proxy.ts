@@ -42,5 +42,6 @@ export const config = {
     "/auth/:path*",
     "/activate",
     "/builder/:path*",
+    "/brouillon/:path*",
   ],
 };

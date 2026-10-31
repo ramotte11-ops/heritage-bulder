@@ -344,13 +344,15 @@ describe("guest Builder local runtime", () => {
     expect(implementation).not.toMatch(/@supabase|lib\/supabase|fetch\s*\(|XMLHttpRequest|WebSocket|server-media|media-actions/);
 
     const appRoot = join(import.meta.dirname, "../../app");
-    // QG 003: the one routed entry is a development page (`page.dev.tsx`),
-    // never compiled by a production build (next.config.ts).
-    const publicRouteSources = readdirSync(appRoot, { recursive: true })
+    // QG 003: the guest Builder was only a development page (`page.dev.tsx`).
+    // QG 008 Lot 2 opens exactly ONE production route for it, `/creer`
+    // (app/creer/page.tsx), outside the session proxy; no other production
+    // route may render it.
+    const publicRoutes = readdirSync(appRoot, { recursive: true })
       .filter((path) => typeof path === "string" && /\.(?:ts|tsx)$/.test(path) && !/\.dev\.tsx$/.test(path))
-      .map((path) => readFileSync(join(appRoot, String(path)), "utf8"))
-      .join("\n");
-    expect(publicRouteSources).not.toMatch(/GuestBuilderRuntime/);
+      .filter((path) => /GuestBuilderRuntime/.test(readFileSync(join(appRoot, String(path)), "utf8")))
+      .map((path) => String(path).split("\\").join("/"));
+    expect(publicRoutes).toEqual(["creer/page.tsx"]);
 
     const authenticatedPage = readFileSync(join(appRoot, "builder/[memorialId]/page.tsx"), "utf8");
     expect(authenticatedPage).toMatch(/authorizeMemorialForRequest/);

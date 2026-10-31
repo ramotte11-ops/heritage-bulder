@@ -3587,7 +3587,11 @@ check "the rollback refuses while waivers exist, and changes nothing" "1|t" \
   "$($PSQL -d qg008_down_refused -f "$Q8_DOWN" 2>&1 | grep -c 'rollback refused' || true)|$($PSQL -d qg008_down_refused -t -A -c "select to_regclass('public.free_publication_waivers') is not null and exists (select 1 from pg_attribute where attrelid='public.memorials'::regclass and attname='free_draft_recovery_until');")"
 $PSQL -d postgres -c "drop database qg008_down_refused;" >/dev/null
 $PSQL -d postgres -c "create database qg008_down_clean template $STANDINS_DB;" >/dev/null
-for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d qg008_down_clean -f "$f" >/dev/null; done
+# Up to the Lot 1 migration only: a later lot is rolled back first.
+for f in "$MIGRATIONS_DIR"/*.sql; do
+  $PSQL -d qg008_down_clean -f "$f" >/dev/null
+  [ "$(basename "$f")" = "20261031120000_qg008_free_offer_v8_alignment.sql" ] && break
+done
 check "on a database without waivers, the rollback applies" "0" "$($PSQL -d qg008_down_clean -f "$Q8_DOWN" >/dev/null 2>&1; echo $?)"
 Q8_BACK=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>&1)
 check "after rollback, m1a_postflight grades the exact M1-A state (42 OK, zero ECHEC)" "42|0" \
@@ -3599,6 +3603,156 @@ check "after rollback, the QG 008 migration applies again cleanly" "0|0" \
   "$($PSQL -d qg008_down_clean -f "$MIGRATIONS_DIR/20261031120000_qg008_free_offer_v8_alignment.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
 $PSQL -d postgres -c "drop database qg008_down_clean;" >/dev/null
 
+
+# =====================================================================
+# QG 008 — Lot 2 : Builder invité → brouillon durable
+# =====================================================================
+echo ""
+echo "== QG 008 Lot 2: guest draft → durable draft =="
+
+L2_KEY_A="3f1c9a52-7d4e-4b8a-9c21-5e6f7a8b9c0d"
+L2_KEY_B="7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+l2_begin() {
+  # $1 owner, $2 key, $3 skin, $4 language (or null) -> "outcome|memorial|status|anchor"
+  svc "select outcome || '|' || coalesce(memorial_id::text, '-') || '|' || coalesce(transfer_status, '-') || '|' || coalesce(anchor_outcome, '-') from begin_guest_draft_transfer_v1('$1','$2',3,'$3',$4);"
+}
+l2_media() {
+  # $1 memorial, $2 owner, $3 purpose, $4 status -> media id
+  $DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) select '$1','$2','$1/' || g || '/original.jpg','photo','image/jpeg','$3','$4',100 from (select gen_random_uuid() g) x returning id;"
+}
+l2_record() {
+  # $1 owner, $2 key, $3 local id, $4 media, $5 purpose
+  svc "select outcome from record_guest_draft_transfer_media_v1('$1','$2','$3','$4','$5');"
+}
+
+# --- T1. Privileges ---
+for f in "begin_guest_draft_transfer_v1(uuid,text,bigint,text,text)" "record_guest_draft_transfer_media_v1(uuid,text,text,uuid,text)" "find_guest_draft_transfer_v1(uuid,text)" "complete_guest_draft_transfer_v1(uuid,text)"; do
+  check "Lot 2: $f executable by service_role only" "false|false|true" "$($DB -t -A -c "select has_function_privilege('anon','public.$f','EXECUTE') || '|' || has_function_privilege('authenticated','public.$f','EXECUTE') || '|' || has_function_privilege('service_role','public.$f','EXECUTE');")"
+done
+for r in anon authenticated service_role; do
+  check "Lot 2: $r has no privilege on guest_draft_transfers" "f" "$($DB -t -A -c "select has_table_privilege('$r','guest_draft_transfers','SELECT') or has_table_privilege('$r','guest_draft_transfers','INSERT') or has_table_privilege('$r','guest_draft_transfers','UPDATE') or has_table_privilege('$r','guest_draft_transfers','DELETE') or has_table_privilege('$r','guest_draft_transfers','TRUNCATE');")"
+done
+check "Lot 2: guest_draft_transfers has RLS enabled" "t" "$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.guest_draft_transfers'::regclass;")"
+check "Lot 2: an authenticated family cannot start a transfer directly" "1" \
+  "$($DB -c "set role authenticated; select * from begin_guest_draft_transfer_v1(gen_random_uuid(),'$L2_KEY_A',0,'light',null);" 2>&1 | grep -c 'permission denied' || true)"
+
+# --- T2. First durable save: one draft, anchored NOW, language kept ---
+L2_OWNER=$(q8_owner l2-family)
+check "Lot 2: an unknown owner is refused" "refused|-|-|-" "$(l2_begin "$(svc "select gen_random_uuid();")" "$L2_KEY_A" dark "'fr'")"
+svc_expect_error "Lot 2: a malformed transfer key is refused" \
+  "select * from begin_guest_draft_transfer_v1('$L2_OWNER','not-a-key',0,'dark','fr');" "invalid guest draft transfer request"
+svc_expect_error "Lot 2: an unknown language is refused" \
+  "select * from begin_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_A',0,'dark','de');" "invalid guest draft transfer request"
+L2_FIRST=$(l2_begin "$L2_OWNER" "$L2_KEY_A" dark "'es'")
+L2_MEM=$(echo "$L2_FIRST" | cut -d'|' -f2)
+check "Lot 2: the first durable save creates and anchors ONE draft" "created|started|anchored" \
+  "$(echo "$L2_FIRST" | cut -d'|' -f1)|$(echo "$L2_FIRST" | cut -d'|' -f3)|$(echo "$L2_FIRST" | cut -d'|' -f4)"
+check "Lot 2: the 45 days start at this durable save (anchor = now), 10 days for free publication only" "t|1080|240" \
+  "$($DB -t -A -c "select free_anchor_at > now() - interval '1 minute' from memorials where id='$L2_MEM';")|$($DB -t -A -c "select extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 from memorials where id='$L2_MEM';")"
+check "Lot 2: the draft belongs to the verified owner, at level avis, in the family's language and ambiance" "avis|draft|es|dark|true" \
+  "$($DB -t -A -c "select access_level || '|' || status || '|' || language || '|' || skin_variant || '|' || (owner_id='$L2_OWNER') from memorials where id='$L2_MEM';")"
+
+# --- T3. Reconnection / retry / second tab: same draft, no reset ---
+L2_DEADLINES=$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until || '|' || free_draft_recovery_until from memorials where id='$L2_MEM';")
+L2_EVENTS=$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$L2_OWNER';")
+m1a_age "$L2_OWNER" '3 days'
+L2_DEADLINES=$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until || '|' || free_draft_recovery_until from memorials where id='$L2_MEM';")
+check "Lot 2: reconnecting 3 days later resumes the SAME draft" "resumed|$L2_MEM|started" "$(l2_begin "$L2_OWNER" "$L2_KEY_A" light "'fr'" | cut -d'|' -f1-3)"
+check "Lot 2: ... and never recomputes a deadline nor writes an event" "$L2_DEADLINES|$L2_EVENTS" \
+  "$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until || '|' || free_draft_recovery_until from memorials where id='$L2_MEM';")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$L2_OWNER';")"
+check "Lot 2: ... nor overwrites the language or ambiance already saved" "es|dark" "$($DB -t -A -c "select language || '|' || skin_variant from memorials where id='$L2_MEM';")"
+check "Lot 2: one draft per owner: another guest draft is told about the existing one, nothing is created" "active_draft_exists|$L2_MEM|1" \
+  "$(l2_begin "$L2_OWNER" "$L2_KEY_B" dark null | cut -d'|' -f1-2)|$($DB -t -A -c "select count(*) from memorials where owner_id='$L2_OWNER';")"
+
+# --- T4. Photo map: only ready media of this memorial and this owner ---
+L2_HERO=$(l2_media "$L2_MEM" "$L2_OWNER" hero ready)
+L2_G1=$(l2_media "$L2_MEM" "$L2_OWNER" gallery ready)
+L2_PENDING=$(l2_media "$L2_MEM" "$L2_OWNER" gallery pending)
+L2_OTHER_OWNER=$(q8_owner l2-other)
+L2_OTHER=$(l2_begin "$L2_OTHER_OWNER" "$L2_KEY_A" light null)
+L2_OTHER_MEM=$(echo "$L2_OTHER" | cut -d'|' -f2)
+check "Lot 2: the same transfer key under another owner is ANOTHER transfer (no cross-owner access)" "created|t" \
+  "$(echo "$L2_OTHER" | cut -d'|' -f1)|$([ "$L2_OTHER_MEM" != "$L2_MEM" ] && echo t || echo f)"
+L2_FOREIGN=$(l2_media "$L2_OTHER_MEM" "$L2_OTHER_OWNER" gallery ready)
+check "Lot 2: a ready Hero media of the draft is recorded, idempotently" "recorded|already_recorded" \
+  "$(l2_record "$L2_OWNER" "$L2_KEY_A" hero-local "$L2_HERO" hero)|$(l2_record "$L2_OWNER" "$L2_KEY_A" hero-local "$L2_HERO" hero)"
+check "Lot 2: refused — wrong purpose, pending media, another owner's media" "refused|refused|refused" \
+  "$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-1 "$L2_HERO" gallery)|$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-1 "$L2_PENDING" gallery)|$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-1 "$L2_FOREIGN" gallery)"
+check "Lot 2: conflict — one local photo, one media; one media, one local photo" "recorded|conflict|conflict" \
+  "$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-1 "$L2_G1" gallery)|$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-1 "$(l2_media "$L2_MEM" "$L2_OWNER" gallery ready)" gallery)|$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-2 "$L2_G1" gallery)"
+svc_expect_error "Lot 2: a malformed local photo id is refused" \
+  "select * from record_guest_draft_transfer_media_v1('$L2_OWNER','$L2_KEY_A','../etc','$L2_G1','gallery');" "invalid guest draft transfer media"
+check "Lot 2: a resumed transfer returns the recorded map" "2" \
+  "$(svc "select (select count(*) from jsonb_object_keys(media_map)) from begin_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_A',3,'dark','fr');")"
+
+# --- T5. Completion ---
+check "Lot 2: find reads the transfer without creating anything" "$L2_MEM|started|0" \
+  "$(svc "select memorial_id || '|' || transfer_status || '|' || base_draft_revision from find_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_A');")"
+check "Lot 2: find for an unknown key returns nothing" "0" "$(svc "select count(*) from find_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_B');")"
+check "Lot 2: completion is idempotent" "completed|already_completed" \
+  "$(svc "select outcome from complete_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_A');")|$(svc "select outcome from complete_guest_draft_transfer_v1('$L2_OWNER','$L2_KEY_A');")"
+check "Lot 2: nothing more can be recorded on a completed transfer" "refused" \
+  "$(l2_record "$L2_OWNER" "$L2_KEY_A" g-local-9 "$(l2_media "$L2_MEM" "$L2_OWNER" gallery ready)" gallery)"
+check "Lot 2: after completion, the same guest draft lands on the same durable draft" "resumed|$L2_MEM|completed" "$(l2_begin "$L2_OWNER" "$L2_KEY_A" dark "'fr'" | cut -d'|' -f1-3)"
+
+# --- T6. The free quota never blocks the durable save ---
+L2_Q_OWNER=$(q8_owner l2-quota-used)
+L2_Q1=$(q8_draft "$L2_Q_OWNER"); q8_anchor "$L2_Q1" "$L2_Q_OWNER" >/dev/null
+q8_ready "$L2_Q1" l2-quota-used-1 "$Q8_HERO"
+svc "$(q8_v2_sql "$L2_Q1" "$L2_Q_OWNER" l2-quota-used-1 avis "$Q8_HERO")" >/dev/null
+m1a_age "$L2_Q_OWNER" '30 days'
+L2_Q=$(l2_begin "$L2_Q_OWNER" "$L2_KEY_A" light "'fr'")
+check "Lot 2: quota used — the durable save still succeeds, without free publication" "created|started|anchored_without_free_publication" \
+  "$(echo "$L2_Q" | cut -d'|' -f1)|$(echo "$L2_Q" | cut -d'|' -f3)|$(echo "$L2_Q" | cut -d'|' -f4)"
+check "Lot 2: ... with its own 45 days of preparation and no quota consumed" "1080|true|1" \
+  "$($DB -t -A -c "select extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 || '|' || (free_publish_until = free_anchor_at) from memorials where id='$(echo "$L2_Q" | cut -d'|' -f2)';")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$L2_Q_OWNER' and event='free.first_published';")"
+
+# --- T7. Concurrency: two tabs following the link at once → one draft ---
+L2_RACE_OWNER=$(q8_owner l2-race)
+L2_CONC="$PGDATA_DIR/concurrency-l2-begin"; mkdir -p "$L2_CONC"
+for i in 1 2; do
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from begin_guest_draft_transfer_v1('$L2_RACE_OWNER','$L2_KEY_A',3,'light','fr');" >"$L2_CONC/$i.out" 2>"$L2_CONC/$i.err" || rc=$?
+    echo "$rc" >"$L2_CONC/$i.rc"
+  ) &
+done
+wait
+check "Lot 2: two simultaneous first saves: one created, one resumed, no error" "created resumed|0 0" \
+  "$(cat "$L2_CONC"/1.out "$L2_CONC"/2.out | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')|$(cat "$L2_CONC"/1.rc "$L2_CONC"/2.rc | tr '\n' ' ' | sed 's/ $//')"
+check "Lot 2: ... and exactly one durable draft exists" "1|1" \
+  "$($DB -t -A -c "select count(*) from memorials where owner_id='$L2_RACE_OWNER';")|$($DB -t -A -c "select count(*) from guest_draft_transfers where owner_id='$L2_RACE_OWNER';")"
+
+# --- T8. Etsy untouched ---
+L2_ETSY_OWNER=$(q8_owner l2-etsy)
+L2_ETSY_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet','etsy','intemporel','l2-etsy-order') returning id;")
+L2_ETSY_MEM=$(svc "select memorial_id from redeem_entitlement('$L2_ETSY_ENT','$L2_ETSY_OWNER','person','intemporel','light');")
+check "Lot 2: an owner with an Etsy (complete) memorial can still save a guest draft (separate avis draft)" "created" \
+  "$(l2_begin "$L2_ETSY_OWNER" "$L2_KEY_A" dark null | cut -d'|' -f1)"
+check "Lot 2: ... and the Etsy memorial is untouched" "complet|true" \
+  "$($DB -t -A -c "select access_level || '|' || (free_anchor_at is null) from memorials where id='$L2_ETSY_MEM';")"
+
+# --- T9. Pre/postflight and rollback (never applied automatically) ---
+L2_POST=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" 2>&1)
+check "Lot 2 postflight: zero ECHEC, every control OK (8)" "0|8" "$(echo "$L2_POST" | grep -c 'ECHEC' || true)|$(echo "$L2_POST" | grep -c '|OK$' || true)"
+check "Lot 2 postflight turns red on a client grant" "1" \
+  "$($DB -t -A -c "begin;" -c "grant select on guest_draft_transfers to authenticated;" -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+L2_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_preflight.sql" 2>&1)
+check "Lot 2 preflight after application: refuses (already applied), prerequisites OK" "1|4" \
+  "$(echo "$L2_PRE" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE" | grep -c '|OK$' || true)"
+L2_DOWN="$REPO_ROOT/supabase/rollbacks/20261101090000_qg008_lot2_guest_draft_transfer.down.sql"
+$PSQL -d postgres -c "create database l2_down_refused template $DB_NAME;" >/dev/null
+check "Lot 2 rollback refuses while transfers exist, and changes nothing" "1|t" \
+  "$($PSQL -d l2_down_refused -f "$L2_DOWN" 2>&1 | grep -c 'rollback refused' || true)|$($PSQL -d l2_down_refused -t -A -c "select to_regclass('public.guest_draft_transfers') is not null;")"
+$PSQL -d postgres -c "drop database l2_down_refused;" >/dev/null
+$PSQL -d postgres -c "create database l2_down_clean template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d l2_down_clean -f "$f" >/dev/null; done
+L2_PRE_CLEAN=$($PSQL -d l2_down_clean -t -A -c "select 1;" >/dev/null; $PSQL -d l2_down_clean -f "$L2_DOWN" >/dev/null 2>&1; echo $?)
+check "Lot 2 rollback applies on a database without transfers" "0" "$L2_PRE_CLEAN"
+L2_PRE_AFTER=$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_preflight.sql" 2>&1)
+check "Lot 2: after rollback the preflight is green again (5 OK, zero ECHEC), then the migration re-applies" "0|5|0|0" \
+  "$(echo "$L2_PRE_AFTER" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE_AFTER" | grep -c '|OK$' || true)|$($PSQL -d l2_down_clean -f "$MIGRATIONS_DIR/20261101090000_qg008_lot2_guest_draft_transfer.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+$PSQL -d postgres -c "drop database l2_down_clean;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

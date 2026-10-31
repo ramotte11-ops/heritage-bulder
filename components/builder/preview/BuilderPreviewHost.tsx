@@ -129,6 +129,11 @@ export interface BuilderPreviewHostProps {
    * this host's flush registry, so the journey drains the step's autosave
    * before moving. Ignored when `journey` is set. */
   localJourney?: (content: ReactNode) => ReactNode;
+  /** QG 008 Lot 2 — optional content shown under the current screen, in
+   * the same Builder wrapper (hidden while the Preview is open) and inside
+   * this host's flush registry. Never part of `children`, whose single
+   * element identifies the current screen. */
+  footer?: ReactNode;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -159,6 +164,7 @@ export function BuilderPreviewHost({
   openOnArrival = false,
   onClosed,
   localJourney,
+  footer = null,
   children,
 }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
@@ -300,6 +306,7 @@ export function BuilderPreviewHost({
       <div hidden={isOpen} data-builder-screen="">
         <DraftConflictNotice language={language} />
         {children}
+        {footer}
       </div>
       {phase === "loading" && language !== null && <PreviewLoading language={language} />}
       {isOpen && (

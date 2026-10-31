@@ -1478,5 +1478,22 @@ describe("GuestBuilderRuntime", () => {
       await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
       expect(store.value).toEqual(before);
     });
+
+    it("QG 008 Lot 2 — offers « Enregistrer mon hommage » under the screen, hidden with it while the Preview is open, with no network", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const { view, fetchSpy } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      const entry = screen.getByRole("button", { name: translate("fr", "durableSave.entry") });
+      const builderScreen = entry.closest("[data-builder-screen]");
+      expect(builderScreen).not.toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
+      expect(builderScreen!.hasAttribute("hidden")).toBe(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 });

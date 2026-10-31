@@ -68,6 +68,7 @@ import {
 import { journeySectionForScreen, type JourneyScreenId, type JourneySection } from "@/lib/builder/guided-flow/journey";
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 import { createUuidV4 } from "@/lib/browser/uuid-v4";
+import { GuestDurableSaveEntry } from "./GuestDurableSaveEntry";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
   GuestDraftV3Store,
@@ -630,6 +631,9 @@ export function GuestBuilderRuntime({
                 </GuestJourneyProvider>
               )
             : undefined}
+          // QG 008 Lot 2 — the durable save, offered from the first
+          // question after the language (never before: nothing to save).
+          footer={draft.language !== null ? <GuestDurableSaveEntry language={draft.language} /> : null}
         >
           {keyedScreen}
         </BuilderPreviewHost>

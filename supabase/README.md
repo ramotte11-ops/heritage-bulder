@@ -980,6 +980,36 @@ applied after the three M1-A migrations.
 - **Gestures.** Allowed for both levels (V8 §6); opening per memorial is
   still `symbolic_offering_eligibility` (QG 012).
 
+## QG 008 Lot 2 — guest draft → durable draft
+
+`migrations/20261101090000_qg008_lot2_guest_draft_transfer.sql`, additive,
+applied after the Lot 1 migration (it calls `create_free_memorial_v1` and
+`anchor_free_memorial_v1`).
+
+- **`guest_draft_transfers`** — one row per (verified owner, guest
+  `transferKey`): the durable draft it created, the photo map (local photo
+  id → ready server media of that draft), and `started` / `completed`.
+  Closed to every application role; RLS on.
+- **`begin_guest_draft_transfer_v1`** — the FIRST durable save: under the
+  owner's lock, creates and anchors ONE draft (the 45 days of preparation
+  start here, never when the guest Builder opens; the free quota never
+  blocks — Lot 1), sets the family's T01 language; or resumes the same
+  transfer (`resumed`: same draft, no deadline recomputed, no event). If
+  the owner already has an active draft: `active_draft_exists`, nothing
+  created or overwritten.
+- **`record_guest_draft_transfer_media_v1`** — accepts only a READY media
+  of the transfer's draft and owner, with the announced purpose; one local
+  photo ↔ one media; idempotent.
+- **`find_guest_draft_transfer_v1`** (read only, never creates) and
+  **`complete_guest_draft_transfer_v1`** (idempotent).
+- The durable content is rebuilt server-side (`lib/guest-draft/guest-draft-transfer.ts`)
+  from the re-validated guest draft and this photo map only, and written
+  through the Builder's own audited path, only over the untouched draft.
+
+Checks: `checks/qg008_lot2_preflight.sql`, `checks/qg008_lot2_postflight.sql`.
+Rollback (never automatic): `rollbacks/20261101090000_qg008_lot2_guest_draft_transfer.down.sql`,
+refused while any transfer exists.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
