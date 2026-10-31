@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { GalleryItem } from "@/types/gallery";
 import type { MemorialContent } from "@/types/memorial";
 import {
+  AVIS_SNAPSHOT_KEYS,
   FREE_PUBLICATION_GALLERY_LIMIT,
   projectMemorialPublication,
   type PublicationProjection,
@@ -329,3 +330,37 @@ describe("M1-B1 publication policy", () => {
     expect(projectMemorialPublication(input)).toEqual(projectMemorialPublication(input));
   });
 });
+
+describe("QG 008 — the free copy's keys, mirrored by the database", () => {
+  it("AVIS_SNAPSHOT_KEYS equals memorial_access_settings.avis_snapshot_keys in the migration", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/20261031120000_qg008_free_offer_v8_alignment.sql", import.meta.url),
+      "utf8",
+    );
+    const literal = migration.match(/avis_snapshot_keys = array\[([\s\S]*?)\]/)?.[1];
+    expect(literal).toBeDefined();
+    const sqlKeys = [...(literal ?? "").matchAll(/'([A-Za-z]+)'/g)].map((match) => match[1]);
+    expect([...sqlKeys].sort()).toEqual([...AVIS_SNAPSHOT_KEYS].sort());
+  });
+
+  it("no avis projection, even from a maximal draft, produces a key outside that list", () => {
+    const maximal = {
+      ...draftWithGallery(3),
+      hero: { displayName: "Jeanne" },
+      video: { items: [{ url: "https://vimeo.com/1" }] },
+      testimonials: { enabled: true },
+      memoryMessage: { enabled: true },
+      condolences: { enabled: true },
+      symbolicOfferings: { enabled: true },
+      unknownFutureSection: { anything: true },
+    } as unknown as MemorialContent;
+    const keys = Object.keys(successfulProjection(maximal, "avis").content);
+    expect(keys.every((key) => (AVIS_SNAPSHOT_KEYS as readonly string[]).includes(key))).toBe(true);
+    expect(keys).not.toEqual(expect.arrayContaining(["video"]));
+  });
+
+  it("the six-photo publication limit equals the database's avis_gallery_limit", () => {
+    expect(FREE_PUBLICATION_GALLERY_LIMIT).toBe(6);
+  });
+});
+

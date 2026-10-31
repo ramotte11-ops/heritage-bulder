@@ -45,6 +45,28 @@ import type { MemorialContent } from "@/types/memorial";
 
 export const FREE_PUBLICATION_GALLERY_LIMIT = 6;
 
+/**
+ * QG 008 — every top-level key an `avis` projection may produce. Mirror of
+ * `memorial_access_settings.avis_snapshot_keys`
+ * (supabase/migrations/20261031120000_qg008_free_offer_v8_alignment.sql):
+ * the database refuses a free copy holding any other key, whatever path
+ * wrote it. The exact editorial scope of the free offer (litige L09) is
+ * decided in that data; narrowing it there without narrowing this policy
+ * makes free publication fail closed, never leak.
+ */
+export const AVIS_SNAPSHOT_KEYS = [
+  "hero",
+  "deathNotice",
+  "ceremony",
+  "traditions",
+  "personWords",
+  "lovedThings",
+  "legacy",
+  "gallery",
+  "guidedFlow",
+  "presentation",
+] as const;
+
 type ValidatedAccessLevel = "avis" | "complet";
 
 /**
@@ -261,9 +283,12 @@ function addPresentationProjection(
 /**
  * Builds the deterministic public projection for one draft.
  *
- * This is deliberately not wired to `publishMemorial` or to a database
- * RPC. The future server transaction must re-read the access level, call
- * this policy, and atomically persist only `projection.content`.
+ * QG 008 — wired: `publishMemorial` calls it with the access level read
+ * from the database, and `commit_memorial_publication_v2` persists only
+ * `projection.content`, after re-reading that level under lock. For an
+ * `avis`, the database independently refuses any key outside
+ * `memorial_access_settings.avis_snapshot_keys` (mirrored by
+ * `AVIS_SNAPSHOT_KEYS`) and any seventh gallery photograph.
  */
 export function projectMemorialPublication(
   input: PublicationProjectionInput,

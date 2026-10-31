@@ -21,7 +21,8 @@ import type { SkinVariant } from "@/config/skins";
  * - `created`: a free (`avis`) Intemporel draft exists, not yet anchored;
  * - `freeDraftLimit`: B6 — the owner already has an active free draft;
  * - `freeUnavailable`: the address can no longer publish for free in its
- *   12-month cycle (7-day window over, or free publication already used);
+ *   12-month cycle (10-day window over, or free publication already used,
+ *   and no active administrative waiver — QG 008);
  * - `refused`: unknown owner.
  */
 export type CreateFreeMemorialOutcome =
@@ -33,8 +34,8 @@ export type CreateFreeMemorialOutcome =
 /**
  * - `anchored`: B1 — the draft now carries its ADDRESS's anchor: the
  *   first confirmation of the 12-month cycle opens the window, any later
- *   draft of that cycle inherits it (no new 7 days); the deadlines are the
- *   server's (B14);
+ *   draft of that cycle inherits it (no new 10 days); the deadlines are the
+ *   server's (B14, V8 via QG 008: +10 d, +45 d, +7 d recovery);
  * - `alreadyAnchored`: anchored before — the original deadlines, unmoved;
  * - `notFree`: a complete memorial has no free anchor;
  * - `refused`: not the owner's, archived, unknown, or already published.

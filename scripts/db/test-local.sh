@@ -200,10 +200,25 @@ alter default privileges in schema public
   to anon, authenticated, service_role;
 SQL
 
+# QG 008: a second throwaway database, cloned from the stand-ins and
+# stopped at the last HERITAGE Direct M1-A migration. The read-only M1-A
+# pre/postflights (supabase/checks/m1a_*) grade THAT state, exactly as
+# they would right after applying M1-A to a real project; QG 008's own
+# checks grade the final state below. No check file is edited.
+STANDINS_DB="heritage_standins_template"
+$PSQL -d postgres -c "create database $STANDINS_DB template $DB_NAME;"
+M1A_STATE_DB="heritage_m1a_state_test"
+M1A_LAST_MIGRATION="20261024200000_heritage_direct_access_level_required.sql"
+$PSQL -d postgres -c "create database $M1A_STATE_DB template $DB_NAME;"
+DB_M1A="$PSQL -d $M1A_STATE_DB"
+
 echo "== Applying migrations =="
 for f in "$MIGRATIONS_DIR"/*.sql; do
   echo "  -> $(basename "$f")"
   $DB -f "$f"
+  if [[ ! "$(basename "$f")" > "$M1A_LAST_MIGRATION" ]]; then
+    $DB_M1A -f "$f" >/dev/null
+  fi
 done
 
 # Nothing is granted here. Everything a role can do from this point on
@@ -770,6 +785,7 @@ $DB -c "update memorials set enabled_sections = array['condolences'] where id = 
 as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$MEM_A', 'condolence', 'A Visitor', 'Thinking of you.');" >/dev/null
 COND_COUNT=$($DB -t -A -c "select count(*) from messages where memorial_id = '$MEM_A';")
 check "anonymous condolence is accepted once 'condolences' is enabled on a published memorial" "1" "$COND_COUNT"
+check "QG 008: the accepted condolence waits for moderation (visible = false)" "f" "$($DB -t -A -c "select bool_or(visible) from messages where memorial_id = '$MEM_A';")"
 
 as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$MEM_B', 'condolence', 'A Visitor', 'Thinking of you.');" >/dev/null 2>"$PGDATA_DIR/last_error" || true
 COND_COUNT=$($DB -t -A -c "select count(*) from messages where memorial_id = '$MEM_B';")
@@ -2741,9 +2757,11 @@ echo "== HERITAGE Direct M1-A: free / complete access foundation =="
 # --- A. Backfill, settings, D12 (no implicit level) ---
 check "every existing memorial carries an explicit access level" "0" "$($DB -t -A -c "select count(*) from memorials where access_level is null;")"
 check "every fixture right declares its level explicitly" "0" "$($DB -t -A -c "select count(*) from entitlements where access_level is null;")"
-check "settings hold real durations (168 h, 1080 h, 168 h, 1080 h, 720 h) and B6 quotas" \
-  "168:00:00|1080:00:00|168:00:00|1080:00:00|720:00:00|1 year|1|1|6|12" \
-  "$($DB -t -A -c "select free_publish_window || '|' || free_draft_retention || '|' || free_correction_window || '|' || free_public_duration || '|' || free_private_extension || '|' || free_publication_quota_window || '|' || free_publications_per_owner || '|' || free_active_drafts_per_owner || '|' || avis_gallery_limit || '|' || avis_gallery_rows_cap from memorial_access_settings;")"
+# QG 008: the V8 values (10 d, 45 d, no correction window, 45 d, 7 d
+# recovery, 12-month quota and cycle, 6 published photos, no avis cap).
+check "settings hold the V8 durations (240 h, 1080 h, none, 1080 h, 168 h) and quotas" \
+  "240:00:00|1080:00:00|-|1080:00:00|168:00:00|1 year|1 year|1|1|6|-" \
+  "$($DB -t -A -c "select free_publish_window || '|' || free_draft_retention || '|' || coalesce(free_correction_window::text, '-') || '|' || free_public_duration || '|' || free_private_extension || '|' || free_publication_quota_window || '|' || free_window_cycle || '|' || free_publications_per_owner || '|' || free_active_drafts_per_owner || '|' || avis_gallery_limit || '|' || coalesce(avis_gallery_rows_cap::text, '-') from memorial_access_settings;")"
 
 M1A_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-owner@example.test') returning id;")
 M1A_OTHER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-other@example.test') returning id;")
@@ -2800,8 +2818,8 @@ check "B6: the refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "sel
 check "a foreign owner cannot anchor the draft" "refused" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OTHER');")"
 check "a complete memorial has no free anchor" "not_free" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_ETSY_MEM','$M1A_OWNER');")"
 check "the first confirmation anchors the draft" "anchored" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OWNER');")"
-check "B14: real durations from the anchor (7 days, 45 days), never rounded" "168|1080" \
-  "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
+check "B14: real durations from the anchor (10 days, 45 days, +7 days recovery), never rounded" "240|1080|1248" \
+  "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_recovery_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
 M1A_ANCHOR=$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until from memorials where id='$M1A_FREE_MEM';")
 check "a second confirmation never moves the anchor" "already_anchored" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_FREE_MEM','$M1A_OWNER');")"
 check "the deadlines are unchanged after the second confirmation" "$M1A_ANCHOR" "$($DB -t -A -c "select free_anchor_at || '|' || free_publish_until || '|' || free_draft_until from memorials where id='$M1A_FREE_MEM';")"
@@ -2846,17 +2864,17 @@ check "the refused publication leaves no snapshot and no first date" "0|ready|tr
 M1A_LATE_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-late@example.test') returning id;")
 M1A_LATE_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_LATE_OWNER','intemporel','light');")
 svc "select outcome from anchor_free_memorial_v1('$M1A_LATE_MEM','$M1A_LATE_OWNER');" >/dev/null
-$DB -c "update memorials set free_anchor_at = now() - interval '8 days', free_publish_until = now() - interval '1 day', free_draft_until = now() + interval '37 days' where id='$M1A_LATE_MEM';" >/dev/null
+$DB -c "update memorials set free_anchor_at = now() - interval '11 days', free_publish_until = now() - interval '1 day', free_draft_until = now() + interval '34 days' where id='$M1A_LATE_MEM';" >/dev/null
 m1a_ready "$M1A_LATE_MEM" "m1a-late"
-svc_expect_error "after the 7-day window the free publication is refused" "$(m1a_publish_sql "$M1A_LATE_MEM" "$M1A_LATE_OWNER" m1a-late)" "free publication window closed"
+svc_expect_error "after the 10-day window the free publication is refused" "$(m1a_publish_sql "$M1A_LATE_MEM" "$M1A_LATE_OWNER" m1a-late)" "free publication window closed"
 check "the draft stays editable-state draft/ready and unpublished" "ready|true" "$($DB -t -A -c "select status || '|' || (first_published_at is null) from memorials where id='$M1A_LATE_MEM';")"
 
 # F3. Within the window: published, deadlines posed from the real first publication.
 m1a_ready "$M1A_FREE_MEM" "m1a-free"
 M1A_FIRST=$(m1a_publish "$M1A_FREE_MEM" "$M1A_OWNER" m1a-free)
 check "a free publication inside the window succeeds" "published" "$($DB -t -A -c "select status from memorials where id='$M1A_FREE_MEM';")"
-check "B14: corrections, public and private deadlines are real durations from the first publication" "168|1080|720" \
-  "$($DB -t -A -c "select extract(epoch from (free_corrections_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_public_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_private_until - free_public_until))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
+check "B14: no correction window (L06), 45 days public, 7 days recovery, real durations from the first publication" "-|1080|168" \
+  "$($DB -t -A -c "select coalesce(free_corrections_until::text, '-') || '|' || extract(epoch from (free_public_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_private_until - free_public_until))::bigint / 3600 from memorials where id='$M1A_FREE_MEM';")"
 check "the deadlines start at the exact first publication" "$M1A_FIRST" "$($DB -t -A -c "select first_published_at from memorials where id='$M1A_FREE_MEM';")"
 check "the first free publication is journaled" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='free.first_published';")"
 
@@ -2912,7 +2930,7 @@ check "the second draft inherited the address's anchor and deadlines" "1|1" "$($
 # F7. One free window per verified e-mail address (correctif 1).
 m1a_age() {
   # $1 owner, $2 interval — moves the owner's whole free history back in time
-  $DB -c "update memorial_access_events set created_at = created_at - interval '$2' where owner_id='$1'; update memorials set free_anchor_at = free_anchor_at - interval '$2', free_publish_until = free_publish_until - interval '$2', free_draft_until = free_draft_until - interval '$2', first_published_at = first_published_at - interval '$2', free_corrections_until = free_corrections_until - interval '$2', free_public_until = free_public_until - interval '$2', free_private_until = free_private_until - interval '$2' where owner_id='$1';" >/dev/null
+  $DB -c "update memorial_access_events set created_at = created_at - interval '$2' where owner_id='$1'; update memorials set free_anchor_at = free_anchor_at - interval '$2', free_publish_until = free_publish_until - interval '$2', free_draft_until = free_draft_until - interval '$2', free_draft_recovery_until = free_draft_recovery_until - interval '$2', first_published_at = first_published_at - interval '$2', free_corrections_until = free_corrections_until - interval '$2', free_public_until = free_public_until - interval '$2', free_private_until = free_private_until - interval '$2' where owner_id='$1';" >/dev/null
 }
 m1a_avis_draft() {
   # $1 owner — an avis draft made outside create_free_memorial_v1
@@ -2927,13 +2945,13 @@ $DB -c "update memorials set status='archived' where id='$M1A_BYP_D1';" >/dev/nu
 M1A_BYP_D2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")
 check "inside the window, an abandoned draft may be replaced" "created" "$(echo "$M1A_BYP_D2" | cut -d'|' -f1)"
 M1A_BYP_D2=$(echo "$M1A_BYP_D2" | cut -d'|' -f2)
-check "the replacement inherits the address's anchor: no new 7 days" "anchored|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D2','$M1A_BYP_OWNER');")|$($DB -t -A -c "select (a.free_anchor_at = b.free_anchor_at and a.free_publish_until = b.free_publish_until and a.free_draft_until = b.free_draft_until) from memorials a, memorials b where a.id='$M1A_BYP_D1' and b.id='$M1A_BYP_D2';")"
+check "the replacement inherits the address's anchor: no new 10 days" "anchored|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D2','$M1A_BYP_OWNER');")|$($DB -t -A -c "select (a.free_anchor_at = b.free_anchor_at and a.free_publish_until = b.free_publish_until and a.free_draft_until = b.free_draft_until) from memorials a, memorials b where a.id='$M1A_BYP_D1' and b.id='$M1A_BYP_D2';")"
 check "the window is opened once per cycle" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_BYP_OWNER' and event='free.window_opened';")"
 
-m1a_age "$M1A_BYP_OWNER" '8 days'
+m1a_age "$M1A_BYP_OWNER" '10 days'
 $DB -c "update memorials set status='archived' where id='$M1A_BYP_D2';" >/dev/null
 M1A_RIGHTS_BEFORE=$($DB -t -A -c "select count(*) from entitlements;")
-check "after the 7 days, recreating a free draft is refused" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")"
+check "after the 10 days, recreating a free draft is refused" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")"
 check "that refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "select count(*) from entitlements;")"
 M1A_BYP_D3=$(m1a_avis_draft "$M1A_BYP_OWNER")
 check "outside the window, an unanchored draft is not anchored" "free_unavailable|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D3','$M1A_BYP_OWNER');")|$($DB -t -A -c "select free_anchor_at is null from memorials where id='$M1A_BYP_D3';")"
@@ -2993,7 +3011,7 @@ $DB -c "update owners set email = 'm1a-plain-2@example.test' where id='$M1A_PLAI
 check "an owner without free history is unaffected" "m1a-plain-2@example.test" "$($DB -t -A -c "select email from owners where id='$M1A_PLAIN_OWNER';")"
 check "the window helper is executable by no role" "false|false|false" "$($DB -t -A -c "select has_function_privilege('anon','public.free_access_window_v1(uuid,timestamptz)','EXECUTE') || '|' || has_function_privilege('authenticated','public.free_access_window_v1(uuid,timestamptz)','EXECUTE') || '|' || has_function_privilege('service_role','public.free_access_window_v1(uuid,timestamptz)','EXECUTE');")"
 
-# --- G. Gallery quota (6 photos in avis), media and draft ---
+# --- G. Gallery in avis: preparation is free, the PUBLISHED copy holds six (QG 008) ---
 M1A_GAL_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-gallery@example.test') returning id;")
 M1A_GAL_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_GAL_OWNER','intemporel','light');")
 m1a_reserve() {
@@ -3003,32 +3021,25 @@ m1a_reserve() {
   svc "select id from reserve_memorial_media_upload_v1('$1','$2','$id','$1/$id/original.jpg','gallery','image/jpeg');"
 }
 M1A_GAL_OK=0
-for n in 1 2 3 4 5 6; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
   if m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1; then M1A_GAL_OK=$((M1A_GAL_OK + 1)); fi
 done
-check "six gallery uploads are accepted in avis" "6" "$M1A_GAL_OK"
-M1A_SEVENTH=$(svc "select gen_random_uuid();")
-svc_expect_error "the seventh gallery upload is refused by the server" \
-  "select * from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_SEVENTH','$M1A_GAL_MEM/$M1A_SEVENTH/original.jpg','gallery','image/jpeg');" \
-  "free gallery limit reached"
+check "V8 §3.2: an avis draft may prepare more than six gallery photos (13 uploads accepted)" "13" "$M1A_GAL_OK"
 M1A_DIRECT=$(svc "select gen_random_uuid();")
-svc_expect_error "a direct service_role insert cannot bypass the quota" \
-  "insert into media (id, memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M1A_DIRECT','$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_GAL_MEM/$M1A_DIRECT/original.jpg','photo','image/jpeg','gallery','pending');" \
-  "free gallery limit reached"
+check "a direct service_role insert is not blocked either (no avis cap by default)" "1" \
+  "$(svc "insert into media (id, memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$M1A_DIRECT','$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_GAL_MEM/$M1A_DIRECT/original.jpg','photo','image/jpeg','gallery','pending');" >/dev/null 2>&1 && echo 1 || echo 0)"
 M1A_HERO=$(svc "select gen_random_uuid();")
-check "the Hero photograph is not counted in the six" "$M1A_HERO" "$(svc "select id from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_HERO','$M1A_GAL_MEM/$M1A_HERO/original.jpg','hero','image/jpeg');")"
-$DB -c "update media set created_at = now() - interval '4 hours' where id = (select id from media where memorial_id='$M1A_GAL_MEM' and purpose='gallery' order by created_at limit 1);" >/dev/null
-check "an expired pending upload frees its place" "1" "$(m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
-$DB -c "update media set created_at = now() - interval '4 hours' where memorial_id='$M1A_GAL_MEM' and purpose='gallery';" >/dev/null
-for n in 1 2 3 4 5; do m1a_reserve "$M1A_GAL_MEM" "$M1A_GAL_OWNER" >/dev/null 2>&1 || true; done
-check "the storage cap counts every gallery row (12)" "12" "$($DB -t -A -c "select count(*) from media where memorial_id='$M1A_GAL_MEM' and purpose='gallery';")"
-$DB -c "update media set created_at = now() - interval '4 hours' where memorial_id='$M1A_GAL_MEM' and purpose='gallery';" >/dev/null
+check "the Hero photograph is reserved as before" "$M1A_HERO" "$(svc "select id from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_HERO','$M1A_GAL_MEM/$M1A_HERO/original.jpg','hero','image/jpeg');")"
+
+# The optional storage cap (L09 / QG 017) still works when set in data.
+$DB -c "update memorial_access_settings set avis_gallery_rows_cap = 14 where id;" >/dev/null
 M1A_CAP=$(svc "select gen_random_uuid();")
-svc_expect_error "beyond 12 gallery rows the storage cap refuses, even with free places" \
+svc_expect_error "with an avis cap set in data (14), the 15th gallery row is refused" \
   "select * from reserve_memorial_media_upload_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','$M1A_CAP','$M1A_GAL_MEM/$M1A_CAP/original.jpg','gallery','image/jpeg');" \
   "free gallery storage cap reached"
 
-# Concurrency: two uploads for the last place.
+# Concurrency on that optional cap: two uploads for the last place.
+$DB -c "update memorial_access_settings set avis_gallery_rows_cap = 6 where id;" >/dev/null
 M1A_LAST_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-last@example.test') returning id;")
 M1A_LAST_MEM=$(svc "select memorial_id from create_free_memorial_v1('$M1A_LAST_OWNER','intemporel','light');")
 for n in 1 2 3 4 5; do m1a_reserve "$M1A_LAST_MEM" "$M1A_LAST_OWNER" >/dev/null; done
@@ -3042,36 +3053,19 @@ for i in 1 2; do
   ) &
 done
 wait
-check "two simultaneous uploads for the last place: exactly one wins" "1" "$(cat "$M1A_CONC_G"/1.rc "$M1A_CONC_G"/2.rc | grep -c '^0$' || true)"
-check "the memorial holds exactly six gallery rows" "6" "$($DB -t -A -c "select count(*) from media where memorial_id='$M1A_LAST_MEM' and purpose='gallery';")"
+check "optional cap under concurrency: exactly one of two uploads for the last place wins" "1" "$(cat "$M1A_CONC_G"/1.rc "$M1A_CONC_G"/2.rc | grep -c '^0$' || true)"
+check "the memorial holds exactly the capped six gallery rows" "6" "$($DB -t -A -c "select count(*) from media where memorial_id='$M1A_LAST_MEM' and purpose='gallery';")"
+$DB -c "update memorial_access_settings set avis_gallery_rows_cap = null where id;" >/dev/null
 
-# Photos retained only by the published snapshot do not consume a place (corrections).
-M1A_SNAP_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-snapshot@example.test') returning id;")
-M1A_SNAP_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$M1A_SNAP_OWNER', now()) returning id;")
-M1A_SNAP_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, skin_id, skin_variant, language, slug, status, first_published_at) values ('$M1A_SNAP_OWNER','$M1A_SNAP_ENT','person','intemporel','light','fr','m1a-snapshot','published', now()) returning id;")
-M1A_SNAP_IDS=""
-for n in 1 2 3 4 5 6; do
-  id=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) select '$M1A_SNAP_MEM','$M1A_SNAP_OWNER','$M1A_SNAP_MEM/' || g || '/original.jpg','photo','image/jpeg','gallery','ready',100 from (select gen_random_uuid() g) x returning id;")
-  M1A_SNAP_IDS="$M1A_SNAP_IDS $id"
-done
-M1A_SNAP_ITEMS=$(for id in $M1A_SNAP_IDS; do printf '{"mediaId":"%s"},' "$id"; done | sed 's/,$//')
-M1A_DRAFT_ITEMS=$(for id in $(echo $M1A_SNAP_IDS | cut -d' ' -f1-5); do printf '{"mediaId":"%s"},' "$id"; done | sed 's/,$//')
-$DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$M1A_SNAP_MEM', '{\"gallery\":{\"items\":[$M1A_SNAP_ITEMS]}}');" >/dev/null
-$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_DRAFT_ITEMS]}}' where memorial_id='$M1A_SNAP_MEM';" >/dev/null
-check "a photo kept only by the published copy frees its place for a replacement" "1" "$(m1a_reserve "$M1A_SNAP_MEM" "$M1A_SNAP_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
-
-# Draft guard.
+# The draft of an avis may reference more than six photos; the published copy may not.
 M1A_SEVEN_ITEMS=$(for n in 1 2 3 4 5 6 7; do printf '{"mediaId":"%s"},' "$(svc "select gen_random_uuid();")"; done | sed 's/,$//')
-M1A_SIX_ITEMS=$(for n in 1 2 3 4 5 6; do printf '{"mediaId":"%s"},' "$(svc "select gen_random_uuid();")"; done | sed 's/,$//')
-expect_error "an avis draft cannot reference seven gallery photos" \
-  "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_GAL_MEM';"
-$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SIX_ITEMS]}}' where memorial_id='$M1A_GAL_MEM';" >/dev/null
-check "an avis draft may reference six gallery photos" "6" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_GAL_MEM';")"
+$DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_GAL_MEM';" >/dev/null
+check "an avis draft may reference seven gallery photos (preparation)" "7" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_GAL_MEM';")"
 $DB -c "update memorial_drafts set content='{\"gallery\":{\"items\":[$M1A_SEVEN_ITEMS]}}' where memorial_id='$M1A_COMPLETE_MEM';" >/dev/null
 check "a complete draft is not limited to six" "7" "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_drafts where memorial_id='$M1A_COMPLETE_MEM';")"
 
 # F8. QG guarantee: an existing free draft stays editable until A+45,
-# even once free publication ended at A+7 — the replacement draft too.
+# even once free publication ended at A+10 — the replacement draft too.
 M1A_KEEP_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-keep@example.test') returning id;")
 M1A_KEEP_D1=$(svc "select memorial_id from create_free_memorial_v1('$M1A_KEEP_OWNER','intemporel','light');")
 svc "select outcome from anchor_free_memorial_v1('$M1A_KEEP_D1','$M1A_KEEP_OWNER');" >/dev/null
@@ -3091,7 +3085,7 @@ m1a_edit() {
   # $1 memorial, $2 owner, $3 text -> new revision
   svc "select revision from commit_memorial_draft_edit_v1('$1','$2',(select revision from memorial_drafts where memorial_id='$1'),'ready',null,'{\"hero\":{\"displayName\":\"Avis\",\"photo\":null},\"personWords\":{\"text\":\"$3\"}}','content.saved',array['content.personWords.text']);"
 }
-for age in '8 days' '36 days'; do
+for age in '11 days' '33 days'; do
   m1a_age "$M1A_KEEP_OWNER" "$age"
   M1A_KEEP_T=$($DB -t -A -c "select round(extract(epoch from (now() - free_anchor_at)) / 86400) from memorials where id='$M1A_KEEP';")
   M1A_KEEP_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$M1A_KEEP';")
@@ -3102,7 +3096,7 @@ for age in '8 days' '36 days'; do
   check "A+$M1A_KEEP_T: the draft stays the owner's one active free draft (B6)" "free_draft_limit" "$(svc "select outcome from create_free_memorial_v1('$M1A_KEEP_OWNER','intemporel','light');")"
   svc_expect_error "A+$M1A_KEEP_T: only the free publication is closed" "$(m1a_publish_current_sql "$M1A_KEEP" "$M1A_KEEP_OWNER" m1a-keep)" "free publication window closed"
 done
-check "A+44: its deadlines are still the original ones (A+7, A+45)" "168|1080" "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_KEEP';")"
+check "A+44: its deadlines are still the original ones (A+10, A+45)" "240|1080" "$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 from memorials where id='$M1A_KEEP';")"
 check "A+44: the draft can still be upgraded to complete and published" "upgraded|published" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_KEEP','$M1A_KEEP_OWNER','direct_payment','pay-m1a-keep');")|$(svc "$(m1a_publish_current_sql "$M1A_KEEP" "$M1A_KEEP_OWNER" m1a-keep)" >/dev/null; $DB -t -A -c "select status from memorials where id='$M1A_KEEP';")"
 
 # --- H. upgrade_memorial_access_v1: same memorial, nothing lost ---
@@ -3116,14 +3110,17 @@ check "replaying the same payment reference is idempotent" "already_complete" "$
 check "one payment reference upgrades one memorial only" "refused" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_GAL_MEM','$M1A_GAL_OWNER','direct_payment','pay-m1a-1');")"
 check "the upgrade is journaled once, with its reference" "1|direct_payment|pay-m1a-1" "$($DB -t -A -c "select count(*) || '|' || max(source) || '|' || max(external_reference) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='access.upgraded';")"
 check "the gallery memorial is still limited until upgraded" "avis" "$($DB -t -A -c "select access_level from memorials where id='$M1A_GAL_MEM';")"
-check "after upgrade the six-photo limit no longer applies" "upgraded|1" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_LAST_MEM','$M1A_LAST_OWNER','direct_payment','pay-m1a-2');")|$(m1a_reserve "$M1A_LAST_MEM" "$M1A_LAST_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+$DB -c "update memorial_access_settings set avis_gallery_rows_cap = 6 where id;" >/dev/null
+check "after upgrade even an optional avis cap no longer applies" "upgraded|1" "$(svc "select outcome from upgrade_memorial_access_v1('$M1A_LAST_MEM','$M1A_LAST_OWNER','direct_payment','pay-m1a-2');")|$(m1a_reserve "$M1A_LAST_MEM" "$M1A_LAST_OWNER" >/dev/null 2>&1 && echo 1 || echo 0)"
+$DB -c "update memorial_access_settings set avis_gallery_rows_cap = null where id;" >/dev/null
 
 # --- I. M1-A preflight / postflight, same doctrine as Mission 030 ---
+# QG 008: graded against $DB_M1A, the database stopped at M1-A.
 # Both read-only. Against a database that already carries M1-A, the
 # preflight must flag every "already applied" row; the postflight must
 # report no ECHEC once the one right this section deliberately left
 # without a level (the D12 refusal test above) is gone.
-if $DB -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
   echo "  [PASS] m1a_preflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
@@ -3131,60 +3128,407 @@ else
   FAIL=$((FAIL + 1))
 fi
 check "m1a_preflight.sql detects that M1-A is already applied (11 rows)" "11" \
-  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep -c "ECHEC — .*M1-A" || true)"
+  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep -c "ECHEC — .*M1-A" || true)"
 check "m1a_preflight.sql finds its prerequisites" "0" \
-  "$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
 
 check "m1a_postflight.sql flags a right without a level" "1" \
-  "$($DB -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -c "insert into entitlements (source, offer_id) values ('direct','intemporel');" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
-if $DB -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -c "insert into entitlements (source, offer_id) values ('direct','intemporel');" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
+if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null)
+M1A_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null)
 check "m1a_postflight.sql reports zero ECHEC against these migrations" "0" "$(echo "$M1A_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql grades every expected control (42 OK)" "42" "$(echo "$M1A_POSTFLIGHT" | grep -c "|OK$" || true)"
 # Negative proofs, each rolled back: the postflight must turn red.
 check "m1a_postflight.sql turns red if the updated_at trigger stays suspended" "1" \
-  "$($DB -t -A -c "begin;" -c "alter table memorials disable trigger memorials_set_updated_at;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "alter table memorials disable trigger memorials_set_updated_at;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql turns red on a client grant on the journal" "1" \
-  "$($DB -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql turns red on a changed duration" "1" \
-  "$($DB -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 # Correctif 1's complementary postflight, same doctrine.
-if $DB -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_correctif1_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_correctif1_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_C1_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>/dev/null)
+M1A_C1_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>/dev/null)
 check "m1a_correctif1_postflight.sql reports zero ECHEC" "0" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_correctif1_postflight.sql grades every expected control (12 OK)" "12" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "|OK$" || true)"
 check "m1a_correctif1_postflight.sql turns red on a grant of the window helper" "1" \
-  "$($DB -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_correctif1_postflight.sql turns red if the initial anchor function is back" "1" \
-  "$($DB -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 # Correctif 2's complementary postflight.
-if $DB -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_correctif2_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_correctif2_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_C2_POSTFLIGHT=$($DB -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" 2>/dev/null)
+M1A_C2_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" 2>/dev/null)
 check "m1a_correctif2_postflight.sql reports 2 OK, zero ECHEC" "2|0" "$(echo "$M1A_C2_POSTFLIGHT" | grep -c "|OK$" || true)|$(echo "$M1A_C2_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_correctif2_postflight.sql turns red if the level becomes optional again" "1" \
-  "$($DB -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 echo ""
+# =====================================================================
+# QG 008 — Lot 1 : droits gratuit / complet alignés sur la V8
+# =====================================================================
+# Time is simulated only by moving an owner's stored history back
+# (m1a_age), in this throwaway database: no clock is faked and no
+# function is changed for testing.
+echo ""
+echo "== QG 008 Lot 1: free / complete rights aligned on V8 =="
+
+q8_owner() {
+  $DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), '$1@example.test') returning id;"
+}
+q8_draft() {
+  svc "select memorial_id from create_free_memorial_v1('$1','intemporel','light');"
+}
+q8_anchor() {
+  svc "select outcome from anchor_free_memorial_v1('$1','$2');"
+}
+q8_ready() {
+  # $1 memorial, $2 slug, $3 draft content (JSON)
+  $DB -c "update memorials set language='fr', slug='$2', status='ready' where id='$1'; update memorial_drafts set content='$3' where memorial_id='$1';" >/dev/null
+}
+q8_v2_sql() {
+  # $1 memorial, $2 owner, $3 slug, $4 expected level, $5 published content (JSON)
+  local rev content
+  rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$1';")
+  content=$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$1';")
+  echo "select * from commit_memorial_publication_v2('$1','$2',$rev,'ready',null,'fr','intemporel','light','$3','$4','$content','$5');"
+}
+q8_status() {
+  $DB -t -A -c "select status from memorials where id='$1';"
+}
+q8_published_count() {
+  $DB -t -A -c "select count(*) from memorial_access_events where owner_id='$1' and event='free.first_published';"
+}
+Q8_HERO='{"hero":{"displayName":"Avis","photo":null}}'
+ADMIN_Q8=$($DB -t -A -c "select gen_random_uuid();")
+
+# --- Q1. J10: the free publication window, at its exact boundary ---
+Q8_J10A_OWNER=$(q8_owner q8-j10-before)
+Q8_J10A=$(q8_draft "$Q8_J10A_OWNER"); q8_anchor "$Q8_J10A" "$Q8_J10A_OWNER" >/dev/null
+q8_ready "$Q8_J10A" q8-j10-before "$Q8_HERO"
+m1a_age "$Q8_J10A_OWNER" '239 hours 59 minutes'
+svc "$(q8_v2_sql "$Q8_J10A" "$Q8_J10A_OWNER" q8-j10-before avis "$Q8_HERO")" >/dev/null
+check "J10 - 1 min: the free publication succeeds" "published" "$(q8_status "$Q8_J10A")"
+
+Q8_J10B_OWNER=$(q8_owner q8-j10-at)
+Q8_J10B=$(q8_draft "$Q8_J10B_OWNER"); q8_anchor "$Q8_J10B" "$Q8_J10B_OWNER" >/dev/null
+q8_ready "$Q8_J10B" q8-j10-at "$Q8_HERO"
+m1a_age "$Q8_J10B_OWNER" '240 hours'
+svc_expect_error "J10 exactly: the free publication is refused by the server" \
+  "$(q8_v2_sql "$Q8_J10B" "$Q8_J10B_OWNER" q8-j10-at avis "$Q8_HERO")" "free publication window closed"
+check "J10: the refusal leaves the draft unpublished and consumes no quota" "ready|0|0" \
+  "$(q8_status "$Q8_J10B")|$(q8_published_count "$Q8_J10B_OWNER")|$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$Q8_J10B';")"
+Q8_J10B_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$Q8_J10B';")
+check "J10: the draft itself is still saved after the window (45-day preparation)" "$((Q8_J10B_REV + 1))" \
+  "$(m1a_edit "$Q8_J10B" "$Q8_J10B_OWNER" "Apres J10")"
+check "J10: the complete offer remains reachable on the same draft" "upgraded" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$Q8_J10B','$Q8_J10B_OWNER','direct_payment','pay-q8-j10');")"
+
+# --- Q2. J45: preparation, recovery, and no reset by a new draft ---
+Q8_J45_OWNER=$(q8_owner q8-j45)
+Q8_J45=$(q8_draft "$Q8_J45_OWNER"); q8_anchor "$Q8_J45" "$Q8_J45_OWNER" >/dev/null
+check "J45: preparation ends 1080 h after the anchor, recovery 168 h later" "1080|168" \
+  "$($DB -t -A -c "select extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_recovery_until - free_draft_until))::bigint / 3600 from memorials where id='$Q8_J45';")"
+m1a_age "$Q8_J45_OWNER" '1079 hours 59 minutes'
+check "J45 - 1 min: the draft is still the owner's one active free draft" "free_draft_limit" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_J45_OWNER','intemporel','light');")"
+m1a_age "$Q8_J45_OWNER" '1 minute'
+check "J45: preparation over, recovery still open, never published" "true|true|true" \
+  "$($DB -t -A -c "select (now() >= free_draft_until) || '|' || (now() < free_draft_recovery_until) || '|' || (first_published_at is null) from memorials where id='$Q8_J45';")"
+check "J45: a new free draft does NOT reopen the deadlines (no reset)" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_J45_OWNER','intemporel','light');")"
+check "J45: and no quota was consumed by the unpublished draft" "0" "$(q8_published_count "$Q8_J45_OWNER")"
+m1a_age "$Q8_J45_OWNER" '168 hours'
+check "J52: the recovery period is over (deadline recorded, no rule invented)" "t" \
+  "$($DB -t -A -c "select now() >= free_draft_recovery_until from memorials where id='$Q8_J45';")"
+Q8_REC_BEFORE=$($DB -t -A -c "select free_draft_recovery_until from memorials where id='$Q8_J45';")
+$DB -c "update memorials set language='es' where id='$Q8_J45';" >/dev/null
+check "the recovery deadline is derived: an unrelated update never moves it" "$Q8_REC_BEFORE" \
+  "$($DB -t -A -c "select free_draft_recovery_until from memorials where id='$Q8_J45';")"
+expect_error "the recovery deadline cannot contradict the preparation deadline" \
+  "alter table memorials disable trigger memorials_derive_free_recovery; update memorials set free_draft_recovery_until = free_draft_until where id='$Q8_J45';"
+$DB -c "alter table memorials enable trigger memorials_derive_free_recovery;" >/dev/null
+
+# Replacing a draft inside the window inherits everything, recovery included.
+Q8_REPL_OWNER=$(q8_owner q8-replace)
+Q8_REPL_1=$(q8_draft "$Q8_REPL_OWNER"); q8_anchor "$Q8_REPL_1" "$Q8_REPL_OWNER" >/dev/null
+m1a_age "$Q8_REPL_OWNER" '5 days'
+$DB -c "update memorials set status='archived' where id='$Q8_REPL_1';" >/dev/null
+Q8_REPL_2=$(q8_draft "$Q8_REPL_OWNER"); q8_anchor "$Q8_REPL_2" "$Q8_REPL_OWNER" >/dev/null
+check "a replacement draft at J5 keeps the original J10 / J45 / J52 deadlines" "t" \
+  "$($DB -t -A -c "select a.free_anchor_at = b.free_anchor_at and a.free_publish_until = b.free_publish_until and a.free_draft_until = b.free_draft_until and a.free_draft_recovery_until = b.free_draft_recovery_until from memorials a, memorials b where a.id='$Q8_REPL_1' and b.id='$Q8_REPL_2';")"
+check "the replacement did not consume the quota" "0" "$(q8_published_count "$Q8_REPL_OWNER")"
+
+# --- Q3. 45 days of public visibility, then 7 days of recovery ---
+Q8_PUB_OWNER=$(q8_owner q8-public)
+Q8_PUB=$(q8_draft "$Q8_PUB_OWNER"); q8_anchor "$Q8_PUB" "$Q8_PUB_OWNER" >/dev/null
+q8_ready "$Q8_PUB" q8-public "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_PUB" "$Q8_PUB_OWNER" q8-public avis "$Q8_HERO")" >/dev/null
+$DB -c "update memorials set enabled_sections = array['condolences','testimonials'] where id='$Q8_PUB'; insert into symbolic_offering_eligibility (memorial_id) values ('$Q8_PUB');" >/dev/null
+q8_anon_state() {
+  $DB -t -A -c "set role anon; select count(*) || '|' || coalesce(max(status), '-') from public_memorial_publication_state('$1');"
+}
+q8_anon_msg() {
+  $DB -t -A -c "set role anon; select public_memorial_message_allowed_v1('$1','$2');"
+}
+check "published avis: public for the visitor" "1|published" "$(q8_anon_state "$Q8_PUB")"
+check "avis: short condolences allowed once the family enabled them" "t" "$(q8_anon_msg "$Q8_PUB" condolence)"
+check "avis: enriched contributions refused even if enabled (complete only)" "f|f" "$(q8_anon_msg "$Q8_PUB" testimonial)|$(q8_anon_msg "$Q8_PUB" memory_message)"
+check "avis: symbolic gestures are accepted (V8 §6, free and complete)" "recorded" \
+  "$(svc "select outcome from record_symbolic_offering_v1('q8-public','bougie',gen_random_uuid());")"
+check "visibility is 45 days from the effective publication, recovery 7 days after" "1080|168" \
+  "$($DB -t -A -c "select extract(epoch from (free_public_until - first_published_at))::bigint / 3600 || '|' || extract(epoch from (free_private_until - free_public_until))::bigint / 3600 from memorials where id='$Q8_PUB';")"
+as_anon "insert into messages (memorial_id, message_type, author_name, content, visible) values ('$Q8_PUB','condolence','Un proche','Pensees.', true);" >/dev/null 2>&1 || true
+as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$Q8_PUB','testimonial','Un proche','Souvenir.');" >/dev/null 2>&1 || true
+as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$Q8_PUB','condolence','Un proche','Pensees.');" >/dev/null 2>&1 || true
+check "avis: a condolence is stored unpublished; a self-published one and a contribution are refused" "1|condolence|false" \
+  "$($DB -t -A -c "select count(*) || '|' || max(message_type) || '|' || bool_or(visible) from messages where memorial_id='$Q8_PUB';")"
+m1a_age "$Q8_PUB_OWNER" '1079 hours 59 minutes'
+check "J45 - 1 min after publication: still public" "1|published" "$(q8_anon_state "$Q8_PUB")"
+m1a_age "$Q8_PUB_OWNER" '1 minute'
+check "J45 after publication: no longer public" "0|-" "$(q8_anon_state "$Q8_PUB")"
+check "J45: no condolence can be submitted any more" "f" "$(q8_anon_msg "$Q8_PUB" condolence)"
+as_anon "insert into messages (memorial_id, message_type, author_name, content) values ('$Q8_PUB','condolence','Un proche','Trop tard.');" >/dev/null 2>&1 || true
+check "J45: the visitor's insert is refused by the policy itself" "1" "$($DB -t -A -c "select count(*) from messages where memorial_id='$Q8_PUB';")"
+check "J45: no gesture is accepted any more" "refused" \
+  "$(svc "select outcome from record_symbolic_offering_v1('q8-public','lys',gen_random_uuid());")"
+check "J45: the memorial, its copy and its gestures are kept (recovery window open)" "published|1|1|t" \
+  "$(q8_status "$Q8_PUB")|$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$Q8_PUB';")|$($DB -t -A -c "select count(*) from symbolic_offerings where memorial_id='$Q8_PUB';")|$($DB -t -A -c "select now() < free_private_until from memorials where id='$Q8_PUB';")"
+check "messages are moderated by default (visible = false)" "false" \
+  "$($DB -t -A -c "select pg_get_expr(adbin, adrelid) from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum where d.adrelid = 'public.messages'::regclass and a.attname = 'visible';")"
+# (messages privileges are asserted by the Mission 013C section, before
+# this script's own TEST-ONLY grants; the postflight re-checks them.)
+check "the message policy demands an unpublished (moderated) message" "1" \
+  "$($DB -t -A -c "select count(*) from pg_policies where tablename='messages' and policyname='messages_insert_public' and with_check like '%visible = false%';")"
+
+# --- Q4. The quota: consumed only by a successful free publication ---
+Q8_QUOTA_OWNER=$(q8_owner q8-quota)
+Q8_QUOTA=$(q8_draft "$Q8_QUOTA_OWNER"); q8_anchor "$Q8_QUOTA" "$Q8_QUOTA_OWNER" >/dev/null
+q8_ready "$Q8_QUOTA" q8-quota '{"hero":{"displayName":"Avis","photo":null},"video":{"items":[]}}'
+svc_expect_error "a refused publication (premium content) ..." \
+  "$(m1a_publish_current_sql "$Q8_QUOTA" "$Q8_QUOTA_OWNER" q8-quota)" "free publication cannot include video"
+check "... consumes no quota" "0" "$(q8_published_count "$Q8_QUOTA_OWNER")"
+q8_ready "$Q8_QUOTA" q8-quota "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_QUOTA" "$Q8_QUOTA_OWNER" q8-quota avis "$Q8_HERO")" >/dev/null
+check "a successful free publication consumes the quota exactly once" "published|1" "$(q8_status "$Q8_QUOTA")|$(q8_published_count "$Q8_QUOTA_OWNER")"
+m1a_age "$Q8_QUOTA_OWNER" '11 months 29 days'
+check "12 months - 1 day: the address still cannot publish for free" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_QUOTA_OWNER','intemporel','light');")"
+m1a_age "$Q8_QUOTA_OWNER" '2 days'
+Q8_QUOTA_2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_QUOTA_OWNER','intemporel','light');")
+check "12 months + 1 day (rolling): a new free draft is possible" "created" "$(echo "$Q8_QUOTA_2" | cut -d'|' -f1)"
+check "and it opens a fresh 10-day window" "anchored|240" \
+  "$(q8_anchor "$(echo "$Q8_QUOTA_2" | cut -d'|' -f2)" "$Q8_QUOTA_OWNER")|$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 from memorials where id='$(echo "$Q8_QUOTA_2" | cut -d'|' -f2)' and free_anchor_at > now() - interval '1 minute';")"
+
+# --- Q5. Premium content can be prepared, never published for free ---
+Q8_PREM_OWNER=$(q8_owner q8-premium)
+Q8_PREM=$(q8_draft "$Q8_PREM_OWNER"); q8_anchor "$Q8_PREM" "$Q8_PREM_OWNER" >/dev/null
+Q8_IDS=""; for n in 1 2 3 4 5 6 7 8; do Q8_IDS="$Q8_IDS $(svc "select gen_random_uuid();")"; done
+q8_items() { for id in "$@"; do printf '{"mediaId":"%s"},' "$id"; done | sed 's/,$//'; }
+Q8_ALL8=$(q8_items $Q8_IDS)
+Q8_FIRST6=$(q8_items $(echo $Q8_IDS | cut -d' ' -f1-6))
+Q8_FIRST7=$(q8_items $(echo $Q8_IDS | cut -d' ' -f1-7))
+Q8_PREM_DRAFT="{\"hero\":{\"displayName\":\"Avis\",\"photo\":null},\"gallery\":{\"items\":[$Q8_ALL8]},\"video\":{\"items\":[{\"url\":\"https://vimeo.com/1\"}]},\"testimonials\":{\"enabled\":true}}"
+q8_ready "$Q8_PREM" q8-premium "$Q8_PREM_DRAFT"
+check "the avis draft holds prepared premium content (8 photos, video, contributions)" "8|true|true" \
+  "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') || '|' || (content ? 'video') || '|' || (content ? 'testimonials') from memorial_drafts where memorial_id='$Q8_PREM';")"
+svc_expect_error "v1 cannot publish the raw draft of an avis (video)" \
+  "$(m1a_publish_current_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium)" "free publication cannot include"
+svc_expect_error "v2 refuses premium sections in a free copy" \
+  "$(q8_v2_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium avis "$Q8_PREM_DRAFT")" "free publication cannot include"
+svc_expect_error "v2 refuses a seventh published photograph" \
+  "$(q8_v2_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium avis "{\"hero\":{\"displayName\":\"Avis\",\"photo\":null},\"gallery\":{\"items\":[$Q8_FIRST7]}}")" "free gallery limit reached"
+svc_expect_error "v2 refuses a published photograph absent from the draft" \
+  "$(q8_v2_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium avis "{\"gallery\":{\"items\":[{\"mediaId\":\"$(svc "select gen_random_uuid();")\"}]}}")" "must come from the draft"
+svc_expect_error "v2 refuses a projection computed for another access level" \
+  "$(q8_v2_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium complet "$Q8_PREM_DRAFT")" "memorial access level changed"
+check "none of these refusals published or consumed anything" "ready|0|0" \
+  "$(q8_status "$Q8_PREM")|$(q8_published_count "$Q8_PREM_OWNER")|$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$Q8_PREM';")"
+Q8_PREM_PUBLIC="{\"hero\":{\"displayName\":\"Avis\",\"photo\":null},\"gallery\":{\"items\":[$Q8_FIRST6]}}"
+svc "$(q8_v2_sql "$Q8_PREM" "$Q8_PREM_OWNER" q8-premium avis "$Q8_PREM_PUBLIC")" >/dev/null
+check "the server projection (6 chosen photos, no premium) is published" "published|gallery,hero|6" \
+  "$(q8_status "$Q8_PREM")|$($DB -t -A -c "select string_agg(k, ',' order by k) from memorial_published_snapshots s, jsonb_object_keys(s.content) k where s.memorial_id='$Q8_PREM';")|$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') from memorial_published_snapshots where memorial_id='$Q8_PREM';")"
+check "the private draft keeps everything that was prepared" "8|true|true" \
+  "$($DB -t -A -c "select jsonb_array_length(content->'gallery'->'items') || '|' || (content ? 'video') || '|' || (content ? 'testimonials') from memorial_drafts where memorial_id='$Q8_PREM';")"
+expect_error "even the database owner cannot slip a video into a free copy afterwards" \
+  "update memorial_published_snapshots set content = content || '{\"video\":{\"items\":[]}}' where memorial_id='$Q8_PREM';"
+expect_error "nor a seventh photograph" \
+  "update memorial_published_snapshots set content = jsonb_set(content, '{gallery,items}', '[$Q8_FIRST7]') where memorial_id='$Q8_PREM';"
+check "after the upgrade, the same memorial can publish its prepared premium content" "upgraded|published|t" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$Q8_PREM','$Q8_PREM_OWNER','direct_payment','pay-q8-prem');")|$($DB -c "update memorials set status='editing' where id='$Q8_PREM';" >/dev/null; rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$Q8_PREM';"); fp=$($DB -t -A -c "select first_published_at from memorials where id='$Q8_PREM';"); svc "select 1 from commit_memorial_publication_v2('$Q8_PREM','$Q8_PREM_OWNER',$rev,'editing','$fp','fr','intemporel','light','q8-premium','complet','$Q8_PREM_DRAFT','$Q8_PREM_DRAFT');" >/dev/null; q8_status "$Q8_PREM")|$($DB -t -A -c "select content ? 'video' from memorial_published_snapshots where memorial_id='$Q8_PREM';")"
+
+# --- Q6. Etsy and complete rights are untouched ---
+Q8_ETSY_OWNER=$(q8_owner q8-etsy)
+Q8_ETSY_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet','etsy','intemporel','q8-etsy-order') returning id;")
+Q8_ETSY=$(svc "select memorial_id from redeem_entitlement('$Q8_ETSY_ENT','$Q8_ETSY_OWNER','person','intemporel','light');")
+q8_ready "$Q8_ETSY" q8-etsy "$Q8_PREM_DRAFT"
+svc "$(q8_v2_sql "$Q8_ETSY" "$Q8_ETSY_OWNER" q8-etsy complet "$Q8_PREM_DRAFT")" >/dev/null
+check "Etsy (complet): full content with video and 8 photos is published" "published|true|8" \
+  "$(q8_status "$Q8_ETSY")|$($DB -t -A -c "select (content ? 'video') || '|' || jsonb_array_length(content->'gallery'->'items') from memorial_published_snapshots where memorial_id='$Q8_ETSY';")"
+check "Etsy: no free deadline, no free event, no quota" "t|0" \
+  "$($DB -t -A -c "select (free_anchor_at is null and free_public_until is null and free_draft_recovery_until is null) from memorials where id='$Q8_ETSY';")|$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$Q8_ETSY';")"
+$DB -c "update memorials set enabled_sections = array['testimonials'] where id='$Q8_ETSY';" >/dev/null
+check "Etsy: public without a 45-day bound, enriched contributions allowed when enabled" "1|published|t" \
+  "$(q8_anon_state "$Q8_ETSY")|$(q8_anon_msg "$Q8_ETSY" testimonial)"
+check "Etsy: an owner with an Etsy memorial keeps a full free right of their own" "created" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_ETSY_OWNER','intemporel','light');")"
+
+# --- Q7. Administrative waiver (one extra free publication, traced) ---
+q8_grant() {
+  svc "select outcome from grant_free_publication_waiver_v1('$1','$ADMIN_Q8','$2','Deuxieme deces dans la famille');"
+}
+svc_expect_error "a waiver needs an administrator, a reference and a reason" \
+  "select * from grant_free_publication_waiver_v1('$Q8_QUOTA_OWNER',null,'ref','motif');" "invalid free publication waiver request"
+check "a waiver for an unknown owner is refused" "refused" "$(q8_grant "$(svc "select gen_random_uuid();")" q8-w-unknown)"
+
+# W1. Quota already consumed: the waiver allows one more, with a new window.
+Q8_W_OWNER=$(q8_owner q8-waiver)
+Q8_W1=$(q8_draft "$Q8_W_OWNER"); q8_anchor "$Q8_W1" "$Q8_W_OWNER" >/dev/null
+q8_ready "$Q8_W1" q8-waiver-1 "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_W1" "$Q8_W_OWNER" q8-waiver-1 avis "$Q8_HERO")" >/dev/null
+m1a_age "$Q8_W_OWNER" '60 days'
+check "W1: without a waiver, the address cannot publish for free again" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")"
+check "W1: the waiver is granted" "granted" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-1)"
+check "W1: granting is idempotent on its reference" "already_granted" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-1)"
+check "W1: one active waiver per address" "active_waiver_exists" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-2)"
+check "W1: a reference cannot serve two addresses" "reference_conflict" "$(q8_grant "$Q8_QUOTA_OWNER" q8-w-ref-1)"
+check "W1: the grant is audited once, without personal data" "1|free_publication_waiver.granted|owner" \
+  "$($DB -t -A -c "select count(*) || '|' || max(action) || '|' || max(target_type) from admin_audit_events where target_id='$Q8_W_OWNER';")"
+Q8_W2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")
+check "W1: with the waiver, a free draft can be created" "created" "$(echo "$Q8_W2" | cut -d'|' -f1)"
+Q8_W2=$(echo "$Q8_W2" | cut -d'|' -f2)
+check "W1: its anchoring opens a NEW 10-day window, now" "anchored|t|240" \
+  "$(q8_anchor "$Q8_W2" "$Q8_W_OWNER")|$($DB -t -A -c "select free_anchor_at > now() - interval '1 minute' from memorials where id='$Q8_W2';")|$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 from memorials where id='$Q8_W2';")"
+check "W1: anchoring does not consume the waiver" "true|false" \
+  "$($DB -t -A -c "select (window_opened_at is not null) || '|' || (consumed_at is not null) from free_publication_waivers where reference='q8-w-ref-1';")"
+q8_ready "$Q8_W2" q8-waiver-2 "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_W2" "$Q8_W_OWNER" q8-waiver-2 avis "$Q8_HERO")" >/dev/null
+check "W1: the second free publication succeeds and consumes the waiver" "published|true|$Q8_W2" \
+  "$(q8_status "$Q8_W2")|$($DB -t -A -c "select (consumed_at is not null) || '|' || consumed_memorial_id from free_publication_waivers where reference='q8-w-ref-1';")"
+check "W1: the use is journaled once, with the waiver as its unique reference" "1|admin_waiver" \
+  "$($DB -t -A -c "select count(*) || '|' || max(source) from memorial_access_events where owner_id='$Q8_W_OWNER' and event='free.waiver_used';")"
+check "W1: once used, the address is limited again" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")"
+
+# W2. Window closed without publication: the waiver reopens one window.
+Q8_V_OWNER=$(q8_owner q8-waiver-window)
+Q8_V1=$(q8_draft "$Q8_V_OWNER"); q8_anchor "$Q8_V1" "$Q8_V_OWNER" >/dev/null
+m1a_age "$Q8_V_OWNER" '20 days'
+$DB -c "update memorials set status='archived' where id='$Q8_V1';" >/dev/null
+check "W2: the closed window is not reopened by a new draft" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_V_OWNER','intemporel','light');")"
+q8_grant "$Q8_V_OWNER" q8-v-ref >/dev/null
+Q8_V2=$(q8_draft "$Q8_V_OWNER"); q8_anchor "$Q8_V2" "$Q8_V_OWNER" >/dev/null
+q8_ready "$Q8_V2" q8-waiver-window "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_V2" "$Q8_V_OWNER" q8-waiver-window avis "$Q8_HERO")" >/dev/null
+check "W2: published within the waiver's window; the waiver is consumed" "published|t" \
+  "$(q8_status "$Q8_V2")|$($DB -t -A -c "select consumed_at is not null from free_publication_waivers where reference='q8-v-ref';")"
+
+# W3. Revocation.
+Q8_R_OWNER=$(q8_owner q8-waiver-revoke)
+Q8_R1=$(q8_draft "$Q8_R_OWNER"); q8_anchor "$Q8_R1" "$Q8_R_OWNER" >/dev/null
+q8_ready "$Q8_R1" q8-revoke-1 "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_R1" "$Q8_R_OWNER" q8-revoke-1 avis "$Q8_HERO")" >/dev/null
+q8_grant "$Q8_R_OWNER" q8-r-ref >/dev/null
+Q8_R_WAIVER=$($DB -t -A -c "select id from free_publication_waivers where reference='q8-r-ref';")
+check "W3: an unused waiver can be revoked, audited" "revoked|1" \
+  "$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_R_WAIVER','$ADMIN_Q8');")|$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$Q8_R_OWNER' and action='free_publication_waiver.revoked';")"
+check "W3: a revoked waiver opens nothing" "free_unavailable" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_R_OWNER','intemporel','light');")"
+Q8_W_USED=$($DB -t -A -c "select id from free_publication_waivers where reference='q8-w-ref-1';")
+check "W3: revoking twice is harmless; a used waiver cannot be revoked" "already_revoked|already_consumed" \
+  "$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_R_WAIVER','$ADMIN_Q8');")|$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_W_USED','$ADMIN_Q8');")"
+# The publication guard does not trust the creation path: an anchored avis
+# draft made by hand, beyond the quota and without waiver, is refused.
+Q8_R2=$(m1a_avis_draft "$Q8_R_OWNER")
+$DB -c "update memorials set free_anchor_at = now(), free_publish_until = now() + interval '10 days', free_draft_until = now() + interval '45 days' where id='$Q8_R2';" >/dev/null
+q8_ready "$Q8_R2" q8-revoke-2 "$Q8_HERO"
+svc_expect_error "W3: without an active waiver the guard refuses beyond the quota" \
+  "$(q8_v2_sql "$Q8_R2" "$Q8_R_OWNER" q8-revoke-2 avis "$Q8_HERO")" "free publication quota reached"
+
+# --- Q8. No privilege leak, no direct-call bypass ---
+for f in "commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)" "grant_free_publication_waiver_v1(uuid,uuid,text,text)" "revoke_free_publication_waiver_v1(uuid,uuid)"; do
+  check "$f executable by service_role only" "false|false|true" "$($DB -t -A -c "select has_function_privilege('anon','public.$f','EXECUTE') || '|' || has_function_privilege('authenticated','public.$f','EXECUTE') || '|' || has_function_privilege('service_role','public.$f','EXECUTE');")"
+done
+for f in "free_window_status_v1(uuid,timestamptz)" "memorial_publicly_visible_v1(uuid,timestamptz)" "guard_avis_published_snapshot_v1()" "memorials_derive_free_recovery_v1()"; do
+  check "$f executable by no role" "false|false|false" "$($DB -t -A -c "select has_function_privilege('anon','public.$f','EXECUTE') || '|' || has_function_privilege('authenticated','public.$f','EXECUTE') || '|' || has_function_privilege('service_role','public.$f','EXECUTE');")"
+done
+check "public_memorial_message_allowed_v1 is a boolean for the message policy (anon, authenticated)" "true|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.public_memorial_message_allowed_v1(uuid,text)','EXECUTE') || '|' || has_function_privilege('authenticated','public.public_memorial_message_allowed_v1(uuid,text)','EXECUTE');")"
+for r in anon authenticated service_role; do
+  check "$r has no privilege on free_publication_waivers" "f" "$($DB -t -A -c "select has_table_privilege('$r','free_publication_waivers','SELECT') or has_table_privilege('$r','free_publication_waivers','INSERT') or has_table_privilege('$r','free_publication_waivers','UPDATE') or has_table_privilege('$r','free_publication_waivers','DELETE') or has_table_privilege('$r','free_publication_waivers','TRUNCATE');")"
+done
+check "free_publication_waivers has RLS enabled" "t" "$($DB -t -A -c "select relrowsecurity from pg_class where oid='public.free_publication_waivers'::regclass;")"
+check "authenticated cannot write memorials.free_draft_recovery_until" "f" "$($DB -t -A -c "select has_column_privilege('authenticated','memorials','free_draft_recovery_until','UPDATE');")"
+check "an authenticated family cannot call the publication transaction directly" "1" \
+  "$($DB -c "set role authenticated; select * from commit_memorial_publication_v2('$Q8_PUB','$Q8_PUB_OWNER',0,'ready',null,'fr','intemporel','light','x','complet','{}','{}');" 2>&1 | grep -c 'permission denied' || true)"
+check "an authenticated user cannot grant themselves a waiver" "1" \
+  "$($DB -c "set role authenticated; select * from grant_free_publication_waiver_v1('$Q8_PUB_OWNER','$ADMIN_Q8','self','self');" 2>&1 | grep -c 'permission denied' || true)"
+check "service_role still cannot write memorials directly (deadlines only via functions)" "f" \
+  "$($DB -t -A -c "select has_table_privilege('service_role','memorials','UPDATE');")"
+
+# --- Q9. QG 008 preflight / postflight (read-only) ---
+Q8_PRE_FINAL=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_preflight.sql" 2>&1)
+check "qg008 preflight, run after the migration, refuses to proceed (3 'already applied' ECHEC)" "3" \
+  "$(echo "$Q8_PRE_FINAL" | grep -c "ECHEC — QG 008 semble deja appliquee" || true)"
+Q8_PRE_M1A=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_preflight.sql" 2>&1)
+check "qg008 preflight on the M1-A state: zero ECHEC" "0|t" \
+  "$(echo "$Q8_PRE_M1A" | grep -c "ECHEC" || true)|$(echo "$Q8_PRE_M1A" | grep -q '|OK$' && echo t || echo f)"
+# The postflight measures the migrations: this script's own TEST-ONLY
+# grant (insert on messages to anon, Mission 002 RLS tests) is lifted
+# inside a rolled-back transaction while it runs.
+q8_postflight() {
+  $DB -t -A -c "begin;" -c "revoke insert on table messages from anon;" "$@" -f "$REPO_ROOT/supabase/checks/qg008_lot1_postflight.sql" -c "rollback;" 2>&1
+}
+Q8_POST=$(q8_postflight)
+check "qg008 postflight: zero ECHEC on the final state" "0" "$(echo "$Q8_POST" | grep -c "ECHEC" || true)"
+check "qg008 postflight grades every control (31 OK)" "31" "$(echo "$Q8_POST" | grep -c "|OK$" || true)"
+check "qg008 postflight turns red on a 7-day window" "1" \
+  "$(q8_postflight -c "update memorial_access_settings set free_publish_window = interval '168 hours';" | grep -c "ECHEC" || true)"
+check "qg008 postflight turns red if the draft gallery block comes back" "1" \
+  "$(q8_postflight -c "create trigger memorial_drafts_guard_free_gallery before update on memorial_drafts for each row execute function set_updated_at();" | grep -c "ECHEC" || true)"
+check "qg008 postflight turns red on a client grant on the waivers" "1" \
+  "$(q8_postflight -c "grant select on free_publication_waivers to authenticated;" | grep -c "ECHEC" || true)"
+
+# --- Q10. Reversibility (supabase/rollbacks/, never applied automatically) ---
+Q8_DOWN="$REPO_ROOT/supabase/rollbacks/20261031120000_qg008_free_offer_v8_alignment.down.sql"
+$PSQL -d postgres -c "create database qg008_down_refused template $DB_NAME;" >/dev/null
+check "the rollback refuses while waivers exist, and changes nothing" "1|t" \
+  "$($PSQL -d qg008_down_refused -f "$Q8_DOWN" 2>&1 | grep -c 'rollback refused' || true)|$($PSQL -d qg008_down_refused -t -A -c "select to_regclass('public.free_publication_waivers') is not null and exists (select 1 from pg_attribute where attrelid='public.memorials'::regclass and attname='free_draft_recovery_until');")"
+$PSQL -d postgres -c "drop database qg008_down_refused;" >/dev/null
+$PSQL -d postgres -c "create database qg008_down_clean template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d qg008_down_clean -f "$f" >/dev/null; done
+check "on a database without waivers, the rollback applies" "0" "$($PSQL -d qg008_down_clean -f "$Q8_DOWN" >/dev/null 2>&1; echo $?)"
+Q8_BACK=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>&1)
+check "after rollback, m1a_postflight grades the exact M1-A state (42 OK, zero ECHEC)" "42|0" \
+  "$(echo "$Q8_BACK" | grep -c '|OK$' || true)|$(echo "$Q8_BACK" | grep -c 'ECHEC' || true)"
+Q8_BACK1=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>&1)
+check "after rollback, m1a_correctif1_postflight: 12 OK, zero ECHEC" "12|0" \
+  "$(echo "$Q8_BACK1" | grep -c '|OK$' || true)|$(echo "$Q8_BACK1" | grep -c 'ECHEC' || true)"
+check "after rollback, the QG 008 migration applies again cleanly" "0|0" \
+  "$($PSQL -d qg008_down_clean -f "$MIGRATIONS_DIR/20261031120000_qg008_free_offer_v8_alignment.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+$PSQL -d postgres -c "drop database qg008_down_clean;" >/dev/null
+
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

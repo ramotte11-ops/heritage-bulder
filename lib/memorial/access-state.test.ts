@@ -8,7 +8,7 @@ import {
 const HOUR = 3_600_000;
 const iso = (ms: number) => new Date(ms).toISOString();
 
-// A real anchor, with the real durations the server applies (B14).
+// A real anchor, with the real durations the server applies (B14, V8 via QG 008).
 const A = Date.parse("2026-12-01T09:17:43.000Z");
 const P = Date.parse("2026-12-04T15:02:11.000Z");
 
@@ -17,6 +17,7 @@ const draft: MemorialAccessDeadlines = {
   freeAnchorAt: null,
   freePublishUntil: null,
   freeDraftUntil: null,
+  freeDraftRecoveryUntil: null,
   firstPublishedAt: null,
   freeCorrectionsUntil: null,
   freePublicUntil: null,
@@ -26,16 +27,18 @@ const draft: MemorialAccessDeadlines = {
 const anchored: MemorialAccessDeadlines = {
   ...draft,
   freeAnchorAt: iso(A),
-  freePublishUntil: iso(A + 168 * HOUR),
+  freePublishUntil: iso(A + 240 * HOUR),
   freeDraftUntil: iso(A + 1080 * HOUR),
+  freeDraftRecoveryUntil: iso(A + 1248 * HOUR),
 };
 
 const published: MemorialAccessDeadlines = {
   ...anchored,
   firstPublishedAt: iso(P),
-  freeCorrectionsUntil: iso(P + 168 * HOUR),
+  // QG 008: no correction window while L06 is open.
+  freeCorrectionsUntil: null,
   freePublicUntil: iso(P + 1080 * HOUR),
-  freePrivateUntil: iso(P + 1800 * HOUR),
+  freePrivateUntil: iso(P + 1248 * HOUR),
 };
 
 const at = (ms: number) => new Date(ms);
@@ -54,47 +57,57 @@ describe("resolveMemorialAccessState", () => {
     expect(resolveMemorialAccessState(draft, at(A))).toEqual({ state: "E0" });
   });
 
-  it("E1 from the anchor up to, but excluding, A+168h", () => {
+  it("E1 from the anchor up to, but excluding, A+240h (J10)", () => {
     expect(resolveMemorialAccessState(anchored, at(A))).toEqual({
       state: "E1",
-      until: iso(A + 168 * HOUR),
+      until: iso(A + 240 * HOUR),
     });
-    expect(resolveMemorialAccessState(anchored, at(A + 168 * HOUR - 1)).state).toBe("E1");
+    expect(resolveMemorialAccessState(anchored, at(A + 240 * HOUR - 1)).state).toBe("E1");
   });
 
-  it("E2 exactly at A+168h — no rounding to the end of the day", () => {
-    expect(resolveMemorialAccessState(anchored, at(A + 168 * HOUR))).toEqual({
+  it("E2 exactly at A+240h — no rounding to the end of the day", () => {
+    expect(resolveMemorialAccessState(anchored, at(A + 240 * HOUR))).toEqual({
       state: "E2",
       until: iso(A + 1080 * HOUR),
     });
     expect(resolveMemorialAccessState(anchored, at(A + 1080 * HOUR - 1)).state).toBe("E2");
   });
 
-  it("E3 exactly at A+1080h", () => {
+  it("E3 (7-day recovery) exactly at A+1080h (J45), E8 exactly at A+1248h (J52)", () => {
     expect(resolveMemorialAccessState(anchored, at(A + 1080 * HOUR))).toEqual({
       state: "E3",
-      since: iso(A + 1080 * HOUR),
+      until: iso(A + 1248 * HOUR),
+    });
+    expect(resolveMemorialAccessState(anchored, at(A + 1248 * HOUR - 1)).state).toBe("E3");
+    expect(resolveMemorialAccessState(anchored, at(A + 1248 * HOUR))).toEqual({
+      state: "E8",
+      since: iso(A + 1248 * HOUR),
     });
   });
 
-  it("E4, E5, E6, E7 follow the first publication's real durations", () => {
+  it("without a correction window, a publication is E5 until P+1080h, then 7 days of E6, then E7", () => {
     expect(resolveMemorialAccessState(published, at(P))).toEqual({
-      state: "E4",
-      until: iso(P + 168 * HOUR),
-    });
-    expect(resolveMemorialAccessState(published, at(P + 168 * HOUR - 1)).state).toBe("E4");
-    expect(resolveMemorialAccessState(published, at(P + 168 * HOUR))).toEqual({
       state: "E5",
       until: iso(P + 1080 * HOUR),
     });
+    expect(resolveMemorialAccessState(published, at(P + 1080 * HOUR - 1)).state).toBe("E5");
     expect(resolveMemorialAccessState(published, at(P + 1080 * HOUR))).toEqual({
       state: "E6",
-      until: iso(P + 1800 * HOUR),
+      until: iso(P + 1248 * HOUR),
     });
-    expect(resolveMemorialAccessState(published, at(P + 1800 * HOUR))).toEqual({
+    expect(resolveMemorialAccessState(published, at(P + 1248 * HOUR))).toEqual({
       state: "E7",
-      since: iso(P + 1800 * HOUR),
+      since: iso(P + 1248 * HOUR),
     });
+  });
+
+  it("an optional correction window, if one is ever decided (L06), is shown as E4", () => {
+    const withCorrections = { ...published, freeCorrectionsUntil: iso(P + 72 * HOUR) };
+    expect(resolveMemorialAccessState(withCorrections, at(P))).toEqual({
+      state: "E4",
+      until: iso(P + 72 * HOUR),
+    });
+    expect(resolveMemorialAccessState(withCorrections, at(P + 72 * HOUR)).state).toBe("E5");
   });
 
   it("a published memorial is never read as a draft, even after A+45", () => {
@@ -114,25 +127,31 @@ describe("resolveMemorialAccessState", () => {
     expect(
       resolveMemorialAccessState({ ...anchored, freePublishUntil: "not a date" }, at(A)),
     ).toEqual({ state: "inconsistent" });
+    expect(
+      resolveMemorialAccessState({ ...anchored, freeDraftRecoveryUntil: null }, at(A)),
+    ).toEqual({ state: "inconsistent" });
+    expect(
+      resolveMemorialAccessState({ ...published, freeCorrectionsUntil: "not a date" }, at(P)),
+    ).toEqual({ state: "inconsistent" });
   });
 });
 
 describe("formatAccessDeadline", () => {
   it("shows the exact instant in Paris time, never 23 h 59", () => {
     // 2026-12-08T09:17:43Z is 10:17 in Paris (CET, UTC+1).
-    expect(formatAccessDeadline(iso(A + 168 * HOUR), "fr")).toBe("8 décembre 2026 à 10:17");
+    expect(formatAccessDeadline(iso(A + 240 * HOUR), "fr")).toBe("11 décembre 2026 à 10:17");
   });
 
   it("keeps the real duration across a DST change: the Paris hour moves, not the instant", () => {
     const summerAnchor = Date.parse("2026-10-20T10:00:00.000Z"); // 12:00 in Paris (CEST)
-    const until = iso(summerAnchor + 168 * HOUR); // 2026-10-27T10:00Z, after the change
+    const until = iso(summerAnchor + 240 * HOUR); // 2026-10-30T10:00Z, after the change
     expect(formatAccessDeadline(iso(summerAnchor), "fr")).toBe("20 octobre 2026 à 12:00");
-    expect(formatAccessDeadline(until, "fr")).toBe("27 octobre 2026 à 11:00");
+    expect(formatAccessDeadline(until, "fr")).toBe("30 octobre 2026 à 11:00");
   });
 
   it("formats in the memorial's language, still in Paris time", () => {
-    const deadline = iso(A + 168 * HOUR);
-    expect(formatAccessDeadline(deadline, "en")).toBe("8 December 2026 at 10:17");
+    const deadline = iso(A + 240 * HOUR);
+    expect(formatAccessDeadline(deadline, "en")).toBe("11 December 2026 at 10:17");
     expect(formatAccessDeadline(deadline, "es")).toContain("10:17");
   });
 
