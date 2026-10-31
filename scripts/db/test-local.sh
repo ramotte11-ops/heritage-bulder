@@ -2879,7 +2879,12 @@ check "the deadlines start at the exact first publication" "$M1A_FIRST" "$($DB -
 check "the first free publication is journaled" "1" "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$M1A_FREE_MEM' and event='free.first_published';")"
 
 # F4. B6: one free publication per owner (e-mail) over 12 months.
-check "after a free publication, a new free draft is refused for 12 months" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")"
+# QG 008 correction: the quota limits FREE PUBLICATION only, never the Builder.
+M1A_F4=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_OWNER','intemporel','light');")
+check "after a free publication, the Builder is never blocked: a new draft is created" "created" "$(echo "$M1A_F4" | cut -d'|' -f1)"
+check "... but its anchoring opens no free window for 12 months (quota used)" "anchored_without_free_publication" \
+  "$(svc "select outcome from anchor_free_memorial_v1('$(echo "$M1A_F4" | cut -d'|' -f2)','$M1A_OWNER');")"
+$DB -c "update memorials set status='archived' where id='$(echo "$M1A_F4" | cut -d'|' -f2)';" >/dev/null
 # Backstop: the publication guard refuses a second free publication by
 # itself, whatever path produced an anchored avis draft.
 M1A_SECOND_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id, status, owner_id, redeemed_at) values ('avis','direct','intemporel','redeemed','$M1A_OWNER', now()) returning id;")
@@ -2950,13 +2955,14 @@ check "the window is opened once per cycle" "1" "$($DB -t -A -c "select count(*)
 
 m1a_age "$M1A_BYP_OWNER" '10 days'
 $DB -c "update memorials set status='archived' where id='$M1A_BYP_D2';" >/dev/null
-M1A_RIGHTS_BEFORE=$($DB -t -A -c "select count(*) from entitlements;")
-check "after the 10 days, recreating a free draft is refused" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")"
-check "that refusal writes nothing" "$M1A_RIGHTS_BEFORE" "$($DB -t -A -c "select count(*) from entitlements;")"
-M1A_BYP_D3=$(m1a_avis_draft "$M1A_BYP_OWNER")
-check "outside the window, an unanchored draft is not anchored" "free_unavailable|t" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D3','$M1A_BYP_OWNER');")|$($DB -t -A -c "select free_anchor_at is null from memorials where id='$M1A_BYP_D3';")"
+M1A_BYP_D3=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_BYP_OWNER','intemporel','light');")
+check "after the 10 days, the Builder is never blocked: a new draft is created" "created" "$(echo "$M1A_BYP_D3" | cut -d'|' -f1)"
+M1A_BYP_D3=$(echo "$M1A_BYP_D3" | cut -d'|' -f2)
+check "outside the window, it is anchored with NO free window and no new window is opened" "anchored_without_free_publication|1|t" \
+  "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D3','$M1A_BYP_OWNER');")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$M1A_BYP_OWNER' and event='free.window_opened';")|$($DB -t -A -c "select free_publish_until = free_anchor_at from memorials where id='$M1A_BYP_D3';")"
+check "re-anchoring it does not open a window either" "already_anchored" "$(svc "select outcome from anchor_free_memorial_v1('$M1A_BYP_D3','$M1A_BYP_OWNER');")"
 m1a_ready "$M1A_BYP_D3" "m1a-bypass-3"
-svc_expect_error "and it cannot be published for free" "$(m1a_publish_sql "$M1A_BYP_D3" "$M1A_BYP_OWNER" m1a-bypass-3)" "requires a confirmed e-mail"
+svc_expect_error "and it cannot be published for free" "$(m1a_publish_sql "$M1A_BYP_D3" "$M1A_BYP_OWNER" m1a-bypass-3)" "free publication window closed"
 $DB -c "update memorials set status='archived' where id='$M1A_BYP_D3';" >/dev/null
 
 m1a_age "$M1A_BYP_OWNER" '12 months'
@@ -2978,9 +2984,13 @@ m1a_ready "$M1A_PUB_D1" "m1a-publisher-1"
 m1a_publish "$M1A_PUB_D1" "$M1A_PUB_OWNER" m1a-publisher-1 >/dev/null
 m1a_age "$M1A_PUB_OWNER" '12 months 1 day'
 $DB -c "update memorial_access_events set created_at = created_at + interval '6 days' where owner_id='$M1A_PUB_OWNER' and event='free.first_published';" >/dev/null
-check "renewal waits until the last free publication is 12 months old" "free_unavailable" "$(svc "select outcome from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")"
+M1A_PUB_D2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")
+check "renewal waits until the last free publication is 12 months old (draft created, no free window)" "created|anchored_without_free_publication" \
+  "$(echo "$M1A_PUB_D2" | cut -d'|' -f1)|$(svc "select outcome from anchor_free_memorial_v1('$(echo "$M1A_PUB_D2" | cut -d'|' -f2)','$M1A_PUB_OWNER');")"
+M1A_PUB_D2=$(echo "$M1A_PUB_D2" | cut -d'|' -f2)
 $DB -c "update memorial_access_events set created_at = created_at - interval '6 days' where owner_id='$M1A_PUB_OWNER' and event='free.first_published';" >/dev/null
-check "then it is possible again" "created" "$(svc "select outcome from create_free_memorial_v1('$M1A_PUB_OWNER','intemporel','light');")"
+check "then the SAME draft receives the new cycle's 10-day window, its preparation unchanged" "free_window_opened|240|t" \
+  "$(svc "select outcome from anchor_free_memorial_v1('$M1A_PUB_D2','$M1A_PUB_OWNER');")|$($DB -t -A -c "select round(extract(epoch from (free_publish_until - now())) / 3600) from memorials where id='$M1A_PUB_D2';")|$($DB -t -A -c "select free_draft_until = free_anchor_at + interval '1080 hours' from memorials where id='$M1A_PUB_D2';")"
 
 # Concurrency: two drafts confirmed at the same instant open ONE window.
 M1A_RACE2_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'm1a-race2@example.test') returning id;")
@@ -3253,8 +3263,10 @@ check "J45 - 1 min: the draft is still the owner's one active free draft" "free_
 m1a_age "$Q8_J45_OWNER" '1 minute'
 check "J45: preparation over, recovery still open, never published" "true|true|true" \
   "$($DB -t -A -c "select (now() >= free_draft_until) || '|' || (now() < free_draft_recovery_until) || '|' || (first_published_at is null) from memorials where id='$Q8_J45';")"
-check "J45: a new free draft does NOT reopen the deadlines (no reset)" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_J45_OWNER','intemporel','light');")"
+Q8_J45_NEW=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_J45_OWNER','intemporel','light');")
+check "J45: a new draft is created (Builder never blocked) but reopens no free window (no reset)" "created|anchored_without_free_publication|1" \
+  "$(echo "$Q8_J45_NEW" | cut -d'|' -f1)|$(svc "select outcome from anchor_free_memorial_v1('$(echo "$Q8_J45_NEW" | cut -d'|' -f2)','$Q8_J45_OWNER');")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_J45_OWNER' and event='free.window_opened';")"
+$DB -c "update memorials set status='archived' where id='$(echo "$Q8_J45_NEW" | cut -d'|' -f2)';" >/dev/null
 check "J45: and no quota was consumed by the unpublished draft" "0" "$(q8_published_count "$Q8_J45_OWNER")"
 m1a_age "$Q8_J45_OWNER" '168 hours'
 check "J52: the recovery period is over (deadline recorded, no rule invented)" "t" \
@@ -3330,8 +3342,10 @@ q8_ready "$Q8_QUOTA" q8-quota "$Q8_HERO"
 svc "$(q8_v2_sql "$Q8_QUOTA" "$Q8_QUOTA_OWNER" q8-quota avis "$Q8_HERO")" >/dev/null
 check "a successful free publication consumes the quota exactly once" "published|1" "$(q8_status "$Q8_QUOTA")|$(q8_published_count "$Q8_QUOTA_OWNER")"
 m1a_age "$Q8_QUOTA_OWNER" '11 months 29 days'
-check "12 months - 1 day: the address still cannot publish for free" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_QUOTA_OWNER','intemporel','light');")"
+Q8_QUOTA_EARLY=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_QUOTA_OWNER','intemporel','light');")
+check "12 months - 1 day: a draft can be prepared, but without free publication" "created|anchored_without_free_publication" \
+  "$(echo "$Q8_QUOTA_EARLY" | cut -d'|' -f1)|$(svc "select outcome from anchor_free_memorial_v1('$(echo "$Q8_QUOTA_EARLY" | cut -d'|' -f2)','$Q8_QUOTA_OWNER');")"
+$DB -c "update memorials set status='archived' where id='$(echo "$Q8_QUOTA_EARLY" | cut -d'|' -f2)';" >/dev/null
 m1a_age "$Q8_QUOTA_OWNER" '2 days'
 Q8_QUOTA_2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_QUOTA_OWNER','intemporel','light');")
 check "12 months + 1 day (rolling): a new free draft is possible" "created" "$(echo "$Q8_QUOTA_2" | cut -d'|' -f1)"
@@ -3405,19 +3419,18 @@ Q8_W1=$(q8_draft "$Q8_W_OWNER"); q8_anchor "$Q8_W1" "$Q8_W_OWNER" >/dev/null
 q8_ready "$Q8_W1" q8-waiver-1 "$Q8_HERO"
 svc "$(q8_v2_sql "$Q8_W1" "$Q8_W_OWNER" q8-waiver-1 avis "$Q8_HERO")" >/dev/null
 m1a_age "$Q8_W_OWNER" '60 days'
-check "W1: without a waiver, the address cannot publish for free again" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")"
+Q8_W2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")
+check "W1: without a waiver, a draft is created but anchored without free publication" "created|anchored_without_free_publication" \
+  "$(echo "$Q8_W2" | cut -d'|' -f1)|$(svc "select outcome from anchor_free_memorial_v1('$(echo "$Q8_W2" | cut -d'|' -f2)','$Q8_W_OWNER');")"
+Q8_W2=$(echo "$Q8_W2" | cut -d'|' -f2)
 check "W1: the waiver is granted" "granted" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-1)"
 check "W1: granting is idempotent on its reference" "already_granted" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-1)"
 check "W1: one active waiver per address" "active_waiver_exists" "$(q8_grant "$Q8_W_OWNER" q8-w-ref-2)"
 check "W1: a reference cannot serve two addresses" "reference_conflict" "$(q8_grant "$Q8_QUOTA_OWNER" q8-w-ref-1)"
 check "W1: the grant is audited once, without personal data" "1|free_publication_waiver.granted|owner" \
   "$($DB -t -A -c "select count(*) || '|' || max(action) || '|' || max(target_type) from admin_audit_events where target_id='$Q8_W_OWNER';")"
-Q8_W2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")
-check "W1: with the waiver, a free draft can be created" "created" "$(echo "$Q8_W2" | cut -d'|' -f1)"
-Q8_W2=$(echo "$Q8_W2" | cut -d'|' -f2)
-check "W1: its anchoring opens a NEW 10-day window, now" "anchored|t|240" \
-  "$(q8_anchor "$Q8_W2" "$Q8_W_OWNER")|$($DB -t -A -c "select free_anchor_at > now() - interval '1 minute' from memorials where id='$Q8_W2';")|$($DB -t -A -c "select extract(epoch from (free_publish_until - free_anchor_at))::bigint / 3600 from memorials where id='$Q8_W2';")"
+check "W1: with the waiver, the SAME draft receives a new 10-day window, now" "free_window_opened|240" \
+  "$(q8_anchor "$Q8_W2" "$Q8_W_OWNER")|$($DB -t -A -c "select round(extract(epoch from (free_publish_until - now())) / 3600) from memorials where id='$Q8_W2';")"
 check "W1: anchoring does not consume the waiver" "true|false" \
   "$($DB -t -A -c "select (window_opened_at is not null) || '|' || (consumed_at is not null) from free_publication_waivers where reference='q8-w-ref-1';")"
 q8_ready "$Q8_W2" q8-waiver-2 "$Q8_HERO"
@@ -3426,18 +3439,20 @@ check "W1: the second free publication succeeds and consumes the waiver" "publis
   "$(q8_status "$Q8_W2")|$($DB -t -A -c "select (consumed_at is not null) || '|' || consumed_memorial_id from free_publication_waivers where reference='q8-w-ref-1';")"
 check "W1: the use is journaled once, with the waiver as its unique reference" "1|admin_waiver" \
   "$($DB -t -A -c "select count(*) || '|' || max(source) from memorial_access_events where owner_id='$Q8_W_OWNER' and event='free.waiver_used';")"
-check "W1: once used, the address is limited again" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")"
+Q8_W3=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_W_OWNER','intemporel','light');")
+check "W1: once used, the address is limited again (draft yes, free publication no)" "created|anchored_without_free_publication" \
+  "$(echo "$Q8_W3" | cut -d'|' -f1)|$(svc "select outcome from anchor_free_memorial_v1('$(echo "$Q8_W3" | cut -d'|' -f2)','$Q8_W_OWNER');")"
 
 # W2. Window closed without publication: the waiver reopens one window.
 Q8_V_OWNER=$(q8_owner q8-waiver-window)
 Q8_V1=$(q8_draft "$Q8_V_OWNER"); q8_anchor "$Q8_V1" "$Q8_V_OWNER" >/dev/null
 m1a_age "$Q8_V_OWNER" '20 days'
 $DB -c "update memorials set status='archived' where id='$Q8_V1';" >/dev/null
-check "W2: the closed window is not reopened by a new draft" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_V_OWNER','intemporel','light');")"
+Q8_V2=$(q8_draft "$Q8_V_OWNER")
+check "W2: the closed window is not reopened by a new draft" "anchored_without_free_publication|1" \
+  "$(q8_anchor "$Q8_V2" "$Q8_V_OWNER")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_V_OWNER' and event='free.window_opened';")"
 q8_grant "$Q8_V_OWNER" q8-v-ref >/dev/null
-Q8_V2=$(q8_draft "$Q8_V_OWNER"); q8_anchor "$Q8_V2" "$Q8_V_OWNER" >/dev/null
+check "W2: the waiver opens one window on that same draft" "free_window_opened" "$(q8_anchor "$Q8_V2" "$Q8_V_OWNER")"
 q8_ready "$Q8_V2" q8-waiver-window "$Q8_HERO"
 svc "$(q8_v2_sql "$Q8_V2" "$Q8_V_OWNER" q8-waiver-window avis "$Q8_HERO")" >/dev/null
 check "W2: published within the waiver's window; the waiver is consumed" "published|t" \
@@ -3452,8 +3467,10 @@ q8_grant "$Q8_R_OWNER" q8-r-ref >/dev/null
 Q8_R_WAIVER=$($DB -t -A -c "select id from free_publication_waivers where reference='q8-r-ref';")
 check "W3: an unused waiver can be revoked, audited" "revoked|1" \
   "$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_R_WAIVER','$ADMIN_Q8');")|$($DB -t -A -c "select count(*) from admin_audit_events where target_id='$Q8_R_OWNER' and action='free_publication_waiver.revoked';")"
-check "W3: a revoked waiver opens nothing" "free_unavailable" \
-  "$(svc "select outcome from create_free_memorial_v1('$Q8_R_OWNER','intemporel','light');")"
+Q8_R3=$(q8_draft "$Q8_R_OWNER")
+check "W3: a revoked waiver opens nothing" "anchored_without_free_publication|already_anchored" \
+  "$(q8_anchor "$Q8_R3" "$Q8_R_OWNER")|$(q8_anchor "$Q8_R3" "$Q8_R_OWNER")"
+$DB -c "update memorials set status='archived' where id='$Q8_R3';" >/dev/null
 Q8_W_USED=$($DB -t -A -c "select id from free_publication_waivers where reference='q8-w-ref-1';")
 check "W3: revoking twice is harmless; a used waiver cannot be revoked" "already_revoked|already_consumed" \
   "$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_R_WAIVER','$ADMIN_Q8');")|$(svc "select outcome from revoke_free_publication_waiver_v1('$Q8_W_USED','$ADMIN_Q8');")"
@@ -3464,6 +3481,44 @@ $DB -c "update memorials set free_anchor_at = now(), free_publish_until = now() 
 q8_ready "$Q8_R2" q8-revoke-2 "$Q8_HERO"
 svc_expect_error "W3: without an active waiver the guard refuses beyond the quota" \
   "$(q8_v2_sql "$Q8_R2" "$Q8_R_OWNER" q8-revoke-2 avis "$Q8_HERO")" "free publication quota reached"
+
+# --- Q7b. QG 008 correction: the quota never blocks the Builder nor the complete offer ---
+Q8_CPL_OWNER=$(q8_owner q8-complete-path)
+Q8_CPL_1=$(q8_draft "$Q8_CPL_OWNER"); q8_anchor "$Q8_CPL_1" "$Q8_CPL_OWNER" >/dev/null
+q8_ready "$Q8_CPL_1" q8-complete-path-1 "$Q8_HERO"
+svc "$(q8_v2_sql "$Q8_CPL_1" "$Q8_CPL_OWNER" q8-complete-path-1 avis "$Q8_HERO")" >/dev/null
+m1a_age "$Q8_CPL_OWNER" '20 days'
+Q8_CPL_EVENTS=$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_CPL_OWNER' and event in ('free.window_opened','free.first_published');")
+Q8_CPL_2=$(svc "select outcome || '|' || memorial_id from create_free_memorial_v1('$Q8_CPL_OWNER','intemporel','light');")
+check "quota consumed: the Builder still opens a draft immediately" "created" "$(echo "$Q8_CPL_2" | cut -d'|' -f1)"
+Q8_CPL_2=$(echo "$Q8_CPL_2" | cut -d'|' -f2)
+check "its durable save anchors it without free publication: zero free window, its own 45-day preparation" "anchored_without_free_publication|t|1080|168" \
+  "$(q8_anchor "$Q8_CPL_2" "$Q8_CPL_OWNER")|$($DB -t -A -c "select free_publish_until = free_anchor_at and free_anchor_at > now() - interval '1 minute' from memorials where id='$Q8_CPL_2';")|$($DB -t -A -c "select extract(epoch from (free_draft_until - free_anchor_at))::bigint / 3600 || '|' || extract(epoch from (free_draft_recovery_until - free_draft_until))::bigint / 3600 from memorials where id='$Q8_CPL_2';")"
+check "the anchoring is journaled as such, and opens no window nor consumes anything" "1|$Q8_CPL_EVENTS" \
+  "$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$Q8_CPL_2' and event='free.anchored_without_window';")|$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_CPL_OWNER' and event in ('free.window_opened','free.first_published');")"
+check "it is the owner's single active draft (Builder unique, not a quota refusal)" "free_draft_limit" \
+  "$(svc "select outcome from create_free_memorial_v1('$Q8_CPL_OWNER','intemporel','light');")"
+Q8_CPL_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$Q8_CPL_2';")
+$DB -c "update memorials set status='ready' where id='$Q8_CPL_2';" >/dev/null
+check "the family prepares it like any draft" "$((Q8_CPL_REV + 1))" "$(m1a_edit "$Q8_CPL_2" "$Q8_CPL_OWNER" "Preparation complete")"
+q8_ready "$Q8_CPL_2" q8-complete-path-2 "$Q8_PREM_DRAFT"
+svc_expect_error "a free publication of it is refused by the server (window closed)" \
+  "$(q8_v2_sql "$Q8_CPL_2" "$Q8_CPL_OWNER" q8-complete-path-2 avis "$Q8_HERO")" "free publication window closed"
+check "the refusal consumes no quota" "$Q8_CPL_EVENTS" \
+  "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_CPL_OWNER' and event in ('free.window_opened','free.first_published');")"
+check "no 12-month wait: the same draft is upgraded and published complete right away" "upgraded|published|true" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$Q8_CPL_2','$Q8_CPL_OWNER','direct_payment','pay-q8-complete-path');")|$(svc "$(q8_v2_sql "$Q8_CPL_2" "$Q8_CPL_OWNER" q8-complete-path-2 complet "$Q8_PREM_DRAFT")" >/dev/null; q8_status "$Q8_CPL_2")|$($DB -t -A -c "select (content ? 'video')::text from memorial_published_snapshots where memorial_id='$Q8_CPL_2';")"
+check "the complete publication touches no free counter" "$Q8_CPL_EVENTS|0" \
+  "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$Q8_CPL_OWNER' and event in ('free.window_opened','free.first_published');")|$($DB -t -A -c "select count(*) from memorial_access_events where memorial_id='$Q8_CPL_2' and event='free.first_published';")"
+# A draft anchored inside an OPEN window keeps the address's anchor (no
+# reset), even though zero-window anchoring exists.
+Q8_OPEN_OWNER=$(q8_owner q8-open-window)
+Q8_OPEN_1=$(q8_draft "$Q8_OPEN_OWNER"); q8_anchor "$Q8_OPEN_1" "$Q8_OPEN_OWNER" >/dev/null
+m1a_age "$Q8_OPEN_OWNER" '3 days'
+$DB -c "update memorials set status='archived' where id='$Q8_OPEN_1';" >/dev/null
+Q8_OPEN_2=$(q8_draft "$Q8_OPEN_OWNER")
+check "inside an open window a replacement still inherits the original J10 (no reset)" "anchored|t" \
+  "$(q8_anchor "$Q8_OPEN_2" "$Q8_OPEN_OWNER")|$($DB -t -A -c "select a.free_publish_until = b.free_publish_until and a.free_draft_until = b.free_draft_until from memorials a, memorials b where a.id='$Q8_OPEN_1' and b.id='$Q8_OPEN_2';")"
 
 # --- Q8. No privilege leak, no direct-call bypass ---
 for f in "commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)" "grant_free_publication_waiver_v1(uuid,uuid,text,text)" "revoke_free_publication_waiver_v1(uuid,uuid)"; do

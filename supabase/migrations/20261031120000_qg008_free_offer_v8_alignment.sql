@@ -114,6 +114,18 @@ update public.memorials m
  where s.id and m.free_draft_until is not null;
 alter table public.memorials enable trigger memorials_set_updated_at;
 
+-- Fenêtre gratuite de durée nulle (QG 008) : un brouillon ancré alors
+-- que l'adresse ne peut pas publier gratuitement porte
+-- free_publish_until = free_anchor_at.
+alter table public.memorials
+  drop constraint memorials_free_anchor_coherent,
+  add constraint memorials_free_anchor_coherent check (
+    (free_anchor_at is null and free_publish_until is null and free_draft_until is null)
+    or (free_anchor_at is not null
+        and free_publish_until >= free_anchor_at
+        and free_draft_until > free_anchor_at)
+  );
+
 alter table public.memorials
   add constraint memorials_free_draft_recovery_coherent check (
     (free_draft_until is null and free_draft_recovery_until is null)
@@ -210,6 +222,7 @@ alter table public.memorial_access_events
 alter table public.memorial_access_events
   add constraint memorial_access_events_event_check
   check (event in ('free.created', 'free.window_opened', 'free.anchored',
+                   'free.anchored_without_window',
                    'free.first_published', 'free.waiver_used', 'access.upgraded'));
 
 create or replace function public.grant_free_publication_waiver_v1(
@@ -386,10 +399,12 @@ begin
 end;
 $$;
 
--- D3. Création d'un brouillon gratuit. Même contrat que M1-A
--- (created | free_draft_limit | free_unavailable | refused) ; la
--- disponibilité vient désormais de free_window_status_v1 (dérogation
--- comprise). Créer un brouillon ne consomme rien et n'ouvre aucune fenêtre.
+-- D3. Création d'un brouillon gratuit. Décision QG 008 : le quota de
+-- publication gratuite ne bloque JAMAIS le Builder unique. La création
+-- n'est refusée que pour un propriétaire inconnu ou si un brouillon
+-- gratuit est déjà actif (brouillon unique : la famille reprend celui-ci).
+-- Elle ne consomme rien et n'ouvre aucune fenêtre ; c'est l'ancrage qui
+-- dira si ce brouillon peut être publié gratuitement.
 create or replace function public.create_free_memorial_v1(
   p_owner_id uuid,
   p_skin_id text,
@@ -403,7 +418,6 @@ as $$
 declare
   v_settings public.memorial_access_settings%rowtype;
   v_active integer;
-  v_status text;
   v_entitlement uuid;
   v_memorial uuid;
   v_now timestamptz := clock_timestamp();
@@ -434,11 +448,6 @@ begin
     return query select 'free_draft_limit'::text, null::uuid;
     return;
   end if;
-  select s.outcome into v_status from public.free_window_status_v1(p_owner_id, v_now) s;
-  if v_status = 'unavailable' then
-    return query select 'free_unavailable'::text, null::uuid;
-    return;
-  end if;
   insert into public.entitlements (source, offer_id, access_level)
   values ('direct', 'intemporel', 'avis')
   returning id into v_entitlement;
@@ -451,10 +460,30 @@ end;
 $$;
 
 -- D4. Ancrage (premier enregistrement durable après vérification de
--- l'adresse). L'ancre est celle de l'ADRESSE (correctif 1) ou, si
--- l'adresse n'a plus de fenêtre, celle de sa dérogation active. Un
--- brouillon remplacé hérite toujours de l'ancre existante : aucun délai
--- n'est renouvelé. Idempotente.
+-- l'adresse). Idempotent. Trois issues pour un brouillon non ancré :
+--   anchored                            la fenêtre de l'ADRESSE est ouverte
+--                                       (ou héritée, correctif 1) ou une
+--                                       dérogation active en ouvre une ;
+--                                       un brouillon remplacé hérite de
+--                                       l'ancre : aucun délai renouvelé ;
+--   anchored_without_free_publication   l'adresse ne peut pas publier
+--                                       gratuitement (fenêtre close, quota
+--                                       consommé, pas de dérogation) : le
+--                                       brouillon est ancré quand même, avec
+--                                       une fenêtre gratuite de durée NULLE
+--                                       (free_publish_until = ancre) et ses
+--                                       45 jours de préparation, pour
+--                                       préparer ou acheter l'offre complète
+--                                       sans attendre. Aucune fenêtre n'est
+--                                       ouverte, rien n'est consommé.
+-- Pour un brouillon DÉJÀ ancré, jamais publié, dont la fenêtre est close :
+--   free_window_opened                  seulement si l'adresse a
+--                                       réellement retrouvé un droit — un
+--                                       nouveau cycle de 12 mois ou une
+--                                       dérogation active. La fenêtre est
+--                                       alors donnée à CE brouillon ; sa
+--                                       préparation n'est pas prolongée.
+--   already_anchored                    sinon : rien ne bouge.
 create or replace function public.anchor_free_memorial_v1(
   p_memorial_id uuid,
   p_owner_id uuid
@@ -484,12 +513,13 @@ begin
     return query select 'not_free'::text, null::timestamptz, null::timestamptz, null::timestamptz;
     return;
   end if;
-  if v_memorial.free_anchor_at is not null then
+  if v_memorial.free_anchor_at is not null
+     and (v_memorial.first_published_at is not null or v_now < v_memorial.free_publish_until) then
     return query select 'already_anchored'::text, v_memorial.free_anchor_at,
                         v_memorial.free_publish_until, v_memorial.free_draft_until;
     return;
   end if;
-  if v_memorial.first_published_at is not null then
+  if v_memorial.free_anchor_at is null and v_memorial.first_published_at is not null then
     return query select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz;
     return;
   end if;
@@ -501,10 +531,46 @@ begin
   perform 1 from public.owners o where o.id = p_owner_id for update;
   select s.outcome, s.anchor_at, s.waiver_id into v_status, v_anchor, v_waiver
     from public.free_window_status_v1(p_owner_id, v_now) s;
-  if v_status = 'unavailable' then
-    return query select 'free_unavailable'::text, null::timestamptz, null::timestamptz, null::timestamptz;
+
+  -- Brouillon déjà ancré, fenêtre close, jamais publié.
+  if v_memorial.free_anchor_at is not null then
+    if v_status not in ('open_new', 'waiver_new', 'waiver_inherit') then
+      return query select 'already_anchored'::text, v_memorial.free_anchor_at,
+                          v_memorial.free_publish_until, v_memorial.free_draft_until;
+      return;
+    end if;
+    if v_status in ('open_new', 'waiver_new') then
+      insert into public.memorial_access_events (memorial_id, owner_id, event, from_level, to_level, created_at)
+      values (p_memorial_id, p_owner_id, 'free.window_opened', 'avis', 'avis', v_now);
+    end if;
+    if v_status = 'waiver_new' then
+      update public.free_publication_waivers
+         set window_opened_at = v_anchor
+       where id = v_waiver and window_opened_at is null and consumed_at is null and revoked_at is null;
+    end if;
+    update public.memorials
+       set free_publish_until = v_anchor + v_settings.free_publish_window
+     where id = p_memorial_id;
+    return query select 'free_window_opened'::text, v_memorial.free_anchor_at,
+                        v_anchor + v_settings.free_publish_window, v_memorial.free_draft_until;
     return;
   end if;
+
+  -- Premier ancrage, sans droit de publication gratuite : jamais bloquant.
+  if v_status = 'unavailable' then
+    update public.memorials
+       set free_anchor_at = v_now,
+           free_publish_until = v_now,
+           free_draft_until = v_now + v_settings.free_draft_retention
+     where id = p_memorial_id;
+    insert into public.memorial_access_events (memorial_id, owner_id, event, from_level, to_level, created_at)
+    values (p_memorial_id, p_owner_id, 'free.anchored_without_window', 'avis', 'avis', v_now);
+    return query select 'anchored_without_free_publication'::text, v_now, v_now,
+                        v_now + v_settings.free_draft_retention;
+    return;
+  end if;
+
+  -- Premier ancrage avec droit : fenêtre de l'adresse ou de la dérogation.
   if v_status in ('open_new', 'waiver_new') then
     insert into public.memorial_access_events (memorial_id, owner_id, event, from_level, to_level, created_at)
     values (p_memorial_id, p_owner_id, 'free.window_opened', 'avis', 'avis', v_now);
@@ -532,7 +598,7 @@ $$;
 -- publication réussie : un refus, un brouillon abandonné ou remplacé ne
 -- consomment rien. Au-delà du quota, seule une dérogation active permet
 -- de publier ; elle est alors consommée dans la même transaction. Une
--- dérogation qui a ouvert la fenêtre de ce brouillon est aussi consommée.
+-- dérogation qui a ouvert la fenêtre en cours est aussi consommée.
 create or replace function public.guard_free_first_publication_v1()
 returns trigger
 language plpgsql
@@ -580,9 +646,9 @@ begin
       raise exception 'free publication quota reached' using errcode = 'HD403';
     end if;
     v_use_waiver := true;
-  elsif v_waiver.id is not null
-        and v_waiver.window_opened_at is not null
-        and v_waiver.window_opened_at = new.free_anchor_at then
+  elsif v_waiver.id is not null and v_waiver.window_opened_at is not null then
+    -- La fenêtre en cours vient de la dérogation (celle de l'adresse était
+    -- close) : c'est elle qui est utilisée.
     v_use_waiver := true;
   end if;
   new.free_corrections_until := case
@@ -1130,9 +1196,9 @@ grant execute on function public.public_memorial_message_allowed_v1(uuid, text) 
 comment on function public.free_window_status_v1(uuid, timestamptz) is
   'QG 008. Règle unique de disponibilité gratuite d''une adresse : fenêtre du cycle, quota de 12 mois glissants, dérogation active. À appeler sous le verrou du propriétaire. Interne : exécutable par aucun rôle.';
 comment on function public.create_free_memorial_v1(uuid, text, text) is
-  'HERITAGE Direct M1-A, aligné V8 (QG 008). Crée un brouillon gratuit (droit direct « avis » + redeem_entitlement, une transaction). « free_draft_limit » si un brouillon gratuit est actif ; « free_unavailable » si l''adresse ne peut plus publier gratuitement (fenêtre close ou quota consommé, sans dérogation active). Ne consomme rien. service_role seul.';
+  'HERITAGE Direct M1-A, aligné V8 (QG 008). Crée un brouillon gratuit (droit direct « avis » + redeem_entitlement, une transaction). Jamais bloqué par le quota de publication gratuite (décision QG 008) : seuls un propriétaire inconnu (« refused ») ou un brouillon gratuit déjà actif (« free_draft_limit ») l''empêchent. Ne consomme rien, n''ouvre aucune fenêtre. service_role seul.';
 comment on function public.anchor_free_memorial_v1(uuid, uuid) is
-  'HERITAGE Direct M1-A, aligné V8 (QG 008). Premier enregistrement durable après vérification : ancre le brouillon sur la fenêtre de son ADRESSE (ou de sa dérogation active) ; +10 j publication gratuite, +45 j préparation, +52 j récupération. Un brouillon remplacé hérite de l''ancre : aucun délai renouvelé. Idempotente. service_role seul.';
+  'HERITAGE Direct M1-A, aligné V8 (QG 008). Premier enregistrement durable après vérification : ancre le brouillon sur la fenêtre de son ADRESSE (ou de sa dérogation active) ; +10 j publication gratuite, +45 j préparation, +52 j récupération ; un brouillon remplacé hérite de l''ancre. Sans droit gratuit : « anchored_without_free_publication » (fenêtre nulle, 45 j de préparation, rien ouvert ni consommé). Un brouillon ancré à fenêtre close ne reçoit une fenêtre (« free_window_opened ») que d''un nouveau cycle de 12 mois ou d''une dérogation. Idempotente. service_role seul.';
 comment on function public.grant_free_publication_waiver_v1(uuid, uuid, text, text) is
   'QG 008. Accorde une dérogation (une publication gratuite supplémentaire) à une adresse. Idempotente sur la référence ; une seule dérogation active par adresse ; journalisée dans admin_audit_events. L''identité administrateur est vérifiée par le serveur appelant. service_role seul ; aucun écran ne l''appelle encore.';
 comment on function public.revoke_free_publication_waiver_v1(uuid, uuid) is

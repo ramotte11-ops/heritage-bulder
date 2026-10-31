@@ -23,6 +23,12 @@ begin
     raise exception 'free publication waivers exist; rollback refused, nothing changed'
       using errcode = 'HD500';
   end if;
+  -- Un brouillon ancré sans droit gratuit (fenêtre nulle) n'a pas
+  -- d'équivalent M1-A : le supprimer ou le déplacer perdrait un fait.
+  if exists (select 1 from public.memorial_access_events where event = 'free.anchored_without_window') then
+    raise exception 'drafts anchored without a free window exist; rollback refused, nothing changed'
+      using errcode = 'HD500';
+  end if;
 end;
 $$;
 
@@ -596,6 +602,14 @@ alter table public.memorials
         and free_corrections_until > first_published_at
         and free_public_until > first_published_at
         and free_private_until > free_public_until)
+  );
+alter table public.memorials
+  drop constraint memorials_free_anchor_coherent,
+  add constraint memorials_free_anchor_coherent check (
+    (free_anchor_at is null and free_publish_until is null and free_draft_until is null)
+    or (free_anchor_at is not null
+        and free_publish_until > free_anchor_at
+        and free_draft_until > free_anchor_at)
   );
 
 -- A. Réglages

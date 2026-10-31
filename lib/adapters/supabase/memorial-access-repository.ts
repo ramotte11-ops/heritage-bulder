@@ -24,6 +24,16 @@ const FREE_SKIN = "intemporel";
 /** upgrade_memorial_access_v1: the reference was consumed concurrently. */
 const REFERENCE_ALREADY_USED = "HD409";
 
+/** anchor_free_memorial_v1's dated outcomes (QG 008), and only those. */
+const ANCHORED_OUTCOMES: Readonly<
+  Partial<Record<string, "anchored" | "anchoredWithoutFreePublication" | "freeWindowOpened" | "alreadyAnchored">>
+> = {
+  anchored: "anchored",
+  anchored_without_free_publication: "anchoredWithoutFreePublication",
+  free_window_opened: "freeWindowOpened",
+  already_anchored: "alreadyAnchored",
+};
+
 interface CreateRow {
   outcome: string;
   memorial_id: string | null;
@@ -67,7 +77,6 @@ export class SupabaseMemorialAccessRepository implements MemorialAccessRepositor
       return { outcome: "created", memorialId: row.memorial_id };
     }
     if (row?.outcome === "free_draft_limit") return { outcome: "freeDraftLimit" };
-    if (row?.outcome === "free_unavailable") return { outcome: "freeUnavailable" };
     return { outcome: "refused" };
   }
 
@@ -85,21 +94,22 @@ export class SupabaseMemorialAccessRepository implements MemorialAccessRepositor
     if (error) throw error;
 
     const row = firstRow<AnchorRow>(data);
+    const anchoredOutcome = row === undefined ? undefined : ANCHORED_OUTCOMES[row.outcome];
     if (
-      (row?.outcome === "anchored" || row?.outcome === "already_anchored") &&
+      row !== undefined &&
+      anchoredOutcome !== undefined &&
       typeof row.free_anchor_at === "string" &&
       typeof row.free_publish_until === "string" &&
       typeof row.free_draft_until === "string"
     ) {
       return {
-        outcome: row.outcome === "anchored" ? "anchored" : "alreadyAnchored",
+        outcome: anchoredOutcome,
         freeAnchorAt: row.free_anchor_at,
         freePublishUntil: row.free_publish_until,
         freeDraftUntil: row.free_draft_until,
       };
     }
     if (row?.outcome === "not_free") return { outcome: "notFree" };
-    if (row?.outcome === "free_unavailable") return { outcome: "freeUnavailable" };
     return { outcome: "refused" };
   }
 

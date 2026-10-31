@@ -36,11 +36,11 @@ describe("SupabaseMemorialAccessRepository.createFreeMemorial", () => {
     ).toEqual({ outcome: "freeDraftLimit" });
   });
 
-  it("maps the address's exhausted free cycle", async () => {
+  it("QG 008: the free quota is no creation outcome — an obsolete free_unavailable fails closed", async () => {
     const { client } = fakeRpcClient({ data: [{ outcome: "free_unavailable", memorial_id: null }], error: null });
     expect(
       await new SupabaseMemorialAccessRepository(client).createFreeMemorial({ ownerId: OWNER, skinVariant: "light" }),
-    ).toEqual({ outcome: "freeUnavailable" });
+    ).toEqual({ outcome: "refused" });
   });
 
   it("fails CLOSED on no row, an unknown outcome, or a created row without id", async () => {
@@ -92,14 +92,38 @@ describe("SupabaseMemorialAccessRepository.anchorFreeMemorial", () => {
     ).toEqual({ outcome: "notFree" });
   });
 
-  it("maps a confirmation outside the address's window to freeUnavailable, with no date", async () => {
+  it("QG 008: a draft anchored without free publication keeps its zero-length window and its preparation", async () => {
+    const zeroWindow = {
+      free_anchor_at: "2026-11-02T10:00:00Z",
+      free_publish_until: "2026-11-02T10:00:00Z",
+      free_draft_until: "2026-12-17T10:00:00Z",
+    };
+    const { client } = fakeRpcClient({ data: [{ outcome: "anchored_without_free_publication", ...zeroWindow }], error: null });
+    expect(
+      await new SupabaseMemorialAccessRepository(client).anchorFreeMemorial({ memorialId: MEMORIAL, ownerId: OWNER }),
+    ).toEqual({
+      outcome: "anchoredWithoutFreePublication",
+      freeAnchorAt: zeroWindow.free_anchor_at,
+      freePublishUntil: zeroWindow.free_publish_until,
+      freeDraftUntil: zeroWindow.free_draft_until,
+    });
+  });
+
+  it("QG 008: maps a window given to an existing draft (new cycle or waiver)", async () => {
+    const { client } = fakeRpcClient({ data: [{ outcome: "free_window_opened", ...ANCHOR }], error: null });
+    expect(
+      await new SupabaseMemorialAccessRepository(client).anchorFreeMemorial({ memorialId: MEMORIAL, ownerId: OWNER }),
+    ).toMatchObject({ outcome: "freeWindowOpened", freePublishUntil: ANCHOR.free_publish_until });
+  });
+
+  it("QG 008: an obsolete free_unavailable anchor outcome fails closed", async () => {
     const { client } = fakeRpcClient({
       data: [{ outcome: "free_unavailable", free_anchor_at: null, free_publish_until: null, free_draft_until: null }],
       error: null,
     });
     expect(
       await new SupabaseMemorialAccessRepository(client).anchorFreeMemorial({ memorialId: MEMORIAL, ownerId: OWNER }),
-    ).toEqual({ outcome: "freeUnavailable" });
+    ).toEqual({ outcome: "refused" });
   });
 
   it("fails CLOSED on no row, an unknown outcome, or an anchor without its dates", async () => {

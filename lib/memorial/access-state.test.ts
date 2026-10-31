@@ -101,6 +101,14 @@ describe("resolveMemorialAccessState", () => {
     });
   });
 
+  it("QG 008: a draft anchored without free publication (zero window) is E2 at once, with its 45 days", () => {
+    const zeroWindow = { ...anchored, freePublishUntil: iso(A) };
+    expect(resolveMemorialAccessState(zeroWindow, at(A))).toEqual({
+      state: "E2",
+      until: iso(A + 1080 * HOUR),
+    });
+  });
+
   it("an optional correction window, if one is ever decided (L06), is shown as E4", () => {
     const withCorrections = { ...published, freeCorrectionsUntil: iso(P + 72 * HOUR) };
     expect(resolveMemorialAccessState(withCorrections, at(P))).toEqual({

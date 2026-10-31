@@ -18,38 +18,46 @@ import type { SkinVariant } from "@/config/skins";
  */
 
 /**
+ * QG 008 — the free-publication quota NEVER blocks the Builder: creating a
+ * draft is refused only for an unknown owner or when the owner already has
+ * an active free draft (the single draft, to be resumed).
+ *
  * - `created`: a free (`avis`) Intemporel draft exists, not yet anchored;
  * - `freeDraftLimit`: B6 — the owner already has an active free draft;
- * - `freeUnavailable`: the address can no longer publish for free in its
- *   12-month cycle (10-day window over, or free publication already used,
- *   and no active administrative waiver — QG 008);
  * - `refused`: unknown owner.
  */
 export type CreateFreeMemorialOutcome =
   | { outcome: "created"; memorialId: string }
   | { outcome: "freeDraftLimit" }
-  | { outcome: "freeUnavailable" }
   | { outcome: "refused" };
 
 /**
+ * Every anchored outcome carries the server's deadlines (B14, V8 via QG 008:
+ * +10 d free publication, +45 d preparation, +7 d recovery):
  * - `anchored`: B1 — the draft now carries its ADDRESS's anchor: the
- *   first confirmation of the 12-month cycle opens the window, any later
- *   draft of that cycle inherits it (no new 10 days); the deadlines are the
- *   server's (B14, V8 via QG 008: +10 d, +45 d, +7 d recovery);
- * - `alreadyAnchored`: anchored before — the original deadlines, unmoved;
+ *   first durable save of the 12-month cycle opens the window, any later
+ *   draft of that cycle inherits it (no new 10 days);
+ * - `anchoredWithoutFreePublication`: QG 008 — the address cannot publish
+ *   for free (window closed or quota used, no waiver). The draft is anchored
+ *   anyway with a ZERO-length free window (`freePublishUntil` equals
+ *   `freeAnchorAt`) and its 45 days of preparation: the family prepares or
+ *   buys the complete offer without waiting; nothing is opened or consumed;
+ * - `freeWindowOpened`: an anchored, never-published draft whose window was
+ *   closed receives a window because the address genuinely regained one (a
+ *   new 12-month cycle, or an administrative waiver); its preparation is
+ *   not extended;
+ * - `alreadyAnchored`: anchored before — the deadlines, unmoved;
  * - `notFree`: a complete memorial has no free anchor;
  * - `refused`: not the owner's, archived, unknown, or already published.
  */
 export type AnchorFreeMemorialOutcome =
   | {
-      outcome: "anchored" | "alreadyAnchored";
+      outcome: "anchored" | "anchoredWithoutFreePublication" | "freeWindowOpened" | "alreadyAnchored";
       freeAnchorAt: string;
       freePublishUntil: string;
       freeDraftUntil: string;
     }
   | { outcome: "notFree" }
-  /** Outside the address's window, or its free publication is used. */
-  | { outcome: "freeUnavailable" }
   | { outcome: "refused" };
 
 export type MemorialUpgradeSource = "direct_payment" | "admin";

@@ -909,7 +909,8 @@ Additive: no existing function is replaced.
   under the owner's lock (HD403); publication refused without anchor
   (HD428) or after the window (HD410), at the database's clock. Outside
   the window, or once the free publication is used, creating or anchoring
-  a free draft answers `free_unavailable` and writes nothing. A new cycle
+  a free draft answered `free_unavailable` and wrote nothing — **superseded
+  by QG 008**: the quota never blocks the Builder (see below). A new cycle
   opens only when the previous one is over 12 months old AND no free
   publication happened in the last 12 months.
 - **Gallery (QG 008).** Preparation is not limited: an `avis` draft may
@@ -933,7 +934,18 @@ applied after the three M1-A migrations.
   address over 12 rolling months, consumed ONLY by a successful free
   publication (`free.first_published`, written in the publication's own
   transaction). Creating, saving, abandoning or replacing a draft consumes
-  nothing and renews no deadline. The window cycle
+  nothing and renews no deadline. **The quota limits free publication
+  only, never the Builder nor the complete offer** (QG decision):
+  `create_free_memorial_v1` never refuses for it (only an unknown owner or
+  an already active draft), and `anchor_free_memorial_v1` anchors a draft
+  of an address that cannot publish for free with a ZERO-length free
+  window (`free_publish_until = free_anchor_at`,
+  `anchored_without_free_publication`) and its own 45 days of
+  preparation, so the family prepares or buys the complete offer at once;
+  no window is opened, nothing is consumed. An anchored, never-published
+  draft whose window is closed receives a window (`free_window_opened`)
+  only when the address genuinely regains one: a new 12-month cycle or an
+  administrative waiver — never by creating another draft. The window cycle
   (`free_window_cycle`) is a separate setting with the same 12 months, so
   a later PO decision on when an unused, closed window may reopen needs no
   code.
