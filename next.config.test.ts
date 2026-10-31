@@ -3,9 +3,11 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { isCsrfOriginAllowed } from "next/dist/server/app-render/csrf-protection";
 import nextConfig, {
+  allowedDevOriginsFor,
   DEV_ONLY_PAGE_EXTENSION,
   NETLIFY_PREVIEW_DEV_ORIGIN,
   pageExtensionsFor,
+  privateLanDevOrigin,
 } from "./next.config";
 
 /**
@@ -52,6 +54,33 @@ describe("allowedDevOrigins", () => {
 
   it("n'utilise aucun joker", () => {
     for (const entry of allowed) expect(entry).not.toMatch(/\*/);
+  });
+
+  it("ajoute seulement l'IPv4 privée locale configurée hors production", () => {
+    expect(allowedDevOriginsFor("development", "192.168.1.11")).toEqual([
+      NETLIFY_PREVIEW_DEV_ORIGIN,
+      "192.168.1.11",
+    ]);
+    expect(allowedDevOriginsFor("production", "192.168.1.11")).toEqual([NETLIFY_PREVIEW_DEV_ORIGIN]);
+  });
+
+  it.each(["10.0.0.8", "172.16.0.1", "172.31.255.254", "192.168.42.7"])(
+    "accepte l'adresse privée exacte %s",
+    (origin) => expect(privateLanDevOrigin(origin)).toBe(origin),
+  );
+
+  it.each([
+    "*",
+    "0.0.0.0",
+    "192.168.*.*",
+    "192.168.1.11:3000",
+    "http://192.168.1.11",
+    "8.8.8.8",
+    "172.15.0.1",
+    "172.32.0.1",
+    "devserver-main--hommages.netlify.app",
+  ])("refuse l'origine LAN non privée ou non exacte %s", (origin) => {
+    expect(() => privateLanDevOrigin(origin)).toThrow(/exact private IPv4/);
   });
 
   it.each([
