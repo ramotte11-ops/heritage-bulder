@@ -25,7 +25,7 @@ export interface AuthorizedPublicationDeps {
 export async function authorizeAndPublishMemorial(
   deps: AuthorizedPublicationDeps,
   actor: HeritageActor,
-  input: { memorialId: string; expectedRevision: number },
+  input: { memorialId: string; expectedRevision: number; gallerySelection?: unknown },
 ): Promise<PublishMemorialResult> {
   const access = await authorizeMemorialAccess(
     { memorialOwnershipRepository: deps.memorialOwnershipRepository },
@@ -40,6 +40,7 @@ export async function authorizeAndPublishMemorial(
       memorialId: access.memorialId,
       ownerId: access.ownerId,
       expectedRevision: input.expectedRevision,
+      gallerySelection: input.gallerySelection,
     },
   );
 }
@@ -51,6 +52,7 @@ export async function authorizeAndPublishMemorial(
 export async function publishMemorialForCurrentOwner(
   memorialId: string,
   expectedRevision: number,
+  gallerySelection?: unknown,
 ): Promise<PublishMemorialResult> {
   const actor = await getHeritageActor();
   const mediaEngine = createServerMediaEngineDeps();
@@ -65,6 +67,6 @@ export async function publishMemorialForCurrentOwner(
       resolveMedia: createOwnerDraftMediaResolver(mediaEngine, actor, memorialId),
     },
     actor,
-    { memorialId, expectedRevision },
+    { memorialId, expectedRevision, gallerySelection },
   );
 }

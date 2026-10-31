@@ -1,4 +1,5 @@
 import type { Entitlement } from "@/types/entitlement";
+import type { AccessLevel } from "@/config/access-levels";
 import type { EntitlementSource } from "@/config/entitlements";
 import type { OfferId } from "@/config/offers";
 import type { MemorialType } from "@/config/memorial";
@@ -81,6 +82,8 @@ export interface EntitlementRepository {
   issueWithActivationKey(input: {
     offerId: OfferId;
     source: EntitlementSource;
+    /** HERITAGE Direct M1-A (D12) — always explicit, never defaulted. */
+    accessLevel: AccessLevel;
     externalOrderId?: string | null;
     activationKeyHash: string;
   }): Promise<IssueEntitlementOutcome>;
