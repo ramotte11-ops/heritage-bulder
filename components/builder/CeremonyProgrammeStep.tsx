@@ -25,6 +25,7 @@ import { BuilderScreen } from "./BuilderScreen";
 import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import { openNativeTimePicker } from "./open-native-time-picker";
+import { createUuidV4 } from "@/lib/browser/uuid-v4";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./CeremonyProgrammeStep.module.css";
 
@@ -170,7 +171,7 @@ export function CeremonyProgrammeStep({
       setTimeIncomplete(true);
       return;
     }
-    const result = addCeremonyProgrammeMoment(content, { id: crypto.randomUUID(), ...draftInput(composer) });
+    const result = addCeremonyProgrammeMoment(content, { id: createUuidV4(), ...draftInput(composer) });
     if (!result.ok) {
       if (result.reason === "time") setTimeIncomplete(true);
       return;

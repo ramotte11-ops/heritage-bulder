@@ -67,6 +67,7 @@ import {
 } from "@/lib/guest-draft/guest-journey";
 import { journeySectionForScreen, type JourneyScreenId, type JourneySection } from "@/lib/builder/guided-flow/journey";
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
+import { createUuidV4 } from "@/lib/browser/uuid-v4";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
   GuestDraftV3Store,
@@ -138,7 +139,7 @@ function defaultCreateStore(): GuestBuilderStore {
 }
 
 function defaultCreateId(): string {
-  return crypto.randomUUID();
+  return createUuidV4();
 }
 
 function defaultNow(): string {
