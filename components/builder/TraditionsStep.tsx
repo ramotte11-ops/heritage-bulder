@@ -9,6 +9,7 @@ import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
+import { createUuidV4 } from "@/lib/browser/uuid-v4";
 import { resolveAvailableTraditionSuggestions, type TraditionSuggestion } from "@/config/tradition-suggestions";
 import {
   addTraditionsEntry,
@@ -125,7 +126,7 @@ export function TraditionsStep({
   function confirmComposer() {
     if (!composer || controlsDisabled) return;
     const result = addTraditionsEntry(content, {
-      id: crypto.randomUUID(),
+      id: createUuidV4(),
       origin: composer.origin,
       suggestionId: composer.suggestionId,
       title: composer.title.trim() === "" ? null : composer.title,
