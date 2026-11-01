@@ -268,6 +268,12 @@ const { loadMemorialPreviewAction } = vi.hoisted(() => ({
 }));
 vi.mock("./preview-actions", () => ({ loadMemorialPreviewAction }));
 
+// QG 008 Lot 3 — « Publier » is a Server Action bound by the page.
+const { publishFromPreviewAction } = vi.hoisted(() => ({
+  publishFromPreviewAction: vi.fn(() => Promise.resolve("published")),
+}));
+vi.mock("./publication-actions", () => ({ publishFromPreviewAction }));
+
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
 
@@ -3592,5 +3598,19 @@ describe("BuilderMemorialPage — Étape 3 Preview host", () => {
   it("rendering the page never loads the Preview by itself", async () => {
     await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
     expect(loadMemorialPreviewAction).not.toHaveBeenCalled();
+  });
+
+  it("QG 008 Lot 3: publish is the publication action bound to the AUTHORIZED id, never called by rendering", async () => {
+    publishFromPreviewAction.mockClear();
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    expect(publishFromPreviewAction).not.toHaveBeenCalled();
+    await host.props.publish(5, "c".repeat(64), ["m1"]);
+    expect(publishFromPreviewAction).toHaveBeenCalledExactlyOnceWith("authorized-id", 5, "c".repeat(64), ["m1"]);
+  });
+
+  it("QG 008 Lot 3: the authenticated resting screen leads to the Preview (openPreview)", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    expect(host.props.children.type).toBe(GuidedFlowPause);
+    expect(host.props.children.props.openPreview).toBe(true);
   });
 });

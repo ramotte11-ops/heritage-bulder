@@ -79,6 +79,7 @@ import { saveSectionVisibilityAction } from "./visibility-actions";
 import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
 import { resolveVisibilityEntries } from "@/lib/memorial/visibility-entries";
 import { loadMemorialPreviewAction } from "./preview-actions";
+import { publishFromPreviewAction } from "./publication-actions";
 import styles from "./page.module.css";
 
 /**
@@ -406,6 +407,8 @@ export default async function BuilderMemorialPage({
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
   const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
+  // QG 008 Lot 3 — « Publier », in the private Preview of this Builder only.
+  const publish = publishFromPreviewAction.bind(null, access.memorialId);
   // B03 — the route's own path, built from the AUTHORIZED id only: where
   // « Mon parcours » sends the family back to resume (and, with
   // `?etape=`, to revise one screen).
@@ -432,6 +435,7 @@ export default async function BuilderMemorialPage({
         openOnArrival={fromPreview && revising === null && available}
         language={memorialLanguage}
         loadPreview={loadPreview}
+        publish={publish}
         draftRevision={initialDraft.revision ?? 0}
         draftContent={journeyContent ?? initialDraft.content}
         journey={
@@ -986,6 +990,7 @@ export default async function BuilderMemorialPage({
       <GuidedFlowPause
         language={resumed.memorial.language}
         progress={heroStepProgress(heroReconciledContent, readHero(heroReconciledContent))}
+        openPreview
       />,
       previewAvailable(heroReconciledContent),
       heroReconciledContent,

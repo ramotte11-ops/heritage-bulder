@@ -507,3 +507,61 @@ describe("never a navigation, never a second rendering system", () => {
     expect(CODE).not.toMatch(/\bMemorialPreview\b|demo-memorials|qg-runtime-demo|BuilderPreviewLayout/);
   });
 });
+
+describe("QG 008 Lot 3 — « Publier » exists only where the page asks for it", () => {
+  const PUBLICATION = {
+    revision: 4,
+    accessLevel: "avis" as const,
+    digest: "b".repeat(64),
+    gallery: { total: 0, limit: 6, selection: undefined, proposed: false, choices: [] },
+    premiumSections: [],
+    readiness: "publishable" as const,
+  };
+  async function withPublication(): Promise<HostResult> {
+    const ready = await readyResult();
+    return { ...(ready as Extract<HostResult, { status: "ready" }>), publication: PUBLICATION };
+  }
+
+  it("without a `publish` action (guest Builder, pilots) there is no « Publier », even if the Preview describes a publication", async () => {
+    renderHost({ load: withPublication });
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    await screen.findByRole("button", { name: BACK });
+    expect(screen.queryByRole("button", { name: "Publier" })).toBeNull();
+  });
+
+  it("with a `publish` action, the Preview offers « Publier », and closing the Preview drops it", async () => {
+    const publish = vi.fn();
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={withPublication} publish={publish}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    expect(await screen.findByRole("button", { name: "Publier" })).toBeTruthy();
+    expect(publish).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: BACK }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Publier" })).toBeNull());
+  });
+
+  it("a gallery choice reloads the Preview through the same server read, with the selection", async () => {
+    const id = (n: number) => `5e0c2a4b-1f3d-4e6a-8b7c-${String(n).padStart(12, "0")}`;
+    const choices = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ mediaId: id(n), readUrl: FIXTURE_READ_URL }));
+    const load = vi.fn(async (selection?: string[]) => {
+      const ready = await readyResult();
+      return {
+        ...(ready as Extract<HostResult, { status: "ready" }>),
+        publication: { ...PUBLICATION, gallery: { total: 7, limit: 6, selection: selection ?? [1, 2, 3, 4, 5, 6].map(id), proposed: selection === undefined, choices } },
+      };
+    });
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={load} publish={vi.fn()}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    const boxes = await screen.findAllByRole("checkbox");
+    expect(boxes).toHaveLength(7);
+    fireEvent.click(boxes[0]);
+    await waitFor(() => expect(load).toHaveBeenLastCalledWith([2, 3, 4, 5, 6].map(id)));
+  });
+});

@@ -12,7 +12,8 @@ import {
 } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
-import type { PreviewPublication } from "@/lib/memorial/publication-preview-types";
+import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
+import { PreviewPublicationPanel } from "./PreviewPublicationPanel";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
@@ -97,8 +98,13 @@ export interface BuilderPreviewHostProps {
   available: boolean;
   /** `null` only before T01 — `available` is then always `false`. */
   language: Language | null;
-  /** The bound `loadMemorialPreviewAction` for the authorized memorial. */
-  loadPreview: () => Promise<MemorialPreviewResult>;
+  /** The bound `loadMemorialPreviewAction` for the authorized memorial.
+   * QG 008 Lot 3 — an optional gallery choice reloads the Preview for it
+   * (hosts that publish nothing simply ignore it). */
+  loadPreview: (requestedSelection?: string[]) => Promise<MemorialPreviewResult>;
+  /** QG 008 Lot 3 — the bound `publishFromPreviewAction`. Passed ONLY by
+   * the authenticated Builder page: without it, no « Publier » exists. */
+  publish?: (revision: number, digest: string, gallerySelection?: string[]) => Promise<PublishFromPreviewOutcome>;
   /** Revision read with the draft rendered by this route. Required by the
    * real Builder; omitted only by isolated host tests. */
   draftRevision?: number;
@@ -164,6 +170,7 @@ export function BuilderPreviewHost({
   available,
   language,
   loadPreview,
+  publish,
   draftRevision,
   draftContent,
   journey = null,
@@ -176,6 +183,7 @@ export function BuilderPreviewHost({
   const [registry] = useState(createPreviewFlushRegistry);
   const [phase, setPhase] = useState<Phase>("closed");
   const [assembled, setAssembled] = useState<AssembledMemorial | null>(null);
+  const [publication, setPublication] = useState<PreviewPublication | null>(null);
   // The screen (component type) on which the last attempt came back
   // unavailable: the host survives `router.refresh()`, so the alert must
   // not follow the family onto the next Guided Flow screen.
@@ -230,6 +238,7 @@ export function BuilderPreviewHost({
 
       builderScrollY.current = window.scrollY;
       setAssembled(result.assembled);
+      setPublication(result.publication ?? null);
       setPhase("open");
     } finally {
       busy.current = false;
@@ -238,8 +247,27 @@ export function BuilderPreviewHost({
 
   const close = useCallback(() => {
     setAssembled(null);
+    setPublication(null);
     setPhase("closed");
   }, []);
+
+  // QG 008 Lot 3 — the gallery choice (or an outdated Preview) re-reads the
+  // Preview server-side, so what is shown is always what would be published.
+  const reload = useCallback(
+    async (requestedSelection?: string[]) => {
+      let result: MemorialPreviewResult;
+      try {
+        result = await loadPreview(requestedSelection);
+      } catch {
+        return false;
+      }
+      if (result.status !== "ready" || result.assembled.status !== "assembled") return false;
+      setAssembled(result.assembled);
+      setPublication(result.publication ?? null);
+      return true;
+    },
+    [loadPreview],
+  );
 
   // Focus and scroll follow the open/closed transitions only.
   useEffect(() => {
@@ -323,6 +351,16 @@ export function BuilderPreviewHost({
             </button>
             <ChangeAmbianceLink className={styles.back} />
           </div>
+          {publish !== undefined && publication !== null && (
+            <PreviewPublicationPanel
+              language={language}
+              publication={publication}
+              publish={publish}
+              reload={reload}
+              builderPath={journey?.builderPath ?? null}
+              onBackToCreation={close}
+            />
+          )}
           {/* M3 — the one place Offrandes symboliques exist: free tries,
               simulated server response, nothing recorded. */}
           <OfferingsPreviewProvider>
