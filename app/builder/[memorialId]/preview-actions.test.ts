@@ -237,10 +237,10 @@ describe("loadMemorialPreviewAction — fail closed", () => {
     expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
   });
 
-  it("the Hero photo cannot be resolved → unavailable, no Memorial payload at all", async () => {
+  it("QG 008 Lot 3 (E1): the Hero photo cannot be resolved (missing, not ready, not this owner's) → hero_photo_required, no Memorial payload at all", async () => {
     resolverAnswering(() => null);
     resumable(fullAnnouncement());
-    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "hero_photo_required" });
   });
 
   it("a failing read → unavailable", async () => {
@@ -333,5 +333,64 @@ describe("loadMemorialPreviewAction — QG 008 Lot 3: exactly what « Publier »
   it("an unknown stored access level → unavailable (fail closed)", async () => {
     resumable(fullAnnouncement(), {}, { accessLevel: "premium" });
     expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
+  });
+});
+
+describe("loadMemorialPreviewAction — QG 008 Lot 3 (E1): the main photo is needed to publish", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolverCalls.length = 0;
+    getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+    authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: "authorized-id" });
+  });
+
+  function withoutHeroPhoto(content: MemorialContent): MemorialContent {
+    const hero = (content as { hero?: Record<string, unknown> }).hero ?? {};
+    return { ...content, hero: { ...hero, photo: null } } as MemorialContent;
+  }
+
+  it("a draft whose main photo was removed (T08 no longer complete) → hero_photo_required, not a bare « locked »", async () => {
+    resolverAnswering(() => null);
+    resumable(withoutHeroPhoto(fullAnnouncement()));
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "hero_photo_required" });
+    expect(resolverCalls).toHaveLength(0);
+  });
+
+  it("no photo yet and T08 never completed (the family is still before the Preview) → locked, unchanged", async () => {
+    resolverAnswering(() => null);
+    const content = withoutHeroPhoto(fullAnnouncement()) as { guidedFlow?: Record<string, unknown> };
+    const { T08: _t08, ...flow } = content.guidedFlow ?? {};
+    void _t08;
+    resumable({ ...content, guidedFlow: flow } as MemorialContent);
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "locked" });
+  });
+
+  it("a main photo that resolves for the Hero but the skin has no renderer → unavailable, never hero_photo_required", async () => {
+    resolverAnswering((mediaId) => ({ mediaId, readUrl: FIXTURE_READ_URL, width: 1200, height: 1600 }));
+    resumable(fullAnnouncement(), { skin: "musulman" });
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
+  });
+
+  it("an already published memorial whose Hero photo no longer resolves → unavailable (nothing to publish from here)", async () => {
+    resolverAnswering(() => null);
+    resumable(fullAnnouncement(), {}, { status: "published", firstPublishedAt: "2026-01-02T00:00:00.000Z" });
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
+  });
+
+  it("a resolver that throws on the Hero photo → hero_photo_required, still fail-closed", async () => {
+    createOwnerDraftMediaResolver.mockImplementation(() => async () => {
+      throw new Error("storage down");
+    });
+    resumable(fullAnnouncement());
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(["hero_photo_required", "unavailable"]).toContain(result.status);
+    expect(result).not.toHaveProperty("assembled");
+  });
+
+  it("nothing is written: the draft that may be saved without a photo stays as it is", async () => {
+    resolverAnswering(() => null);
+    resumable(withoutHeroPhoto(fullAnnouncement()));
+    await loadMemorialPreviewAction("claimed-id");
+    expect(saveDraftContent).not.toHaveBeenCalled();
   });
 });

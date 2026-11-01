@@ -14,6 +14,7 @@ import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
 import { PreviewPublicationPanel } from "./PreviewPublicationPanel";
+import { heroPhotoPath } from "./hero-photo-path";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
@@ -67,7 +68,10 @@ import styles from "./BuilderPreviewHost.module.css";
  * 2. `loadPreview()` re-reads the SAVED draft server-side and assembles
  *    it (the client never sends content);
  * 3. `ready` → open full screen; anything else → stay in the Builder
- *    and show `preview.unavailable` (never a false or empty Memorial).
+ *    and show `preview.unavailable` (never a false or empty Memorial) —
+ *    or, for `hero_photo_required` (QG 008 Lot 3, E1), say that the main
+ *    photo is needed to publish, that the draft stays saved, and link to
+ *    the photo screen.
  *
  * Every opening repeats all three steps — no cached assembly, so every
  * opening resolves a fresh signed URL for the Hero photo.
@@ -88,7 +92,11 @@ export type MemorialPreviewResult =
    */
   | { status: "ready"; assembled: AssembledMemorial; publication?: PreviewPublication }
   | { status: "unavailable" }
-  | { status: "locked" };
+  | { status: "locked" }
+  /** QG 008 Lot 3 (E1) — the authenticated Builder's server Preview: the
+   * main photo is missing or not ready, so nothing can be shown or
+   * published. The draft itself is untouched and stays saved. */
+  | { status: "hero_photo_required" };
 
 export interface BuilderPreviewHostProps {
   /** Decided server-side by the page: T08 done (`isPreviewUnlocked`),
@@ -154,6 +162,10 @@ export interface PreviewEntryState {
   language: Language;
   busy: boolean;
   unavailable: boolean;
+  /** QG 008 Lot 3 (E1) — the last opening found no usable main photo. */
+  heroPhotoRequired?: boolean;
+  /** Where « Ajouter la photo principale » leads (`null` without a route). */
+  heroPhotoPath?: string | null;
   open: () => void;
   /** Callback ref for the "Voir l'aperçu" button (focus on return). */
   registerButton: (button: HTMLButtonElement | null) => void;
@@ -187,9 +199,14 @@ export function BuilderPreviewHost({
   // The screen (component type) on which the last attempt came back
   // unavailable: the host survives `router.refresh()`, so the alert must
   // not follow the family onto the next Guided Flow screen.
-  const [unavailableOn, setUnavailableOn] = useState<{ screen: unknown } | null>(null);
+  const [unavailableOn, setUnavailableOn] = useState<{
+    screen: unknown;
+    reason: "unavailable" | "hero_photo_required";
+  } | null>(null);
   const screen = isValidElement(children) ? children.type : null;
-  const unavailable = unavailableOn !== null && unavailableOn.screen === screen;
+  const refusedHere = unavailableOn !== null && unavailableOn.screen === screen;
+  const unavailable = refusedHere && unavailableOn.reason === "unavailable";
+  const heroPhotoRequired = refusedHere && unavailableOn.reason === "hero_photo_required";
   // What « another screen » means for this host, which outlives `?etape=` navigations.
   const screenKey = isValidElement(children) ? children.key : null;
   const revising = journey?.snapshot.revising ?? null;
@@ -231,7 +248,10 @@ export function BuilderPreviewHost({
       }
 
       if (result.status !== "ready" || result.assembled.status !== "assembled") {
-        setUnavailableOn({ screen });
+        setUnavailableOn({
+          screen,
+          reason: result.status === "hero_photo_required" ? "hero_photo_required" : "unavailable",
+        });
         setPhase("closed");
         return;
       }
@@ -325,11 +345,13 @@ export function BuilderPreviewHost({
             language,
             busy: phase === "loading",
             unavailable,
+            heroPhotoRequired,
+            heroPhotoPath: heroPhotoPath(journey?.builderPath ?? null),
             open: () => void open(),
             registerButton: setEntryButton,
           }
         : null,
-    [available, language, phase, unavailable, open, setEntryButton],
+    [available, language, phase, unavailable, heroPhotoRequired, journey?.builderPath, open, setEntryButton],
   );
 
   const isOpen = phase === "open" && assembled !== null && language !== null;

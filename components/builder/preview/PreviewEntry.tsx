@@ -16,7 +16,7 @@ import styles from "./BuilderPreviewHost.module.css";
 export function PreviewEntry() {
   const entry = useContext(PreviewEntryContext);
   if (entry === null) return null;
-  const { language, busy, unavailable, open, registerButton } = entry;
+  const { language, busy, unavailable, heroPhotoRequired, heroPhotoPath, open, registerButton } = entry;
 
   return (
     <div className={styles.entry}>
@@ -38,6 +38,17 @@ export function PreviewEntry() {
       {unavailable && (
         <p role="alert" className={styles.entryError}>
           {translate(language, "preview.unavailable")}
+        </p>
+      )}
+      {heroPhotoRequired && (
+        <p role="alert" className={styles.entryError} data-preview-hero-photo-required="">
+          {translate(language, "publish.heroPhotoRequired")}
+          {heroPhotoPath !== null && heroPhotoPath !== undefined && (
+            <>
+              {" "}
+              <a href={heroPhotoPath}>{translate(language, "publish.addHeroPhoto")}</a>
+            </>
+          )}
         </p>
       )}
     </div>

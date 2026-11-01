@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
+import { heroPhotoPath } from "./hero-photo-path";
 import styles from "./PreviewPublicationPanel.module.css";
 
 /**
@@ -189,7 +190,7 @@ export function PreviewPublicationPanel({
             {translate(language, "publish.heroPhotoRequired")}
           </p>
           {builderPath !== null && (
-            <a className={styles.secondary} href={`${builderPath}?etape=T06`}>
+            <a className={styles.secondary} href={heroPhotoPath(builderPath) ?? undefined}>
               {translate(language, "publish.addHeroPhoto")}
             </a>
           )}

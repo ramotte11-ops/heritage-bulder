@@ -565,3 +565,53 @@ describe("QG 008 Lot 3 — « Publier » exists only where the page asks for it"
     await waitFor(() => expect(load).toHaveBeenLastCalledWith([2, 3, 4, 5, 6].map(id)));
   });
 });
+
+describe("QG 008 Lot 3 (E1) — the main photo is needed to publish", () => {
+  const HERO_REQUIRED = "La photo principale est nécessaire pour publier. Votre brouillon reste enregistré.";
+  const journey = { snapshot: resolveJourney(fullAnnouncement()), builderPath: "/builder/m-1", skinVariant: "light" as const };
+
+  it("hero_photo_required → stays in the Builder, says why (draft saved), links to the photo screen; no Preview, no « Publier »", async () => {
+    const publish = vi.fn();
+    render(
+      <BuilderPreviewHost
+        available
+        language="fr"
+        loadPreview={async () => ({ status: "hero_photo_required" as const })}
+        publish={publish}
+        journey={journey}
+      >
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(HERO_REQUIRED);
+    expect(alert.textContent).not.toContain(UNAVAILABLE);
+    expect(screen.getByRole("link", { name: "Ajouter la photo principale" }).getAttribute("href")).toBe("/builder/m-1?etape=photo");
+    expect(screen.queryByRole("button", { name: BACK })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Publier" })).toBeNull();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("any other refusal keeps the generic message, without the photo link", async () => {
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={async () => ({ status: "unavailable" as const })} journey={journey}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    expect((await screen.findByRole("alert")).textContent).toBe(UNAVAILABLE);
+    expect(screen.queryByRole("link", { name: "Ajouter la photo principale" })).toBeNull();
+  });
+
+  it("without a route (no journey) the reason is still said, with no link", async () => {
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={async () => ({ status: "hero_photo_required" as const })}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    expect((await screen.findByRole("alert")).textContent).toBe(HERO_REQUIRED);
+    expect(screen.queryByRole("link", { name: "Ajouter la photo principale" })).toBeNull();
+  });
+});

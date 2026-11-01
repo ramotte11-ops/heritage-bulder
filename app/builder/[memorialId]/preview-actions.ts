@@ -6,7 +6,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { resolveHeroFlowState } from "@/lib/builder/guided-flow/hero-step";
 import { isPreviewUnlocked } from "@/lib/builder/guided-flow/preview-lock";
-import { readHero } from "@/lib/memorial/hero";
+import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
+import { inspectHero, readHero } from "@/lib/memorial/hero";
 import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
 import { assembleMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import type { MediaResolver } from "@/lib/memorial/assembly/media-resolver";
@@ -16,6 +17,7 @@ import {
   type PublicationPreviewComputation,
 } from "@/lib/memorial/publication-preview";
 import type { MemorialPublicationSnapshot } from "@/lib/memorial/publish-memorial";
+import { heroPhotoUsable } from "@/lib/memorial/publish-from-preview";
 import type { AccessLevel } from "@/config/access-levels";
 import type {
   PreviewGalleryChoice,
@@ -62,8 +64,10 @@ export async function loadMemorialPreviewAction(
   if (snapshot.language === null) return { status: "locked" };
 
   const content = snapshot.draft.content;
+  const firstPublication = snapshot.status === "draft" && snapshot.firstPublishedAt === null;
   if (!isPreviewUnlocked(resolveHeroFlowState(content, readHero(content)))) {
-    return { status: "locked" };
+    // QG 008 Lot 3 (E1): a draft whose main photo was removed says why.
+    return firstPublication && heroPhotoMissing(content) ? { status: "hero_photo_required" } : { status: "locked" };
   }
 
   // `skin_variant` is not re-validated at the repository boundary.
@@ -91,7 +95,19 @@ export async function loadMemorialPreviewAction(
     },
     { resolveMedia },
   );
-  if (assembled.status !== "assembled") return { status: "unavailable" };
+  if (assembled.status !== "assembled") {
+    // QG 008 Lot 3 (E1): the Hero requires its main photo, resolved READY
+    // for this owner. When that is what failed, say so — never a vague
+    // « réessayez » for something only the family can fix. Read-only: the
+    // draft (which may be saved without a photo) is not touched.
+    const heroMediaFailed = assembled.failures.some(
+      (failure) => failure.sectionId === "hero" && failure.reason === "mediaUnavailable",
+    );
+    if (firstPublication && heroMediaFailed && !(await heroPhotoUsable(preview.projection.content, resolveMedia))) {
+      return { status: "hero_photo_required" };
+    }
+    return { status: "unavailable" };
+  }
 
   return { status: "ready", assembled, publication: await describePublication(snapshot, preview, resolveMedia) };
 }
@@ -141,4 +157,13 @@ async function describePublication(
     premiumSections: preview.premiumSections,
     readiness,
   };
+}
+
+/** The family had already reached the Preview (T08 recorded as completed)
+ * and the Hero, still well-formed, no longer carries a main photo. Before
+ * T08 was ever completed the Preview simply stays `locked`. */
+function heroPhotoMissing(content: MemorialPublicationSnapshot["draft"]["content"]): boolean {
+  if (readGuidedFlowState(content).T08?.status !== "completed") return false;
+  const read = inspectHero(content);
+  return read.status === "valid" && read.hero.photo === null;
 }

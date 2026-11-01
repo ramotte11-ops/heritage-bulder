@@ -159,7 +159,7 @@ describe("PreviewPublicationPanel — outcomes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publier" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
     expect((await screen.findByRole("alert")).textContent).toBe("La photo principale est nécessaire pour publier. Votre brouillon reste enregistré.");
-    expect(screen.getByRole("link", { name: "Ajouter la photo principale" }).getAttribute("href")).toBe("/builder/memorial-a?etape=T06");
+    expect(screen.getByRole("link", { name: "Ajouter la photo principale" }).getAttribute("href")).toBe("/builder/memorial-a?etape=photo");
     expect(screen.queryByRole("button", { name: "Publier" })).toBeNull();
   });
 
