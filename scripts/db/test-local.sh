@@ -3754,6 +3754,163 @@ check "Lot 2: after rollback the preflight is green again (5 OK, zero ECHEC), th
   "$(echo "$L2_PRE_AFTER" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE_AFTER" | grep -c '|OK$' || true)|$($PSQL -d l2_down_clean -f "$MIGRATIONS_DIR/20261101090000_qg008_lot2_guest_draft_transfer.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
 $PSQL -d postgres -c "drop database l2_down_clean;" >/dev/null
 
+# =====================================================================
+# QG 008 — Lot 3 : publication depuis l'aperçu (commit_memorial_publication_v3)
+# =====================================================================
+echo ""
+echo "== QG 008 Lot 3: publication from the private preview =="
+
+L3_V3="commit_memorial_publication_v3(uuid,uuid,bigint,text,text,text,text,text,jsonb,jsonb)"
+l3_avis() {
+  # $1 owner label -> "owner|memorial" : an anchored avis draft, language and slug set, status draft
+  local owner mem
+  owner=$(q8_owner "$1")
+  mem=$(q8_draft "$owner"); q8_anchor "$mem" "$owner" >/dev/null
+  $DB -c "update memorials set language='fr', slug='$1' where id='$mem';" >/dev/null
+  echo "$owner|$mem"
+}
+l3_set_draft() {
+  # $1 memorial, $2 draft content (JSON)
+  $DB -c "update memorial_drafts set content='$2' where memorial_id='$1';" >/dev/null
+}
+l3_hero() {
+  # $1 media id (or null) -> a draft/published content with a Hero
+  if [ "$1" = "null" ]; then echo '{"hero":{"displayName":"Lot 3","photo":null}}';
+  else echo "{\"hero\":{\"displayName\":\"Lot 3\",\"photo\":{\"mediaId\":\"$1\",\"crop\":{\"zoom\":1,\"focalX\":0.5,\"focalY\":0.5}}}}"; fi
+}
+l3_v3_sql() {
+  # $1 memorial, $2 owner, $3 slug, $4 published content (JSON) — expected = current stored draft
+  local rev content
+  rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$1';")
+  content=$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$1';")
+  echo "select outcome from commit_memorial_publication_v3('$1','$2',$rev,'fr','intemporel','light','$3','avis','$content','$4');"
+}
+l3_state() {
+  # $1 memorial -> "status|first_published_at null?|snapshot count"
+  $DB -t -A -c "select m.status || '|' || (m.first_published_at is null) || '|' || (select count(*) from memorial_published_snapshots s where s.memorial_id = m.id) from memorials m where m.id='$1';"
+}
+
+# --- L3-1. Privileges ---
+check "Lot 3: v3 executable by service_role only" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.$L3_V3','EXECUTE') || '|' || has_function_privilege('authenticated','public.$L3_V3','EXECUTE') || '|' || has_function_privilege('service_role','public.$L3_V3','EXECUTE');")"
+check "Lot 3: v3 is SECURITY DEFINER with an empty search_path" "true|true" \
+  "$($DB -t -A -c "select prosecdef || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid=to_regprocedure('public.$L3_V3');")"
+check "Lot 3: an authenticated family cannot call v3 directly" "1" \
+  "$($DB -c "set role authenticated; select * from commit_memorial_publication_v3(gen_random_uuid(),gen_random_uuid(),0,'fr','intemporel','light','x','avis','{}','{}');" 2>&1 | grep -c 'permission denied' || true)"
+check "Lot 3: still no client privilege on memorials.status" "false|false" \
+  "$($DB -t -A -c "select has_column_privilege('authenticated','public.memorials','status','UPDATE') || '|' || has_column_privilege('anon','public.memorials','status','UPDATE');")"
+
+# --- L3-2. Happy path: draft -> published in one call ---
+IFS='|' read -r L3_OK_OWNER L3_OK <<<"$(l3_avis l3-ok)"
+L3_OK_HERO=$(l2_media "$L3_OK" "$L3_OK_OWNER" hero ready)
+l3_set_draft "$L3_OK" "$(l3_hero "$L3_OK_HERO")"
+check "Lot 3: a draft with a ready Hero photo is published by v3" "published" \
+  "$(svc "$(l3_v3_sql "$L3_OK" "$L3_OK_OWNER" l3-ok "$(l3_hero "$L3_OK_HERO")")")"
+check "Lot 3: ... status published, first publication stamped, one snapshot" "published|false|1" "$(l3_state "$L3_OK")"
+check "Lot 3: ... the free first publication is recorded once (V8 trigger ran)" "1" "$(q8_published_count "$L3_OK_OWNER")"
+L3_OK_AT=$($DB -t -A -c "select published_at from memorial_published_snapshots where memorial_id='$L3_OK';")
+check "Lot 3: the same call again (double click) is recognised as already published — identity proven under lock" "already_published" \
+  "$(svc "$(l3_v3_sql "$L3_OK" "$L3_OK_OWNER" l3-ok "$(l3_hero "$L3_OK_HERO")")")"
+check "Lot 3: ... and nothing was rewritten (same snapshot time, one snapshot, one free publication)" "published|false|1|1|$L3_OK_AT" \
+  "$(l3_state "$L3_OK")|$(q8_published_count "$L3_OK_OWNER")|$($DB -t -A -c "select published_at from memorial_published_snapshots where memorial_id='$L3_OK';")"
+svc_expect_error "Lot 3: a second call with a DIFFERENT published content is a conflict, never a success" \
+  "$(l3_v3_sql "$L3_OK" "$L3_OK_OWNER" l3-ok '{"hero":{"displayName":"Autre","photo":null}}')" "memorial lifecycle changed"
+svc_expect_error "Lot 3: a second call with a stale revision is a conflict, never a success" \
+  "select 1 from commit_memorial_publication_v3('$L3_OK','$L3_OK_OWNER',999,'fr','intemporel','light','l3-ok','avis','$(l3_hero "$L3_OK_HERO")','$(l3_hero "$L3_OK_HERO")');" "memorial lifecycle changed"
+
+# --- L3-3. Hero photo required (HD422), and no ready left behind ---
+IFS='|' read -r L3_NP_OWNER L3_NP <<<"$(l3_avis l3-no-photo)"
+l3_set_draft "$L3_NP" "$(l3_hero null)"
+svc_expect_error "Lot 3: no Hero photo -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo "$(l3_hero null)")" "hero photo required"
+check "Lot 3: ... the memorial stays draft, never ready, no snapshot" "draft|true|0" "$(l3_state "$L3_NP")"
+L3_PENDING=$(l2_media "$L3_NP" "$L3_NP_OWNER" hero pending)
+l3_set_draft "$L3_NP" "$(l3_hero "$L3_PENDING")"
+svc_expect_error "Lot 3: a pending Hero photo -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo "$(l3_hero "$L3_PENDING")")" "hero photo required"
+L3_GALLERY_AS_HERO=$(l2_media "$L3_NP" "$L3_NP_OWNER" gallery ready)
+l3_set_draft "$L3_NP" "$(l3_hero "$L3_GALLERY_AS_HERO")"
+svc_expect_error "Lot 3: a gallery media used as Hero -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo "$(l3_hero "$L3_GALLERY_AS_HERO")")" "hero photo required"
+L3_FOREIGN_HERO=$(l2_media "$L3_OK" "$L3_OK_OWNER" hero ready)
+l3_set_draft "$L3_NP" "$(l3_hero "$L3_FOREIGN_HERO")"
+svc_expect_error "Lot 3: another memorial's Hero photo -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo "$(l3_hero "$L3_FOREIGN_HERO")")" "hero photo required"
+L3_NP_HERO=$(l2_media "$L3_NP" "$L3_NP_OWNER" hero ready)
+l3_set_draft "$L3_NP" "$(l3_hero "$L3_NP_HERO")"
+svc_expect_error "Lot 3: a published Hero that differs from the draft's -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo "$(l3_hero "$L3_FOREIGN_HERO")")" "hero photo required"
+svc_expect_error "Lot 3: a malformed Hero media id -> HD422" "$(l3_v3_sql "$L3_NP" "$L3_NP_OWNER" l3-no-photo '{"hero":{"displayName":"Lot 3","photo":{"mediaId":"not-a-uuid","crop":null}}}')" "hero photo required"
+check "Lot 3: ... after every refusal the memorial is still draft with no snapshot" "draft|true|0" "$(l3_state "$L3_NP")"
+
+# --- L3-4. Atomic rollback on the V8 guards (window, gallery) ---
+IFS='|' read -r L3_LATE_OWNER L3_LATE <<<"$(l3_avis l3-late)"
+L3_LATE_HERO=$(l2_media "$L3_LATE" "$L3_LATE_OWNER" hero ready)
+l3_set_draft "$L3_LATE" "$(l3_hero "$L3_LATE_HERO")"
+m1a_age "$L3_LATE_OWNER" '240 hours 1 minute'
+svc_expect_error "Lot 3: window closed -> HD410 from the V8 trigger" "$(l3_v3_sql "$L3_LATE" "$L3_LATE_OWNER" l3-late "$(l3_hero "$L3_LATE_HERO")")" "free publication window closed"
+check "Lot 3: ... rolled back entirely: still draft (never ready), no snapshot" "draft|true|0" "$(l3_state "$L3_LATE")"
+IFS='|' read -r L3_G7_OWNER L3_G7 <<<"$(l3_avis l3-g7)"
+L3_G7_HERO=$(l2_media "$L3_G7" "$L3_G7_OWNER" hero ready)
+L3_G7_IDS=(); for i in 1 2 3 4 5 6 7; do L3_G7_IDS+=("$(l2_media "$L3_G7" "$L3_G7_OWNER" gallery ready)"); done
+L3_G7_CONTENT="{\"hero\":{\"displayName\":\"Lot 3\",\"photo\":{\"mediaId\":\"$L3_G7_HERO\",\"crop\":null}},\"gallery\":{\"items\":[$(q8_items "${L3_G7_IDS[@]}")]}}"
+l3_set_draft "$L3_G7" "$L3_G7_CONTENT"
+check "Lot 3: an avis draft keeps 7 gallery photos (V8 §3.2)" "7" "$($DB -t -A -c "select jsonb_array_length(content #> '{gallery,items}') from memorial_drafts where memorial_id='$L3_G7';")"
+svc_expect_error "Lot 3: publishing 7 gallery photos of an avis -> HD413" "$(l3_v3_sql "$L3_G7" "$L3_G7_OWNER" l3-g7 "$L3_G7_CONTENT")" "free gallery limit reached"
+check "Lot 3: ... rolled back entirely: still draft, no snapshot" "draft|true|0" "$(l3_state "$L3_G7")"
+L3_G6_PUBLISHED="{\"hero\":{\"displayName\":\"Lot 3\",\"photo\":{\"mediaId\":\"$L3_G7_HERO\",\"crop\":null}},\"gallery\":{\"items\":[$(q8_items "${L3_G7_IDS[@]:0:6}")]}}"
+check "Lot 3: publishing 6 of the 7 (the selection) succeeds" "published" "$(svc "$(l3_v3_sql "$L3_G7" "$L3_G7_OWNER" l3-g7 "$L3_G6_PUBLISHED")")"
+check "Lot 3: ... the copy holds 6, the draft still holds 7, the 7th media is kept" "6|7|ready" \
+  "$($DB -t -A -c "select jsonb_array_length(content #> '{gallery,items}') from memorial_published_snapshots where memorial_id='$L3_G7';")|$($DB -t -A -c "select jsonb_array_length(content #> '{gallery,items}') from memorial_drafts where memorial_id='$L3_G7';")|$($DB -t -A -c "select status from media where id='${L3_G7_IDS[6]}';")"
+
+# --- L3-5. Ownership, lifecycle, compare-and-set ---
+IFS='|' read -r L3_CAS_OWNER L3_CAS <<<"$(l3_avis l3-cas)"
+L3_CAS_HERO=$(l2_media "$L3_CAS" "$L3_CAS_OWNER" hero ready)
+l3_set_draft "$L3_CAS" "$(l3_hero "$L3_CAS_HERO")"
+svc_expect_error "Lot 3: another owner is refused (opaque 42501)" "$(l3_v3_sql "$L3_CAS" "$L3_OK_OWNER" l3-cas "$(l3_hero "$L3_CAS_HERO")")" "memorial publication refused"
+svc_expect_error "Lot 3: a stale revision is refused by v2's compare-and-set" \
+  "select 1 from commit_memorial_publication_v3('$L3_CAS','$L3_CAS_OWNER',999,'fr','intemporel','light','l3-cas','avis','$(l3_hero "$L3_CAS_HERO")','$(l3_hero "$L3_CAS_HERO")');" "memorial draft changed"
+svc_expect_error "Lot 3: a wrong expected access level is refused" \
+  "$(l3_v3_sql "$L3_CAS" "$L3_CAS_OWNER" l3-cas "$(l3_hero "$L3_CAS_HERO")" | sed "s/'avis'/'complet'/")" "memorial access level changed"
+$DB -c "update memorials set status='ready' where id='$L3_CAS';" >/dev/null
+svc_expect_error "Lot 3: a memorial already in ready is refused by v3 (v2 remains its path)" "$(l3_v3_sql "$L3_CAS" "$L3_CAS_OWNER" l3-cas "$(l3_hero "$L3_CAS_HERO")")" "memorial lifecycle changed"
+$DB -c "update memorials set status='draft' where id='$L3_CAS';" >/dev/null
+check "Lot 3: ... after those refusals, still draft with no snapshot" "draft|true|0" "$(l3_state "$L3_CAS")"
+
+# --- L3-6. Concurrency: two simultaneous publications, one wins, no false success ---
+IFS='|' read -r L3_RACE_OWNER L3_RACE <<<"$(l3_avis l3-race)"
+L3_RACE_HERO=$(l2_media "$L3_RACE" "$L3_RACE_OWNER" hero ready)
+l3_set_draft "$L3_RACE" "$(l3_hero "$L3_RACE_HERO")"
+L3_RACE_SQL="$(l3_v3_sql "$L3_RACE" "$L3_RACE_OWNER" l3-race "$(l3_hero "$L3_RACE_HERO")")"
+L3_CONC="$PGDATA_DIR/concurrency-l3-publish"; mkdir -p "$L3_CONC"
+for i in 1 2; do
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); $L3_RACE_SQL" >"$L3_CONC/$i.out" 2>"$L3_CONC/$i.err" || rc=$?
+    echo "$rc" >"$L3_CONC/$i.rc"
+  ) &
+done
+wait
+check "Lot 3: two simultaneous identical publications: one published, the other proven already_published, no error" "already_published published|0 0" \
+  "$(cat "$L3_CONC"/1.out "$L3_CONC"/2.out | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')|$(cat "$L3_CONC"/1.rc "$L3_CONC"/2.rc | tr '\n' ' ' | sed 's/ $//')"
+check "Lot 3: ... one snapshot, one free publication" "published|false|1|1" "$(l3_state "$L3_RACE")|$(q8_published_count "$L3_RACE_OWNER")"
+
+# --- L3-7. v2 untouched ---
+check "Lot 3: commit_memorial_publication_v2 keeps its own privileges (service_role only)" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('authenticated','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('service_role','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE');")"
+
+# --- L3-8. Pre/postflight and rollback (never applied automatically) ---
+L3_POST=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" 2>&1)
+check "Lot 3 postflight: zero ECHEC, every control OK (4)" "0|4" "$(echo "$L3_POST" | grep -c 'ECHEC' || true)|$(echo "$L3_POST" | grep -c '|OK$' || true)"
+check "Lot 3 postflight turns red on a client grant of v3" "1" \
+  "$($DB -t -A -c "begin;" -c "grant execute on function public.$L3_V3 to authenticated;" -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+L3_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_preflight.sql" 2>&1)
+check "Lot 3 preflight after application: refuses (already applied), prerequisites OK" "1|4" \
+  "$(echo "$L3_PRE" | grep -c 'ECHEC' || true)|$(echo "$L3_PRE" | grep -c '|OK$' || true)"
+L3_DOWN="$REPO_ROOT/supabase/rollbacks/20261102090000_qg008_lot3_publication_from_preview.down.sql"
+$PSQL -d postgres -c "create database l3_down template $DB_NAME;" >/dev/null
+L3_PUBLISHED_BEFORE=$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")
+check "Lot 3 rollback applies, keeps every publication and snapshot, and the preflight is green again (5 OK)" "0|$L3_PUBLISHED_BEFORE|5" \
+  "$($PSQL -d l3_down -f "$L3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
+check "Lot 3: ... then the migration re-applies and the postflight is green" "0|0" \
+  "$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102090000_qg008_lot3_publication_from_preview.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+$PSQL -d postgres -c "drop database l3_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
