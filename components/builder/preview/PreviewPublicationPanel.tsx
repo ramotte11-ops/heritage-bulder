@@ -38,6 +38,7 @@ const ERROR_KEYS = {
   free_window_closed: "publish.windowClosed",
   free_quota_reached: "publish.quotaReached",
   signed_out: "publish.signedOut",
+  access_refused: "publish.accessRefused",
   failed: "publish.failed",
 } as const;
 

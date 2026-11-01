@@ -91,6 +91,9 @@ export async function authorizeAndPublishFromPreview(
   actor: HeritageActor,
   input: { memorialId: string; expectedRevision: number; expectedDigest: string; gallerySelection?: unknown },
 ): Promise<PublishFromPreviewResult> {
+  // QG 008 Lot 3 — no session at all is not the same as « not yours »:
+  // the family is told to sign in again only when signing in can help.
+  if (actor.audience === "visitor") return { ok: false, code: "signed_out" };
   const access = await authorizeMemorialAccess(
     { memorialOwnershipRepository: deps.memorialOwnershipRepository },
     actor,

@@ -83,6 +83,9 @@ export type PublishFromPreviewResult =
   | {
       ok: false;
       code:
+        /** No session at all (an expired or missing sign-in). */
+        | "signed_out"
+        /** Signed in, but not the owner of this memorial (or not readable). */
         | "not_found_or_forbidden"
         | "invalid_transition"
         | "revision_conflict"
@@ -189,8 +192,10 @@ export function publicationOutcomeOf(result: PublishFromPreviewResult): PublishF
       return "free_window_closed";
     case "free_quota_reached":
       return "free_quota_reached";
-    case "not_found_or_forbidden":
+    case "signed_out":
       return "signed_out";
+    case "not_found_or_forbidden":
+      return "access_refused";
     default:
       return "failed";
   }

@@ -48,7 +48,8 @@ describe("publishFromPreviewAction", () => {
     [{ ok: false, code: "publication_conflict" }, "preview_outdated"],
     [{ ok: false, code: "free_window_closed" }, "free_window_closed"],
     [{ ok: false, code: "free_quota_reached" }, "free_quota_reached"],
-    [{ ok: false, code: "not_found_or_forbidden" }, "signed_out"],
+    [{ ok: false, code: "not_found_or_forbidden" }, "access_refused"],
+    [{ ok: false, code: "signed_out" }, "signed_out"],
   ])("maps %j to %s", async (result, outcome) => {
     publishFromPreviewForCurrentOwner.mockResolvedValue(result);
     await expect(publishFromPreviewAction("memorial-a", 3, DIGEST)).resolves.toBe(outcome);

@@ -638,6 +638,7 @@ export const TRANSLATION_KEYS = [
   "publish.quotaReached",
   "publish.signedOut",
   "publish.signIn",
+  "publish.accessRefused",
   "publish.failed",
   "publish.alreadyPublished",
   "flowPause.openPreview",

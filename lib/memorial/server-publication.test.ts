@@ -114,4 +114,23 @@ describe("authorizeAndPublishFromPreview — QG 008 Lot 3", () => {
     expect(result).toEqual({ ok: false, code: "not_found_or_forbidden" });
     expect(setup.commitFirstPublication).not.toHaveBeenCalled();
   });
+
+  it("a visitor (no session at all) → signed_out, before any read", async () => {
+    const { authorizeAndPublishFromPreview } = await import("./server-publication");
+    const setup = await previewDeps(OWNER_ID);
+    const visitor = { audience: "visitor", identity: null, owner: null, isHeritageAdmin: false } as HeritageActor;
+    const result = await authorizeAndPublishFromPreview(setup.deps as never, visitor, { memorialId: MEMORIAL_ID, expectedRevision: 3, expectedDigest: setup.digest });
+    expect(result).toEqual({ ok: false, code: "signed_out" });
+    expect(setup.deps.publicationRepository.load).not.toHaveBeenCalled();
+    expect(setup.commitFirstPublication).not.toHaveBeenCalled();
+  });
+
+  it("signed in without an owner profile → not_found_or_forbidden (access refused, not « session expirée »)", async () => {
+    const { authorizeAndPublishFromPreview } = await import("./server-publication");
+    const setup = await previewDeps(OWNER_ID);
+    const authenticated = { audience: "authenticated", identity: { id: "auth-x" }, owner: null, isHeritageAdmin: false } as unknown as HeritageActor;
+    const result = await authorizeAndPublishFromPreview(setup.deps as never, authenticated, { memorialId: MEMORIAL_ID, expectedRevision: 3, expectedDigest: setup.digest });
+    expect(result).toEqual({ ok: false, code: "not_found_or_forbidden" });
+    expect(setup.commitFirstPublication).not.toHaveBeenCalled();
+  });
 });

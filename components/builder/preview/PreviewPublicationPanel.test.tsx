@@ -138,6 +138,14 @@ describe("PreviewPublicationPanel — outcomes", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(message);
   });
 
+  it("access_refused (signed in, but not this memorial's owner) → its own message, never « session expirée », no sign-in link", async () => {
+    renderPanel({ outcome: "access_refused" });
+    fireEvent.click(screen.getByRole("button", { name: "Publier" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Ce compte n'a pas accès à cet hommage. Aucune publication n'a été faite.");
+    expect(screen.queryByRole("link", { name: "Me reconnecter" })).toBeNull();
+  });
+
   it("signed_out → a way to sign in again, back to this Builder", async () => {
     renderPanel({ outcome: "signed_out" });
     fireEvent.click(screen.getByRole("button", { name: "Publier" }));
@@ -150,7 +158,7 @@ describe("PreviewPublicationPanel — outcomes", () => {
     renderPanel({ outcome: "hero_photo_required" });
     fireEvent.click(screen.getByRole("button", { name: "Publier" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Ajoutez la photo principale");
+    expect((await screen.findByRole("alert")).textContent).toBe("La photo principale est nécessaire pour publier. Votre brouillon reste enregistré.");
     expect(screen.getByRole("link", { name: "Ajouter la photo principale" }).getAttribute("href")).toBe("/builder/memorial-a?etape=T06");
     expect(screen.queryByRole("button", { name: "Publier" })).toBeNull();
   });

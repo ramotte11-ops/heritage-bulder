@@ -61,4 +61,5 @@ export type PublishFromPreviewOutcome =
   | "free_window_closed"
   | "free_quota_reached"
   | "signed_out"
+  | "access_refused"
   | "failed";

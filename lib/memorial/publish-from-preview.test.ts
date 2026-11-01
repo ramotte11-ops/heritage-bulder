@@ -208,7 +208,8 @@ describe("publicationOutcomeOf — what the Builder shows", () => {
     [{ ok: false, code: "publication_conflict" }, "preview_outdated"],
     [{ ok: false, code: "free_window_closed" }, "free_window_closed"],
     [{ ok: false, code: "free_quota_reached" }, "free_quota_reached"],
-    [{ ok: false, code: "not_found_or_forbidden" }, "signed_out"],
+    [{ ok: false, code: "not_found_or_forbidden" }, "access_refused"],
+    [{ ok: false, code: "signed_out" }, "signed_out"],
     [{ ok: false, code: "invalid_transition" }, "failed"],
     [{ ok: false, code: "free_content_refused" }, "failed"],
   ] as const)("%j → %s", (result, outcome) => {
