@@ -1010,6 +1010,35 @@ Checks: `checks/qg008_lot2_preflight.sql`, `checks/qg008_lot2_postflight.sql`.
 Rollback (never automatic): `rollbacks/20261101090000_qg008_lot2_guest_draft_transfer.down.sql`,
 refused while any transfer exists.
 
+## QG 008 Lot 3 — publication from the private Preview
+
+`migrations/20261102090000_qg008_lot3_publication_from_preview.sql`, additive,
+applied after the Lot 2 migration. It adds ONE function and changes nothing
+of the existing engine (windows, quotas, durations, V8 guards untouched).
+
+- **`commit_memorial_publication_v3`** — `service_role` only, `SECURITY
+  DEFINER`, empty `search_path`. The first publication from the Preview as
+  ONE transaction: under the memorial and draft locks, checks the owner,
+  the expected revision, language, skin, variant, slug, access level and
+  content, then the Hero photo (a ready `hero` media of this memorial, the
+  same as the draft's — otherwise `HD422` « hero photo required »), sets
+  `ready` and calls `commit_memorial_publication_v2` (its CAS and the V8
+  triggers HD410 / HD403 / HD413 / HD428 apply as before). Any refusal
+  rolls the whole transaction back: no `ready` state persists.
+- **Idempotence** — a second call returns `already_published` ONLY when the
+  stored snapshot equals the content sent, the draft revision and content
+  equal the expected ones and the access level is the same (proved under
+  lock, since `memorial_published_snapshots` is closed to every role).
+  Anything else: `40001` conflict, never a false success.
+- No client right on `memorials.status` (checked by the pre/postflight).
+
+`HD422` follows the existing HD convention (HTTP semantics: 403, 409, 410,
+413, 423, 428).
+
+Checks: `checks/qg008_lot3_preflight.sql`, `checks/qg008_lot3_postflight.sql`.
+Rollback (never automatic): `rollbacks/20261102090000_qg008_lot3_publication_from_preview.down.sql`
+(drops v3 only; every publication and snapshot is kept).
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
