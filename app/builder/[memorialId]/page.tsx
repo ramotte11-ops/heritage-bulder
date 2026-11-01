@@ -733,6 +733,7 @@ export default async function BuilderMemorialPage({
         language={resumed.memorial.language}
         content={resumed.draft.content}
         persist={saveDraftAction.bind(null, access.memorialId)}
+        record="emptyHero"
       />,
       false,
     );

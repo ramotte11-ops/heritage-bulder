@@ -10,7 +10,15 @@ import {
   type GuestDraftTransferRepository,
   type GuestTransferState,
 } from "./guest-draft-transfer";
-import { HERO_LOCAL_ID, TRANSFER_KEY, galleryLocalId, serverMediaId, transferableDraft } from "./guest-transfer-test-fixtures";
+import {
+  HERO_LOCAL_ID,
+  REAL_GUEST_BUILDER_CONTENT,
+  TRANSFER_KEY,
+  galleryLocalId,
+  realGuestBuilderDraft,
+  serverMediaId,
+  transferableDraft,
+} from "./guest-transfer-test-fixtures";
 
 const OWNER_ID = "22222222-2222-4222-8222-222222222222";
 const MEMORIAL_ID = "11111111-1111-4111-8111-111111111111";
@@ -177,6 +185,22 @@ describe("QG 008 Lot 2 — commitGuestDraftTransfer", () => {
     expect((written.content.gallery as { items: Array<{ mediaId: string }> }).items.map(({ mediaId }) => mediaId))
       .toEqual([serverMediaId(1), serverMediaId(2), serverMediaId(3)]);
     expect(transfers.complete).toHaveBeenCalledWith({ ownerId: OWNER_ID, transferKey: TRANSFER_KEY });
+  });
+
+  it("regression (Phase A): a real guest Builder draft is written WITHOUT its Welcome marker, photos and content intact", async () => {
+    const transfers = transferRepository({
+      find: vi.fn().mockResolvedValue(state({ mediaMap: { [HERO_LOCAL_ID]: serverMediaId(0), [galleryLocalId(1)]: serverMediaId(1), [galleryLocalId(2)]: serverMediaId(2) } })),
+    });
+    const saveContent = vi.fn().mockResolvedValue("saved");
+    const draft = realGuestBuilderDraft();
+    const result = await commitGuestDraftTransfer({ ownerRepository: ownerRepository(), transferRepository: transfers, saveContent }, VERIFIED, draft);
+    expect(result).toEqual({ status: "completed", memorialId: MEMORIAL_ID, contentWritten: true });
+    const written = saveContent.mock.calls[0][0].content as Record<string, unknown>;
+    expect(written).not.toHaveProperty("welcome");
+    expect(written.hero).toMatchObject({ displayName: "Phase A Test Hommage", photo: { mediaId: serverMediaId(0) } });
+    expect(written.guidedFlow).toEqual((REAL_GUEST_BUILDER_CONTENT as unknown as Record<string, unknown>).guidedFlow);
+    expect((written.gallery as { items: Array<{ mediaId: string }> }).items.map(({ mediaId }) => mediaId)).toEqual([serverMediaId(1), serverMediaId(2)]);
+    expect((draft.content as Record<string, unknown>).welcome).toEqual({ status: "completed" });
   });
 
   it("does not write while photos are missing on the server", async () => {

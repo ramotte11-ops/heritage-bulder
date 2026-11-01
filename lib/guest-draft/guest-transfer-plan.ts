@@ -60,7 +60,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * captions) pointing at the server media the transfer uploaded.
  *
  * Any `hero.photo` or `gallery` already present in the guest content is
- * replaced — only `draft.photos` and the server-side map are trusted.
+ * replaced — only `draft.photos` and the server-side map are trusted. The
+ * guest Builder's `welcome` marker is left out (see below).
  */
 export function buildTransferredContent(
   draft: GuestDraftV3,
@@ -93,6 +94,14 @@ export function buildTransferredContent(
   } else {
     delete content.gallery;
   }
+
+  // `welcome` is the guest Builder's navigation marker (« Commencer son
+  // hommage » was pressed — lib/builder/guided-flow/welcome-step.ts), not
+  // memorial content: nothing renders or publishes it, and it is no
+  // authorized edit target (lib/memorial/edit-authorization.ts), so
+  // carrying it made the server refuse the whole durable write. It stays
+  // in the LOCAL draft (this is a copy); only the durable content drops it.
+  delete content.welcome;
 
   return { ok: true, content: content as MemorialContent };
 }

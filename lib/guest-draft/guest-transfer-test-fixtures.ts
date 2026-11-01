@@ -73,4 +73,40 @@ export function transferableDraft({
   return updated.draft;
 }
 
-export const serverMediaId = (index: number) => `9d8c7b6a-5f4e-4d3c-8b2a-${String(index).padStart(12, "0")}`;
+/**
+ * The content the REAL guest Builder writes (shape captured in QG 008 Lot 2
+ * Phase A on Supabase TEST, synthetic values): the Welcome marker, the
+ * Hero, A00 = Non, A04 = Non, A10-A12 skipped, A13 with photos. Unlike
+ * `transferableDraft`'s default content, it carries `welcome`, which the
+ * guest Builder records as soon as « Commencer son hommage » is pressed.
+ */
+export const REAL_GUEST_BUILDER_CONTENT = {
+  welcome: { status: "completed" },
+  hero: {
+    displayName: "Phase A Test Hommage",
+    birth: { precision: "year", year: 1940 },
+    death: { precision: "year", year: 2026 },
+    shortPhrase: "Phrase de test Phase A.",
+    photo: null,
+  },
+  guidedFlow: {
+    T04: { status: "completed" },
+    A00: { status: "completed", answer: "no" },
+    T05: { status: "completed" },
+    T06: { status: "completed" },
+    T07: { status: "completed" },
+    T08: { status: "completed" },
+    A04: { status: "completed", answer: "no" },
+    A10: { status: "skipped" },
+    A11: { status: "skipped" },
+    A12: { status: "skipped" },
+    A13: { status: "completed" },
+  },
+} as unknown as MemorialContent;
+
+/** A real guest Builder draft past A13: Hero photo + 2 Gallery photos. */
+export function realGuestBuilderDraft(): GuestDraftV3 {
+  return transferableDraft({ galleryCount: 2, content: structuredClone(REAL_GUEST_BUILDER_CONTENT) });
+}
+
+export const serverMediaId =(index: number) => `9d8c7b6a-5f4e-4d3c-8b2a-${String(index).padStart(12, "0")}`;

@@ -1,5 +1,6 @@
 import {
   MEMORIAL_CONTENT_EDIT_TARGETS,
+  type MemorialContentEditTarget,
   type MemorialMutationClaim,
 } from "./edit-authorization";
 import type { MemorialContent } from "@/types/memorial";
@@ -73,6 +74,36 @@ function targetForChangedPath(path: string): string {
   );
 }
 
+const HERO_PHOTO_PATH = "hero.photo";
+const HERO_PHOTO_REFERENCE_TARGET = "hero.photo.mediaId" satisfies MemorialContentEditTarget;
+
+function heroPhotoValue(content: MemorialContent): unknown {
+  const hero = (content as Record<string, unknown>).hero;
+  return isPlainObject(hero) ? hero.photo : undefined;
+}
+
+/** `hero.photo` absent and `hero.photo: null` both mean "no photo" (lib/memorial/hero.ts, parseHeroPhoto). */
+function isNoHeroPhoto(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+/**
+ * The one changed path that is a whole `hero.photo` leaf: absent ↔ `null`
+ * (every Hero write of the Builder carries `photo: null` until a photo is
+ * chosen, e.g. T04 on an empty draft). It claims the photo's EXISTING
+ * policy target, `hero.photo.mediaId` — the reference to "no media" —
+ * so it is allowed before publication and refused after it
+ * (hero_locked_after_publication), like any other Hero photo change.
+ * Any other whole-`hero.photo` value (a string, an array, `{}`…) stays
+ * verbatim and the policy keeps failing closed on it.
+ */
+function claimedTarget(path: string, stored: MemorialContent, submitted: MemorialContent): string {
+  if (path === HERO_PHOTO_PATH && isNoHeroPhoto(heroPhotoValue(stored)) && isNoHeroPhoto(heroPhotoValue(submitted))) {
+    return HERO_PHOTO_REFERENCE_TARGET;
+  }
+  return targetForChangedPath(path);
+}
+
 export function changedMemorialContentMutations(
   stored: MemorialContent,
   submitted: MemorialContent,
@@ -82,7 +113,7 @@ export function changedMemorialContentMutations(
 
   const targets = new Set<string>();
   for (const path of changedPaths) {
-    targets.add(targetForChangedPath(path));
+    targets.add(claimedTarget(path, stored, submitted));
   }
 
   return [...targets].sort().map((target) => ({ kind: "content", target }));

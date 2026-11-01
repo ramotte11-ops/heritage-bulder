@@ -753,6 +753,27 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, { welcome: { status: "completed" } });
     });
 
+    it("asks WelcomeStep to record the empty Hero (QG 008 Lot 2: the marker is no authorized durable edit)", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, EMPTY_DRAFT);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(WelcomeStep);
+      expect(result.props.record).toBe("emptyHero");
+    });
+
+    it("moves on to identity (PAGE A) once the empty Hero is saved — the Welcome never loops", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, {
+        content: { hero: { displayName: null, birth: null, death: null, shortPhrase: null, photo: null } } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(WelcomeStep).not.toHaveBeenCalled();
+    });
+
     it("never shows before T01: a memorial without a language still gets LanguageStep", async () => {
       resumeWith(UNCONFIGURED_MEMORIAL, EMPTY_DRAFT);
 
