@@ -816,6 +816,81 @@ they parse and that the postflight reports zero `ECHEC` against a
 database built from these migrations. A typo in SQL a non-developer will
 paste into production is not something to discover in production.
 
+### HERITAGE Direct M1-A's pair
+
+`checks/m1a_preflight.sql` and `checks/m1a_postflight.sql` cover
+`migrations/20261024180000_heritage_direct_access_foundation.sql`. The
+preflight proves the migration is not yet applied, that C1 is, that the
+two `updated_at` triggers the migration suspends during its backfill
+exist, and photographs the row counts and the `md5` of the five
+functions M1-A must NOT change (`redeem_entitlement*`,
+`admin_mutate_activation_key`, `admin_revoke_entitlement`,
+`commit_memorial_publication_v1`). The postflight grades 42 controls
+(settings values in hours, D12 levels, Etsy memorials all `complet` with
+no free deadline, privileges, `SECURITY DEFINER` + empty `search_path`,
+triggers enabled) and prints the same five `md5` values for a line-by-line
+comparison with the preflight.
+
+Both are executed by the local harness, including negative proofs (a
+suspended trigger, a client grant on the journal, a changed duration each
+turn the postflight red).
+
+`checks/m1a_correctif1_postflight.sql` complements (never replaces) that
+postflight once `20261024190000_heritage_direct_free_window_per_email.sql`
+is applied: 12 controls (the corrected functions are the ones in place,
+the window helper and the e-mail guard are executable by no role, no
+application role can update `owners.email`, the guard trigger is enabled,
+no address holds two free windows within 12 months).
+`checks/m1a_correctif2_postflight.sql` asserts `entitlements.access_level`
+is NOT NULL and that no right lacks a level.
+
+## HERITAGE Direct M1-A — free / complete access
+
+Contract: « Offre gratuite / complète V2.1 », PO arbitrations B1, B6, B14.
+Additive: no existing function is replaced.
+
+- **Levels (D12).** `entitlements.access_level` (`avis` | `complet`) is
+  always supplied explicitly — no default anywhere. Existing rights are
+  backfilled `complet`; an Etsy right can only be `complet`; an `avis`
+  right is direct, keyless and order-less. A memorial inherits its
+  right's level at creation (trigger, HD500 if missing). The column is
+  NOT NULL (correctif 2, `20261024200000_heritage_direct_access_level_required.sql`):
+  a right written without a level is refused on the spot, never stored
+  unusable. During the switch-over only, the entitlement adapter retries a
+  `complet` right once without the column when the API does not know it
+  yet (PGRST204, schema without levels); on the M1-A schema that retry is
+  refused by NOT NULL. Apply the three M1-A migrations in one transaction.
+- **Deadlines (B1, B14).** Server-written only. The anchor is the first
+  effective e-mail confirmation of the ADDRESS (`anchor_free_memorial_v1`,
+  idempotent): it opens a 12-month cycle (`free.window_opened`), and any
+  free draft anchored later in that cycle inherits it — recreating a draft
+  never opens new 7 days (correctif 1,
+  `20261024190000_heritage_direct_free_window_per_email.sql`).
+  Real durations from the event: +168 h free publication, +1080 h draft
+  retention; from the first publication +168 h corrections, +1080 h
+  public, then +720 h private. Never rounded; displayed in Paris time by
+  `lib/memorial/access-state.ts`.
+- **Quotas (B6).** Owner = verified e-mail address: `owners.email` is
+  unique case-insensitively, only ever created from a confirmed address,
+  updatable by no application role, and frozen (HD423) once the owner has
+  a free history. One active free draft per owner
+  (`create_free_memorial_v1`); one free first publication per owner over
+  12 months, counted in the append-only `memorial_access_events` journal
+  under the owner's lock (HD403); publication refused without anchor
+  (HD428) or after the window (HD410), at the database's clock. Outside
+  the window, or once the free publication is used, creating or anchoring
+  a free draft answers `free_unavailable` and writes nothing. A new cycle
+  opens only when the previous one is over 12 months old AND no free
+  publication happened in the last 12 months.
+- **Gallery.** Six photos for `avis` (media in `pending` or `ready`, plus
+  the draft's items), with a 12-row storage cap (HD413).
+- **Upgrade.** `upgrade_memorial_access_v1` turns the SAME memorial
+  `complet`, touching no content; idempotent on
+  `(source, external_reference)`, HD409 on a concurrent reuse.
+
+Durations and quotas live in the one-row `memorial_access_settings`
+table, unreadable by every client role and by `service_role`.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
