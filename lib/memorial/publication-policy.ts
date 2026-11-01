@@ -90,7 +90,7 @@ const PUBLIC_RENDERERS: ReadonlySet<RendererKey> = new Set([
   "GalleryIntemporel",
 ]);
 
-const PREMIUM_SECTION_IDS: ReadonlySet<SectionId> = new Set([
+export const PREMIUM_SECTION_IDS: ReadonlySet<SectionId> = new Set([
   "testimonials",
   "video",
   "memoryMessage",

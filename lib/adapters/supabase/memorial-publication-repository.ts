@@ -8,6 +8,12 @@ import {
   type MemorialPublicationResult,
   type MemorialPublicationSnapshot,
 } from "@/lib/memorial/publish-memorial";
+import {
+  HeroPhotoRequiredError,
+  type FirstPublicationCommit,
+  type FirstPublicationResult,
+  type MemorialFirstPublicationRepository,
+} from "@/lib/memorial/publish-from-preview";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 import type { MemorialContent, MemorialStatus } from "@/types/memorial";
 
@@ -33,6 +39,10 @@ interface PublicationRow {
   revision: number;
 }
 
+interface FirstPublicationRow extends PublicationRow {
+  outcome: "published" | "already_published";
+}
+
 export class MemorialPublicationConflictError extends Error {
   readonly code = "MEMORIAL_PUBLICATION_CONFLICT";
 
@@ -48,6 +58,25 @@ export class MemorialPublicationConflictError extends Error {
  * HD403 covers both the quota and a refused free copy: only the quota
  * message is distinguished, everything else is a content refusal.
  */
+/**
+ * QG 008 Lot 3 — the database rejected the publication data itself
+ * (23514: malformed or foreign gallery, incomplete configuration).
+ */
+export class MemorialPublicationRejectedError extends Error {
+  readonly code = "MEMORIAL_PUBLICATION_REJECTED";
+  constructor() {
+    super("The database rejected the publication data.");
+    this.name = "MemorialPublicationRejectedError";
+  }
+}
+
+/** QG 008 Lot 3 — commit_memorial_publication_v3's own refusals, then the shared ones. */
+function throwFirstPublicationError(error: PostgrestError): never {
+  if (error.code === "HD422") throw new HeroPhotoRequiredError();
+  if (error.code === "23514") throw new MemorialPublicationRejectedError();
+  throwPublicationError(error);
+}
+
 function throwPublicationError(error: PostgrestError): never {
   if (error.code === "40001") throw new MemorialPublicationConflictError();
   if (error.code === "HD428") throw new FreePublicationRefusedError("free_requires_verified_save");
@@ -61,7 +90,9 @@ function throwPublicationError(error: PostgrestError): never {
   throw error;
 }
 
-export class SupabaseMemorialPublicationRepository implements MemorialPublicationRepository {
+export class SupabaseMemorialPublicationRepository
+  implements MemorialPublicationRepository, MemorialFirstPublicationRepository
+{
   constructor(
     private readonly readClient: SupabaseClient,
     private readonly writeClient: SupabaseClient,
@@ -121,6 +152,38 @@ export class SupabaseMemorialPublicationRepository implements MemorialPublicatio
 
     if (error) throwPublicationError(error);
     return {
+      publishedAt: data.published_at,
+      firstPublishedAt: data.first_published_at,
+      revision: data.revision,
+    };
+  }
+
+  /**
+   * QG 008 Lot 3 — first publication from the private preview:
+   * draft -> ready -> published in ONE transaction (service_role only).
+   */
+  async commitFirstPublication(input: FirstPublicationCommit): Promise<FirstPublicationResult> {
+    const { data, error } = await this.writeClient
+      .rpc("commit_memorial_publication_v3", {
+        p_memorial_id: input.memorialId,
+        p_owner_id: input.ownerId,
+        p_expected_revision: input.expectedRevision,
+        p_expected_language: input.expectedLanguage,
+        p_expected_skin: input.expectedSkin,
+        p_expected_skin_variant: input.expectedSkinVariant,
+        p_expected_slug: input.expectedSlug,
+        p_expected_access_level: input.expectedAccessLevel,
+        p_expected_content: input.expectedContent,
+        p_published_content: input.publishedContent,
+      })
+      .single<FirstPublicationRow>();
+
+    if (error) throwFirstPublicationError(error);
+    if (data.outcome !== "published" && data.outcome !== "already_published") {
+      throw new Error("Unexpected publication outcome.");
+    }
+    return {
+      outcome: data.outcome,
       publishedAt: data.published_at,
       firstPublishedAt: data.first_published_at,
       revision: data.revision,

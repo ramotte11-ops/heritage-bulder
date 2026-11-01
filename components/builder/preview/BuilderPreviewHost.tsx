@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
+import type { PreviewPublication } from "@/lib/memorial/publication-preview-types";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
@@ -79,7 +80,12 @@ import styles from "./BuilderPreviewHost.module.css";
  */
 
 export type MemorialPreviewResult =
-  | { status: "ready"; assembled: AssembledMemorial }
+  /**
+   * QG 008 Lot 3 — `publication` is present only for the authenticated
+   * Builder's server Preview: what « Publier » would publish. The guest
+   * Builder and the development pilots never carry it.
+   */
+  | { status: "ready"; assembled: AssembledMemorial; publication?: PreviewPublication }
   | { status: "unavailable" }
   | { status: "locked" };
 

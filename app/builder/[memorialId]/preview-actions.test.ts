@@ -46,8 +46,16 @@ const { SupabaseDraftRepository, saveDraftContent } = vi.hoisted(() => {
 });
 vi.mock("@/lib/adapters/supabase/draft-repository", () => ({ SupabaseDraftRepository }));
 
-const { resumeBuilderSession } = vi.hoisted(() => ({ resumeBuilderSession: vi.fn() }));
-vi.mock("@/lib/builder/resume-session", () => ({ resumeBuilderSession }));
+// QG 008 Lot 3 — the Preview reads through the publication repository (the
+// same read « Publier » uses), so both compute the same fingerprint.
+const { loadPublicationSnapshot, createSupabaseMemorialPublicationRepository } = vi.hoisted(() => {
+  const loadPublicationSnapshot = vi.fn();
+  return {
+    loadPublicationSnapshot,
+    createSupabaseMemorialPublicationRepository: vi.fn(() => ({ load: loadPublicationSnapshot })),
+  };
+});
+vi.mock("@/lib/adapters/supabase/memorial-publication-repository", () => ({ createSupabaseMemorialPublicationRepository }));
 
 const { createServerMediaEngineDeps } = vi.hoisted(() => ({
   createServerMediaEngineDeps: vi.fn(() => ({ fake: "media-engine-deps" })),
@@ -83,15 +91,25 @@ const MEMORIAL: StoredMemorialConfig = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-function resumable(content: MemorialContent, memorial: Partial<StoredMemorialConfig> = {}) {
-  resumeBuilderSession.mockResolvedValue({
-    status: "resumable",
-    memorial: { ...MEMORIAL, ...memorial },
-    draft: { content, updatedAt: "2026-01-01T00:00:00.000Z" },
+function resumable(
+  content: MemorialContent,
+  memorial: Partial<StoredMemorialConfig> = {},
+  publication: { status?: string; firstPublishedAt?: string | null; accessLevel?: string; revision?: number } = {},
+) {
+  const config = { ...MEMORIAL, ...memorial };
+  loadPublicationSnapshot.mockResolvedValue({
+    status: publication.status ?? "draft",
+    firstPublishedAt: publication.firstPublishedAt ?? null,
+    language: config.language,
+    skin: config.skin,
+    skinVariant: config.skinVariant,
+    slug: "jeanne-martin",
+    accessLevel: publication.accessLevel ?? "complet",
+    draft: { content, updatedAt: "2026-01-01T00:00:00.000Z", revision: publication.revision ?? 3 },
   });
 }
 
-function resolverAnswering(answer: (mediaId: string) => { mediaId: string; readUrl: string } | null) {
+function resolverAnswering(answer: (mediaId: string) => { mediaId: string; readUrl: string; width?: number; height?: number } | null) {
   createOwnerDraftMediaResolver.mockImplementation(() => {
     const resolve: MediaResolver = async (request) => {
       resolverCalls.push(request);
@@ -110,14 +128,14 @@ beforeEach(() => {
 });
 
 describe("loadMemorialPreviewAction — access", () => {
-  it("takes the memorial id only — never any content from the client", () => {
-    expect(loadMemorialPreviewAction.length).toBe(1);
+  it("takes the memorial id and an untrusted gallery choice only — never any content from the client", () => {
+    expect(loadMemorialPreviewAction.length).toBe(2);
   });
 
   it("refuses opaquely when access is not granted, reading nothing", async () => {
     authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
     await expect(loadMemorialPreviewAction("claimed-id")).rejects.toThrow("Preview refused.");
-    expect(resumeBuilderSession).not.toHaveBeenCalled();
+    expect(loadPublicationSnapshot).not.toHaveBeenCalled();
     expect(createOwnerDraftMediaResolver).not.toHaveBeenCalled();
   });
 });
@@ -130,7 +148,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     const result = await loadMemorialPreviewAction("claimed-id");
 
     expect(authorizeMemorialForRequest).toHaveBeenCalledWith("claimed-id");
-    expect(resumeBuilderSession).toHaveBeenCalledWith(expect.anything(), "authorized-id");
+    expect(loadPublicationSnapshot).toHaveBeenCalledWith("authorized-id");
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
     expect(result.assembled.status).toBe("assembled");
@@ -150,7 +168,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
     resumable(fullAnnouncement());
     await loadMemorialPreviewAction("claimed-id");
     await loadMemorialPreviewAction("claimed-id");
-    expect(resumeBuilderSession).toHaveBeenCalledTimes(2);
+    expect(loadPublicationSnapshot).toHaveBeenCalledTimes(2);
     expect(createOwnerDraftMediaResolver).toHaveBeenCalledTimes(2);
     expect(resolverCalls).toHaveLength(2);
   });
@@ -162,7 +180,7 @@ describe("loadMemorialPreviewAction — the saved draft, assembled for real", ()
   });
 
   it("B02-L2 — a memorial with no editorial context (every new draft) gets its Preview too", async () => {
-    resumable(fullAnnouncement(), { editorialContext: null });
+    resumable(fullAnnouncement(), { editorialContext: null }, { accessLevel: "avis" });
     const result = await loadMemorialPreviewAction("claimed-id");
     expect(result.status === "ready" && result.assembled.sections.map((s) => s.sectionId)).toEqual([
       "hero",
@@ -225,12 +243,13 @@ describe("loadMemorialPreviewAction — fail closed", () => {
     expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
   });
 
-  it.each([
-    ["error", { status: "error", reason: "db down" }],
-    ["draftAnomaly", { status: "draftAnomaly", memorial: MEMORIAL }],
-    ["notFoundOrForbidden", { status: "notFoundOrForbidden" }],
-  ])("a %s resume → unavailable", async (_label, resumed) => {
-    resumeBuilderSession.mockResolvedValue(resumed);
+  it("a failing read → unavailable", async () => {
+    loadPublicationSnapshot.mockRejectedValue(new Error("db down"));
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
+  });
+
+  it("no memorial (or not readable under RLS) → unavailable", async () => {
+    loadPublicationSnapshot.mockResolvedValue(null);
     expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
   });
 });
@@ -248,5 +267,71 @@ describe("loadMemorialPreviewAction — read-only by construction", () => {
     expect(CODE).toMatch(/assembleMemorial\(/);
     expect(CODE).toMatch(/createOwnerDraftMediaResolver\(/);
     expect(CODE).not.toMatch(/\bMemorialPreview\b|demo-memorials|qg-runtime-demo|composeMemorial/);
+  });
+});
+
+describe("loadMemorialPreviewAction — QG 008 Lot 3: exactly what « Publier » would publish", () => {
+  const galleryId = (n: number) => `5e0c2a4b-1f3d-4e6a-8b7c-${String(n).padStart(12, "0")}`;
+  const withGallery = (count: number) =>
+    ({
+      ...fullAnnouncement(),
+      gallery: { items: Array.from({ length: count }, (_, i) => ({ mediaId: galleryId(i + 1), caption: null })) },
+    }) as MemorialContent;
+
+  it("describes a publishable first publication: revision, stored level, fingerprint", async () => {
+    resumable(fullAnnouncement(), {}, { accessLevel: "avis", revision: 9 });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.publication).toMatchObject({
+      revision: 9,
+      accessLevel: "avis",
+      readiness: "publishable",
+      gallery: { total: 0, limit: 6, selection: undefined, choices: [] },
+      premiumSections: [],
+    });
+    expect(result.status === "ready" && result.publication?.digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("avis with 7 photos: the Preview SHOWS the six proposed, offers all seven to choose from", async () => {
+    resolverAnswering((mediaId) => ({ mediaId, readUrl: `https://storage.test/signed/${mediaId}`, width: 1200, height: 1600 }));
+    resumable(withGallery(7), {}, { accessLevel: "avis" });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    if (result.status !== "ready") throw new Error("not ready");
+    expect(result.publication?.gallery).toMatchObject({ total: 7, limit: 6, proposed: true, selection: [1, 2, 3, 4, 5, 6].map(galleryId) });
+    expect(result.publication?.gallery.choices.map((c) => c.mediaId)).toEqual([1, 2, 3, 4, 5, 6, 7].map(galleryId));
+    expect(result.publication?.gallery.choices.map((c) => c.readUrl)).toEqual([1, 2, 3, 4, 5, 6, 7].map((n) => `https://storage.test/signed/${galleryId(n)}`));
+    const assembled = JSON.stringify(result.assembled.sections);
+    for (const n of [1, 2, 3, 4, 5, 6]) expect(assembled).toContain(`https://storage.test/signed/${galleryId(n)}`);
+    expect(assembled).not.toContain(`https://storage.test/signed/${galleryId(7)}`);
+  });
+
+  it("a family's choice is shown in the Builder's order; an unacceptable one falls back to the proposal", async () => {
+    resumable(withGallery(8), {}, { accessLevel: "avis" });
+    const chosen = await loadMemorialPreviewAction("claimed-id", [galleryId(8), galleryId(3)]);
+    expect(chosen.status === "ready" && chosen.publication?.gallery).toMatchObject({ proposed: false, selection: [galleryId(3), galleryId(8)] });
+    const refused = await loadMemorialPreviewAction("claimed-id", [galleryId(1), galleryId(1)]);
+    expect(refused.status === "ready" && refused.publication?.gallery).toMatchObject({ proposed: true, selection: [1, 2, 3, 4, 5, 6].map(galleryId) });
+  });
+
+  it("complet: the whole gallery, nothing to choose", async () => {
+    resumable(withGallery(9), {}, { accessLevel: "complet" });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.publication?.gallery).toMatchObject({ total: 9, limit: null, selection: undefined, choices: [] });
+  });
+
+  it("an already published memorial shows its Preview without « Publier »", async () => {
+    resumable(fullAnnouncement(), {}, { status: "published", firstPublishedAt: "2026-11-01T00:00:00Z" });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.publication?.readiness).toBe("published");
+  });
+
+  it.each(["ready", "editing", "archived"])("a %s memorial is never offered « Publier » from the Preview", async (status) => {
+    resumable(fullAnnouncement(), {}, { status, firstPublishedAt: status === "editing" ? "2026-11-01T00:00:00Z" : null });
+    const result = await loadMemorialPreviewAction("claimed-id");
+    expect(result.status === "ready" && result.publication?.readiness).toBe("unavailable");
+  });
+
+  it("an unknown stored access level → unavailable (fail closed)", async () => {
+    resumable(fullAnnouncement(), {}, { accessLevel: "premium" });
+    expect(await loadMemorialPreviewAction("claimed-id")).toEqual({ status: "unavailable" });
   });
 });

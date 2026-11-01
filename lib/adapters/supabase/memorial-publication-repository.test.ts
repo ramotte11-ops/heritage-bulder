@@ -139,3 +139,83 @@ describe("SupabaseMemorialPublicationRepository", () => {
     await expect(failure).rejects.toMatchObject({ refusal });
   });
 });
+
+describe("SupabaseMemorialPublicationRepository — QG 008 Lot 3 (commit_memorial_publication_v3)", () => {
+  const commit = {
+    memorialId: "memorial-a",
+    ownerId: "owner-a",
+    expectedRevision: 7,
+    expectedLanguage: "fr" as const,
+    expectedSkin: "intemporel" as const,
+    expectedSkinVariant: "light" as const,
+    expectedSlug: "jeanne-martin",
+    expectedAccessLevel: "avis" as const,
+    expectedContent: { hero: { displayName: "Jeanne" } },
+    publishedContent: { hero: { displayName: "Jeanne" } },
+  };
+  function writeClient(answer: unknown) {
+    const single = vi.fn().mockResolvedValue(answer);
+    const rpc = vi.fn().mockReturnValue({ single });
+    return { client: { rpc } as unknown as SupabaseClient, rpc };
+  }
+
+  it("calls v3 (draft → published in one transaction) with exactly the expected values — no status parameter", async () => {
+    const write = writeClient({ data: { published_at: "p", first_published_at: "f", revision: 7, outcome: "published" }, error: null });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    await expect(repository.commitFirstPublication(commit)).resolves.toEqual({ outcome: "published", publishedAt: "p", firstPublishedAt: "f", revision: 7 });
+    expect(write.rpc).toHaveBeenCalledExactlyOnceWith("commit_memorial_publication_v3", {
+      p_memorial_id: "memorial-a",
+      p_owner_id: "owner-a",
+      p_expected_revision: 7,
+      p_expected_language: "fr",
+      p_expected_skin: "intemporel",
+      p_expected_skin_variant: "light",
+      p_expected_slug: "jeanne-martin",
+      p_expected_access_level: "avis",
+      p_expected_content: { hero: { displayName: "Jeanne" } },
+      p_published_content: { hero: { displayName: "Jeanne" } },
+    });
+  });
+
+  it("returns already_published only when the database says so", async () => {
+    const write = writeClient({ data: { published_at: "p", first_published_at: "f", revision: 7, outcome: "already_published" }, error: null });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    await expect(repository.commitFirstPublication(commit)).resolves.toMatchObject({ outcome: "already_published" });
+  });
+
+  it("refuses an unknown outcome instead of guessing a success", async () => {
+    const write = writeClient({ data: { published_at: "p", first_published_at: "f", revision: 7, outcome: "maybe" }, error: null });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    await expect(repository.commitFirstPublication(commit)).rejects.toThrow("Unexpected publication outcome.");
+  });
+
+  it.each([
+    ["HD422", "hero photo required", "HERO_PHOTO_REQUIRED"],
+    ["23514", "published gallery must come from the draft", "MEMORIAL_PUBLICATION_REJECTED"],
+    ["40001", "memorial lifecycle changed", "MEMORIAL_PUBLICATION_CONFLICT"],
+  ])("maps %s to its own error", async (code, message, expected) => {
+    const write = writeClient({ data: null, error: { code, message, details: "", hint: "" } });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    await expect(repository.commitFirstPublication(commit)).rejects.toMatchObject({ code: expected });
+  });
+
+  it.each([
+    ["HD410", "free publication window closed", "free_window_closed"],
+    ["HD403", "free publication quota reached", "free_quota_reached"],
+    ["HD413", "free gallery limit reached", "free_content_refused"],
+    ["HD428", "free publication requires a confirmed e-mail", "free_requires_verified_save"],
+  ])("keeps the V8 free refusals (%s)", async (code, message, refusal) => {
+    const write = writeClient({ data: null, error: { code, message, details: "", hint: "" } });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    const error = await repository.commitFirstPublication(commit).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FreePublicationRefusedError);
+    expect((error as FreePublicationRefusedError).refusal).toBe(refusal);
+  });
+
+  it("never retries a conflict", async () => {
+    const write = writeClient({ data: null, error: { code: "40001", message: "x", details: "", hint: "" } });
+    const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);
+    await expect(repository.commitFirstPublication(commit)).rejects.toBeInstanceOf(MemorialPublicationConflictError);
+    expect(write.rpc).toHaveBeenCalledOnce();
+  });
+});
