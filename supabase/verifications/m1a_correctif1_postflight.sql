@@ -7,7 +7,7 @@
 -- ordre :
 --   1. supabase/migrations/20261024180000_heritage_direct_access_foundation.sql
 --   2. supabase/migrations/20261024190000_heritage_direct_free_window_per_email.sql
--- et APRÈS supabase/checks/m1a_postflight.sql, qu'il complète sans le
+-- et APRÈS supabase/verifications/m1a_postflight.sql, qu'il complète sans le
 -- remplacer.
 --
 -- Cette requête ne modifie RIEN. Elle lit les catalogues et compte des

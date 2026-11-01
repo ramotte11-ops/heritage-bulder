@@ -816,9 +816,20 @@ they parse and that the postflight reports zero `ECHEC` against a
 database built from these migrations. A typo in SQL a non-developer will
 paste into production is not something to discover in production.
 
+### `verifications/` — pairs added after the audit corpus was closed
+
+`AGENTS.md` makes `checks/` read-only (audit evidence): its twelve
+historical files (`013c`, `015b`, `019c`, `021a`, `029b`, `030`) are never
+edited and nothing is added beside them. The pre/postflights written since
+(HERITAGE Direct M1-A, QG 008 Lots 1 to 3) live in `verifications/`,
+with the same names, the same read-only SQL and the same role: pasted
+into the Supabase SQL Editor by hand, graded `OK` / `ECHEC`, and run by
+`scripts/db/test-local.sh` on every local run. They were first committed
+under `checks/` and moved here unchanged (QG 008 Lot 3 régularisation).
+
 ### HERITAGE Direct M1-A's pair
 
-`checks/m1a_preflight.sql` and `checks/m1a_postflight.sql` cover
+`verifications/m1a_preflight.sql` and `verifications/m1a_postflight.sql` cover
 `migrations/20261024180000_heritage_direct_access_foundation.sql`. The
 preflight proves the migration is not yet applied, that C1 is, that the
 two `updated_at` triggers the migration suspends during its backfill
@@ -835,13 +846,13 @@ Both are executed by the local harness, including negative proofs (a
 suspended trigger, a client grant on the journal, a changed duration each
 turn the postflight red).
 
-`checks/m1a_correctif1_postflight.sql` complements (never replaces) that
+`verifications/m1a_correctif1_postflight.sql` complements (never replaces) that
 postflight once `20261024190000_heritage_direct_free_window_per_email.sql`
 is applied: 12 controls (the corrected functions are the ones in place,
 the window helper and the e-mail guard are executable by no role, no
 application role can update `owners.email`, the guard trigger is enabled,
 no address holds two free windows within 12 months).
-`checks/m1a_correctif2_postflight.sql` asserts `entitlements.access_level`
+`verifications/m1a_correctif2_postflight.sql` asserts `entitlements.access_level`
 is NOT NULL and that no right lacks a level.
 
 These three M1-A checks grade the state **right after M1-A**. Once
@@ -852,12 +863,12 @@ throwaway database stopped at M1-A, and grades the final state with:
 
 ### QG 008 Lot 1's pair
 
-`checks/qg008_lot1_preflight.sql` proves the three M1-A migrations are
+`verifications/qg008_lot1_preflight.sql` proves the three M1-A migrations are
 in place and QG 008 is not, and photographs the existing `avis`
 memorials (drafts, drafts holding more than six photos, publications,
 messages) — refusing (ECHEC) if a published `avis` copy already holds a
 section or a photo count the new copy guard would forbid.
-`checks/qg008_lot1_postflight.sql` grades 31 controls: the V8 settings,
+`verifications/qg008_lot1_postflight.sql` grades 31 controls: the V8 settings,
 the new objects, the retired draft gallery trigger, the privileges of
 every new or replaced function, the waivers table closed to every
 application role, messages moderated by default, and every anchored
@@ -1006,7 +1017,7 @@ applied after the Lot 1 migration (it calls `create_free_memorial_v1` and
   from the re-validated guest draft and this photo map only, and written
   through the Builder's own audited path, only over the untouched draft.
 
-Checks: `checks/qg008_lot2_preflight.sql`, `checks/qg008_lot2_postflight.sql`.
+Checks: `verifications/qg008_lot2_preflight.sql`, `verifications/qg008_lot2_postflight.sql`.
 Rollback (never automatic): `rollbacks/20261101090000_qg008_lot2_guest_draft_transfer.down.sql`,
 refused while any transfer exists.
 
@@ -1035,7 +1046,7 @@ of the existing engine (windows, quotas, durations, V8 guards untouched).
 `HD422` follows the existing HD convention (HTTP semantics: 403, 409, 410,
 413, 423, 428).
 
-Checks: `checks/qg008_lot3_preflight.sql`, `checks/qg008_lot3_postflight.sql`.
+Checks: `verifications/qg008_lot3_preflight.sql`, `verifications/qg008_lot3_postflight.sql`.
 Rollback (never automatic): `rollbacks/20261102090000_qg008_lot3_publication_from_preview.down.sql`
 (drops v3 only; every publication and snapshot is kept).
 

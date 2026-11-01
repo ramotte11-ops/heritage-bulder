@@ -7,7 +7,7 @@
 -- Généré par extraction exacte des corps de fonctions des migrations
 -- M1-A (20261024180000, 20261024190000), C1 (20261023160000) et Mission
 -- 002 (20260829154000, 20260829157000) : l'état obtenu est celui que
--- grade supabase/checks/m1a_postflight.sql (prouvé par
+-- grade supabase/verifications/m1a_postflight.sql (prouvé par
 -- scripts/db/test-local.sh).
 --
 -- Refuse de s'exécuter si une dérogation a été accordée (la supprimer

@@ -202,7 +202,7 @@ SQL
 
 # QG 008: a second throwaway database, cloned from the stand-ins and
 # stopped at the last HERITAGE Direct M1-A migration. The read-only M1-A
-# pre/postflights (supabase/checks/m1a_*) grade THAT state, exactly as
+# pre/postflights (supabase/verifications/m1a_*) grade THAT state, exactly as
 # they would right after applying M1-A to a real project; QG 008's own
 # checks grade the final state below. No check file is edited.
 STANDINS_DB="heritage_standins_template"
@@ -3130,7 +3130,7 @@ $DB -c "update memorial_access_settings set avis_gallery_rows_cap = null where i
 # preflight must flag every "already applied" row; the postflight must
 # report no ECHEC once the one right this section deliberately left
 # without a level (the D12 refusal test above) is gone.
-if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/verifications/m1a_preflight.sql" >/dev/null 2>"$PGDATA_DIR/preflight_error"; then
   echo "  [PASS] m1a_preflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
@@ -3138,58 +3138,58 @@ else
   FAIL=$((FAIL + 1))
 fi
 check "m1a_preflight.sql detects that M1-A is already applied (11 rows)" "11" \
-  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep -c "ECHEC — .*M1-A" || true)"
+  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/m1a_preflight.sql" 2>/dev/null | grep -c "ECHEC — .*M1-A" || true)"
 check "m1a_preflight.sql finds its prerequisites" "0" \
-  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/m1a_preflight.sql" 2>/dev/null | grep "^2\. prerequis" | grep -c "ECHEC" || true)"
 
 check "m1a_postflight.sql flags a right without a level" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -c "insert into entitlements (source, offer_id) values ('direct','intemporel');" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
-if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -c "insert into entitlements (source, offer_id) values ('direct','intemporel');" -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep "droits sans niveau" | grep -c "ECHEC" || true)"
+if $DB_M1A -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>/dev/null)
+M1A_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" 2>/dev/null)
 check "m1a_postflight.sql reports zero ECHEC against these migrations" "0" "$(echo "$M1A_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql grades every expected control (42 OK)" "42" "$(echo "$M1A_POSTFLIGHT" | grep -c "|OK$" || true)"
 # Negative proofs, each rolled back: the postflight must turn red.
 check "m1a_postflight.sql turns red if the updated_at trigger stays suspended" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "alter table memorials disable trigger memorials_set_updated_at;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "alter table memorials disable trigger memorials_set_updated_at;" -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql turns red on a client grant on the journal" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "grant select on memorial_access_events to authenticated;" -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_postflight.sql turns red on a changed duration" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "update memorial_access_settings set free_publish_window = interval '7 days 23 hours 59 minutes';" -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 # Correctif 1's complementary postflight, same doctrine.
-if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/verifications/m1a_correctif1_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_correctif1_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_correctif1_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_C1_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>/dev/null)
+M1A_C1_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/m1a_correctif1_postflight.sql" 2>/dev/null)
 check "m1a_correctif1_postflight.sql reports zero ECHEC" "0" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_correctif1_postflight.sql grades every expected control (12 OK)" "12" "$(echo "$M1A_C1_POSTFLIGHT" | grep -c "|OK$" || true)"
 check "m1a_correctif1_postflight.sql turns red on a grant of the window helper" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "grant execute on function free_access_window_v1(uuid,timestamptz) to service_role;" -f "$REPO_ROOT/supabase/verifications/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 check "m1a_correctif1_postflight.sql turns red if the initial anchor function is back" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "create or replace function anchor_free_memorial_v1(p_memorial_id uuid, p_owner_id uuid) returns table (outcome text, free_anchor_at timestamptz, free_publish_until timestamptz, free_draft_until timestamptz) language sql security definer set search_path = '' as \$\$ select 'refused'::text, null::timestamptz, null::timestamptz, null::timestamptz \$\$;" -f "$REPO_ROOT/supabase/verifications/m1a_correctif1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 # Correctif 2's complementary postflight.
-if $DB_M1A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
+if $DB_M1A -f "$REPO_ROOT/supabase/verifications/m1a_correctif2_postflight.sql" >/dev/null 2>"$PGDATA_DIR/postflight_error"; then
   echo "  [PASS] m1a_correctif2_postflight.sql parses and executes"
   PASS=$((PASS + 1))
 else
   echo "  [FAIL] m1a_correctif2_postflight.sql failed: $(tr '\n' ' ' <"$PGDATA_DIR/postflight_error")"
   FAIL=$((FAIL + 1))
 fi
-M1A_C2_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" 2>/dev/null)
+M1A_C2_POSTFLIGHT=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/m1a_correctif2_postflight.sql" 2>/dev/null)
 check "m1a_correctif2_postflight.sql reports 2 OK, zero ECHEC" "2|0" "$(echo "$M1A_C2_POSTFLIGHT" | grep -c "|OK$" || true)|$(echo "$M1A_C2_POSTFLIGHT" | grep -c "ECHEC" || true)"
 check "m1a_correctif2_postflight.sql turns red if the level becomes optional again" "1" \
-  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -f "$REPO_ROOT/supabase/checks/m1a_correctif2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+  "$($DB_M1A -t -A -c "begin;" -c "alter table entitlements alter column access_level drop not null;" -f "$REPO_ROOT/supabase/verifications/m1a_correctif2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 
 echo ""
 # =====================================================================
@@ -3558,17 +3558,17 @@ check "service_role still cannot write memorials directly (deadlines only via fu
   "$($DB -t -A -c "select has_table_privilege('service_role','memorials','UPDATE');")"
 
 # --- Q9. QG 008 preflight / postflight (read-only) ---
-Q8_PRE_FINAL=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_preflight.sql" 2>&1)
+Q8_PRE_FINAL=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot1_preflight.sql" 2>&1)
 check "qg008 preflight, run after the migration, refuses to proceed (3 'already applied' ECHEC)" "3" \
   "$(echo "$Q8_PRE_FINAL" | grep -c "ECHEC — QG 008 semble deja appliquee" || true)"
-Q8_PRE_M1A=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_preflight.sql" 2>&1)
+Q8_PRE_M1A=$($DB_M1A -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot1_preflight.sql" 2>&1)
 check "qg008 preflight on the M1-A state: zero ECHEC" "0|t" \
   "$(echo "$Q8_PRE_M1A" | grep -c "ECHEC" || true)|$(echo "$Q8_PRE_M1A" | grep -q '|OK$' && echo t || echo f)"
 # The postflight measures the migrations: this script's own TEST-ONLY
 # grant (insert on messages to anon, Mission 002 RLS tests) is lifted
 # inside a rolled-back transaction while it runs.
 q8_postflight() {
-  $DB -t -A -c "begin;" -c "revoke insert on table messages from anon;" "$@" -f "$REPO_ROOT/supabase/checks/qg008_lot1_postflight.sql" -c "rollback;" 2>&1
+  $DB -t -A -c "begin;" -c "revoke insert on table messages from anon;" "$@" -f "$REPO_ROOT/supabase/verifications/qg008_lot1_postflight.sql" -c "rollback;" 2>&1
 }
 Q8_POST=$(q8_postflight)
 check "qg008 postflight: zero ECHEC on the final state" "0" "$(echo "$Q8_POST" | grep -c "ECHEC" || true)"
@@ -3593,14 +3593,14 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
   [ "$(basename "$f")" = "20261031120000_qg008_free_offer_v8_alignment.sql" ] && break
 done
 check "on a database without waivers, the rollback applies" "0" "$($PSQL -d qg008_down_clean -f "$Q8_DOWN" >/dev/null 2>&1; echo $?)"
-Q8_BACK=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/m1a_postflight.sql" 2>&1)
+Q8_BACK=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/verifications/m1a_postflight.sql" 2>&1)
 check "after rollback, m1a_postflight grades the exact M1-A state (42 OK, zero ECHEC)" "42|0" \
   "$(echo "$Q8_BACK" | grep -c '|OK$' || true)|$(echo "$Q8_BACK" | grep -c 'ECHEC' || true)"
-Q8_BACK1=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/m1a_correctif1_postflight.sql" 2>&1)
+Q8_BACK1=$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/verifications/m1a_correctif1_postflight.sql" 2>&1)
 check "after rollback, m1a_correctif1_postflight: 12 OK, zero ECHEC" "12|0" \
   "$(echo "$Q8_BACK1" | grep -c '|OK$' || true)|$(echo "$Q8_BACK1" | grep -c 'ECHEC' || true)"
 check "after rollback, the QG 008 migration applies again cleanly" "0|0" \
-  "$($PSQL -d qg008_down_clean -f "$MIGRATIONS_DIR/20261031120000_qg008_free_offer_v8_alignment.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+  "$($PSQL -d qg008_down_clean -f "$MIGRATIONS_DIR/20261031120000_qg008_free_offer_v8_alignment.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d qg008_down_clean -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
 $PSQL -d postgres -c "drop database qg008_down_clean;" >/dev/null
 
 
@@ -3733,11 +3733,11 @@ check "Lot 2: ... and the Etsy memorial is untouched" "complet|true" \
   "$($DB -t -A -c "select access_level || '|' || (free_anchor_at is null) from memorials where id='$L2_ETSY_MEM';")"
 
 # --- T9. Pre/postflight and rollback (never applied automatically) ---
-L2_POST=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" 2>&1)
+L2_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot2_postflight.sql" 2>&1)
 check "Lot 2 postflight: zero ECHEC, every control OK (8)" "0|8" "$(echo "$L2_POST" | grep -c 'ECHEC' || true)|$(echo "$L2_POST" | grep -c '|OK$' || true)"
 check "Lot 2 postflight turns red on a client grant" "1" \
-  "$($DB -t -A -c "begin;" -c "grant select on guest_draft_transfers to authenticated;" -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
-L2_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_preflight.sql" 2>&1)
+  "$($DB -t -A -c "begin;" -c "grant select on guest_draft_transfers to authenticated;" -f "$REPO_ROOT/supabase/verifications/qg008_lot2_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+L2_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot2_preflight.sql" 2>&1)
 check "Lot 2 preflight after application: refuses (already applied), prerequisites OK" "1|4" \
   "$(echo "$L2_PRE" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE" | grep -c '|OK$' || true)"
 L2_DOWN="$REPO_ROOT/supabase/rollbacks/20261101090000_qg008_lot2_guest_draft_transfer.down.sql"
@@ -3749,9 +3749,9 @@ $PSQL -d postgres -c "create database l2_down_clean template $STANDINS_DB;" >/de
 for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d l2_down_clean -f "$f" >/dev/null; done
 L2_PRE_CLEAN=$($PSQL -d l2_down_clean -t -A -c "select 1;" >/dev/null; $PSQL -d l2_down_clean -f "$L2_DOWN" >/dev/null 2>&1; echo $?)
 check "Lot 2 rollback applies on a database without transfers" "0" "$L2_PRE_CLEAN"
-L2_PRE_AFTER=$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_preflight.sql" 2>&1)
+L2_PRE_AFTER=$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot2_preflight.sql" 2>&1)
 check "Lot 2: after rollback the preflight is green again (5 OK, zero ECHEC), then the migration re-applies" "0|5|0|0" \
-  "$(echo "$L2_PRE_AFTER" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE_AFTER" | grep -c '|OK$' || true)|$($PSQL -d l2_down_clean -f "$MIGRATIONS_DIR/20261101090000_qg008_lot2_guest_draft_transfer.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot2_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+  "$(echo "$L2_PRE_AFTER" | grep -c 'ECHEC' || true)|$(echo "$L2_PRE_AFTER" | grep -c '|OK$' || true)|$($PSQL -d l2_down_clean -f "$MIGRATIONS_DIR/20261101090000_qg008_lot2_guest_draft_transfer.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l2_down_clean -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot2_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
 $PSQL -d postgres -c "drop database l2_down_clean;" >/dev/null
 
 # =====================================================================
@@ -3895,20 +3895,20 @@ check "Lot 3: commit_memorial_publication_v2 keeps its own privileges (service_r
   "$($DB -t -A -c "select has_function_privilege('anon','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('authenticated','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('service_role','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE');")"
 
 # --- L3-8. Pre/postflight and rollback (never applied automatically) ---
-L3_POST=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" 2>&1)
+L3_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1)
 check "Lot 3 postflight: zero ECHEC, every control OK (4)" "0|4" "$(echo "$L3_POST" | grep -c 'ECHEC' || true)|$(echo "$L3_POST" | grep -c '|OK$' || true)"
 check "Lot 3 postflight turns red on a client grant of v3" "1" \
-  "$($DB -t -A -c "begin;" -c "grant execute on function public.$L3_V3 to authenticated;" -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
-L3_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_preflight.sql" 2>&1)
+  "$($DB -t -A -c "begin;" -c "grant execute on function public.$L3_V3 to authenticated;" -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+L3_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_preflight.sql" 2>&1)
 check "Lot 3 preflight after application: refuses (already applied), prerequisites OK" "1|4" \
   "$(echo "$L3_PRE" | grep -c 'ECHEC' || true)|$(echo "$L3_PRE" | grep -c '|OK$' || true)"
 L3_DOWN="$REPO_ROOT/supabase/rollbacks/20261102090000_qg008_lot3_publication_from_preview.down.sql"
 $PSQL -d postgres -c "create database l3_down template $DB_NAME;" >/dev/null
 L3_PUBLISHED_BEFORE=$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")
 check "Lot 3 rollback applies, keeps every publication and snapshot, and the preflight is green again (5 OK)" "0|$L3_PUBLISHED_BEFORE|5" \
-  "$($PSQL -d l3_down -f "$L3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
+  "$($PSQL -d l3_down -f "$L3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
 check "Lot 3: ... then the migration re-applies and the postflight is green" "0|0" \
-  "$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102090000_qg008_lot3_publication_from_preview.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/checks/qg008_lot3_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+  "$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102090000_qg008_lot3_publication_from_preview.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
 $PSQL -d postgres -c "drop database l3_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
