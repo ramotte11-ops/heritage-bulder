@@ -2,7 +2,8 @@
 -- HERITAGE HOMMAGE — QG 008, LOT 3 — POSTFLIGHT (LECTURE SEULE)
 -- =====================================================================
 -- À exécuter APRÈS avoir appliqué
--- supabase/migrations/20261102090000_qg008_lot3_publication_from_preview.sql.
+-- supabase/migrations/20261102090000_qg008_lot3_publication_from_preview.sql
+-- puis 20261102100000_qg008_lot3_v3_publication_identity.sql.
 -- Ne modifie RIEN, ne lit aucune donnée personnelle. Verdicts OK/ECHEC.
 -- =====================================================================
 
@@ -40,5 +41,19 @@ select 'B. droits', 'aucun droit client sur la colonne status de memorials', 'au
        case when has_column_privilege('authenticated', 'public.memorials', 'status', 'UPDATE')
               or has_column_privilege('anon', 'public.memorials', 'status', 'UPDATE')
             then 'ECHEC' else 'OK' end
+
+union all
+
+select 'C. identite', 'second appel : langue, skin, variante et slug compares (20261102100000)', 'present',
+       case when coalesce((select prosrc like '%v_memorial.language is not distinct from p_expected_language%'
+                         and prosrc like '%v_memorial.skin_id is not distinct from p_expected_skin%'
+                         and prosrc like '%v_memorial.skin_variant is not distinct from p_expected_skin_variant%'
+                         and prosrc like '%v_memorial.slug is not distinct from p_expected_slug%'
+                    from pg_proc where oid = to_regprocedure('public.commit_memorial_publication_v3(uuid,uuid,bigint,text,text,text,text,text,jsonb,jsonb)')), false) then 'present' else 'absent' end,
+       case when coalesce((select prosrc like '%v_memorial.language is not distinct from p_expected_language%'
+                         and prosrc like '%v_memorial.skin_id is not distinct from p_expected_skin%'
+                         and prosrc like '%v_memorial.skin_variant is not distinct from p_expected_skin_variant%'
+                         and prosrc like '%v_memorial.slug is not distinct from p_expected_slug%'
+                    from pg_proc where oid = to_regprocedure('public.commit_memorial_publication_v3(uuid,uuid,bigint,text,text,text,text,text,jsonb,jsonb)')), false) then 'OK' else 'ECHEC' end
 
 order by 1, 2, 3;

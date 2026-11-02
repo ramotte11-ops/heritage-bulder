@@ -1046,7 +1046,15 @@ of the existing engine (windows, quotas, durations, V8 guards untouched).
 `HD422` follows the existing HD convention (HTTP semantics: 403, 409, 410,
 413, 423, 428).
 
-Checks: `verifications/qg008_lot3_preflight.sql`, `verifications/qg008_lot3_postflight.sql`.
+- **`20261102100000_qg008_lot3_v3_publication_identity.sql`** (QG final
+  review) — replaces v3 (append-only): the `already_published` branch also
+  requires the memorial's `language`, `skin_id`, `skin_variant` and `slug`
+  to equal the expected ones (otherwise 40001), and these four parameters
+  plus the access level are mandatory on entry (22023), as in v2. Its
+  rollback reinstalls the exact 20261102090000 body.
+
+Checks: `verifications/qg008_lot3_preflight.sql`, `verifications/qg008_lot3_postflight.sql`. The postflight
+grades 5 controls, the fifth (`C. identite`) proving the correction is in place.
 Rollback (never automatic): `rollbacks/20261102090000_qg008_lot3_publication_from_preview.down.sql`
 (drops v3 only; every publication and snapshot is kept).
 

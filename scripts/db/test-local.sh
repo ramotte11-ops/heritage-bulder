@@ -3890,13 +3890,35 @@ check "Lot 3: two simultaneous identical publications: one published, the other 
   "$(cat "$L3_CONC"/1.out "$L3_CONC"/2.out | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')|$(cat "$L3_CONC"/1.rc "$L3_CONC"/2.rc | tr '\n' ' ' | sed 's/ $//')"
 check "Lot 3: ... one snapshot, one free publication" "published|false|1|1" "$(l3_state "$L3_RACE")|$(q8_published_count "$L3_RACE_OWNER")"
 
+# --- L3-6b. Revue finale QG : identité complète du second appel (20261102100000) ---
+l3_id_sql() {
+  # $1 langue, $2 skin, $3 variante, $4 slug (littéraux SQL), $5 propriétaire, $6 niveau d'accès
+  local rev content owner="${5:-$L3_OK_OWNER}" lvl="${6:-avis}"
+  rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$L3_OK';")
+  content=$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$L3_OK';")
+  echo "select outcome from commit_memorial_publication_v3('$L3_OK','$owner',$rev,$1,$2,$3,$4,'$lvl','$content','$(l3_hero "$L3_OK_HERO")');"
+}
+L3_SNAP_BEFORE=$($DB -t -A -c "select published_at || '|' || md5(content::text) from memorial_published_snapshots where memorial_id='$L3_OK';")
+check "Lot 3 identity: the exact same parameters -> already_published" "already_published" "$(svc "$(l3_id_sql "'fr'" "'intemporel'" "'light'" "'l3-ok'")")"
+svc_expect_error "Lot 3 identity: a different language -> conflict, never already_published" "$(l3_id_sql "'en'" "'intemporel'" "'light'" "'l3-ok'")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 identity: a different skin -> conflict" "$(l3_id_sql "'fr'" "'musulman'" "'light'" "'l3-ok'")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 identity: a different variant -> conflict" "$(l3_id_sql "'fr'" "'intemporel'" "'dark'" "'l3-ok'")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 identity: a different slug -> conflict" "$(l3_id_sql "'fr'" "'intemporel'" "'light'" "'autre-slug'")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 identity: a NULL language -> refused at the entry (22023)" "$(l3_id_sql "null" "'intemporel'" "'light'" "'l3-ok'")" "invalid memorial publication request"
+svc_expect_error "Lot 3 identity: a blank slug -> refused at the entry (22023)" "$(l3_id_sql "'fr'" "'intemporel'" "'light'" "'  '")" "invalid memorial publication request"
+svc_expect_error "Lot 3 identity: a different access level -> conflict" "$(l3_id_sql "'fr'" "'intemporel'" "'light'" "'l3-ok'" "$L3_OK_OWNER" complet)" "memorial lifecycle changed"
+L3_INTRUDER=$(q8_owner l3-identity-intruder)
+svc_expect_error "Lot 3 identity: another owner -> 42501 before the already_published branch" "$(l3_id_sql "'fr'" "'intemporel'" "'light'" "'l3-ok'" "$L3_INTRUDER")" "memorial publication refused"
+check "Lot 3 identity: none of these calls rewrote the published copy or added an event" "$L3_SNAP_BEFORE|1" \
+  "$($DB -t -A -c "select published_at || '|' || md5(content::text) from memorial_published_snapshots where memorial_id='$L3_OK';")|$(q8_published_count "$L3_OK_OWNER")"
+
 # --- L3-7. v2 untouched ---
 check "Lot 3: commit_memorial_publication_v2 keeps its own privileges (service_role only)" "false|false|true" \
   "$($DB -t -A -c "select has_function_privilege('anon','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('authenticated','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE') || '|' || has_function_privilege('service_role','public.commit_memorial_publication_v2(uuid,uuid,bigint,text,timestamptz,text,text,text,text,text,jsonb,jsonb)','EXECUTE');")"
 
 # --- L3-8. Pre/postflight and rollback (never applied automatically) ---
 L3_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1)
-check "Lot 3 postflight: zero ECHEC, every control OK (4)" "0|4" "$(echo "$L3_POST" | grep -c 'ECHEC' || true)|$(echo "$L3_POST" | grep -c '|OK$' || true)"
+check "Lot 3 postflight: zero ECHEC, every control OK (5)" "0|5" "$(echo "$L3_POST" | grep -c 'ECHEC' || true)|$(echo "$L3_POST" | grep -c '|OK$' || true)"
 check "Lot 3 postflight turns red on a client grant of v3" "1" \
   "$($DB -t -A -c "begin;" -c "grant execute on function public.$L3_V3 to authenticated;" -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
 L3_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_preflight.sql" 2>&1)
@@ -3907,8 +3929,14 @@ $PSQL -d postgres -c "create database l3_down template $DB_NAME;" >/dev/null
 L3_PUBLISHED_BEFORE=$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")
 check "Lot 3 rollback applies, keeps every publication and snapshot, and the preflight is green again (5 OK)" "0|$L3_PUBLISHED_BEFORE|5" \
   "$($PSQL -d l3_down -f "$L3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select count(*) || '/' || (select count(*) from memorial_published_snapshots) from memorials where status='published';")|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
-check "Lot 3: ... then the migration re-applies and the postflight is green" "0|0" \
+check "Lot 3: ... then 20261102090000 alone re-applies, and the postflight flags the missing identity correction" "0|1" \
   "$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102090000_qg008_lot3_publication_from_preview.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)"
+check "Lot 3: ... and with 20261102100000 the postflight is green again (5 OK)" "0|0|5" \
+  "$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102100000_qg008_lot3_v3_publication_identity.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d l3_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
+L3_ID_DOWN="$REPO_ROOT/supabase/rollbacks/20261102100000_qg008_lot3_v3_publication_identity.down.sql"
+L3_BODY_0900=$($PSQL -d l3_down -t -A -c "begin;" -f "$MIGRATIONS_DIR/20261102090000_qg008_lot3_publication_from_preview.sql" -c "select md5(prosrc) from pg_proc where oid = to_regprocedure('public.$L3_V3');" -c "rollback;" 2>/dev/null | tail -1)
+check "Lot 3 identity rollback restores exactly the 20261102090000 body, and the identity correction re-applies" "0|$L3_BODY_0900|0" \
+  "$($PSQL -d l3_down -f "$L3_ID_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select md5(prosrc) from pg_proc where oid = to_regprocedure('public.$L3_V3');")|$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102100000_qg008_lot3_v3_publication_identity.sql" >/dev/null 2>&1; echo $?)"
 $PSQL -d postgres -c "drop database l3_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
