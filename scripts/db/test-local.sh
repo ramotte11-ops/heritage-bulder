@@ -3939,6 +3939,156 @@ check "Lot 3 identity rollback restores exactly the 20261102090000 body, and the
   "$($PSQL -d l3_down -f "$L3_ID_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l3_down -t -A -c "select md5(prosrc) from pg_proc where oid = to_regprocedure('public.$L3_V3');")|$($PSQL -d l3_down -f "$MIGRATIONS_DIR/20261102100000_qg008_lot3_v3_publication_identity.sql" >/dev/null 2>&1; echo $?)"
 $PSQL -d postgres -c "drop database l3_down;" >/dev/null
 
+# =====================================================================
+# QG 008 — Lot 3 v4 : slug public opaque généré à la première publication
+# =====================================================================
+echo ""
+echo "== QG 008 Lot 3 v4: public slug generated at first publication =="
+
+L4_V4="commit_memorial_publication_v4(uuid,uuid,bigint,text,text,text,text,text,jsonb,jsonb)"
+L4_SLUGFN="memorial_public_slug_v1(uuid,integer)"
+l4_draft() {
+  # $1 owner label -> "owner|memorial" : an anchored avis draft, language set, slug NULL (the real S1 shape)
+  local owner mem
+  owner=$(q8_owner "$1")
+  mem=$(q8_draft "$owner"); q8_anchor "$mem" "$owner" >/dev/null
+  $DB -c "update memorials set language='fr' where id='$mem';" >/dev/null
+  echo "$owner|$mem"
+}
+l4_sql() {
+  # $1 memorial, $2 owner, $3 expected slug (SQL literal: null or 'x'), $4 published content — expected = stored draft
+  local rev content
+  rev=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$1';")
+  content=$($DB -t -A -c "select content::text from memorial_drafts where memorial_id='$1';")
+  echo "select outcome || '|' || slug from commit_memorial_publication_v4('$1','$2',$rev,'fr','intemporel','light',$3,'avis','$content','$4');"
+}
+l4_slug() { $DB -t -A -c "select coalesce(slug,'NULL') from memorials where id='$1';"; }
+l4_expected() { $DB -t -A -c "select public.memorial_public_slug_v1('$1', ${2:-12});"; }
+
+# --- L4-1. Privileges and the pure slug function ---
+check "Lot 3 v4: v4 executable by service_role only" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.$L4_V4','EXECUTE') || '|' || has_function_privilege('authenticated','public.$L4_V4','EXECUTE') || '|' || has_function_privilege('service_role','public.$L4_V4','EXECUTE');")"
+check "Lot 3 v4: v4 is SECURITY DEFINER with an empty search_path" "true|true" \
+  "$($DB -t -A -c "select prosecdef || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid=to_regprocedure('public.$L4_V4');")"
+check "Lot 3 v4: an authenticated family cannot call v4 directly" "1" \
+  "$($DB -c "set role authenticated; select * from commit_memorial_publication_v4(gen_random_uuid(),gen_random_uuid(),0,'fr','intemporel','light',null,'avis','{}','{}');" 2>&1 | grep -c 'permission denied' || true)"
+check "Lot 3 v4: the slug function is callable by no client role, immutable, empty search_path" "false|false|false|i|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.$L4_SLUGFN','EXECUTE') || '|' || has_function_privilege('authenticated','public.$L4_SLUGFN','EXECUTE') || '|' || has_function_privilege('service_role','public.$L4_SLUGFN','EXECUTE') || '|' || provolatile::text || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid=to_regprocedure('public.$L4_SLUGFN');")"
+check "Lot 3 v4: slug = SHA-256 prefix, matches an independent computation (fixed vector)" "10d63bbb38ba" \
+  "$($DB -t -A -c "select public.memorial_public_slug_v1('00000000-0000-4000-8000-000000000000', 12);")"
+check "Lot 3 v4: slug is opaque hex, deterministic, and grows by length; out of bounds -> NULL" "true|true|16|NULL|NULL" \
+  "$($DB -t -A -c "with s as (select gen_random_uuid() as id) select (public.memorial_public_slug_v1(id,12) ~ '^[0-9a-f]{12}$')::text || '|' || (public.memorial_public_slug_v1(id,12) = public.memorial_public_slug_v1(id,12))::text || '|' || length(public.memorial_public_slug_v1(id,16)) || '|' || coalesce(public.memorial_public_slug_v1(id,8),'NULL') || '|' || coalesce(public.memorial_public_slug_v1(id,68),'NULL') from s;")"
+check "Lot 3 v4: still no client privilege on memorials.slug" "false|false" \
+  "$($DB -t -A -c "select has_column_privilege('authenticated','public.memorials','slug','UPDATE') || '|' || has_column_privilege('anon','public.memorials','slug','UPDATE');")"
+
+# --- L4-2. First publication of a memorial WITHOUT slug (the S1 case) ---
+IFS='|' read -r L4_OK_OWNER L4_OK <<<"$(l4_draft l4-ok)"
+L4_OK_HERO=$(l2_media "$L4_OK" "$L4_OK_OWNER" hero ready)
+l3_set_draft "$L4_OK" "$(l3_hero "$L4_OK_HERO")"
+check "Lot 3 v4: a draft without slug is refused by v3 (the S1 failure, reproduced)" "1" \
+  "$($DB -c "set role service_role; $(l3_v3_sql "$L4_OK" "$L4_OK_OWNER" "" "$(l3_hero "$L4_OK_HERO")")" 2>&1 | grep -c 'invalid memorial publication request' || true)"
+L4_OK_SLUG=$(l4_expected "$L4_OK")
+check "Lot 3 v4: v4 publishes it and returns the generated opaque slug" "published|$L4_OK_SLUG" \
+  "$(svc "$(l4_sql "$L4_OK" "$L4_OK_OWNER" null "$(l3_hero "$L4_OK_HERO")")")"
+check "Lot 3 v4: ... slug stored = deterministic slug of the id, status published, one snapshot, one free publication" "$L4_OK_SLUG|published|false|1|1" \
+  "$(l4_slug "$L4_OK")|$(l3_state "$L4_OK")|$(q8_published_count "$L4_OK_OWNER")"
+L4_OK_AT=$($DB -t -A -c "select published_at from memorial_published_snapshots where memorial_id='$L4_OK';")
+check "Lot 3 v4: double click prepared before the slug existed (expected NULL) -> already_published, same slug" "already_published|$L4_OK_SLUG" \
+  "$(svc "$(l4_sql "$L4_OK" "$L4_OK_OWNER" null "$(l3_hero "$L4_OK_HERO")")")"
+check "Lot 3 v4: second call with the stored slug expected -> already_published" "already_published|$L4_OK_SLUG" \
+  "$(svc "$(l4_sql "$L4_OK" "$L4_OK_OWNER" "'$L4_OK_SLUG'" "$(l3_hero "$L4_OK_HERO")")")"
+svc_expect_error "Lot 3 v4: second call expecting ANOTHER slug -> conflict, never a success" \
+  "$(l4_sql "$L4_OK" "$L4_OK_OWNER" "'autre-slug'" "$(l3_hero "$L4_OK_HERO")")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 v4: second call with a different published content -> conflict" \
+  "$(l4_sql "$L4_OK" "$L4_OK_OWNER" null '{"hero":{"displayName":"Autre","photo":null}}')" "memorial lifecycle changed"
+check "Lot 3 v4: ... nothing rewritten: same slug, same snapshot time, one snapshot, one free publication" "$L4_OK_SLUG|published|false|1|1|$L4_OK_AT" \
+  "$(l4_slug "$L4_OK")|$(l3_state "$L4_OK")|$(q8_published_count "$L4_OK_OWNER")|$($DB -t -A -c "select published_at from memorial_published_snapshots where memorial_id='$L4_OK';")"
+
+# --- L4-3. Refusals: the slug is rolled back with everything, and the NEXT attempt yields the SAME slug ---
+IFS='|' read -r L4_R_OWNER L4_R <<<"$(l4_draft l4-refus)"
+l3_set_draft "$L4_R" "$(l3_hero null)"
+L4_R_SLUG=$(l4_expected "$L4_R")
+svc_expect_error "Lot 3 v4: no Hero photo -> HD422 (v3 unchanged)" "$(l4_sql "$L4_R" "$L4_R_OWNER" null "$(l3_hero null)")" "hero photo required"
+check "Lot 3 v4: ... rolled back entirely: slug still NULL, draft, no snapshot" "NULL|draft|true|0" "$(l4_slug "$L4_R")|$(l3_state "$L4_R")"
+m1a_age "$L4_R_OWNER" '240 hours 1 minute'
+L4_R_HERO=$(l2_media "$L4_R" "$L4_R_OWNER" hero ready)
+l3_set_draft "$L4_R" "$(l3_hero "$L4_R_HERO")"
+svc_expect_error "Lot 3 v4: free window closed -> HD410, refused" "$(l4_sql "$L4_R" "$L4_R_OWNER" null "$(l3_hero "$L4_R_HERO")")" "free publication window closed"
+check "Lot 3 v4: ... rolled back entirely again: slug still NULL, draft, no snapshot" "NULL|draft|true|0" "$(l4_slug "$L4_R")|$(l3_state "$L4_R")"
+svc_expect_error "Lot 3 v4: another owner -> 42501 before any slug is written" "$(l4_sql "$L4_R" "$L4_OK_OWNER" null "$(l3_hero "$L4_R_HERO")")" "memorial publication refused"
+svc_expect_error "Lot 3 v4: a stale revision -> refused (v2 compare-and-set)" \
+  "select 1 from commit_memorial_publication_v4('$L4_R','$L4_R_OWNER',999,'fr','intemporel','light',null,'avis','$(l3_hero "$L4_R_HERO")','$(l3_hero "$L4_R_HERO")');" "memorial draft changed"
+svc_expect_error "Lot 3 v4: expecting a slug that does not exist yet -> conflict" "$(l4_sql "$L4_R" "$L4_R_OWNER" "'$L4_R_SLUG'" "$(l3_hero "$L4_R_HERO")")" "memorial lifecycle changed"
+svc_expect_error "Lot 3 v4: a blank expected slug -> 22023" "$(l4_sql "$L4_R" "$L4_R_OWNER" "'  '" "$(l3_hero "$L4_R_HERO")")" "invalid memorial publication request"
+check "Lot 3 v4: ... after every refusal: slug NULL, draft, no snapshot, no free publication" "NULL|draft|true|0|0" "$(l4_slug "$L4_R")|$(l3_state "$L4_R")|$(q8_published_count "$L4_R_OWNER")"
+m1a_age "$L4_R_OWNER" '-241 hours'   # the free window is open again (history moved back to now)
+check "Lot 3 v4: once allowed, the publication succeeds with EXACTLY the slug computed before the refusals" "published|$L4_R_SLUG" \
+  "$(svc "$(l4_sql "$L4_R" "$L4_R_OWNER" null "$(l3_hero "$L4_R_HERO")")")"
+
+# --- L4-4. Collision: the 12-char candidate already taken by ANOTHER memorial -> the 16-char one ---
+IFS='|' read -r L4_C_OWNER L4_C <<<"$(l4_draft l4-collision)"
+L4_C_HERO=$(l2_media "$L4_C" "$L4_C_OWNER" hero ready)
+l3_set_draft "$L4_C" "$(l3_hero "$L4_C_HERO")"
+IFS='|' read -r L4_X_OWNER L4_X <<<"$(l4_draft l4-occupant)"
+$DB -c "update memorials set slug = public.memorial_public_slug_v1('$L4_C', 12) where id='$L4_X';" >/dev/null
+L4_C_16=$(l4_expected "$L4_C" 16)
+check "Lot 3 v4: collision on the 12-char candidate -> the 16-char candidate, published" "published|$L4_C_16" \
+  "$(svc "$(l4_sql "$L4_C" "$L4_C_OWNER" null "$(l3_hero "$L4_C_HERO")")")"
+check "Lot 3 v4: ... the occupant keeps its slug, both unique" "$(l4_expected "$L4_C" 12)|$L4_C_16|0" \
+  "$(l4_slug "$L4_X")|$(l4_slug "$L4_C")|$($DB -t -A -c "select count(*) from (select slug from memorials where slug is not null group by slug having count(*) > 1) d;")"
+
+# --- L4-5. Lifecycle: a memorial already past draft without slug is never given one by v4 ---
+IFS='|' read -r L4_L_OWNER L4_L <<<"$(l4_draft l4-lifecycle)"
+L4_L_HERO=$(l2_media "$L4_L" "$L4_L_OWNER" hero ready)
+l3_set_draft "$L4_L" "$(l3_hero "$L4_L_HERO")"
+$DB -c "update memorials set status='ready' where id='$L4_L';" >/dev/null
+svc_expect_error "Lot 3 v4: a ready memorial without slug -> conflict, no slug generated" "$(l4_sql "$L4_L" "$L4_L_OWNER" null "$(l3_hero "$L4_L_HERO")")" "memorial lifecycle changed"
+check "Lot 3 v4: ... slug still NULL" "NULL" "$(l4_slug "$L4_L")"
+$DB -c "update memorials set status='draft' where id='$L4_L';" >/dev/null
+
+# --- L4-6. Concurrency: two simultaneous first publications, one published, the other already_published, ONE slug ---
+IFS='|' read -r L4_RACE_OWNER L4_RACE <<<"$(l4_draft l4-race)"
+L4_RACE_HERO=$(l2_media "$L4_RACE" "$L4_RACE_OWNER" hero ready)
+l3_set_draft "$L4_RACE" "$(l3_hero "$L4_RACE_HERO")"
+L4_RACE_SQL="$(l4_sql "$L4_RACE" "$L4_RACE_OWNER" null "$(l3_hero "$L4_RACE_HERO")")"
+L4_RACE_SLUG=$(l4_expected "$L4_RACE")
+L4_CONC="$PGDATA_DIR/concurrency-l4-publish"; mkdir -p "$L4_CONC"
+for i in 1 2; do
+  (
+    rc=0
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); $L4_RACE_SQL" >"$L4_CONC/$i.out" 2>"$L4_CONC/$i.err" || rc=$?
+    echo "$rc" >"$L4_CONC/$i.rc"
+  ) &
+done
+wait
+check "Lot 3 v4: two simultaneous first publications: published + already_published, same slug, no error" "already_published|$L4_RACE_SLUG published|$L4_RACE_SLUG|0 0" \
+  "$(cat "$L4_CONC"/1.out "$L4_CONC"/2.out | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')|$(cat "$L4_CONC"/1.rc "$L4_CONC"/2.rc | tr '\n' ' ' | sed 's/ $//')"
+check "Lot 3 v4: ... one snapshot, one free publication, the slug stored once" "published|false|1|1|$L4_RACE_SLUG" "$(l3_state "$L4_RACE")|$(q8_published_count "$L4_RACE_OWNER")|$(l4_slug "$L4_RACE")"
+
+# --- L4-7. v3 and v2 untouched by v4 ---
+L3_V3_MD5_BEFORE_V4=$($DB -t -A -c "begin;" -f "$MIGRATIONS_DIR/20261102100000_qg008_lot3_v3_publication_identity.sql" -c "select md5(prosrc) from pg_proc where oid = to_regprocedure('public.$L3_V3');" -c "rollback;" 2>/dev/null | tail -1)
+check "Lot 3 v4: v3 body unchanged by v4 (same md5 as after 20261102100000)" "$L3_V3_MD5_BEFORE_V4" \
+  "$($DB -t -A -c "select md5(prosrc) from pg_proc where oid=to_regprocedure('public.$L3_V3');")"
+
+# --- L4-8. Pre/postflight and rollback (never applied automatically) ---
+L4_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" 2>&1)
+check "Lot 3 v4 postflight: zero ECHEC, every control OK (6)" "0|6" "$(echo "$L4_POST" | grep -c 'ECHEC' || true)|$(echo "$L4_POST" | grep -c '|OK$' || true)"
+check "Lot 3 v4 postflight turns red on a client grant of v4" "1" \
+  "$($DB -t -A -c "begin;" -c "grant execute on function public.$L4_V4 to authenticated;" -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+check "Lot 3 v4 postflight turns red on a published memorial without slug" "1" \
+  "$($DB -t -A -c "begin;" -c "update memorials set slug = null where id='$L4_OK';" -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+L4_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_preflight.sql" 2>&1)
+check "Lot 3 v4 preflight after application: refuses (already applied), the other controls OK" "1|7" \
+  "$(echo "$L4_PRE" | grep -c 'ECHEC' || true)|$(echo "$L4_PRE" | grep -c '|OK$' || true)"
+L4_DOWN="$REPO_ROOT/supabase/rollbacks/20261103090000_qg008_lot3_v4_publication_slug.down.sql"
+$PSQL -d postgres -c "create database l4_down template $DB_NAME;" >/dev/null
+L4_SLUGS_BEFORE=$($PSQL -d l4_down -t -A -c "select count(*) || '/' || (select count(*) from memorials where status='published') from memorials where slug is not null;")
+check "Lot 3 v4 rollback applies, keeps every slug and publication, v3 still there, the preflight is green again (8 OK)" "0|$L4_SLUGS_BEFORE|present|8" \
+  "$($PSQL -d l4_down -f "$L4_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l4_down -t -A -c "select count(*) || '/' || (select count(*) from memorials where status='published') from memorials where slug is not null;")|$($PSQL -d l4_down -t -A -c "select case when to_regprocedure('public.$L3_V3') is null then 'absent' else 'present' end;")|$($PSQL -d l4_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
+check "Lot 3 v4: ... then the migration re-applies and the postflight is green again (6 OK)" "0|0|6" \
+  "$($PSQL -d l4_down -f "$MIGRATIONS_DIR/20261103090000_qg008_lot3_v4_publication_slug.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l4_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d l4_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
+$PSQL -d postgres -c "drop database l4_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
