@@ -1,0 +1,11 @@
+/*
+ * QG 016 / M2 — the public page adds no visual of its own: every section
+ * brings its own background, typography and Light/Dark scope. This only
+ * gives the renderers the full-viewport-width mount they assume (same
+ * minimal frame as /admin/atelier/preview).
+ */
+.page {
+  min-width: 20rem;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
