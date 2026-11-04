@@ -1091,6 +1091,34 @@ SHA-256 vector and « no published memorial without slug »). Rollback (never
 automatic): `rollbacks/20261103090000_qg008_lot3_v4_publication_slug.down.sql`
 (drops the two functions; every slug and publication is kept).
 
+### QG 016 / M1 — secure public read of a published memorial
+
+`migrations/20261104090000_qg016_m1_read_public_memorial.sql`, additive (no
+table, policy, table privilege or existing function touched). Since
+20260901190000 (Mission 013C) `memorial_published_snapshots` is readable by
+NO role, and `memorials` only by its owner or `service_role`: nothing could
+show a published memorial from its slug. QG decision: keep the table
+privileges closed and add one read function.
+
+- **`read_public_memorial_v1(p_slug)`** — `service_role` only, `SECURITY
+  DEFINER`, `STABLE`, empty `search_path`. Zero or one row: an EXACT slug
+  match, `status = 'published'` and `memorial_publicly_visible_v1(id, now())`
+  (complet; or avis before `free_public_until`). Returns the identity
+  columns (id, slug, skin, variant, language, access level, first published
+  at), the PUBLISHED SNAPSHOT (`published_at`, `content`) — never the draft,
+  which it does not read — and `media`: only the `ready` media of this
+  memorial that the snapshot references (`hero.photo.mediaId` as `hero`,
+  `gallery.items[].mediaId` as `gallery`), with `storage_path` and
+  dimensions FOR THE SERVER to sign a short read URL; `storage_path` never
+  reaches a browser. NULL, empty, unknown, draft, ready, editing, archived,
+  expired avis, missing snapshot: zero rows, no error.
+
+Checks: `verifications/qg016_m1_preflight.sql` (6 controls, including « the
+snapshot table is still closed (013C) »), `verifications/qg016_m1_postflight.sql`
+(8 controls: privileges, body, behaviour on every slug, returned media).
+Rollback (never automatic): `rollbacks/20261104090000_qg016_m1_read_public_memorial.down.sql`
+(drops the function; no data touched).
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in

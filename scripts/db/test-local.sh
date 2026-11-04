@@ -4089,6 +4089,150 @@ check "Lot 3 v4: ... then the migration re-applies and the postflight is green a
   "$($PSQL -d l4_down -f "$MIGRATIONS_DIR/20261103090000_qg008_lot3_v4_publication_slug.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l4_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d l4_down -t -A -f "$REPO_ROOT/supabase/verifications/qg008_lot3_v4_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
 $PSQL -d postgres -c "drop database l4_down;" >/dev/null
 
+
+# =====================================================================
+# QG 016 / M1 — lecture publique sécurisée : read_public_memorial_v1(p_slug)
+# =====================================================================
+echo ""
+echo "== QG 016 M1: secure public read of a published memorial =="
+
+M1_FN="read_public_memorial_v1(text)"
+# The harness itself grants anon SELECT on memorial_published_snapshots, memorials and memorial_drafts
+# (test-only, for the RLS assertions above). M1_REAL removes exactly those test-only grants inside a
+# rolled-back transaction, reproducing the privilege state the MIGRATIONS alone produce (013C).
+M1_REAL="revoke select on table public.memorial_published_snapshots, public.memorials, public.memorial_drafts from anon;"
+m1_count() { svc "select count(*) from public.read_public_memorial_v1($1);"; }
+m1_in_tx() {
+  # $1 SQL run as superuser under replica role inside a transaction, $2 SQL literal slug -> row count as service_role; always rolled back
+  $DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "$1" -c "set session_replication_role = origin;" \
+    -c "set role service_role; select count(*) from public.read_public_memorial_v1($2);" -c "rollback;" 2>&1 | tail -1
+}
+
+# --- M1-1. Privileges and function properties ---
+check "M1: read_public_memorial_v1 executable by service_role only" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.$M1_FN','EXECUTE') || '|' || has_function_privilege('authenticated','public.$M1_FN','EXECUTE') || '|' || has_function_privilege('service_role','public.$M1_FN','EXECUTE');")"
+check "M1: SECURITY DEFINER, STABLE, empty search_path" "true|s|true" \
+  "$($DB -t -A -c "select prosecdef || '|' || provolatile::text || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid=to_regprocedure('public.$M1_FN');")"
+check "M1: anon cannot call it" "1" \
+  "$($DB -c "set role anon; select * from public.read_public_memorial_v1('x');" 2>&1 | grep -c 'permission denied' || true)"
+check "M1: authenticated cannot call it" "1" \
+  "$($DB -c "set role authenticated; select * from public.read_public_memorial_v1('x');" 2>&1 | grep -c 'permission denied' || true)"
+check "M1: 013C kept — published snapshots unreadable by anon, authenticated and service_role (migrations-only privileges)" "false|false|false" \
+  "$($DB -t -A -c "begin;" -c "$M1_REAL" -c "select has_table_privilege('anon','public.memorial_published_snapshots','SELECT') || '|' || has_table_privilege('authenticated','public.memorial_published_snapshots','SELECT') || '|' || has_table_privilege('service_role','public.memorial_published_snapshots','SELECT');" -c "rollback;" | tail -1)"
+check "M1: 013C kept — service_role still cannot read the snapshot table directly" "1" \
+  "$($DB -c "set role service_role; select count(*) from public.memorial_published_snapshots;" 2>&1 | grep -c 'permission denied' || true)"
+check "M1: the function body never reads the draft table" "f" \
+  "$($DB -t -A -c "select prosrc like '%memorial_drafts%' from pg_proc where oid=to_regprocedure('public.$M1_FN');")"
+
+# --- M1-2. A published avis with Hero + 2 gallery photos, and media that must NOT be returned ---
+IFS='|' read -r M1_OWNER M1_MEM <<<"$(l4_draft m1-pub)"
+M1_HERO=$(l2_media "$M1_MEM" "$M1_OWNER" hero ready)
+M1_G1=$(l2_media "$M1_MEM" "$M1_OWNER" gallery ready)
+M1_G2=$(l2_media "$M1_MEM" "$M1_OWNER" gallery ready)
+M1_G_UNREF=$(l2_media "$M1_MEM" "$M1_OWNER" gallery ready)
+M1_G_PENDING=$($DB -t -A -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$M1_MEM','$M1_OWNER','$M1_MEM/' || gen_random_uuid() || '/original.jpg','photo','image/jpeg','gallery','pending',100) returning id;")
+M1_CONTENT="{\"hero\":{\"displayName\":\"M1\",\"photo\":{\"mediaId\":\"$M1_HERO\",\"crop\":{\"zoom\":1,\"focalX\":0.5,\"focalY\":0.5}}},\"gallery\":{\"items\":[{\"mediaId\":\"$M1_G1\"},{\"mediaId\":\"$M1_G2\"}]}}"
+l3_set_draft "$M1_MEM" "$M1_CONTENT"
+M1_SLUG=$(l4_expected "$M1_MEM")
+check "M1 setup: the avis is published by the real v4 with its opaque slug" "published|$M1_SLUG" \
+  "$(svc "$(l4_sql "$M1_MEM" "$M1_OWNER" null "$M1_CONTENT")")"
+
+check "M1: published and visible -> exactly one row" "1" "$(m1_count "'$M1_SLUG'")"
+check "M1: identity columns (id, slug, skin, variant, language, level)" "$M1_MEM|$M1_SLUG|intemporel|light|fr|avis" \
+  "$(svc "select memorial_id || '|' || slug || '|' || skin || '|' || coalesce(skin_variant,'NULL') || '|' || language || '|' || access_level from public.read_public_memorial_v1('$M1_SLUG');")"
+check "M1: content = the published snapshot, published_at and first_published_at = the stored ones" "true|true|true" \
+  "$($DB -t -A -c "select (r.content = s.content) || '|' || (r.published_at = s.published_at) || '|' || (r.first_published_at = m.first_published_at) from public.read_public_memorial_v1('$M1_SLUG') r join memorial_published_snapshots s on s.memorial_id = r.memorial_id join memorials m on m.id = r.memorial_id;")"
+check "M1: media = exactly the Hero + the 2 referenced gallery photos (unreferenced and pending excluded)" "$(printf '%s\n' "$M1_HERO" "$M1_G1" "$M1_G2" | sort | tr '\n' ',')" \
+  "$(svc "select string_agg(e->>'media_id', ',' order by e->>'media_id') || ',' from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e;")"
+check "M1: each media carries purpose, storage path and dimensions keys (server-side only)" "3|3|3" \
+  "$(svc "select count(*) filter (where e ? 'purpose') || '|' || count(*) filter (where e ? 'storage_path') || '|' || count(*) filter (where e ? 'width' and e ? 'height') from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e;")"
+check "M1: purposes as referenced (1 hero, 2 gallery)" "1|2" \
+  "$(svc "select count(*) filter (where e->>'purpose' = 'hero') || '|' || count(*) filter (where e->>'purpose' = 'gallery') from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e;")"
+check "M1: the unreferenced and pending photos never appear" "0" \
+  "$(svc "select count(*) from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e where e->>'media_id' in ('$M1_G_UNREF','$M1_G_PENDING');")"
+
+# --- M1-3. The draft is never the source ---
+$DB -c "update memorial_drafts set content = jsonb_set(content, '{hero,displayName}', '\"BROUILLON-MODIFIE\"') where memorial_id = '$M1_MEM';" >/dev/null
+check "M1: after a post-publication draft edit, the public read still returns the published snapshot" "M1|true" \
+  "$($DB -t -A -c "select (r.content #>> '{hero,displayName}') || '|' || (r.content = s.content) from public.read_public_memorial_v1('$M1_SLUG') r join memorial_published_snapshots s on s.memorial_id = r.memorial_id;")"
+check "M1: ... and the draft really differs (sanity)" "BROUILLON-MODIFIE" \
+  "$($DB -t -A -c "select content #>> '{hero,displayName}' from memorial_drafts where memorial_id = '$M1_MEM';")"
+
+# --- M1-4. Zero rows: bad slugs ---
+check "M1: NULL slug -> 0 rows, no error" "0" "$(m1_count "null")"
+check "M1: empty slug -> 0 rows" "0" "$(m1_count "''")"
+check "M1: unknown slug -> 0 rows" "0" "$(m1_count "'ffffffffffff'")"
+check "M1: exact match only — upper case -> 0 rows" "0" "$(m1_count "upper('$M1_SLUG')")"
+check "M1: exact match only — surrounding spaces -> 0 rows" "0" "$(m1_count "' $M1_SLUG '")"
+check "M1: exact match only — prefix of the slug -> 0 rows" "0" "$(m1_count "left('$M1_SLUG', 8)")"
+check "M1: exact match only — LIKE wildcard is not a pattern -> 0 rows" "0" "$(m1_count "'%'")"
+
+# --- M1-5. Zero rows: lifecycle and visibility (each in a rolled-back transaction) ---
+check "M1: status editing -> 0 rows (masked, as the existing public policy; PO D3 pending)" "0" \
+  "$(m1_in_tx "update memorials set status = 'editing' where id = '$M1_MEM';" "'$M1_SLUG'")"
+check "M1: status archived (withdrawn) -> 0 rows" "0" \
+  "$(m1_in_tx "update memorials set status = 'archived' where id = '$M1_MEM';" "'$M1_SLUG'")"
+check "M1: avis past free_public_until (expired) -> 0 rows" "0" \
+  "$(m1_in_tx "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id = '$M1_MEM';" "'$M1_SLUG'")"
+check "M1: avis one minute before free_public_until -> still 1 row" "1" \
+  "$(m1_in_tx "update memorials set first_published_at = now() - interval '44 days', free_public_until = now() + interval '1 minute', free_private_until = now() + interval '30 days' where id = '$M1_MEM';" "'$M1_SLUG'")"
+check "M1: complet, published -> 1 row (no public time limit here)" "1" \
+  "$(m1_in_tx "update memorials set access_level = 'complet', free_public_until = null, free_private_until = null, free_corrections_until = null where id = '$M1_MEM';" "'$M1_SLUG'")"
+check "M1: published but snapshot missing -> 0 rows" "0" \
+  "$(m1_in_tx "delete from memorial_published_snapshots where memorial_id = '$M1_MEM';" "'$M1_SLUG'")"
+
+# A draft / ready memorial carrying a slug (forced) is never public
+IFS='|' read -r M1_D_OWNER M1_D <<<"$(l4_draft m1-draft)"
+check "M1: draft with a (forced) slug -> 0 rows" "0" \
+  "$(m1_in_tx "update memorials set slug = 'aaaaaaaaaaa1' where id = '$M1_D';" "'aaaaaaaaaaa1'")"
+check "M1: ready with a (forced) slug -> 0 rows" "0" \
+  "$(m1_in_tx "update memorials set slug = 'aaaaaaaaaaa2', status = 'ready' where id = '$M1_D';" "'aaaaaaaaaaa2'")"
+check "M1: draft with a forced slug AND a stray snapshot row -> 0 rows (status rules)" "0" \
+  "$(m1_in_tx "update memorials set slug = 'aaaaaaaaaaa3' where id = '$M1_D'; insert into memorial_published_snapshots (memorial_id, content) values ('$M1_D', '{}');" "'aaaaaaaaaaa3'")"
+
+# --- M1-6. Media limited to what the snapshot references, of the right purpose, ready, of this memorial ---
+IFS='|' read -r M1_O_OWNER M1_O <<<"$(l4_draft m1-other)"
+M1_FOREIGN=$(l2_media "$M1_O" "$M1_O_OWNER" gallery ready)
+m1_media_in_tx() {
+  $DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "$1" -c "set session_replication_role = origin;" \
+    -c "set role service_role; select coalesce(string_agg(e->>'media_id', ',' order by e->>'media_id'), '') from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e where e->>'media_id' = '$2';" -c "rollback;" 2>&1 | tail -1
+}
+check "M1: a snapshot citing ANOTHER memorial's photo never returns it" "" \
+  "$(m1_media_in_tx "update memorial_published_snapshots set content = jsonb_set(content, '{gallery,items}', content #> '{gallery,items}' || '[{\"mediaId\":\"$M1_FOREIGN\"}]') where memorial_id = '$M1_MEM';" "$M1_FOREIGN")"
+check "M1: a hero-purpose photo cited in the gallery is not returned as gallery (purpose must match)" "1" \
+  "$($DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "update memorial_published_snapshots set content = jsonb_set(content, '{gallery,items}', '[{\"mediaId\":\"$M1_HERO\"}]') where memorial_id = '$M1_MEM';" -c "set session_replication_role = origin;" -c "set role service_role; select count(*) from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e;" -c "rollback;" 2>&1 | tail -1)"
+check "M1: a referenced photo that is pending is not returned" "" \
+  "$(m1_media_in_tx "update media set status = 'pending' where id = '$M1_G1';" "$M1_G1")"
+check "M1: malformed gallery (not an array) -> only the Hero is returned, no error" "1" \
+  "$($DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "update memorial_published_snapshots set content = jsonb_set(content, '{gallery,items}', '\"x\"') where memorial_id = '$M1_MEM';" -c "set session_replication_role = origin;" -c "set role service_role; select count(*) from public.read_public_memorial_v1('$M1_SLUG') r, jsonb_array_elements(r.media) e;" -c "rollback;" 2>&1 | tail -1)"
+check "M1: a published memorial without media reference -> empty media array, not NULL" "[]" \
+  "$($DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "update memorial_published_snapshots set content = '{\"hero\":{\"displayName\":\"M1\",\"photo\":null}}' where memorial_id = '$M1_MEM';" -c "set session_replication_role = origin;" -c "set role service_role; select media::text from public.read_public_memorial_v1('$M1_SLUG');" -c "rollback;" 2>&1 | tail -1)"
+
+# --- M1-7. Read-only: calling the function writes nothing ---
+M1_BEFORE=$($DB -t -A -c "select (select count(*) from memorials) || '|' || (select count(*) from memorial_published_snapshots) || '|' || (select count(*) from media) || '|' || (select count(*) from memorial_access_events) || '|' || (select coalesce(sum(revision),0) from memorial_drafts);")
+svc "select count(*) from public.read_public_memorial_v1('$M1_SLUG');" >/dev/null
+check "M1: the read writes nothing (same counts, same revisions)" "$M1_BEFORE" \
+  "$($DB -t -A -c "select (select count(*) from memorials) || '|' || (select count(*) from memorial_published_snapshots) || '|' || (select count(*) from media) || '|' || (select count(*) from memorial_access_events) || '|' || (select coalesce(sum(revision),0) from memorial_drafts);")"
+
+# --- M1-8. Pre/postflight and rollback (never applied automatically) ---
+M1_POST=$($DB -t -A -c "begin;" -c "$M1_REAL" -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" -c "rollback;" 2>&1)
+check "M1 postflight: zero ECHEC, every control OK (8)" "0|8" "$(echo "$M1_POST" | grep -c 'ECHEC' || true)|$(echo "$M1_POST" | grep -c '|OK$' || true)"
+check "M1 postflight turns red on a client grant of the function" "1" \
+  "$($DB -t -A -c "begin;" -c "$M1_REAL" -c "grant execute on function public.$M1_FN to anon;" -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+check "M1 postflight turns red if the snapshot table is opened to anon" "1" \
+  "$($DB -t -A -c "begin;" -c "$M1_REAL" -c "grant select on public.memorial_published_snapshots to anon;" -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" -c "rollback;" 2>/dev/null | grep -c "ECHEC" || true)"
+M1_PRE=$($DB -t -A -c "begin;" -c "$M1_REAL" -f "$REPO_ROOT/supabase/verifications/qg016_m1_preflight.sql" -c "rollback;" 2>&1)
+check "M1 preflight after application: refuses (already applied), the other controls OK" "1|5" \
+  "$(echo "$M1_PRE" | grep -c 'ECHEC' || true)|$(echo "$M1_PRE" | grep -c '|OK$' || true)"
+M1_DOWN="$REPO_ROOT/supabase/rollbacks/20261104090000_qg016_m1_read_public_memorial.down.sql"
+$PSQL -d postgres -c "create database m1_down template $DB_NAME;" >/dev/null
+$PSQL -d m1_down -c "$M1_REAL" >/dev/null  # throwaway copy: migrations-only privileges
+check "M1 rollback applies, function gone, data untouched, the preflight is green again (6 OK)" "0|absent|$($DB -t -A -c "select (select count(*) from memorials where status='published') || '/' || (select count(*) from media);")|6" \
+  "$($PSQL -d m1_down -f "$M1_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m1_down -t -A -c "select case when to_regprocedure('public.$M1_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m1_down -t -A -c "select (select count(*) from memorials where status='published') || '/' || (select count(*) from media);")|$($PSQL -d m1_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_m1_preflight.sql" 2>&1 | grep -c '|OK$' || true)"
+check "M1: ... then the migration re-applies and the postflight is green again (8 OK)" "0|0|8" \
+  "$($PSQL -d m1_down -f "$MIGRATIONS_DIR/20261104090000_qg016_m1_read_public_memorial.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d m1_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d m1_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
+$PSQL -d postgres -c "drop database m1_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
