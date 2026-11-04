@@ -3,6 +3,7 @@ import type { SectionId } from "@/config/sections";
 import type { Skin, SkinVariant } from "@/config/skins";
 import type { RendererKey } from "@/config/memorial-section-renderers";
 import type { MemorialContent } from "@/types/memorial";
+import { EMPTY_HERO_CONTENT } from "@/types/hero";
 import type { HeroIntemporelProps } from "@/components/memorial/hero/HeroIntemporel";
 import type { DeathNoticeIntemporelProps } from "@/components/memorial/death-notice/DeathNoticeIntemporel";
 import type { DeathNoticeV2Props } from "@/components/memorial/death-notice/v2/DeathNoticeV2";
@@ -195,6 +196,37 @@ export const adaptCeremonyV2: RendererAdapter<"CeremonyV2"> = async (context) =>
   };
 };
 
+/** The three Récit matters, the only content keys either Récit renderer reads. */
+const LIFE_STORY_CONTENT_KEYS = ["personWords", "lovedThings", "legacy"] as const;
+
+/**
+ * QG 016 / M2 — correction L1. The Récit renderers (V1 and V2) are client
+ * components: whatever `content` they receive is serialized to the
+ * browser — on the public page, to every visitor. They only ever read the
+ * three matters (`resolveLifeStoryContent`) and, for V2's introduction,
+ * the Hero's name (`readHero(content).displayName`). So they receive
+ * exactly that, and nothing else: no `guidedFlow`, no gallery (hence no
+ * media id), no Hero photo, dates or phrase, no other section.
+ *
+ * Display-equivalent by construction: each matter is passed as stored
+ * (same reader, same fallbacks), and the name as `readHero` reads it —
+ * a valid Hero keeps its name inside an otherwise empty, valid Hero; an
+ * absent, nameless or corrupted Hero is omitted, which `readHero` reads
+ * the same way (empty name). The memorial's content is never mutated.
+ */
+export function lifeStoryRendererContent(content: MemorialContent): MemorialContent {
+  const source = content as Record<string, unknown>;
+  const projected: Record<string, unknown> = {};
+  for (const key of LIFE_STORY_CONTENT_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) projected[key] = source[key];
+  }
+  const hero = inspectHero(content);
+  if (hero.status === "valid" && hero.hero.displayName !== null) {
+    projected.hero = { ...EMPTY_HERO_CONTENT, displayName: hero.hero.displayName };
+  }
+  return projected as MemorialContent;
+}
+
 /** QG decision: a resolved sheet with all three matters empty stays
  * renderable (the renderer's HERITAGE fallbacks). Only a CORRUPTED
  * matter is refused — its fallback would stand in for the family's own
@@ -211,7 +243,7 @@ function adaptLifeStory(context: AdapterContext): AdapterResult<"RecitDeVieIntem
 
   return {
     ok: true,
-    props: { content: context.content, language: context.language, skinVariant: context.skinVariant },
+    props: { content: lifeStoryRendererContent(context.content), language: context.language, skinVariant: context.skinVariant },
   };
 }
 

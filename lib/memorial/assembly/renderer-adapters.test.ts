@@ -13,9 +13,12 @@ import {
   adaptRecitDeVieV2,
   adaptTraditionsV2,
   adaptSymbolicOfferingsV1Section,
+  lifeStoryRendererContent,
   type AdapterContext,
 } from "./renderer-adapters";
 import type { ResolvedMedia } from "./media-resolver";
+import { readHero } from "@/lib/memorial/hero";
+import { resolveLifeStoryContent } from "@/lib/memorial/life-story-content";
 import {
   FIXTURE_HERO_MEDIA_ID,
   FIXTURE_READ_URL,
@@ -195,7 +198,7 @@ describe("adaptRecitDeVieIntemporel", () => {
   it("QG decision: three empty matters are accepted (HERITAGE fallbacks)", async () => {
     const content = fullAnnouncementEmptyRecit();
     const result = await adaptRecitDeVieIntemporel(context(content));
-    expect(result.ok && result.props.content).toBe(content);
+    expect(result.ok && result.props.content).toEqual(lifeStoryRendererContent(content));
   });
 
   it.each(["personWords", "lovedThings", "legacy"])(
@@ -208,12 +211,13 @@ describe("adaptRecitDeVieIntemporel", () => {
 });
 
 describe("adaptRecitDeVieV2", () => {
-  it("passes exactly the V1 props: content, language, variant", async () => {
+  it("passes exactly the V1 props: content (reduced to what the Récit reads), language, variant", async () => {
     const content = fullAnnouncement();
     expect(await adaptRecitDeVieV2(context(content))).toEqual({
       ok: true,
-      props: { content, language: context(content).language, skinVariant: context(content).skinVariant },
+      props: { content: lifeStoryRendererContent(content), language: context(content).language, skinVariant: context(content).skinVariant },
     });
+    expect(await adaptRecitDeVieV2(context(content))).toEqual(await adaptRecitDeVieIntemporel(context(content)));
   });
 
   it("refuses any other skin", async () => {
@@ -223,7 +227,7 @@ describe("adaptRecitDeVieV2", () => {
   it("QG decision: three empty matters are accepted (HERITAGE fallbacks)", async () => {
     const content = fullAnnouncementEmptyRecit();
     const result = await adaptRecitDeVieV2(context(content));
-    expect(result.ok && result.props.content).toBe(content);
+    expect(result.ok && result.props.content).toEqual(lifeStoryRendererContent(content));
   });
 
   it.each(["personWords", "lovedThings", "legacy"])(
@@ -233,6 +237,62 @@ describe("adaptRecitDeVieV2", () => {
       expect(await adaptRecitDeVieV2(context(content))).toEqual({ ok: false, reason: "contentUnreadable" });
     },
   );
+});
+
+describe("QG 016 / M2 L1 — lifeStoryRendererContent: the Récit receives only what it reads", () => {
+  const GALLERY_ID = "b09b82fc-2b94-400f-b8ba-252682e048b2";
+  function published(): MemorialContent {
+    return {
+      ...fullAnnouncementWithTraditions(),
+      lovedThings: { text: "Le jardin." },
+      legacy: { text: "La patience." },
+      gallery: { items: [{ mediaId: GALLERY_ID, caption: null }] },
+    } as unknown as MemorialContent;
+  }
+
+  it("keeps only the three matters and the Hero's name — no guidedFlow, gallery, photo, dates, other section", () => {
+    const content = published();
+    const reduced = lifeStoryRendererContent(content) as Record<string, unknown>;
+    expect(Object.keys(reduced).sort()).toEqual(["hero", "legacy", "lovedThings", "personWords"]);
+    expect(reduced.hero).toEqual({ displayName: readHero(content).displayName, birth: null, death: null, shortPhrase: null, photo: null });
+    const serialized = JSON.stringify(reduced);
+    for (const absent of ["guidedFlow", "gallery", "ceremony", "traditions", "deathNotice", GALLERY_ID, FIXTURE_HERO_MEDIA_ID]) {
+      expect(serialized).not.toContain(absent);
+    }
+  });
+
+  it.each<[string, () => MemorialContent]>([
+    ["a full announcement", () => published()],
+    ["three empty matters (fallbacks)", fullAnnouncementEmptyRecit],
+    ["a Hero without name", () => ({ ...fullAnnouncement(), hero: { ...readHero(fullAnnouncement()), displayName: null } }) as MemorialContent],
+    ["a corrupted Hero", () => ({ ...fullAnnouncement(), hero: "garbage" }) as unknown as MemorialContent],
+    ["no Hero at all", () => ({ ...fullAnnouncement(), hero: undefined }) as MemorialContent],
+    ["one matter absent", () => { const c = { ...published() } as Record<string, unknown>; delete c.legacy; return c as MemorialContent; }],
+  ])("display-equivalent for %s: same three matters (FR, EN, ES) and the same name", (_label, build) => {
+    const content = build();
+    const reduced = lifeStoryRendererContent(content);
+    for (const language of ["fr", "en", "es"] as const) {
+      expect(resolveLifeStoryContent(reduced, language)).toEqual(resolveLifeStoryContent(content, language));
+    }
+    expect(readHero(reduced).displayName).toBe(readHero(content).displayName);
+  });
+
+  it("never mutates the memorial's content and returns a new object", () => {
+    const content = published();
+    const before = JSON.stringify(content);
+    const reduced = lifeStoryRendererContent(content);
+    expect(reduced).not.toBe(content);
+    expect(JSON.stringify(content)).toBe(before);
+  });
+
+  it("both Récit adapters hand the renderer the reduced content (Builder preview and public page alike)", async () => {
+    const content = published();
+    for (const adapt of [adaptRecitDeVieIntemporel, adaptRecitDeVieV2]) {
+      const result = await adapt(context(content));
+      expect(result.ok && result.props.content).toEqual(lifeStoryRendererContent(content));
+      expect(JSON.stringify(result)).not.toContain("guidedFlow");
+    }
+  });
 });
 
 describe("adaptTraditionsV2", () => {
