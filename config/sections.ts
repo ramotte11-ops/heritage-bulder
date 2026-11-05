@@ -82,7 +82,8 @@ export const EDITORIAL_CONTEXT_SECTIONS: Record<EditorialContext, SectionDefinit
 export const MEMORIAL_SECTIONS: readonly SectionDefinition[] = [
   ...EDITORIAL_CONTEXT_SECTIONS.announcement,
   /**
-   * M3 — Offrandes symboliques V1 (Preview du Builder seulement). Listée
+   * M3 — Offrandes symboliques V1 (Preview du Builder, simulée ; page
+   * publique depuis QG 016, offres gratuite et complète). Listée
    * ICI et pas dans `EDITORIAL_CONTEXT_SECTIONS` : ces listes-là
    * alimentent `memorials.enabled_sections` (shell Builder historique),
    * dont la contrainte CHECK ne connaît pas cet identifiant. Rien n'est

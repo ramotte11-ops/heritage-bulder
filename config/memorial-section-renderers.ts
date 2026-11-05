@@ -39,9 +39,10 @@ import type { Skin } from "./skins";
  *    the validated A13 Desktop runtime (Gallery, Viewer, Full Album).
  *  - `symbolicOfferings` → `SymbolicOfferingsV1Section` (M3): the twelve
  *    validated compositions and the M2 animations (`SymbolicOfferingsV1`),
- *    drawn as is from `components/memorial/symbolic-offerings/v1/`. BUILDER PREVIEW ONLY:
- *    the renderer draws nothing outside the Preview's offerings context
- *    (no visitor gesture is ever public before its persistence exists).
+ *    drawn as is from `components/memorial/symbolic-offerings/v1/`. It draws
+ *    only inside an offerings host: the Builder Preview (simulated, nothing
+ *    recorded) or, since QG 016, the public page `/hommage/[slug]` (real
+ *    deposits, free AND complete offers — V8 §6).
  *  - `testimonials`, `condolences`, `video`, `memoryMessage`: no renderer
  *    exists yet — deliberately absent.
  *

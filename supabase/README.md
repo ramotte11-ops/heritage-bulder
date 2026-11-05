@@ -989,7 +989,42 @@ applied after the three M1-A migrations.
   family-enabled section, and `complet` for testimonials and memory
   messages. The table stays closed to client roles (QG 013 / 014).
 - **Gestures.** Allowed for both levels (V8 §6); opening per memorial is
-  still `symbolic_offering_eligibility` (QG 012).
+  `symbolic_offering_eligibility`, opened automatically at the first
+  publication since QG 016 (see below).
+
+## QG 016 — Offrandes symboliques opened at the first publication
+
+`migrations/20261105090000_qg016_offerings_open_at_publication.sql`,
+additive (`record_symbolic_offering_v1` untouched). QG decision (option A):
+the Offrandes belong to the free AND the complete offer (V8 §6), active by
+default, disabled by the family's choice. The C1 lock had no opening path;
+the V8 doctrine prevails.
+
+- **Opening.** An `AFTER INSERT` trigger on `memorial_published_snapshots`
+  (`memorial_published_snapshots_open_offerings`) inserts the memorial's
+  eligibility row, open-ended, in the publication's own transaction. The
+  snapshot is written with `insert … on conflict do update`, so only the
+  FIRST publication fires it; a republication never does. `on conflict do
+  nothing`: an existing row — an administrative suspension (`closes_at`)
+  above all — is never modified, never reopened.
+- **Catch-up.** Memorials already published, Intemporel, holding a
+  snapshot and publicly visible when the migration runs are opened
+  (idempotent). An expired `avis` is not.
+- **Still checked at every deposit** (unchanged): published, Intemporel,
+  publicly visible (`memorial_publicly_visible_v1`: the 45 days of an
+  `avis`), not disabled in the PUBLISHED copy
+  (`presentation.hiddenSections`), an open eligibility, the per-memorial
+  ceilings, idempotency. Without an open row, refusal stays the default.
+- **Suspension.** A reviewed SQL update setting `closes_at` (QG mission);
+  no client role nor `service_role` can write the lock.
+- **Checks.** `verifications/qg016_offrandes_preflight.sql` (before: lock
+  empty, not applied, catch-up preview) and
+  `verifications/qg016_offrandes_postflight.sql` (after: trigger, function,
+  privileges, catch-up). Rollback:
+  `rollbacks/20261105090000_qg016_offerings_open_at_publication.down.sql`
+  (removes the trigger, its function and the open-ended openings; keeps
+  suspensions and every gesture received).
+- **Local proof.** `scripts/db/test-local.sh`, section « QG 016 Offrandes ».
 
 ## QG 008 Lot 2 — guest draft → durable draft
 

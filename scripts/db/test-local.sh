@@ -2626,7 +2626,8 @@ so_memorial() {
   echo "$mem"
 }
 so_open() {
-  $DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at) values ('$1', now() - interval '1 minute');" >/dev/null
+  # QG 016: a first published snapshot already opens the lock (trigger) — open or re-open it explicitly here.
+  $DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at) values ('$1', now() - interval '1 minute') on conflict (memorial_id) do update set opens_at = excluded.opens_at, closes_at = null;" >/dev/null
 }
 so_record() {
   # $1 slug, $2 kind, $3 idempotency key
@@ -2639,8 +2640,10 @@ SNAP='{"hero":{"displayName":"Jeanne"}}'
 
 SO_MEM=$(so_memorial offrandes-c1 published "$SNAP")
 
-# Closed by default.
-check "the eligibility lock starts empty" "0" "$($DB -t -A -c "select count(*) from symbolic_offering_eligibility;")"
+# QG 016: the first published snapshot opens the lock; WITHOUT an eligibility row, refusal stays the default.
+check "QG 016: the eligibility lock holds rows only for published snapshots" "0" "$($DB -t -A -c "select count(*) from symbolic_offering_eligibility e where not exists (select 1 from memorial_published_snapshots s where s.memorial_id = e.memorial_id);")"
+check "QG 016: the first published snapshot opened this memorial (open-ended)" "1|true" "$($DB -t -A -c "select count(*) || '|' || bool_and(closes_at is null) from symbolic_offering_eligibility where memorial_id='$SO_MEM';")"
+$DB -c "delete from symbolic_offering_eligibility where memorial_id='$SO_MEM';" >/dev/null
 check "a published memorial with no eligibility row refuses a gesture" "refused" "$(so_record offrandes-c1 bougie "$(svc "select gen_random_uuid();")")"
 check "the closed refusal stores no gesture" "0" "$(so_count "$SO_MEM")"
 check "the closed refusal never charges the memorial's counter" "0" "$($DB -t -A -c "select count(*) from symbolic_offering_rate_limits where memorial_id='$SO_MEM';")"
@@ -2698,7 +2701,7 @@ check "a memorial of another skin refuses (the rubrique exists for Intemporel on
 
 # Eligibility window.
 SO_FUTURE=$(so_memorial offrandes-c1-futur published "$SNAP")
-$DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at) values ('$SO_FUTURE', now() + interval '1 day');" >/dev/null
+$DB -c "update symbolic_offering_eligibility set opens_at = now() + interval '1 day', closes_at = null where memorial_id='$SO_FUTURE';" >/dev/null
 check "an eligibility that has not opened yet refuses" "refused" "$(so_record offrandes-c1-futur lys "$(svc "select gen_random_uuid();")")"
 expect_error "an eligibility closing before it opens is rejected" "update symbolic_offering_eligibility set closes_at = opens_at - interval '1 second' where memorial_id='$SO_FUTURE';"
 
@@ -3294,7 +3297,7 @@ Q8_PUB_OWNER=$(q8_owner q8-public)
 Q8_PUB=$(q8_draft "$Q8_PUB_OWNER"); q8_anchor "$Q8_PUB" "$Q8_PUB_OWNER" >/dev/null
 q8_ready "$Q8_PUB" q8-public "$Q8_HERO"
 svc "$(q8_v2_sql "$Q8_PUB" "$Q8_PUB_OWNER" q8-public avis "$Q8_HERO")" >/dev/null
-$DB -c "update memorials set enabled_sections = array['condolences','testimonials'] where id='$Q8_PUB'; insert into symbolic_offering_eligibility (memorial_id) values ('$Q8_PUB');" >/dev/null
+$DB -c "update memorials set enabled_sections = array['condolences','testimonials'] where id='$Q8_PUB'; insert into symbolic_offering_eligibility (memorial_id) values ('$Q8_PUB') on conflict (memorial_id) do nothing;" >/dev/null
 q8_anon_state() {
   $DB -t -A -c "set role anon; select count(*) || '|' || coalesce(max(status), '-') from public_memorial_publication_state('$1');"
 }
@@ -4232,6 +4235,142 @@ check "M1 rollback applies, function gone, data untouched, the preflight is gree
 check "M1: ... then the migration re-applies and the postflight is green again (8 OK)" "0|0|8" \
   "$($PSQL -d m1_down -f "$MIGRATIONS_DIR/20261104090000_qg016_m1_read_public_memorial.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d m1_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d m1_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_m1_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
 $PSQL -d postgres -c "drop database m1_down;" >/dev/null
+
+# =====================================================================
+# QG 016 — Offrandes symboliques : ouverture automatique à la publication
+# =====================================================================
+echo ""
+echo "== QG 016 Offrandes: eligibility opened at the first publication =="
+
+OF_FN="public.open_symbolic_offerings_on_publication_v1()"
+OF_TRG="memorial_published_snapshots_open_offerings"
+of_elig() { $DB -t -A -c "select coalesce((select 'open' || case when closes_at is null then '' else '|closes' end from symbolic_offering_eligibility where memorial_id='$1'),'none');"; }
+of_rec() { svc "select outcome from record_symbolic_offering_v1('$1','$2',gen_random_uuid());"; }
+of_cnt() { $DB -t -A -c "select count(*) from symbolic_offerings where memorial_id='$1';"; }
+of_upsert_snapshot() {
+  # The exact shape of commit_memorial_publication_v2's snapshot write (republication): insert ... on conflict do update.
+  $DB -c "insert into memorial_published_snapshots (memorial_id, content, published_at) values ('$1', '$2', now()) on conflict (memorial_id) do update set content = excluded.content, published_at = excluded.published_at;" >/dev/null
+}
+
+# --- O1. Trigger and function properties ---
+check "QG 016: AFTER INSERT FOR EACH ROW trigger on memorial_published_snapshots, enabled" "1" \
+  "$($DB -t -A -c "select count(*) from pg_trigger where tgname='$OF_TRG' and tgrelid='public.memorial_published_snapshots'::regclass and not tgisinternal and tgenabled='O' and (tgtype & 1)=1 and (tgtype & 4)=4 and (tgtype & 2)=0;")"
+check "QG 016: trigger function is SECURITY DEFINER with an empty search_path" "true|true" \
+  "$($DB -t -A -c "select prosecdef || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid=to_regprocedure('$OF_FN');")"
+check "QG 016: no client role (nor service_role) can execute the trigger function" "false|false|false" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$OF_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$OF_FN','EXECUTE') || '|' || has_function_privilege('service_role','$OF_FN','EXECUTE');")"
+check "QG 016: record_symbolic_offering_v1 is untouched (still service_role only)" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$SO_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$SO_FN','EXECUTE') || '|' || has_function_privilege('service_role','$SO_FN','EXECUTE');")"
+
+# --- O2. Free (avis) memorial: refused before publication, opened by the REAL v4 publication, three gestures ---
+IFS='|' read -r OF_OWNER OF_MEM <<<"$(l4_draft of-avis)"
+OF_HERO=$(l2_media "$OF_MEM" "$OF_OWNER" hero ready)
+OF_CONTENT=$(l3_hero "$OF_HERO")
+l3_set_draft "$OF_MEM" "$OF_CONTENT"
+OF_SLUG=$(l4_expected "$OF_MEM")
+check "QG 016 avis: a never-published draft has no eligibility" "none" "$(of_elig "$OF_MEM")"
+check "QG 016 avis: the real v4 publication succeeds" "published|$OF_SLUG" "$(svc "$(l4_sql "$OF_MEM" "$OF_OWNER" null "$OF_CONTENT")")"
+check "QG 016 avis: the publication opened the Offrandes (open-ended)" "open" "$(of_elig "$OF_MEM")"
+check "QG 016 avis: bougie recorded" "recorded" "$(of_rec "$OF_SLUG" bougie)"
+check "QG 016 avis: lys recorded" "recorded" "$(of_rec "$OF_SLUG" lys)"
+check "QG 016 avis: coeur recorded" "recorded" "$(of_rec "$OF_SLUG" coeur)"
+check "QG 016 avis: three gestures stored, counters 3|3 (ceilings untouched)" "3|3|3" \
+  "$($DB -t -A -c "select (select count(*) from symbolic_offerings where memorial_id='$OF_MEM') || '|' || hour_count || '|' || day_count from symbolic_offering_rate_limits where memorial_id='$OF_MEM';")"
+OF_KEY=$(svc "select gen_random_uuid();")
+check "QG 016 avis: a gesture with a new key is recorded" "recorded" "$(svc "select outcome from record_symbolic_offering_v1('$OF_SLUG','lys','$OF_KEY');")"
+check "QG 016 avis: the same key again is a duplicate, nothing stored twice" "duplicate|4" \
+  "$(svc "select outcome from record_symbolic_offering_v1('$OF_SLUG','lys','$OF_KEY');")|$(of_cnt "$OF_MEM")"
+
+# --- O3. Repeated publication: one row, opens_at unchanged ---
+OF_OPENS=$($DB -t -A -c "select opens_at from symbolic_offering_eligibility where memorial_id='$OF_MEM';")
+check "QG 016: a second v4 call is already_published (no new snapshot insert)" "already_published|$OF_SLUG" "$(svc "$(l4_sql "$OF_MEM" "$OF_OWNER" "'$OF_SLUG'" "$OF_CONTENT")")"
+of_upsert_snapshot "$OF_MEM" "$OF_CONTENT"
+check "QG 016: republication (v2 snapshot upsert) keeps ONE row with the same opens_at" "1|true" \
+  "$($DB -t -A -c "select count(*) || '|' || bool_and(opens_at = '$OF_OPENS') from symbolic_offering_eligibility where memorial_id='$OF_MEM';")"
+
+# --- O4. Administrative suspension: refused, never reopened by a republication ---
+$DB -c "update symbolic_offering_eligibility set opens_at = now() - interval '2 days', closes_at = now() - interval '1 second' where memorial_id='$OF_MEM';" >/dev/null
+OF_BEFORE=$(of_cnt "$OF_MEM")
+check "QG 016 suspension: a suspended memorial refuses" "refused" "$(of_rec "$OF_SLUG" bougie)"
+of_upsert_snapshot "$OF_MEM" "$OF_CONTENT"
+check "QG 016 suspension: a republication does NOT reopen it" "open|closes|refused" "$(of_elig "$OF_MEM")|$(of_rec "$OF_SLUG" coeur)"
+check "QG 016 suspension: every gesture received is kept" "$OF_BEFORE" "$(of_cnt "$OF_MEM")"
+
+# --- O5. « Désactiver » kept in the published copy: open lock, but refused ---
+IFS='|' read -r OF_H_OWNER OF_H_MEM <<<"$(l4_draft of-hidden)"
+OF_H_HERO=$(l2_media "$OF_H_MEM" "$OF_H_OWNER" hero ready)
+OF_H_CONTENT="{\"hero\":{\"displayName\":\"Lot 3\",\"photo\":{\"mediaId\":\"$OF_H_HERO\",\"crop\":{\"zoom\":1,\"focalX\":0.5,\"focalY\":0.5}}},\"presentation\":{\"hiddenSections\":[\"symbolicOfferings\"]}}"
+l3_set_draft "$OF_H_MEM" "$OF_H_CONTENT"
+OF_H_SLUG=$(l4_expected "$OF_H_MEM")
+check "QG 016 disabled: published by v4 with the family's choice" "published|$OF_H_SLUG" "$(svc "$(l4_sql "$OF_H_MEM" "$OF_H_OWNER" null "$OF_H_CONTENT")")"
+check "QG 016 disabled: the lock is open but the published choice refuses, nothing stored, no counter" "open|refused|0|0" \
+  "$(of_elig "$OF_H_MEM")|$(of_rec "$OF_H_SLUG" bougie)|$(of_cnt "$OF_H_MEM")|$($DB -t -A -c "select count(*) from symbolic_offering_rate_limits where memorial_id='$OF_H_MEM';")"
+of_upsert_snapshot "$OF_H_MEM" "$(l3_hero "$OF_H_HERO")"
+check "QG 016 disabled: re-enabled by a republication, gestures are accepted (no reopening needed)" "recorded" "$(of_rec "$OF_H_SLUG" lys)"
+
+# --- O6. Expired free notice (45 days): refused although the lock is open (rolled back) ---
+check "QG 016 expired avis: past free_public_until -> refused" "refused" \
+  "$($DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id = '$OF_H_MEM';" -c "set session_replication_role = origin;" -c "set role service_role; select outcome from record_symbolic_offering_v1('$OF_H_SLUG','bougie',gen_random_uuid());" -c "rollback;" 2>&1 | tail -1)"
+check "QG 016 expired avis: one minute before the end -> still recorded (rolled back)" "recorded" \
+  "$($DB -t -A -c "begin;" -c "set session_replication_role = replica;" -c "update memorials set first_published_at = now() - interval '44 days', free_public_until = now() + interval '1 minute', free_private_until = now() + interval '30 days' where id = '$OF_H_MEM';" -c "set session_replication_role = origin;" -c "set role service_role; select outcome from record_symbolic_offering_v1('$OF_H_SLUG','bougie',gen_random_uuid());" -c "rollback;" 2>&1 | tail -1)"
+
+# --- O7. Complete memorial: opened on its first snapshot, recorded ---
+OF_C_MEM=$(so_memorial offrandes-qg016-complet published "")
+check "QG 016 complet: no eligibility before its first snapshot" "none" "$(of_elig "$OF_C_MEM")"
+$DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$OF_C_MEM', '$SNAP');" >/dev/null
+check "QG 016 complet: the first snapshot opened the Offrandes, a gesture is recorded" "open|recorded" "$(of_elig "$OF_C_MEM")|$(of_rec offrandes-qg016-complet coeur)"
+
+# --- O8. Transactional: a publication that rolls back opens nothing ---
+OF_T_MEM=$(so_memorial offrandes-qg016-rollback published "")
+$DB -c "begin;" -c "insert into memorial_published_snapshots (memorial_id, content) values ('$OF_T_MEM', '$SNAP');" -c "rollback;" >/dev/null
+check "QG 016: a rolled-back snapshot insert leaves no eligibility (same transaction)" "none" "$(of_elig "$OF_T_MEM")"
+
+# --- O9. Catch-up: only memorials eligible when the migration runs ---
+$DB -c "alter table memorial_published_snapshots disable trigger $OF_TRG;" >/dev/null
+IFS='|' read -r OF_B_OWNER OF_B_VIS <<<"$(l4_draft of-backfill-visible)"
+OF_B_HERO=$(l2_media "$OF_B_VIS" "$OF_B_OWNER" hero ready); l3_set_draft "$OF_B_VIS" "$(l3_hero "$OF_B_HERO")"
+svc "$(l4_sql "$OF_B_VIS" "$OF_B_OWNER" null "$(l3_hero "$OF_B_HERO")")" >/dev/null
+IFS='|' read -r OF_B_OWNER2 OF_B_EXP <<<"$(l4_draft of-backfill-expired)"
+OF_B_HERO2=$(l2_media "$OF_B_EXP" "$OF_B_OWNER2" hero ready); l3_set_draft "$OF_B_EXP" "$(l3_hero "$OF_B_HERO2")"
+svc "$(l4_sql "$OF_B_EXP" "$OF_B_OWNER2" null "$(l3_hero "$OF_B_HERO2")")" >/dev/null
+$DB -c "set session_replication_role = replica;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id = '$OF_B_EXP';" >/dev/null
+OF_B_SKIN_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','juif') returning id;")
+OF_B_SKIN=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$SO_OWNER','$OF_B_SKIN_ENT','person','announcement','juif','light','fr','offrandes-qg016-juif','published',now()) returning id;")
+$DB -c "insert into memorial_published_snapshots (memorial_id, content) values ('$OF_B_SKIN', '$SNAP');" >/dev/null
+OF_B_DRAFT=$(so_memorial offrandes-qg016-brouillon draft "")
+OF_B_SUSP=$(so_memorial offrandes-qg016-suspendu published "$SNAP")
+$DB -c "insert into symbolic_offering_eligibility (memorial_id, opens_at, closes_at) values ('$OF_B_SUSP', now() - interval '2 days', now() - interval '1 hour');" >/dev/null
+$DB -c "alter table memorial_published_snapshots enable trigger $OF_TRG;" >/dev/null
+check "QG 016 catch-up setup: none of the five is open yet" "none|none|none|none|open|closes" \
+  "$(of_elig "$OF_B_VIS")|$(of_elig "$OF_B_EXP")|$(of_elig "$OF_B_SKIN")|$(of_elig "$OF_B_DRAFT")|$(of_elig "$OF_B_SUSP")"
+check "QG 016: the migration re-applies cleanly (idempotent)" "0" "$($DB -f "$MIGRATIONS_DIR/20261105090000_qg016_offerings_open_at_publication.sql" >/dev/null 2>&1; echo $?)"
+check "QG 016 catch-up: published+visible opened; expired avis, other skin and draft NOT opened; suspension NOT reopened" "open|none|none|none|open|closes" \
+  "$(of_elig "$OF_B_VIS")|$(of_elig "$OF_B_EXP")|$(of_elig "$OF_B_SKIN")|$(of_elig "$OF_B_DRAFT")|$(of_elig "$OF_B_SUSP")"
+check "QG 016: one trigger only after re-application" "1" "$($DB -t -A -c "select count(*) from pg_trigger where tgname='$OF_TRG';")"
+
+# --- O10. Client roles still cannot open or close anything ---
+expect_error "QG 016: service_role cannot write the lock directly" "set role service_role; update symbolic_offering_eligibility set closes_at = null where memorial_id='$OF_MEM';"
+expect_error "QG 016: an owner cannot write the lock" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; insert into symbolic_offering_eligibility (memorial_id) values ('$OF_B_DRAFT');"
+
+# --- O11. Pre/postflight and rollback (never applied automatically) ---
+# Bench artefact only: C1 opened a memorial that has NO snapshot by hand (to prove the refusal); no code
+# path can produce that row, and the postflight rightly flags it — removed before grading the state.
+$DB -c "delete from symbolic_offering_eligibility e where not exists (select 1 from memorial_published_snapshots s where s.memorial_id = e.memorial_id);" >/dev/null
+OF_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" 2>&1)
+check "QG 016 postflight: zero ECHEC, every control OK (8)" "0|8" "$(echo "$OF_POST" | grep -c 'ECHEC' || true)|$(echo "$OF_POST" | grep -c '|OK$' || true)"
+check "QG 016 postflight turns red if the trigger is disabled" "1" \
+  "$($DB -t -A -c "begin;" -c "alter table memorial_published_snapshots disable trigger $OF_TRG;" -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+OF_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_preflight.sql" 2>&1)
+check "QG 016 preflight after application: refuses (already applied, lock not empty), the other controls OK" "2|6" \
+  "$(echo "$OF_PRE" | grep -c 'ECHEC' || true)|$(echo "$OF_PRE" | grep -c '|OK$' || true)"
+OF_DOWN="$REPO_ROOT/supabase/rollbacks/20261105090000_qg016_offerings_open_at_publication.down.sql"
+$PSQL -d postgres -c "create database of_down template $DB_NAME;" >/dev/null
+OF_KEEP="$($PSQL -d of_down -t -A -c "select (select count(*) from symbolic_offerings) || '/' || (select count(*) from symbolic_offering_eligibility where closes_at is not null);")"
+check "QG 016 rollback: trigger and function gone, open-ended openings removed, suspensions and every gesture kept" "0|absent|absent|0|$OF_KEEP" \
+  "$($PSQL -d of_down -f "$OF_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d of_down -t -A -c "select case when exists (select 1 from pg_trigger where tgname='$OF_TRG') then 'present' else 'absent' end;")|$($PSQL -d of_down -t -A -c "select case when to_regprocedure('$OF_FN') is null then 'absent' else 'present' end;")|$($PSQL -d of_down -t -A -c "select count(*) from symbolic_offering_eligibility where closes_at is null;")|$($PSQL -d of_down -t -A -c "select (select count(*) from symbolic_offerings) || '/' || (select count(*) from symbolic_offering_eligibility where closes_at is not null);")"
+check "QG 016: ... then the migration re-applies and the postflight is green again (8 OK)" "0|0|8" \
+  "$($PSQL -d of_down -f "$MIGRATIONS_DIR/20261105090000_qg016_offerings_open_at_publication.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d of_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d of_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
+$PSQL -d postgres -c "drop database of_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
