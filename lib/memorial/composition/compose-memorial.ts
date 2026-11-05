@@ -67,11 +67,15 @@ import { ARCHIVABLE_SECTIONS, isHideableSection, readHiddenSections } from "@/li
  * adds its own rule here. A section is never shown on the mere presence
  * of accidental or partial data: it must satisfy its readiness rule.
  *
- * QG decision (Récit de vie entièrement vide): once the family has
- * resolved the A10–A12 sheet, the Récit is ready EVEN IF all three of the
- * family's own matters are empty — `RecitDeVieIntemporel` then shows its
- * validated HERITAGE fallbacks, which are part of that renderer's
- * editorial contract. An unresolved sheet is never shown.
+ * Récit de vie (QG 016, supersedes the earlier « matières vides acceptées »
+ * decision — PO: no section is mandatory; V8: no section is shown
+ * artificially, without relevant content): the Récit exists only once the
+ * family has WRITTEN at least one of its three matters. A sheet passed
+ * (« Passer cette étape ») or committed entirely empty selects nothing:
+ * the Récit is simply absent, in the Preview and on the public page alike.
+ * When at least one matter is written, the renderer keeps its validated
+ * HERITAGE fallbacks for the chapters left empty (its editorial contract,
+ * unchanged). An unresolved sheet is still never shown (readiness).
  *
  * ## Out of scope, deliberately
  *
@@ -154,7 +158,9 @@ type ReadinessRule = (content: MemorialContent) => boolean;
  *   reachable — so `!needsA05…A08` alone would read "resolved" too early.
  *   (Whether the section applies at all is A04 = "yes", decided by
  *   section-selection, not here.)
- * - story: the A10–A12 sheet resolved (QG decision above).
+ * - story: the A10–A12 sheet resolved — a typed text is never shown
+ *   mid-entry. (Whether the Récit exists at all is decided by
+ *   `resolveExplicitContentSectionIds`: a written matter is required.)
  * - traditions: A09 resolved — drawn by `TraditionsV2` (M1) once it also
  *   has at least one confirmed repère (section-selection's content signal).
  * - gallery (dettes D2–D4): a valid `content.gallery` whose photograph
@@ -192,10 +198,9 @@ function hasText(value: string | null): boolean {
  *
  * - deathNotice: the announcement text exists.
  * - traditions: at least one confirmed entry.
- * - story: none of the three matters is corrupted, AND either the family
- *   wrote at least one of them or the sheet has been resolved (QG
- *   decision: a resolved, entirely empty sheet is still the Récit's
- *   matter — rendered with HERITAGE fallbacks).
+ * - story: none of the three matters is corrupted, AND the family wrote
+ *   at least one of them (QG 016: a passed or entirely empty sheet is
+ *   no matter — the Récit is never shown artificially).
  * - gallery: a valid `content.gallery` with enough photographs for an A13
  *   Gallery state (`hasGalleryMatter`) — never `enabled_sections`.
  * - ceremony is not listed: A04 decides it inside section-selection,
@@ -220,7 +225,7 @@ export function resolveExplicitContentSectionIds(content: MemorialContent): Sect
   if (personWords.status !== "corrupted" && lovedThings.status !== "corrupted" && legacy.status !== "corrupted") {
     const familyWrote =
       hasText(personWords.personWords.text) || hasText(lovedThings.lovedThings.text) || hasText(legacy.legacy.text);
-    if (familyWrote || isPersonSheetResolved(content)) ids.push("story");
+    if (familyWrote) ids.push("story");
   }
 
   // Dettes D2–D4: photographs the family added, enough for a Gallery state.

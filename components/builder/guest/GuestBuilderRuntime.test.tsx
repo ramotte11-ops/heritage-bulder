@@ -1318,7 +1318,7 @@ describe("GuestBuilderRuntime", () => {
       const back = await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") });
       const preview = view.container.querySelector("[data-memorial-preview]")!;
       expect([...preview.querySelectorAll("[data-memorial-section]")].map((node) => node.getAttribute("data-memorial-section")))
-        .toEqual(["hero", "deathNotice", "story", "symbolicOfferings"]);
+        .toEqual(["hero", "deathNotice", "symbolicOfferings"]); // QG 016: the A10–A12 sheet is passed in this fixture — no Récit
       expect(preview.querySelector('[data-memorial-section="hero"]')?.innerHTML).toContain("blob:preview-1");
       expect(view.container.querySelector("[data-builder-screen]")?.hasAttribute("hidden")).toBe(true);
 

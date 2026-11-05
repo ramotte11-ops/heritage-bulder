@@ -111,7 +111,7 @@ describe("canonical order", () => {
 
   it("orders `renderable` by the canonical order too", () => {
     let content = throughA09Skipped();
-    content = ok(skipPersonSheet(content));
+    content = ok(commitPersonSheet(ok(writePersonWordsFieldText(content, "Elle riait de tout."))));
     const order: SectionId[] = ["story", "hero", "deathNotice", "ceremony", "traditions", "gallery", "testimonials", "condolences", "video"];
     expect(compose(content, { order }).renderable).toEqual(["story", "hero", "deathNotice"]);
   });
@@ -199,12 +199,28 @@ describe("story (Récit de vie)", () => {
     expect(stateOf(compose(ok(commitPersonSheet(typed))), "story")).toBe("renderable");
   });
 
-  it("QG decision — is renderable once the sheet is resolved with all three matters EMPTY (HERITAGE fallbacks)", () => {
+  it("QG 016 — a PASSED sheet (all three matters empty) never shows the Récit: no artificial section", () => {
     const skipped = ok(skipPersonSheet(throughA09Skipped()));
     const composition = compose(skipped);
+    expect(stateOf(composition, "story")).not.toBe("renderable");
+    expect(composition.renderable).not.toContain("story");
+    expect(resolveExplicitContentSectionIds(skipped)).not.toContain("story");
+  });
+
+  it("QG 016 — an entirely blank sheet cannot be committed (only « Passer »), so the passed case above is the only empty one", () => {
+    const blank = ok(writePersonWordsFieldText(throughA09Skipped(), "   "));
+    const committed = commitPersonSheet(blank);
+    expect(committed.ok).toBe(false);
+    if (!committed.ok) expect(committed.reason).toBe("empty");
+    expect(resolveExplicitContentSectionIds(blank)).not.toContain("story");
+  });
+
+  it("QG 016 — one written matter is enough: the Récit is renderable with the V2 renderer", () => {
+    const written = ok(commitPersonSheet(ok(writePersonWordsFieldText(throughA09Skipped(), "Elle riait de tout."))));
+    const composition = compose(written);
     expect(stateOf(composition, "story")).toBe("renderable");
     expect(composition.sections.find((s) => s.sectionId === "story")?.rendererKey).toBe("RecitDeVieV2");
-    expect(resolveExplicitContentSectionIds(skipped)).toContain("story");
+    expect(resolveExplicitContentSectionIds(written)).toContain("story");
   });
 });
 
@@ -252,7 +268,7 @@ describe("traditions", () => {
   });
 
   it("keeps the canonical order: Récit de vie → Traditions → Galerie, with nothing in between", () => {
-    const content = withGallery(ok(skipPersonSheet(withOneEntry())));
+    const content = withGallery(ok(commitPersonSheet(ok(writePersonWordsFieldText(withOneEntry(), "Elle riait de tout.")))));
     expect(compose(content).renderable).toEqual(["hero", "deathNotice", "story", "traditions", "gallery", "symbolicOfferings"]);
   });
 

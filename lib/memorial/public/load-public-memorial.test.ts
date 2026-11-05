@@ -3,7 +3,7 @@ import type { MemorialContent } from "@/types/memorial";
 
 vi.mock("server-only", () => ({}));
 const { loadPublicMemorial, publicContentFor } = await import("./load-public-memorial");
-const { fullAnnouncementWithTraditions } = await import("@/lib/memorial/assembly/test-fixtures");
+const { fullAnnouncementWithTraditions, fullAnnouncementEmptyRecit, FIXTURE_PERSON_WORDS } = await import("@/lib/memorial/assembly/test-fixtures");
 const { updateGallery } = await import("@/lib/memorial/gallery-content");
 
 /**
@@ -193,3 +193,50 @@ describe("publicContentFor (offer defence in depth)", () => {
     expect(JSON.stringify(view)).not.toContain("video.test");
   });
 });
+
+// ---------------------------------------------------------------------
+// QG 016 — Récit de vie on the public page, per offer
+// ---------------------------------------------------------------------
+
+/** Same snapshot shape, but the family PASSED the A10–A12 sheet (all three matters empty). */
+function passedSheetSnapshot(): MemorialContent {
+  const base = fullAnnouncementEmptyRecit() as Record<string, unknown>;
+  const hero = base.hero as Record<string, unknown>;
+  const withHero = { ...base, hero: { ...hero, photo: { ...(hero.photo as Record<string, unknown>), mediaId: HERO } } } as MemorialContent;
+  const gallery = updateGallery(withHero, { items: G.map((mediaId) => ({ mediaId, caption: null })) });
+  if (!gallery.ok) throw new Error(`fixture gallery refused: ${gallery.reason}`);
+  return gallery.content;
+}
+
+async function publicSections(overrides: Record<string, unknown>) {
+  const view = await loadPublicMemorial(SLUG, deps([row(overrides)]).deps);
+  if (view.status !== "ready") throw new Error(`unexpected ${view.status}`);
+  return view.assembled.sections;
+}
+
+describe("QG 016 — Récit de vie on the public page", () => {
+  it("complet: a Récit the family wrote is published and rendered (V2), with the family's own text", async () => {
+    const sections = await publicSections({ access_level: "complet" });
+    const story = sections.find((section) => section.sectionId === "story");
+    expect(story?.rendererKey).toBe("RecitDeVieV2");
+    expect(JSON.stringify(story?.props)).toContain(FIXTURE_PERSON_WORDS);
+  });
+
+  it("complet: a PASSED sheet shows no Récit at all (no artificial section)", async () => {
+    const sections = await publicSections({ access_level: "complet", content: passedSheetSnapshot() });
+    expect(sections.map((section) => section.sectionId)).not.toContain("story");
+    expect(sections[0]?.sectionId).toBe("hero");
+  });
+
+  it("avis: a PASSED sheet shows no Récit at all (the S2 case)", async () => {
+    const sections = await publicSections({ access_level: "avis", content: passedSheetSnapshot() });
+    expect(sections.map((section) => section.sectionId)).not.toContain("story");
+    expect(sections.map((section) => section.sectionId)).toContain("gallery");
+  });
+
+  it("avis: a WRITTEN Récit is still published — the free offer's editorial scope is avis_snapshot_keys (litige L09), unchanged here", async () => {
+    const sections = await publicSections({ access_level: "avis" });
+    expect(sections.map((section) => section.sectionId)).toContain("story");
+  });
+});
+

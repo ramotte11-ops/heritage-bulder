@@ -113,9 +113,15 @@ describe("consumes composeMemorial", () => {
     expect(ids(heroOnly.sections)).toEqual(["hero", "symbolicOfferings"]);
   });
 
-  it("QG decision: a resolved Récit with all three matters empty is assembled", async () => {
+  it("QG 016: a passed Récit sheet (all three matters empty) is NOT assembled — no artificial section", async () => {
     const content = fullAnnouncementEmptyRecit();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
+    expect(assembled.sections.map((s) => s.sectionId)).not.toContain("story");
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(expect.arrayContaining(["hero", "deathNotice", "ceremony"]));
+  });
+
+  it("QG 016: a Récit with the family's own text is assembled with the V2 renderer", async () => {
+    const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
     const story = assembled.sections.find((s) => s.sectionId === "story");
     expect(story?.rendererKey).toBe("RecitDeVieV2");
   });
