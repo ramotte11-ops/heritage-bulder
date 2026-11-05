@@ -71,8 +71,8 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
   it("lists the Owner's memorials, each linking to its Builder — no UUID to remember", async () => {
     getHeritageActor.mockResolvedValue(OWNER);
     listOwnedMemorials.mockResolvedValue([
-      { id: "11111111-1111-4111-8111-111111111111", displayName: "Jeanne Martin", createdAt: "2026-09-20T10:00:00.000Z" },
-      { id: "22222222-2222-4222-8222-222222222222", displayName: null, createdAt: "2026-09-21T10:00:00.000Z" },
+      { id: "11111111-1111-4111-8111-111111111111", displayName: "Jeanne Martin", createdAt: "2026-09-20T10:00:00.000Z", publicSlug: null },
+      { id: "22222222-2222-4222-8222-222222222222", displayName: null, createdAt: "2026-09-21T10:00:00.000Z", publicSlug: null },
     ]);
 
     const html = await render();
@@ -130,5 +130,98 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     const source = readFileSync(path.join(import.meta.dirname, "page.tsx"), "utf8");
     expect(source).not.toContain("service-role-client");
     expect(source).not.toContain("createServiceRoleSupabaseClient");
+  });
+
+  // -------------------------------------------------------------------
+  // QG 016 / M4 — « Voir mon hommage »
+  // -------------------------------------------------------------------
+
+  const PUBLISHED = {
+    id: "11111111-1111-4111-8111-111111111111",
+    displayName: "Jeanne Test-S1",
+    createdAt: "2026-11-04T10:00:00.000Z",
+    publicSlug: "95bd2601eac8",
+  };
+  const DRAFT = {
+    id: "22222222-2222-4222-8222-222222222222",
+    displayName: "Paul Brouillon",
+    createdAt: "2026-11-04T11:00:00.000Z",
+    publicSlug: null,
+  };
+
+  /** The rendered card (<li>) of one memorial, by its Builder link. */
+  function cardOf(html: string, memorialId: string): string {
+    const card = html.split("<li").find((chunk) => chunk.includes(`/builder/${memorialId}`));
+    if (!card) throw new Error(`no card for ${memorialId}`);
+    return card;
+  }
+
+  it("shows « Voir mon hommage » → /hommage/<slug>, same tab, under « Ouvrir l'atelier », for a consultable memorial", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([PUBLISHED]);
+
+    const html = await render();
+    const card = cardOf(html, PUBLISHED.id);
+
+    expect(card).toContain('href="/hommage/95bd2601eac8"');
+    expect(card).toContain("Voir mon hommage");
+    expect(card.indexOf("/builder/")).toBeLessThan(card.indexOf("/hommage/"));
+    expect(card).not.toContain("target=");
+    expect(card).not.toContain("_blank");
+  });
+
+  it("shows no link and no mention when the memorial is not consultable (draft, expired notice, editing, archived)", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([DRAFT]);
+
+    const html = await render();
+
+    expect(html).not.toContain("/hommage/");
+    expect(html).not.toContain("Voir mon hommage");
+    expect(html).not.toMatch(/expir|plus visible|n.est plus/i);
+    expect(html).toContain(`href="/builder/${DRAFT.id}"`);
+  });
+
+  it("several memorials: the link appears only in the card of the consultable one, with its own slug", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([DRAFT, PUBLISHED]);
+
+    const html = await render();
+
+    expect(cardOf(html, PUBLISHED.id)).toContain('href="/hommage/95bd2601eac8"');
+    expect(cardOf(html, DRAFT.id)).not.toContain("/hommage/");
+    expect(html.match(/\/hommage\//g)).toHaveLength(1);
+  });
+
+  it("« Ouvrir l'atelier » is unchanged on a published memorial", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([PUBLISHED]);
+
+    const card = cardOf(await render(), PUBLISHED.id);
+
+    expect(card).toContain(`href="/builder/${PUBLISHED.id}"`);
+    expect(card).toContain("Ouvrir l’atelier");
+  });
+
+  it("fails closed: a summary without a usable publicSlug never renders a link", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([
+      { ...DRAFT, publicSlug: undefined },
+      { ...PUBLISHED, id: "33333333-3333-4333-8333-333333333333", publicSlug: "" },
+    ]);
+
+    const html = await render();
+
+    expect(html).not.toContain("/hommage/");
+  });
+
+  it("the link is built only from the server-decided publicSlug — no domain, no deployment URL", () => {
+    const source = readFileSync(path.join(import.meta.dirname, "page.tsx"), "utf8");
+    expect(source).toContain("`/hommage/${encodeURIComponent(memorial.publicSlug)}`");
+    expect(source).not.toMatch(/https?:\/\//);
+    expect(source).not.toContain("DEPLOY_PRIME_URL");
+    expect(source).not.toContain("NEXT_PUBLIC_SITE_URL");
+    expect(source).not.toContain("netlify");
+    expect(source).not.toContain("vercel");
   });
 });

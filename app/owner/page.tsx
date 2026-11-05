@@ -29,6 +29,15 @@ import styles from "./page.module.css";
  * And a link is only a link: opening it still goes through the Builder
  * route's own `authorizeMemorialForRequest`, unchanged.
  *
+ * QG 016 / M4 — « Voir mon hommage »: under « Ouvrir l'atelier », a link
+ * to the public page `/hommage/<slug>`, same tab, ONLY when the memorial is
+ * publicly consultable right now (`publicSlug`, decided server-side by the
+ * repository from the Owner's own row — see
+ * lib/memorial/public/public-visibility.ts). Nothing at all otherwise: no
+ * link and no mention for a draft or an expired free notice (PO decision).
+ * `prefetch={false}`: the public page is only rendered when the family
+ * actually opens it. The public page still asks M1 on its own.
+ *
  * A list, never a single hard-wired memorial: V1 is 1 purchase = 1
  * memorial, but an Owner may hold several, and nothing here assumes
  * otherwise. No automatic redirect into "the" Builder, on purpose.
@@ -101,6 +110,15 @@ export default async function OwnerPage() {
                 <Link href={`/builder/${encodeURIComponent(memorial.id)}`} className={styles.itemLink}>
                   <PendingLinkLabel pendingLabel="Ouverture de l’atelier…">Ouvrir l&rsquo;atelier</PendingLinkLabel>
                 </Link>
+                {memorial.publicSlug ? (
+                  <Link
+                    href={`/hommage/${encodeURIComponent(memorial.publicSlug)}`}
+                    prefetch={false}
+                    className={styles.itemLink}
+                  >
+                    Voir mon hommage
+                  </Link>
+                ) : null}
               </li>
             );
           })}
