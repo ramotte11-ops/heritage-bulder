@@ -13,8 +13,8 @@ import type { SymbolicOfferingRepository } from "@/lib/adapters/symbolic-offerin
  * opaque failure to the caller; `reason` exists for server-side
  * diagnosis only and must never be shown to a visitor.
  *
- * C1 wires this to no route: there is no public memorial page yet, and
- * no Server Action exports it (see server-record-symbolic-offering.ts).
+ * QG 016: reached only through the public page's Server Action
+ * (app/hommage/[slug]/actions.ts), via server-record-symbolic-offering.ts.
  */
 export interface RecordSymbolicOfferingDeps {
   repository: SymbolicOfferingRepository;

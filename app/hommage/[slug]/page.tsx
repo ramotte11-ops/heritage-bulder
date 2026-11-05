@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
+import { PublicOfferingsProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-public";
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
+import { depositSymbolicOffering } from "./actions";
 import styles from "./page.module.css";
 
 /**
@@ -47,7 +49,11 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
 
   return (
     <main className={styles.page} lang={view.assembled.language} data-public-memorial="">
-      <MemorialAssembly assembled={view.assembled} />
+      {/* QG 016 — Offrandes symboliques : l'hôte public enregistre réellement
+          le geste du visiteur (le serveur décide seul de son acceptation). */}
+      <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering}>
+        <MemorialAssembly assembled={view.assembled} />
+      </PublicOfferingsProvider>
     </main>
   );
 }

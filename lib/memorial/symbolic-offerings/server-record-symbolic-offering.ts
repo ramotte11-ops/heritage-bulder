@@ -7,10 +7,10 @@ import {
 } from "./record-symbolic-offering";
 
 /**
- * Internal server foundation only (Offrandes symboliques C1). This file is
- * not a Server Action and is intentionally not imported by any route or
- * client-facing component: wiring it to a visitor surface belongs to the
- * mission that builds the public memorial page.
+ * Server foundation (Offrandes symboliques C1). This file is not itself a
+ * Server Action and must never be imported by a client component. QG 016:
+ * its one caller is the public page's Server Action
+ * (app/hommage/[slug]/actions.ts → `depositSymbolicOffering`).
  */
 export async function recordSymbolicOfferingOnServer(
   request: RecordSymbolicOfferingRequest,

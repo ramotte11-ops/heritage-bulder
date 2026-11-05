@@ -218,7 +218,7 @@ describe("M1-B1 publication policy", () => {
     },
   );
 
-  it("excludes symbolic offerings only through public-renderer availability, never the avis premium rule", () => {
+  it("QG 016: symbolic offerings are a public renderer now, and never an avis premium section", () => {
     const source = readFileSync(new URL("./publication-policy.ts", import.meta.url), "utf8");
     const publicRenderers = source.match(
       /const PUBLIC_RENDERERS:[\s\S]*?new Set\(\[([\s\S]*?)\]\);/,
@@ -228,7 +228,7 @@ describe("M1-B1 publication policy", () => {
     )?.[1];
 
     expect(publicRenderers).toBeDefined();
-    expect(publicRenderers).not.toContain('"SymbolicOfferingsV1Section"');
+    expect(publicRenderers).toContain('"SymbolicOfferingsV1Section"');
     expect(premiumSectionIds).toBeDefined();
     expect(premiumSectionIds).not.toContain('"symbolicOfferings"');
   });
@@ -361,6 +361,21 @@ describe("QG 008 — the free copy's keys, mirrored by the database", () => {
 
   it("the six-photo publication limit equals the database's avis_gallery_limit", () => {
     expect(FREE_PUBLICATION_GALLERY_LIMIT).toBe(6);
+  });
+
+  // -------------------------------------------------------------------
+  // QG 016 — Offrandes symboliques : the family's « désactiver » choice
+  // -------------------------------------------------------------------
+
+  it.each(["avis", "complet"] as const)("QG 016 (%s): a family that disabled the Offrandes keeps that choice in the PUBLISHED copy", (accessLevel) => {
+    const draft = { ...draftWithGallery(2), presentation: { hiddenSections: ["symbolicOfferings"] } } as MemorialContent;
+    const projection = successfulProjection(draft, accessLevel, accessLevel === "avis" ? [mediaId(1), mediaId(2)] : undefined);
+    expect((projection.content as Record<string, unknown>).presentation).toEqual({ hiddenSections: ["symbolicOfferings"] });
+  });
+
+  it("QG 016: Offrandes left enabled (default) add nothing to the published copy", () => {
+    const projection = successfulProjection(draftWithGallery(2), "complet");
+    expect((projection.content as Record<string, unknown>).presentation).toBeUndefined();
   });
 });
 

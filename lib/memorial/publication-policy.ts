@@ -70,10 +70,13 @@ export const AVIS_SNAPSHOT_KEYS = [
 type ValidatedAccessLevel = "avis" | "complet";
 
 /**
- * Renderers that are already valid for a public Memorial. The symbolic
- * offerings renderer is intentionally absent: its current contract is
- * Builder Preview only. Video, condolences, testimonials and memoryMessage
- * have no renderer at all and fail closed before this list is consulted.
+ * Renderers that are already valid for a public Memorial. QG 016: the
+ * symbolic offerings renderer is public now (`/hommage/[slug]`, real
+ * deposits) — listing it is also what keeps a family's « désactiver »
+ * choice in the PUBLISHED copy (`presentation.hiddenSections`), which both
+ * the public page and `record_symbolic_offering_v1` read. Video,
+ * condolences, testimonials and memoryMessage have no renderer at all and
+ * fail closed before this list is consulted.
  *
  * V1 rollback renderers stay accepted so a renderer-key rollback does not
  * accidentally make a previously operational section commercially absent.
@@ -88,6 +91,7 @@ const PUBLIC_RENDERERS: ReadonlySet<RendererKey> = new Set([
   "RecitDeVieV2",
   "TraditionsV2",
   "GalleryIntemporel",
+  "SymbolicOfferingsV1Section",
 ]);
 
 export const PREMIUM_SECTION_IDS: ReadonlySet<SectionId> = new Set([

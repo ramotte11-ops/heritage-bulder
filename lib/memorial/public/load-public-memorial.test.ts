@@ -240,3 +240,23 @@ describe("QG 016 — Récit de vie on the public page", () => {
   });
 });
 
+// ---------------------------------------------------------------------
+// QG 016 — Offrandes symboliques on the public page
+// ---------------------------------------------------------------------
+
+describe("QG 016 — Offrandes symboliques on the public page", () => {
+  it.each(["avis", "complet"] as const)("%s: included by default, after the Galerie (Galerie → Offrandes → Contributions)", async (access_level) => {
+    const ids = (await publicSections({ access_level })).map((section) => section.sectionId);
+    expect(ids).toContain("symbolicOfferings");
+    expect(ids.indexOf("symbolicOfferings")).toBe(ids.indexOf("gallery") + 1);
+    expect(ids.at(-1)).toBe("symbolicOfferings");
+  });
+
+  it.each(["avis", "complet"] as const)("%s: a family that disabled them (published copy) gets no Offrandes on the page", async (access_level) => {
+    const content = { ...snapshot(), presentation: { hiddenSections: ["symbolicOfferings"] } } as MemorialContent;
+    const ids = (await publicSections({ access_level, content })).map((section) => section.sectionId);
+    expect(ids).not.toContain("symbolicOfferings");
+    expect(ids).toContain("gallery");
+  });
+});
+

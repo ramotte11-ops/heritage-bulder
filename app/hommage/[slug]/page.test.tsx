@@ -36,6 +36,14 @@ vi.mock("@/lib/memorial/public/load-public-memorial", () => ({ loadPublicMemoria
 const { MemorialAssembly } = vi.hoisted(() => ({ MemorialAssembly: function MemorialAssembly() { return null; } }));
 vi.mock("@/components/memorial/assembly/MemorialAssembly", () => ({ MemorialAssembly }));
 
+// QG 016 — Offrandes symboliques : the public host and the page's Server Action.
+const { PublicOfferingsProvider } = vi.hoisted(() => ({
+  PublicOfferingsProvider: function PublicOfferingsProvider() { return null; },
+}));
+vi.mock("@/components/memorial/symbolic-offerings/v1/offerings-public", () => ({ PublicOfferingsProvider }));
+const { depositSymbolicOffering } = vi.hoisted(() => ({ depositSymbolicOffering: vi.fn() }));
+vi.mock("./actions", () => ({ depositSymbolicOffering }));
+
 const { default: PublicMemorialPage, metadata } = await import("./page");
 
 const ASSEMBLED = { status: "assembled", language: "fr", skinVariant: "dark", sections: [], archivedSections: [], failures: [] };
@@ -57,9 +65,18 @@ describe("/hommage/[slug]", () => {
     expect(isValidElement(element)).toBe(true);
     expect(element.type).toBe("main");
     expect(element.props.lang).toBe("fr");
-    const child = element.props.children;
+    const host = element.props.children as ReactElement<{ slug: string; deposit: unknown; children: ReactElement }>;
+    expect(host.type).toBe(PublicOfferingsProvider);
+    const child = host.props.children;
     expect(child.type).toBe(MemorialAssembly);
     expect((child.props as { assembled: unknown }).assembled).toBe(ASSEMBLED);
+  });
+
+  it("QG 016 — the public Offrandes host gets the validated slug and the page's own Server Action", async () => {
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled: ASSEMBLED });
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ slug: string; deposit: unknown }> }>;
+    expect(element.props.children.props.slug).toBe("95bd2601eac8");
+    expect(element.props.children.props.deposit).toBe(depositSymbolicOffering);
   });
 
   it("renders at request time: connection() runs before any read (no prerender, no cached signed URL)", async () => {
