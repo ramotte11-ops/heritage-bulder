@@ -99,6 +99,16 @@ create role service_role nologin bypassrls;
 create role authenticator nologin;
 grant anon, authenticated, service_role to authenticator;
 
+-- C3 fidelity: a real Supabase project ships pgcrypto pre-installed in its
+-- own `extensions` schema, so 20260829150000_extensions.sql
+-- (`create extension if not exists pgcrypto`) is a no-op there. Without
+-- this stand-in, a vanilla cluster would install pgcrypto INTO public and
+-- every one of its functions would be callable by PUBLIC — a state that
+-- exists on no real project and that the C3 client allowlist rightly
+-- refuses. No migration and no check calls a pgcrypto function.
+create schema extensions;
+create extension pgcrypto with schema extensions;
+
 grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
@@ -507,7 +517,10 @@ expect_function() {
 expect_function current_owner_id true search_path=public
 expect_function create_memorial_draft true search_path=public
 expect_function set_updated_at false search_path=public
-expect_function public_memorial_publication_state true search_path=public
+# C3 (20261111100000_c3_secure_public_acl.sql, applied on Supabase B) replaced
+# this helper with an empty search_path — stricter than `public`, every
+# reference inside is schema-qualified. The "C3" section below checks the rest.
+expect_function public_memorial_publication_state true 'search_path=""'
 expect_function redeem_entitlement false search_path=public
 
 expect_execute() {
@@ -4371,6 +4384,124 @@ check "QG 016 rollback: trigger and function gone, open-ended openings removed, 
 check "QG 016: ... then the migration re-applies and the postflight is green again (8 OK)" "0|0|8" \
   "$($PSQL -d of_down -f "$MIGRATIONS_DIR/20261105090000_qg016_offerings_open_at_publication.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d of_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d of_down -t -A -f "$REPO_ROOT/supabase/verifications/qg016_offrandes_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
 $PSQL -d postgres -c "drop database of_down;" >/dev/null
+
+echo ""
+echo "== C3: public ACL hardening (20261111100000, applied on Supabase B) =="
+
+# supabase/verifications/c3_security_postflight.sql is a photograph of
+# Supabase B: on top of the posture controls it pins B's exact catalog and
+# row counts (22 tables, 82 rows...), which a throwaway bench seeded with
+# fixtures can never match. The bench therefore re-asserts each POSTURE
+# control of that postflight, one by one and without loosening any, and
+# leaves the B-specific counts to the postflight itself. It also proves the
+# privileges the existing parcours need are still in place after C3.
+
+# --- C1. The event trigger that closes every new public function -------
+check "C3: event trigger present, enabled, hardened, on ddl_command_end for CREATE FUNCTION" "1" \
+  "$($DB -t -A -c "select count(*) from pg_event_trigger e join pg_proc p on p.oid = e.evtfoid join pg_namespace n on n.oid = p.pronamespace where e.evtname = 'heritage_c3_close_public_function_acl' and e.evtevent = 'ddl_command_end' and e.evtenabled = 'O' and e.evttags @> array['CREATE FUNCTION']::text[] and n.nspname = 'heritage_c3' and p.proname = 'close_public_postgres_function_acl' and p.prosecdef and p.proconfig @> array['search_path=pg_catalog']::text[] and pg_get_functiondef(p.oid) like '%n.nspname = ''public''%' and pg_get_functiondef(p.oid) like '%p.proowner = ''postgres''::regrole%';")"
+for role in anon authenticated service_role; do
+  check "C3: $role has no USAGE on the private schema heritage_c3" "f" \
+    "$($DB -t -A -c "select has_schema_privilege('$role', 'heritage_c3', 'USAGE');")"
+done
+
+# --- C2. A function created in public starts CLOSED (rolled back) -------
+# acl_set guards against a NULL proacl, which means "PUBLIC may execute".
+C3_PROBE=$($DB -t -A \
+  -c "begin;" \
+  -c "create function public.c3_bench_probe() returns integer language sql as 'select 1';" \
+  -c "select (p.proacl is not null) || '|' || has_function_privilege('anon', p.oid, 'EXECUTE') || '|' || has_function_privilege('authenticated', p.oid, 'EXECUTE') || '|' || has_function_privilege('service_role', p.oid, 'EXECUTE') || '|' || exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0) from pg_proc p where p.oid = 'public.c3_bench_probe()'::regprocedure;" \
+  -c "rollback;")
+check "C3: a new public function grants EXECUTE to nobody (acl_set|anon|authenticated|service_role|PUBLIC)" "true|false|false|false|false" "$C3_PROBE"
+
+# The rule every migration written after C3 must follow: CREATE OR REPLACE
+# re-closes an EXISTING grant, so the grant must be re-issued after it.
+C3_REPLACE=$($DB -t -A \
+  -c "begin;" \
+  -c "create function public.c3_bench_probe() returns integer language sql as 'select 1';" \
+  -c "grant execute on function public.c3_bench_probe() to service_role;" \
+  -c "select has_function_privilege('service_role', 'public.c3_bench_probe()', 'EXECUTE');" \
+  -c "create or replace function public.c3_bench_probe() returns integer language sql as 'select 2';" \
+  -c "select has_function_privilege('service_role', 'public.c3_bench_probe()', 'EXECUTE');" \
+  -c "grant execute on function public.c3_bench_probe() to service_role;" \
+  -c "select has_function_privilege('service_role', 'public.c3_bench_probe()', 'EXECUTE');" \
+  -c "rollback;" | tr '\n' '|')
+check "C3: CREATE OR REPLACE re-closes an existing grant; only an explicit re-grant restores it" "t|f|t|" "$C3_REPLACE"
+
+# --- C3. New tables and sequences start closed (default privileges) -----
+# The stand-ins above reproduce the platform defaults (REFERENCES, TRIGGER,
+# TRUNCATE to every client role); C3 must have removed them for postgres.
+check "C3: no default ACL left for postgres-owned public tables/sequences" "0" \
+  "$($DB -t -A -c "select count(*) from pg_default_acl d join pg_roles o on o.oid = d.defaclrole join pg_namespace n on n.oid = d.defaclnamespace cross join lateral aclexplode(d.defaclacl) x left join pg_roles g on g.oid = x.grantee where o.rolname = 'postgres' and n.nspname = 'public' and d.defaclobjtype in ('r', 'S') and (x.grantee = 0 or g.rolname in ('anon', 'authenticated', 'service_role'));")"
+C3_TABLE=$($DB -t -A \
+  -c "begin;" \
+  -c "create table public.c3_bench_table (id bigint generated always as identity primary key);" \
+  -c "select string_agg(r || ':' || (has_table_privilege(r, 'public.c3_bench_table', 'SELECT') or has_table_privilege(r, 'public.c3_bench_table', 'INSERT') or has_table_privilege(r, 'public.c3_bench_table', 'UPDATE') or has_table_privilege(r, 'public.c3_bench_table', 'DELETE') or has_table_privilege(r, 'public.c3_bench_table', 'TRUNCATE') or has_table_privilege(r, 'public.c3_bench_table', 'REFERENCES') or has_table_privilege(r, 'public.c3_bench_table', 'TRIGGER') or has_sequence_privilege(r, pg_get_serial_sequence('public.c3_bench_table', 'id'), 'USAGE')), ',' order by r) from unnest(array['anon', 'authenticated', 'service_role']) r;" \
+  -c "rollback;")
+check "C3: a new public table and its sequence grant nothing to any client role" "anon:false,authenticated:false,service_role:false" "$C3_TABLE"
+
+# --- C4. The ten targeted ACLs (same matrix as the postflight) ----------
+c3_acl() {
+  local sig="$1"; local expected="$2"
+  check "C3: EXECUTE on $sig (anon|authenticated|service_role)" "$expected" \
+    "$($DB -t -A -c "select has_function_privilege('anon', p.oid, 'EXECUTE') || '|' || has_function_privilege('authenticated', p.oid, 'EXECUTE') || '|' || has_function_privilege('service_role', p.oid, 'EXECUTE') from pg_proc p where p.oid = to_regprocedure('$sig');")"
+}
+c3_acl 'public.create_memorial_draft()' 'false|false|false'
+c3_acl 'public.current_owner_id()' 'false|true|false'
+c3_acl 'public.guard_publishing_pending_hero_cleanup_v1()' 'false|false|false'
+c3_acl 'public.guard_retiring_media_references_v1()' 'false|false|false'
+c3_acl 'public.memorial_content_references_media_v1(jsonb,uuid)' 'false|false|false'
+c3_acl 'public.public_memorial_message_allowed_v1(uuid,text)' 'true|true|false'
+c3_acl 'public.public_memorial_publication_state(uuid)' 'true|true|false'
+c3_acl 'public.redeem_entitlement(uuid,uuid,text,text,text)' 'false|false|true'
+c3_acl 'public.redeem_entitlement_with_activation_key(uuid,text,uuid,text,text,text)' 'false|false|true'
+c3_acl 'public.set_updated_at()' 'false|false|false'
+
+# --- C5. Complete client allowlist: nothing else in public is callable --
+check "C3: anon/authenticated may execute ONLY the three allowlisted public functions" "" \
+  "$($DB -t -A -c "select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')) and p.oid not in ('public.current_owner_id()'::regprocedure, 'public.public_memorial_message_allowed_v1(uuid,text)'::regprocedure, 'public.public_memorial_publication_state(uuid)'::regprocedure);")"
+
+# --- C6. The public state helper discloses nothing about a non-public memorial
+check "C3: public_memorial_publication_state is SECURITY DEFINER, search_path=\"\", published+visible only" "1" \
+  "$($DB -t -A -c "select count(*) from pg_proc p where p.oid = 'public.public_memorial_publication_state(uuid)'::regprocedure and p.prosecdef and p.proconfig @> array['search_path=\"\"']::text[] and pg_get_functiondef(p.oid) like '%m.status = ''published''%' and pg_get_functiondef(p.oid) like '%public.memorial_publicly_visible_v1%';")"
+# Graded AS anon, over every memorial the earlier sections left behind. The
+# expectation is computed as superuser (anon cannot read memorials); the
+# three populations must all be present or the check proves nothing.
+C3_POP=$($DB -t -A -c "select count(*) filter (where status = 'published' and memorial_publicly_visible_v1(id, now())) || '|' || count(*) filter (where status = 'published' and not memorial_publicly_visible_v1(id, now())) || '|' || count(*) filter (where status <> 'published') from memorials;")
+IFS='|' read -r C3_POP_VISIBLE C3_POP_HIDDEN C3_POP_NONPUB <<<"$C3_POP"
+check "C3: bench holds published-visible, published-hidden and non-published memorials" "true|true|true" \
+  "$([ "${C3_POP_VISIBLE:-0}" -gt 0 ] && echo true || echo false)|$([ "${C3_POP_HIDDEN:-0}" -gt 0 ] && echo true || echo false)|$([ "${C3_POP_NONPUB:-0}" -gt 0 ] && echo true || echo false)"
+C3_VALUES=$($DB -t -A -c "select string_agg(format('(%L::uuid, %s)', id, (status = 'published' and memorial_publicly_visible_v1(id, now()))::int), ',') from memorials;")
+check "C3: as anon, one row for each published+visible memorial, ZERO for every other one" "0" \
+  "$($DB -t -A -c "set role anon; select count(*) from (values $C3_VALUES) v(id, expected) where (select count(*) from public.public_memorial_publication_state(v.id)) <> v.expected;")"
+check "C3: as anon, an unknown memorial id returns zero rows" "0" \
+  "$($DB -t -A -c "set role anon; select count(*) from public.public_memorial_publication_state(gen_random_uuid());")"
+
+# --- C7. The parcours still holds the privileges it calls --------------
+# Every RPC the application calls (grep '.rpc("' in app/ lib/ components/),
+# all through the server-side service_role client. Each must stay callable
+# by service_role and by no client role.
+for fn in \
+  admin_mutate_activation_key admin_revoke_entitlement \
+  anchor_free_memorial_v1 create_free_memorial_v1 upgrade_memorial_access_v1 \
+  redeem_entitlement redeem_entitlement_with_activation_key record_heritage_activation_attempt \
+  commit_memorial_draft_edit_v1 commit_memorial_configuration_edit_v1 \
+  reserve_memorial_media_upload_v1 finalize_memorial_media_upload_v1 \
+  reserve_pending_media_cleanup_v1 finish_pending_media_cleanup_v1 \
+  begin_guest_draft_transfer_v1 find_guest_draft_transfer_v1 \
+  record_guest_draft_transfer_media_v1 complete_guest_draft_transfer_v1 \
+  commit_memorial_publication_v2 commit_memorial_publication_v4 \
+  read_public_memorial_v1 record_symbolic_offering_v1; do
+  check "C3 parcours: $fn callable by service_role only (anon|authenticated|service_role)" "false|false|true" \
+    "$($DB -t -A -c "select string_agg(has_function_privilege('anon', p.oid, 'EXECUTE') || '|' || has_function_privilege('authenticated', p.oid, 'EXECUTE') || '|' || has_function_privilege('service_role', p.oid, 'EXECUTE'), ' / ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
+done
+# The internal helpers those RPCs reach run as their SECURITY DEFINER owner:
+# prove the two public paths end to end as service_role after C3.
+C3_SLUG=$($DB -t -A -c "select m.slug from memorials m where m.status = 'published' and m.slug is not null and memorial_publicly_visible_v1(m.id, now()) and exists (select 1 from memorial_published_snapshots s where s.memorial_id = m.id) limit 1;")
+check "C3 parcours: the bench holds a published, visible memorial with a slug" "true" "$([ -n "$C3_SLUG" ] && echo true || echo false)"
+check "C3 parcours: read_public_memorial_v1 returns it to service_role" "1" \
+  "$(svc "select count(*) from public.read_public_memorial_v1('$C3_SLUG');")"
+expect_error "C3 parcours: read_public_memorial_v1 stays refused to anon" \
+  "set role anon; select * from public.read_public_memorial_v1('$C3_SLUG');"
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

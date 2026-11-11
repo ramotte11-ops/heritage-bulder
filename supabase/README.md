@@ -1154,6 +1154,38 @@ snapshot table is still closed (013C) »), `verifications/qg016_m1_postflight.sq
 Rollback (never automatic): `rollbacks/20261104090000_qg016_m1_read_public_memorial.down.sql`
 (drops the function; no data touched).
 
+## C3 — public ACL hardening (applied on Supabase B)
+
+`migrations/20261111100000_c3_secure_public_acl.sql` (V3, commit `e0d29ec`)
+is **applied and closed on Supabase B** (QG decision). Its header still
+reads « NON APPLIQUÉE à Supabase B »: it was written before the application,
+and migrations are append-only, so the file is left as it is and this
+section is the record.
+
+What it changes:
+
+- default privileges of `postgres` in `public`: new tables and sequences
+  grant nothing to `PUBLIC`, `anon`, `authenticated` or `service_role`;
+- event trigger `heritage_c3_close_public_function_acl` (private schema
+  `heritage_c3`): every function created **or replaced** in `public` by
+  `postgres` starts with no EXECUTE for anyone;
+- ten function ACLs aligned, and `public_memorial_publication_state()`
+  answers only for a memorial that is published AND publicly visible
+  (empty `search_path`).
+
+**Rule for every migration written after C3.** A `CREATE OR REPLACE
+FUNCTION` re-closes the function's existing grants, and a new table is
+closed to every role, `service_role` included. A migration must therefore
+issue the grants it needs explicitly, AFTER each `CREATE [OR REPLACE]`. The
+bench proves this behaviour (section « C3 » of `scripts/db/test-local.sh`).
+
+Checks: `verifications/c3_security_postflight.sql` grades Supabase B itself
+(it also pins B's exact catalog and row counts, so it cannot run on the
+bench). The bench re-asserts each posture control of that postflight, plus
+the privileges the existing parcours call (every `.rpc(...)` of the
+application: `service_role` only). Rollback (never automatic):
+`rollbacks/20261111100000_c3_secure_public_acl.down.sql`.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
