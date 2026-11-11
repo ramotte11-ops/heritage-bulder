@@ -1186,6 +1186,34 @@ the privileges the existing parcours call (every `.rpc(...)` of the
 application: `service_role` only). Rollback (never automatic):
 `rollbacks/20261111100000_c3_secure_public_acl.down.sql`.
 
+## Sauvegardes et restauration
+
+`scripts/db/backup-supabase.sh` — deux modes, aucun des deux n'écrit dans le
+projet :
+
+```bash
+SUPABASE_DB_URL="postgresql://…" scripts/db/backup-supabase.sh backup backups/
+scripts/db/backup-supabase.sh verify backups/heritage-<ref>-<date>.dump
+```
+
+- `backup` : `pg_dump` au format custom du schéma `public` (tables, données,
+  fonctions, politiques), plus un inventaire du nombre de lignes par table lu
+  dans le projet au même moment, et une empreinte SHA-256.
+- `verify` : restaure le fichier dans un PostgreSQL local jetable (même
+  mécanisme que `test-local.sh`, sans Docker ni réseau) et compare chaque
+  table à l'inventaire. Vérifié sur une base locale rejouant toutes les
+  migrations : 22 tables, comptages identiques, 49 fonctions restaurées.
+
+Ce que le dump ne contient pas, et qui se restaure par les outils Supabase :
+le schéma `auth` (comptes, identités — une restauration de `public` seule
+laisse `owners.auth_user_id` orphelin tant que `auth.users` n'est pas restauré
+avec les mêmes identifiants), le schéma `storage` et surtout les **objets du
+bucket `memorial-media`** (les photos), à sauvegarder séparément (Storage API
+ou outil de synchronisation, avec la clé `service_role`).
+
+Les fichiers produits contiennent des données de familles : `*.dump*` et
+`backups/` sont ignorés par git ; à conserver chiffrés, hors du dépôt.
+
 ## Migration workflow
 
 Migrations are plain, numbered SQL files in `migrations/`, applied in
