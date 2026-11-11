@@ -4,6 +4,7 @@ import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memoria
 import type { AssembledSection, RendererPropsMap } from "@/lib/memorial/assembly/renderer-adapters";
 import { RENDERER_COMPONENTS } from "./renderer-registry";
 import { MemorialArchives } from "./MemorialArchives";
+import { MemorialCards } from "./MemorialCards";
 
 /**
  * Étape 2 — Assembleur du Memorial: renders an `AssembledMemorial`
@@ -14,9 +15,15 @@ import { MemorialArchives } from "./MemorialArchives";
  * page can mount it; each renderer is its own client boundary), no
  * page chrome, no background, no spacing, no extra `SkinScope` (every
  * renderer brings its own). Each section sits in one neutral block
- * `<div data-memorial-section>` carrying no style. The visual seams
- * between sections are left exactly as the renderers produce them —
- * they are for the QG to observe, not for this component to smooth.
+ * `<div data-memorial-section>` carrying no class of its own.
+ *
+ * Cartes mémorielles V2.1 (validées PO) : the blocks sit inside
+ * `MemorialCards`, the one client engine that turns each of them into a
+ * card the next one slides over — for the Preview and the public page
+ * alike. The engine never reaches inside a renderer; it only writes its
+ * measurement variables on the neutral blocks. The former Récit →
+ * Traditions fade (`data-previous-section`) is no longer emitted: each
+ * Master keeps its own native edge and the cards separate them.
  *
  * An `unavailable` Memorial renders nothing at all (QG D1): what to say
  * instead belongs to the caller (the future Preview), never to a
@@ -43,18 +50,13 @@ export function MemorialAssembly({ assembled }: MemorialAssemblyProps) {
 
   return (
     <div data-memorial-assembly="">
-      {assembled.sections.map((section, index) => (
-        <div
-          key={section.sectionId}
-          data-memorial-section={section.sectionId}
-          // PROTOTYPE RACCORDS V1 — la rubrique réellement rendue juste
-          // au-dessus (après masquage éventuel), lue par le seul raccord
-          // Récit → Traditions (TraditionsV2.module.css). Aucun style ici.
-          data-previous-section={index > 0 ? assembled.sections[index - 1].sectionId : undefined}
-        >
-          {renderSection(section)}
-        </div>
-      ))}
+      <MemorialCards>
+        {assembled.sections.map((section) => (
+          <div key={section.sectionId} data-memorial-section={section.sectionId}>
+            {renderSection(section)}
+          </div>
+        ))}
+      </MemorialCards>
       <MemorialArchives sections={assembled.archivedSections ?? []} language={assembled.language} />
     </div>
   );

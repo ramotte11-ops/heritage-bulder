@@ -1,0 +1,113 @@
+/*
+ * CARTES MÉMORIELLES V2.1 — direction artistique validée par la PO, GELÉE.
+ * Rayon, ombres, liseré, recul, voile et table : ne pas modifier sans
+ * nouvelle décision PO. Moteur : MemorialCards.tsx.
+ *
+ * Chaque rubrique devient une grande carte : coins hauts arrondis, ombre
+ * portée vers le haut, liseré de relief. La carte suivante monte DEVANT la
+ * précédente ; la précédente, déjà lue, se met en retrait (léger recul,
+ * voile, bord supérieur arrondi qui apparaît) et révèle la « table »
+ * sombre derrière elle. Rien n'est appliqué à l'intérieur d'un Master.
+ *
+ * Variables écrites par le moteur sur chaque carte :
+ *   --pin   top sticky (0, ou 100svh − hauteur : jamais tronquée)
+ *   --oy    origine verticale du recul (centre de l'écran)
+ *   --clip  haut de la zone visible (le bord arrondi du retrait)
+ *   --p     0 → 1 : part de l'écran déjà recouverte par la carte suivante
+ */
+
+.deck {
+  --card-radius: 26px;
+  --stage: #0d0b09;
+  --recede: 0.075;
+  --veil: 0.58;
+  background: var(--stage);
+}
+
+@media (min-width: 1024px) {
+  .deck {
+    --card-radius: 40px;
+    --recede: 0.06;
+  }
+}
+
+.deck > [data-memorial-section] {
+  position: relative;
+  border-radius: var(--card-radius) var(--card-radius) 0 0;
+  overflow: clip;
+  box-shadow:
+    0 -22px 48px -14px rgb(0 0 0 / 0.6),
+    0 -2px 10px rgb(0 0 0 / 0.28);
+}
+
+/* Liseré de relief au bord du papier. */
+.deck > [data-memorial-section]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: calc(var(--card-radius) * 2);
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.32);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Voile de retrait. */
+.deck > [data-memorial-section]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: calc(var(--p, 0) * var(--veil));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.deck[data-deck="on"] > [data-memorial-section] {
+  position: sticky;
+  top: var(--pin, 0px);
+}
+
+.deck[data-deck="on"] > [data-covered] {
+  transform-origin: 50% var(--oy, 50%);
+  transform: scale(calc(1 - var(--recede) * var(--p, 0)));
+  clip-path: inset(var(--clip, 0px) 0 0 0 round var(--card-radius) var(--card-radius) 0 0);
+}
+
+.deck[data-deck="on"] > [data-covered="partial"] {
+  will-change: transform;
+}
+
+/* Carte entièrement recouverte par une carte elle-même recouverte : plus
+   rien à peindre. */
+.deck[data-deck="on"] > [data-covered="buried"] {
+  visibility: hidden;
+}
+
+/* Album complet ouvert : la pile se range, la lecture redevient linéaire. */
+.deck[data-deck="on"]:has([data-memorial-gallery-album]) > [data-memorial-section] {
+  position: relative;
+  top: auto;
+  transform: none;
+  clip-path: none;
+  visibility: visible;
+}
+
+.deck:has([data-memorial-gallery-album]) > [data-memorial-section]::after {
+  opacity: 0;
+}
+
+@media print {
+  .deck > [data-memorial-section] {
+    position: static !important;
+    transform: none !important;
+    clip-path: none !important;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .deck > [data-memorial-section]::after,
+  .deck > [data-memorial-section]::before {
+    content: none;
+  }
+}
