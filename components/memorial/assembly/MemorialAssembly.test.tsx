@@ -87,6 +87,29 @@ describe("MemorialAssembly — the real renderers, in the composition's order", 
     }
   });
 
+  it("cartes mémorielles: every block is a direct child of the one cards deck; the archives stay outside it", async () => {
+    const hidden = setSectionVisibility(fullAnnouncement(), "deathNotice", false, "intemporel");
+    if (!hidden.ok) throw new Error("fixture");
+    const { container } = await renderAssembly(hidden.content);
+    const assembly = container.querySelector("[data-memorial-assembly]") as HTMLElement;
+    const decks = assembly.querySelectorAll("[data-memorial-cards]");
+    expect(decks).toHaveLength(1);
+    const deck = decks[0] as HTMLElement;
+    expect(deck.parentElement).toBe(assembly);
+    expect(Array.from(deck.children).map((el) => el.getAttribute("data-memorial-section"))).toEqual(sectionIds(container));
+    const archives = container.querySelector("[data-memorial-archives]") as HTMLElement;
+    expect(archives).toBeTruthy();
+    expect(deck.contains(archives)).toBe(false);
+    // jsdom offers no matchMedia: the engine stays inert, the deck off.
+    expect(deck.getAttribute("data-deck")).toBe("off");
+  });
+
+  it("cartes mémorielles: the former Récit → Traditions fade is no longer requested", async () => {
+    const { container } = await renderAssembly(fullAnnouncementWithTraditions());
+    expect(sectionIds(container)).toContain("traditions");
+    expect(container.querySelector("[data-previous-section]")).toBeNull();
+  });
+
   it("each block holds its own real renderer", async () => {
     const { container } = await renderAssembly(fullAnnouncement());
     const block = (id: string) => container.querySelector(`[data-memorial-section="${id}"]`) as HTMLElement;
