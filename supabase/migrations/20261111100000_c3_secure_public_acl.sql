@@ -15,17 +15,16 @@ alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public
   revoke all on functions from anon, authenticated, service_role;
 
-alter default privileges for role supabase_admin in schema public
-  revoke all on tables from public, anon, authenticated, service_role;
-alter default privileges for role supabase_admin in schema public
-  revoke all on sequences from public, anon, authenticated, service_role;
-alter default privileges for role supabase_admin in schema public
-  revoke all on functions from anon, authenticated, service_role;
+-- supabase_admin est un rôle interne géré par la plateforme : postgres ne
+-- peut pas modifier ses default privileges (SQLSTATE 42501). Ils restent
+-- volontairement inchangés et hors du périmètre applicatif C3.
 
 -- Protection ciblée : ne pas modifier les default privileges globaux du rôle
 -- interne Supabase. Toute fonction créée/remplacée dans public et appartenant
 -- au rôle applicatif postgres est fermée immédiatement ; la même migration
--- doit ensuite accorder explicitement les seuls EXECUTE nécessaires.
+-- doit ensuite réaccorder explicitement les seuls EXECUTE nécessaires après
+-- chaque CREATE OR REPLACE. Les objets appartenant à supabase_admin sont
+-- ignorés : ils restent sous la responsabilité de la plateforme.
 create schema heritage_c3 authorization postgres;
 revoke all on schema heritage_c3 from public, anon, authenticated, service_role;
 

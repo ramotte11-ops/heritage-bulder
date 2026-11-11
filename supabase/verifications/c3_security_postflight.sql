@@ -9,16 +9,18 @@ declare
   v_unexpected_client_functions integer;
   v_nonpublic_rows integer;
 begin
-  -- Les defaults par schéma sont vérifiables pour tables/séquences. Pour les
-  -- fonctions, l'EXECUTE global de PUBLIC est neutralisé par l'event trigger
-  -- ciblé vérifié plus bas, sans toucher aux defaults globaux Supabase.
+  -- Les defaults applicatifs de postgres sont vérifiables pour
+  -- tables/séquences. Les default privileges de supabase_admin sont internes
+  -- à la plateforme, volontairement inchangés et exclus de ce contrôle. Pour
+  -- les fonctions postgres, l'EXECUTE global de PUBLIC est neutralisé par
+  -- l'event trigger ciblé vérifié plus bas.
   select count(*) into v_exposed_defaults
     from pg_default_acl d
     join pg_roles owner_role on owner_role.oid = d.defaclrole
     join pg_namespace n on n.oid = d.defaclnamespace
     cross join lateral aclexplode(d.defaclacl) x
     left join pg_roles grantee_role on grantee_role.oid = x.grantee
-   where owner_role.rolname in ('postgres', 'supabase_admin')
+   where owner_role.rolname = 'postgres'
      and n.nspname = 'public'
      and d.defaclobjtype in ('r', 'S')
      and (x.grantee = 0 or grantee_role.rolname in ('anon', 'authenticated', 'service_role'));
@@ -156,7 +158,7 @@ end
 $$;
 
 select * from (values
-  ('default_acl', 'future public tables/sequences closed to client roles', 'OK'),
+  ('default_acl', 'postgres-owned public tables/sequences closed; platform defaults excluded', 'OK'),
   ('function_guard', 'new postgres-owned public functions start closed', 'OK'),
   ('function_acl', '10 targeted ACLs and complete client allowlist match', 'OK'),
   ('publication_state', 'non-public memorials return zero rows', 'OK'),

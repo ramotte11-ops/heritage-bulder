@@ -1,7 +1,9 @@
 -- HERITAGE HOMMAGE — C3
 -- Retour arrière d'urgence préparé, NON EXÉCUTÉ.
--- Il restitue exactement les ACL/default ACL observées avant C3, y compris
--- leur exposition. À utiliser uniquement sur décision QG après diagnostic.
+-- Il restitue les ACL/default ACL applicatives de postgres observées avant
+-- C3, y compris leur exposition. Les default privileges du rôle interne
+-- supabase_admin ne sont jamais modifiés. À utiliser uniquement sur décision
+-- QG après diagnostic.
 
 begin;
 
@@ -14,13 +16,6 @@ alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public
   grant all on sequences to anon, authenticated, service_role;
 alter default privileges for role postgres in schema public
-  grant execute on functions to anon, authenticated, service_role;
-
-alter default privileges for role supabase_admin in schema public
-  grant all on tables to anon, authenticated, service_role;
-alter default privileges for role supabase_admin in schema public
-  grant all on sequences to anon, authenticated, service_role;
-alter default privileges for role supabase_admin in schema public
   grant execute on functions to anon, authenticated, service_role;
 
 create or replace function public.public_memorial_publication_state(p_memorial_id uuid)
