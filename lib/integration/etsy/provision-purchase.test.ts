@@ -380,18 +380,27 @@ describe("provisionEtsyPurchase — refusals write nothing", () => {
 });
 
 describe("provisionEtsyPurchase — what crosses into the domain", () => {
-  it("hands the domain the offer, the channel label and the order id — and nothing else", async () => {
+  it("hands the domain the offer, the channel label, the level and the order id — and nothing else", async () => {
     const { repository: entitlementRepository, issueWithActivationKey } = uniqueIndexRepository();
 
     await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
 
     const [persisted] = issueWithActivationKey.mock.calls[0];
     expect(Object.keys(persisted).sort()).toEqual([
+      "accessLevel",
       "activationKeyHash",
       "externalOrderId",
       "offerId",
       "source",
     ]);
+  });
+
+  it("states the complete level explicitly on every Etsy right (D12)", async () => {
+    const { repository: entitlementRepository, issueWithActivationKey } = uniqueIndexRepository();
+
+    await provisionEtsyPurchase({ entitlementRepository }, validatedPurchase());
+
+    expect(issueWithActivationKey.mock.calls[0][0].accessLevel).toBe("complet");
   });
 
   it("never transmits listingId, quantity, or any Etsy-shaped field", async () => {

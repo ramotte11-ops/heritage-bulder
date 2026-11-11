@@ -26,6 +26,7 @@ function deps(actualOwnerId: string | null) {
         skin: "intemporel",
         skinVariant: "light",
         slug: "jeanne-martin",
+        accessLevel: "avis",
         draft: { content: fullAnnouncement(), updatedAt: "t", revision: 3 },
       }),
       commitPublication,
@@ -42,6 +43,13 @@ describe("authorizeAndPublishMemorial", () => {
       authorizeAndPublishMemorial(d, actor, { memorialId: MEMORIAL_ID, expectedRevision: 3 }),
     ).resolves.toMatchObject({ ok: true });
     expect(d.commitPublication).toHaveBeenCalledWith(expect.objectContaining({ ownerId: OWNER_ID }));
+  });
+
+  it("forwards the family's gallery choice to the policy, never an access level from input", async () => {
+    const d = deps(OWNER_ID);
+    const forged = { memorialId: MEMORIAL_ID, expectedRevision: 3, gallerySelection: [], accessLevel: "complet" };
+    await expect(authorizeAndPublishMemorial(d, actor, forged)).resolves.toMatchObject({ ok: true });
+    expect(d.commitPublication).toHaveBeenCalledWith(expect.objectContaining({ expectedAccessLevel: "avis" }));
   });
 
   it("collapses a foreign memorial into an opaque refusal before any publication read or write", async () => {
