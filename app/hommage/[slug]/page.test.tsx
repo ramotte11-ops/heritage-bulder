@@ -114,4 +114,15 @@ describe("/hommage/[slug]", () => {
     const proxy = readFileSync(path.join(import.meta.dirname, "..", "..", "..", "proxy.ts"), "utf8");
     expect(proxy).not.toContain("/hommage");
   });
+
+  it("cartes mémorielles V2.1: the public frame clips but never becomes a scroll container", () => {
+    // `overflow: hidden | auto | scroll` (either axis) makes `.page` a scroll
+    // container that never scrolls: the cards' `position: sticky` then never
+    // pins, and the validated covering effect degrades. `clip` does not.
+    const css = readFileSync(path.join(import.meta.dirname, "page.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const declarations = [...css.matchAll(/(overflow(?:-x|-y)?)\s*:\s*([^;}]+)/g)].map(([, property, value]) => [property, value.trim()]);
+    expect(declarations).toEqual([["overflow-x", "clip"]]);
+    const frame = css.match(/\.page\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(frame).toMatch(/overflow-x\s*:\s*clip\s*;/);
+  });
 });
