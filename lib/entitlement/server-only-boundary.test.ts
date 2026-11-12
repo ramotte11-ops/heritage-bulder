@@ -150,6 +150,13 @@ const SERVER_ONLY_MODULES = [
   // real boundary is where those deps get CONSTRUCTED, which is this
   // file, and that is what is guarded.
   "lib/media/server-media-engine.ts",
+  // QG 016 / M2: the public consultation. The reader calls
+  // read_public_memorial_v1 with the service-role client and receives
+  // private storage paths; the resolver signs them; the loader wires
+  // both. Only signed URLs may ever leave the server.
+  "lib/memorial/public/read-public-memorial.ts",
+  "lib/memorial/public/public-snapshot-media-resolver.ts",
+  "lib/memorial/public/load-public-memorial.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

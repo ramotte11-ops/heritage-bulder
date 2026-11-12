@@ -268,6 +268,12 @@ const { loadMemorialPreviewAction } = vi.hoisted(() => ({
 }));
 vi.mock("./preview-actions", () => ({ loadMemorialPreviewAction }));
 
+// QG 008 Lot 3 — « Publier » is a Server Action bound by the page.
+const { publishFromPreviewAction } = vi.hoisted(() => ({
+  publishFromPreviewAction: vi.fn(() => Promise.resolve("published")),
+}));
+vi.mock("./publication-actions", () => ({ publishFromPreviewAction }));
+
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
 
@@ -526,7 +532,12 @@ describe("BuilderMemorialPage — granted access", () => {
     draftRepositoryInstance.saveDraftContent.mockReset();
   });
 
-  it("resumes the real, authorized memorial and renders BuilderShell with it", async () => {
+  // QG 008 Lot 3 v4 — the first publication now generates the public slug:
+  // a slug must never switch the route to the Mission 003 BuilderShell.
+  it.each([
+    ["a draft that already has a slug", CONFIGURED_MEMORIAL],
+    ["a PUBLISHED memorial (slug generated at first publication)", { ...CONFIGURED_MEMORIAL, status: "published" as const }],
+  ])("resumes the real, authorized memorial: %s rests on the Guided Flow pause, never BuilderShell", async (_label, memorial) => {
     getHeritageActor.mockResolvedValue(OWNER_ACTOR);
     authorizeMemorialForRequest.mockResolvedValue({
       status: "granted",
@@ -535,18 +546,19 @@ describe("BuilderMemorialPage — granted access", () => {
     });
     resumeBuilderSession.mockResolvedValue({
       status: "resumable",
-      memorial: CONFIGURED_MEMORIAL,
+      memorial,
       draft: REAL_DRAFT,
     });
+    BuilderShell.mockClear();
 
     const result = await callPage();
 
     expect(resumeBuilderSession).toHaveBeenCalledWith(expect.anything(), MEMORIAL_ID);
-    expect(result.type).toBe(BuilderShell);
-    // The configuration, plus the one draft resumeBuilderSession read
-    // through DraftRepository — and nothing else. No `published`.
-    expect(result.props.memorial).toEqual({ ...CONFIGURED_MEMORIAL, draft: REAL_DRAFT });
-    expect(result.props.memorial).not.toHaveProperty("published");
+    expect(BuilderShell).not.toHaveBeenCalled();
+    expect(result.type).not.toBe(BuilderShell);
+    // Wrapped by the Preview host (unwrapped by callPage), exactly like the slug-less pause.
+    expect(result.type).toBe(GuidedFlowPause);
+    expect(result.props).toMatchObject({ language: "fr", openPreview: true });
   });
 
   it("reads the memorial through the narrow config port, never the composing repository", async () => {
@@ -571,7 +583,7 @@ describe("BuilderMemorialPage — granted access", () => {
     expect(deps).not.toHaveProperty("memorialRepository");
   });
 
-  it("wires `persist` to the saveDraftAction Server Action, bound to the AUTHORIZED memorialId", async () => {
+  it("binds the resting screen's host to the AUTHORIZED memorialId (Preview, publication, journey path) — Lot 3 v4", async () => {
     getHeritageActor.mockResolvedValue(OWNER_ACTOR);
     // The authorization deliberately returns a different id from the one
     // in the URL: the bound action must follow the verified one.
@@ -586,11 +598,16 @@ describe("BuilderMemorialPage — granted access", () => {
       draft: REAL_DRAFT,
     });
 
-    const result = await callPage();
-    const newContent = { hero: { title: "Edited by the family" } };
-    await result.props.persist(newContent);
+    const raw = await callPageRaw();
 
-    expect(saveDraftAction).toHaveBeenCalledExactlyOnceWith("authorized-id", newContent);
+    // The step screens' own persist bindings to the authorized id are covered
+    // per step below; the resting screen saves nothing and is bound by its host.
+    expect(raw.type).toBe(BuilderPreviewHost);
+    expect(raw.props.children.type).toBe(GuidedFlowPause);
+    expect(raw.props.children.props).not.toHaveProperty("persist");
+    expect(raw.props.journey.builderPath).toBe("/builder/authorized-id");
+    await raw.props.loadPreview();
+    expect(loadMemorialPreviewAction).toHaveBeenLastCalledWith("authorized-id");
   });
 
   it("never hands the client a closure over a server-side repository — the draft repository is never called from the page", async () => {
@@ -607,7 +624,8 @@ describe("BuilderMemorialPage — granted access", () => {
     });
 
     const result = await callPage();
-    await result.props.persist({ hero: { title: "Edited" } });
+    expect(result.type).toBe(GuidedFlowPause);
+    expect(result.props).not.toHaveProperty("persist");
 
     // Rendering built a repository for the READ path only; the write
     // path goes through the Server Action, which builds its own client
@@ -751,6 +769,27 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(raw.props.available).toBe(false);
       expect(saveDraftAction).toHaveBeenCalledWith(MEMORIAL_ID, { welcome: { status: "completed" } });
+    });
+
+    it("asks WelcomeStep to record the empty Hero (QG 008 Lot 2: the marker is no authorized durable edit)", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, EMPTY_DRAFT);
+
+      const result = await callPage();
+
+      expect(result.type).toBe(WelcomeStep);
+      expect(result.props.record).toBe("emptyHero");
+    });
+
+    it("moves on to identity (PAGE A) once the empty Hero is saved — the Welcome never loops", async () => {
+      resumeWith(LANGUAGE_CHOSEN_BUT_OTHERWISE_UNCONFIGURED, {
+        content: { hero: { displayName: null, birth: null, death: null, shortPhrase: null, photo: null } } as MemorialVersion["content"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(HeroIdentityStep);
+      expect(WelcomeStep).not.toHaveBeenCalled();
     });
 
     it("never shows before T01: a memorial without a language still gets LanguageStep", async () => {
@@ -1351,7 +1390,7 @@ describe("BuilderMemorialPage — granted access", () => {
       );
     });
 
-    it("renders BuilderShell once T06 is completed and the memorial is otherwise fully configured", async () => {
+    it("rests on the Guided Flow pause (never BuilderShell) once T06 is completed and the memorial is otherwise fully configured", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1366,7 +1405,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(BuilderShell);
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
       expect(HeroPhotoStep).not.toHaveBeenCalled();
       expect(resolveHeroPhotoStepData).not.toHaveBeenCalled();
       expect(HeroCropStep).not.toHaveBeenCalled();
@@ -1400,7 +1440,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(reconcileHeroMediaOnResume).not.toHaveBeenCalled();
     });
 
-    it("QG follow-up: BuilderShell receives the RECONCILED content, never the raw pre-reconciliation draft", async () => {
+    it("QG follow-up: the resting screen's host receives the RECONCILED content, never the raw pre-reconciliation draft", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1447,12 +1487,13 @@ describe("BuilderMemorialPage — granted access", () => {
       };
       reconcileHeroMediaOnResume.mockResolvedValue(reconciledContent);
 
-      const result = await callPage();
+      const raw = await callPageRaw();
 
-      expect(result.props.memorial.draft.content).toBe(reconciledContent);
-      expect(result.props.memorial.draft.content).not.toBe(REAL_DRAFT.content);
-      // Everything else about the draft (its updatedAt) survives.
-      expect(result.props.memorial.draft.updatedAt).toBe(REAL_DRAFT.updatedAt);
+      expect(raw.props.children.type).toBe(GuidedFlowPause);
+      expect(raw.props.draftContent).toBe(reconciledContent);
+      expect(raw.props.draftContent).not.toBe(REAL_DRAFT.content);
+      // « Mon parcours » is computed from the same reconciled content.
+      expect(raw.props.journey).not.toBeNull();
     });
   });
 
@@ -1632,7 +1673,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(GuidedFlowPause);
     });
 
-    it("renders BuilderShell once T07 is completed and the memorial is otherwise fully configured", async () => {
+    it("rests on the Guided Flow pause (never BuilderShell) once T07 is completed and the memorial is otherwise fully configured", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1647,7 +1688,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(BuilderShell);
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
       expect(HeroCropStep).not.toHaveBeenCalled();
       expect(resolveHeroCropStepData).not.toHaveBeenCalled();
     });
@@ -1870,7 +1912,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(GuidedFlowPause);
     });
 
-    it("renders BuilderShell once T08 is completed and the memorial is otherwise fully configured", async () => {
+    it("rests on the Guided Flow pause (never BuilderShell) once T08 is completed and the memorial is otherwise fully configured", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -1885,7 +1927,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(BuilderShell);
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
       expect(HeroRevealStep).not.toHaveBeenCalled();
     });
   });
@@ -2238,7 +2281,7 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(saveDraftAction).toHaveBeenCalledWith("authorized-id", newContent);
     });
 
-    it("renders BuilderShell once A03 is genuinely verified (its own fingerprint matches) and the memorial is otherwise fully configured", async () => {
+    it("rests on the Guided Flow pause (never BuilderShell) once A03 is genuinely verified (its own fingerprint matches) and the memorial is otherwise fully configured", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2253,7 +2296,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
       const result = await callPage();
 
-      expect(result.type).toBe(BuilderShell);
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
       expect(DeathNoticeAnnouncementStep).not.toHaveBeenCalled();
       expect(DeathNoticePrecisionsStep).not.toHaveBeenCalled();
       expect(DeathNoticePreviewStep).not.toHaveBeenCalled();
@@ -2407,7 +2451,7 @@ describe("BuilderMemorialPage — granted access", () => {
       );
     });
 
-    it("A04 = no never opens A05-A08 — falls straight through to the not-configured-yet notice", async () => {
+    it("A04 = no never opens A05-A08 — falls straight through to the Guided Flow pause", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2424,7 +2468,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
       expect(CeremonyMomentStep).not.toHaveBeenCalled();
       expect(CeremonyDateTimeStep).not.toHaveBeenCalled();
-      expect(result.type).toBe(BuilderShell);
+      expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
     });
 
     it("renders CeremonyDateTimeStep (A05) once A04 = yes, never before", async () => {
@@ -2882,7 +2927,7 @@ describe("BuilderMemorialPage — granted access", () => {
         expect(result.type).not.toBe(BuilderShell);
       });
 
-      it("renders BuilderShell once the whole sheet is resolved too, everything else already resolved", async () => {
+      it("rests on the Guided Flow pause (never BuilderShell) once the whole sheet is resolved too, everything else already resolved", async () => {
         getHeritageActor.mockResolvedValue(OWNER_ACTOR);
         authorizeMemorialForRequest.mockResolvedValue({
           status: "granted",
@@ -2907,7 +2952,8 @@ describe("BuilderMemorialPage — granted access", () => {
 
         const result = await callPage();
 
-        expect(result.type).toBe(BuilderShell);
+        expect(result.type).toBe(GuidedFlowPause);
+      expect(BuilderShell).not.toHaveBeenCalled();
       });
 
       it("Builder continuity — past A12 with no slug yet, lands on the Guided Flow pause: no dead end, no BuilderShell, progress still < 1", async () => {
@@ -3571,5 +3617,19 @@ describe("BuilderMemorialPage — Étape 3 Preview host", () => {
   it("rendering the page never loads the Preview by itself", async () => {
     await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
     expect(loadMemorialPreviewAction).not.toHaveBeenCalled();
+  });
+
+  it("QG 008 Lot 3: publish is the publication action bound to the AUTHORIZED id, never called by rendering", async () => {
+    publishFromPreviewAction.mockClear();
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    expect(publishFromPreviewAction).not.toHaveBeenCalled();
+    await host.props.publish(5, "c".repeat(64), ["m1"]);
+    expect(publishFromPreviewAction).toHaveBeenCalledExactlyOnceWith("authorized-id", 5, "c".repeat(64), ["m1"]);
+  });
+
+  it("QG 008 Lot 3: the authenticated resting screen leads to the Preview (openPreview)", async () => {
+    const host = await hostFor(PAST_EVERYTHING_UNCONFIGURED, REAL_DRAFT);
+    expect(host.props.children.type).toBe(GuidedFlowPause);
+    expect(host.props.children.props.openPreview).toBe(true);
   });
 });

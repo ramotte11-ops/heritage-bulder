@@ -22,7 +22,9 @@ export interface SymbolicOfferingInput {
  * - `duplicate`: that key was already stored for this memorial — nothing
  *   new is written, and the gesture is the success it already was;
  * - `refused`: unknown slug, not published, hidden in the live snapshot,
- *   other skin, or no open eligibility (the closed-by-default lock);
+ *   other skin, no longer publicly visible, or no open eligibility
+ *   (opened at the first publication since QG 016, free and complete
+ *   offers alike; closed by an administrative suspension);
  * - `rate_limited`: the memorial's hour or day ceiling is reached.
  */
 export type SymbolicOfferingOutcome = "recorded" | "duplicate" | "refused" | "rate_limited";

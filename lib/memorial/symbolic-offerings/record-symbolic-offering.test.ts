@@ -74,7 +74,7 @@ describe("C1 fidelity and exposure", () => {
     expect(migration).toMatch(/grant execute on function public\.record_symbolic_offering_v1\(text, text, uuid\) to service_role;/);
   });
 
-  it("no route, component or Server Action reaches the recording module in C1", () => {
+  it("QG 016: the public page's Server Action is the ONLY route reaching the recording module; no component does", () => {
     const offenders: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir)) {
@@ -88,7 +88,10 @@ describe("C1 fidelity and exposure", () => {
       }
     };
     for (const root of ["app", "components"]) if (existsSync(path.join(REPO_ROOT, root))) walk(path.join(REPO_ROOT, root));
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual([path.join("app", "hommage", "[slug]", "actions.ts")]);
+    const action = readFileSync(path.join(REPO_ROOT, "app", "hommage", "[slug]", "actions.ts"), "utf8");
+    expect(action).toMatch(/^"use server";/);
+    expect(action).toContain("isPublicSlugShape(slug)");
   });
 
   it("neither C1 module is a Server Action", () => {

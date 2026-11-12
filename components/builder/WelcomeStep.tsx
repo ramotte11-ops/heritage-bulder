@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
-import { commitWelcome } from "@/lib/builder/guided-flow/welcome-step";
+import { commitAuthenticatedWelcome, commitWelcome } from "@/lib/builder/guided-flow/welcome-step";
 import { PrimaryButton } from "./PrimaryButton";
 import { playfairDisplay, inter, ebGaramond } from "./fonts";
 import screenStyles from "./BuilderScreen.module.css";
@@ -26,6 +26,13 @@ interface WelcomeStepProps {
   content: MemorialContent;
   /** Same injected draft transport as every Guided Flow screen. */
   persist: DraftSaveTransport;
+  /**
+   * What the CTA records (a plain value: a Server Component passes it).
+   * `"marker"` (default — guest Builder, demo): `commitWelcome`.
+   * `"emptyHero"` (authenticated Builder only): `commitAuthenticatedWelcome`,
+   * the authorized durable write (lib/builder/guided-flow/welcome-step.ts).
+   */
+  record?: "marker" | "emptyHero";
 }
 
 /**
@@ -42,13 +49,13 @@ interface WelcomeStepProps {
  * (Inter), with the Memorial's editorial EB Garamond (the Ceremony's own
  * face) for the welcome copy, title included.
  */
-export function WelcomeStep({ language, content, persist }: WelcomeStepProps) {
+export function WelcomeStep({ language, content, persist, record = "marker" }: WelcomeStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
 
   async function submit(): Promise<WelcomeStepState> {
     try {
-      await saveDraft(commitWelcome(content));
+      await saveDraft(record === "emptyHero" ? commitAuthenticatedWelcome(content) : commitWelcome(content));
     } catch {
       return { status: "error" };
     }

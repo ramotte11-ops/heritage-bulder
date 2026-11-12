@@ -1,0 +1,139 @@
+/* QG 008 Lot 3 — « Publier » in the private Preview: a calm card under the
+   bar, the gallery choice when there is one, then the confirmation. */
+.panel {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 44rem;
+  margin: 0.75rem auto;
+  padding: 1rem;
+  background: var(--heritage-surface-card);
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  font-family: var(--heritage-font-family-sans);
+  color: var(--heritage-text-secondary);
+}
+
+.text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.notice {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.alert {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--heritage-state-error-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.primary {
+  border: none;
+  border-radius: var(--heritage-radius-control);
+  padding: 0.625rem 1.25rem;
+  background: var(--heritage-accent-primary);
+  color: var(--heritage-color-paper);
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--heritage-accent-primary-hover);
+}
+
+.primary:disabled {
+  background: var(--heritage-state-disabled-surface);
+  color: var(--heritage-state-disabled-text);
+  cursor: not-allowed;
+}
+
+.secondary {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+  cursor: pointer;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+.choice input:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.choice {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: center;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.choice img,
+.thumbMissing {
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-page);
+}
+
+.choice[data-selected="false"] img {
+  opacity: 0.45;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--heritage-surface-page) 70%, transparent);
+}
+
+.dialog {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 28rem;
+  width: 100%;
+  padding: 1.25rem;
+  background: var(--heritage-surface-card);
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  font-family: var(--heritage-font-family-sans);
+  color: var(--heritage-text-secondary);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 1.125rem;
+}

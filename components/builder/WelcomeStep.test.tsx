@@ -84,6 +84,28 @@ describe("WelcomeStep — the CTA", () => {
     expect(persist).toHaveBeenCalledWith({ welcome: { status: "completed" } });
   });
 
+  it("authenticated Builder (record=\"emptyHero\"): persists the empty Hero, never the marker, then refreshes", async () => {
+    const persist = ok();
+    render(<WelcomeStep language="fr" content={{}} persist={persist} record="emptyHero" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Commencer son hommage/ }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(persist).toHaveBeenCalledWith({
+      hero: { displayName: null, birth: null, death: null, shortPhrase: null, photo: null },
+    });
+  });
+
+  it("without `record` (guest Builder, demo): still persists the marker only", async () => {
+    const persist = ok();
+    render(<WelcomeStep language="fr" content={{}} persist={persist} record="marker" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Commencer son hommage/ }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(persist).toHaveBeenCalledWith({ welcome: { status: "completed" } });
+  });
+
   it("on a failed save: shows the generic error and never moves on", async () => {
     const persist = vi.fn().mockRejectedValue(new Error("network"));
     render(<WelcomeStep language="fr" content={{}} persist={persist} />);

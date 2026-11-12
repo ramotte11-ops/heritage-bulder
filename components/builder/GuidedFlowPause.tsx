@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { BuilderScreen } from "./BuilderScreen";
+import { PausePreviewCta } from "./preview/PausePreviewCta";
 import styles from "./GuidedFlowPause.module.css";
 
 interface GuidedFlowPauseProps {
@@ -14,6 +15,9 @@ interface GuidedFlowPauseProps {
    * `/owner` link is shown. The way forward is « Voir l'aperçu », which
    * the surrounding `BuilderPreviewHost` places in the chrome. */
   ownerSpace?: boolean;
+  /** QG 008 Lot 3 — the authenticated Builder: the resting screen leads to
+   * the private Preview first (where « Publier » lives). */
+  openPreview?: boolean;
 }
 
 /**
@@ -36,13 +40,14 @@ interface GuidedFlowPauseProps {
  *
  * A Server Component: no state, no autosave, nothing to persist.
  */
-export function GuidedFlowPause({ language, progress, ownerSpace = true }: GuidedFlowPauseProps) {
+export function GuidedFlowPause({ language, progress, ownerSpace = true, openPreview = false }: GuidedFlowPauseProps) {
   return (
     <BuilderScreen progress={progress}>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "flowPause.title")}</h1>
         {ownerSpace && <p className={styles.body}>{translate(language, "flowPause.body")}</p>}
       </div>
+      {openPreview && <PausePreviewCta />}
 
       {ownerSpace && (
         <Link href="/owner" className={styles.link}>

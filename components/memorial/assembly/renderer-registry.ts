@@ -19,8 +19,9 @@ import { SymbolicOfferingsV1Section } from "@/components/memorial/symbolic-offer
  * `RENDERER_KEYS` without its component fails to typecheck. Each entry
  * is the validated renderer itself — no wrapper, no fork, no fallback.
  * One exception, by design: `SymbolicOfferingsV1Section` is the gate
- * that keeps the validated `SymbolicOfferingsV1` inside the Builder
- * Preview (it draws nothing elsewhere).
+ * that draws the validated `SymbolicOfferingsV1` only inside an offerings
+ * host — the Builder Preview (simulated) or the public page (QG 016, real
+ * deposits) — and nothing elsewhere.
  */
 export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<RendererPropsMap[K]> } = {
   HeroIntemporel,

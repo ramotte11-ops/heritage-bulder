@@ -28,11 +28,11 @@ function resolveModule(from: string, specifier: string): string | null {
   throw new Error(`Unresolved import ${specifier} from ${relative(ROOT, from)}`);
 }
 
-function staticGraph() {
+function staticGraph(entry: string = ENTRY) {
   const modules = new Set<string>();
   const packages = new Set<string>();
   const dynamic: string[] = [];
-  const stack = [ENTRY];
+  const stack = [entry];
   while (stack.length > 0) {
     const file = stack.pop()!;
     if (modules.has(file)) continue;
@@ -77,5 +77,27 @@ describe("guest Builder import graph", () => {
       "components/builder/GalleryWorkshop.tsx -> @/lib/media/authenticated-gallery-upload",
       "components/builder/HeroPhotoStep.tsx -> @/lib/supabase/browser-client",
     ]);
+  });
+});
+
+// QG 008 Lot 2 — the production route of the same guest Builder carries the
+// same guarantee: no Supabase, no server action. The durable save is a
+// plain navigation (GuestDurableSaveEntry) to routes outside this graph.
+describe("guest Builder import graph — production route /creer", () => {
+  const graph = staticGraph(join(ROOT, "app/creer/page.tsx"));
+
+  it("is the same guest Builder, with the durable-save entry", () => {
+    expect(graph.modules).toEqual(expect.arrayContaining([
+      "components/builder/guest/GuestBuilderRuntime.tsx",
+      "components/builder/guest/GuestDurableSaveEntry.tsx",
+    ]));
+  });
+
+  it("loads no Supabase module, no server action and none of the transfer screens", () => {
+    expect(graph.packages.filter((name) => name.startsWith("@supabase"))).toEqual([]);
+    expect(graph.modules.filter((file) => /supabase|server-media|actions\.ts$|components\/builder\/transfer\//.test(file))).toEqual([]);
+    const serverModules = graph.modules.filter((file) =>
+      !file.endsWith(".css") && /^\s*["']use server["']/m.test(readFileSync(join(ROOT, file), "utf8")));
+    expect(serverModules).toEqual([]);
   });
 });

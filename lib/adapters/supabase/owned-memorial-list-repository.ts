@@ -3,11 +3,23 @@ import type {
   OwnedMemorialListRepository,
   OwnedMemorialSummary,
 } from "@/lib/adapters/owned-memorial-list-repository";
+import { isPublicSlugShape } from "@/lib/memorial/public/read-public-memorial";
+import { isMemorialPubliclyVisible } from "@/lib/memorial/public/public-visibility";
 
 interface MemorialListRow {
   id: string;
   created_at: string;
+  status: unknown;
+  slug: unknown;
+  access_level: unknown;
+  free_public_until: unknown;
 }
+
+/** QG 016 / M4 — `memorials` columns this list reads. The last four are
+ * existing columns of the Owner's OWN rows, already readable by
+ * `authenticated` (table-level SELECT, 20260905160000_builder_owner_access.sql)
+ * under `memorials_select_own`: no new grant, policy or function. */
+const MEMORIAL_LIST_COLUMNS = "id, created_at, status, slug, access_level, free_public_until";
 
 interface DraftNameRow {
   memorial_id: string;
@@ -25,6 +37,19 @@ function toLabel(value: unknown): string | null {
 }
 
 /**
+ * QG 016 / M4 — the slug to link to, only while the public page would
+ * answer: publicly visible (mirror of `memorial_publicly_visible_v1`) AND
+ * a slug of the shape publication produces. Fails closed.
+ */
+function publicSlugOf(row: MemorialListRow, now: Date): string | null {
+  const visible = isMemorialPubliclyVisible(
+    { status: row.status, accessLevel: row.access_level, freePublicUntil: row.free_public_until },
+    now,
+  );
+  return visible && isPublicSlugShape(row.slug) ? row.slug : null;
+}
+
+/**
  * Builder continuity mission. Must be constructed with the SESSION-scoped
  * client (lib/supabase/server-client.ts's `createServerSupabaseClient()`),
  * never the service-role one — exactly like `SupabaseDraftRepository`.
@@ -35,9 +60,12 @@ function toLabel(value: unknown): string | null {
  * `memorials_select_own` / `memorial_drafts_select_own`, Mission 002).
  * No new grant, no new policy, no migration:
  *
- *   1. `memorials` — `id, created_at` only, filtered by the server-
- *      resolved `owner_id` AND by RLS (`owner_id = current_owner_id()`):
- *      two independent locks on the same fact.
+ *   1. `memorials` — `id, created_at`, plus (QG 016 / M4) `status, slug,
+ *      access_level, free_public_until` to decide the « Voir mon hommage »
+ *      link — filtered by the server-resolved `owner_id` AND by RLS
+ *      (`owner_id = current_owner_id()`): two independent locks on the
+ *      same fact. The four extra columns never leave this class: only
+ *      `publicSlug` (or `null`) does.
  *   2. `memorial_drafts` — the Hero's `displayName` only, extracted
  *      server-side by PostgREST (`content->hero->>displayName`), never
  *      the draft content itself.
@@ -48,12 +76,16 @@ function toLabel(value: unknown): string | null {
  * rejects — see the port.
  */
 export class SupabaseOwnedMemorialListRepository implements OwnedMemorialListRepository {
-  constructor(private readonly client: SupabaseClient) {}
+  /** `now` is injectable for tests only; the owner space uses the real clock. */
+  constructor(
+    private readonly client: SupabaseClient,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async listOwnedMemorials(ownerId: string): Promise<OwnedMemorialSummary[]> {
     const { data, error } = await this.client
       .from("memorials")
-      .select("id, created_at")
+      .select(MEMORIAL_LIST_COLUMNS)
       .eq("owner_id", ownerId)
       .order("created_at", { ascending: true })
       .returns<MemorialListRow[]>();
@@ -83,10 +115,12 @@ export class SupabaseOwnedMemorialListRepository implements OwnedMemorialListRep
       }
     }
 
+    const now = this.now();
     return rows.map((row) => ({
       id: row.id,
       displayName: names.get(row.id) ?? null,
       createdAt: row.created_at,
+      publicSlug: publicSlugOf(row, now),
     }));
   }
 }

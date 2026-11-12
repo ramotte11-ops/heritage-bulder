@@ -20,6 +20,13 @@ export interface OwnedMemorialSummary {
    * only, `null` until then. Never used for any decision. */
   displayName: string | null;
   createdAt: string; // ISO 8601
+  /** QG 016 / M4 — the public slug, ONLY while the memorial is publicly
+   * consultable (`isMemorialPubliclyVisible`, the mirror of
+   * `memorial_publicly_visible_v1`) and the slug has the only shape
+   * publication produces (`isPublicSlugShape`). `null` otherwise: a draft,
+   * an expired free notice, an `editing` or `archived` memorial, any
+   * unreadable column. Drives the « Voir mon hommage » link only. */
+  publicSlug: string | null;
 }
 
 export interface OwnedMemorialListRepository {

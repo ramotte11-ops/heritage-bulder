@@ -1,0 +1,18 @@
+/*
+ * QG 016 / M2 — the public page adds no visual of its own: every section
+ * brings its own background, typography and Light/Dark scope. This only
+ * gives the renderers the full-viewport-width mount they assume (same
+ * minimal frame as /admin/atelier/preview).
+ *
+ * Cartes mémorielles V2.1 : `overflow-x: clip`, never `hidden` (nor `auto`
+ * or `scroll`). `hidden` turns this frame into a scroll container that never
+ * scrolls, so the cards' `position: sticky` can no longer pin: each card
+ * would scroll past while still receding — a degraded, non-validated effect.
+ * `clip` cuts any horizontal overflow exactly the same way without creating
+ * a scroll container, so the page keeps scrolling the viewport.
+ */
+.page {
+  min-width: 20rem;
+  min-height: 100vh;
+  overflow-x: clip;
+}

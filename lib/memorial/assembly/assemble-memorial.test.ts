@@ -7,7 +7,7 @@ import { readDeathNotice } from "@/lib/memorial/death-notice";
 import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
 import { setSectionVisibility } from "@/lib/memorial/section-visibility";
 import { assembleMemorial, type AssembleMemorialInput } from "./assemble-memorial";
-import { RENDERER_ADAPTERS } from "./renderer-adapters";
+import { RENDERER_ADAPTERS, lifeStoryRendererContent } from "./renderer-adapters";
 import {
   FIXTURE_HERO_MEDIA_ID,
   FIXTURE_READ_URL,
@@ -113,9 +113,15 @@ describe("consumes composeMemorial", () => {
     expect(ids(heroOnly.sections)).toEqual(["hero", "symbolicOfferings"]);
   });
 
-  it("QG decision: a resolved Récit with all three matters empty is assembled", async () => {
+  it("QG 016: a passed Récit sheet (all three matters empty) is NOT assembled — no artificial section", async () => {
     const content = fullAnnouncementEmptyRecit();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
+    expect(assembled.sections.map((s) => s.sectionId)).not.toContain("story");
+    expect(assembled.sections.map((s) => s.sectionId)).toEqual(expect.arrayContaining(["hero", "deathNotice", "ceremony"]));
+  });
+
+  it("QG 016: a Récit with the family's own text is assembled with the V2 renderer", async () => {
+    const assembled = await assembleMemorial(input(fullAnnouncement()), { resolveMedia: recordingResolver().resolve });
     const story = assembled.sections.find((s) => s.sectionId === "story");
     expect(story?.rendererKey).toBe("RecitDeVieV2");
   });
@@ -153,7 +159,7 @@ describe("renderer props", () => {
     });
   });
 
-  it("Cérémonie V2 receives the inspected matter; Récit receives the content", async () => {
+  it("Cérémonie V2 receives the inspected matter; Récit receives only the content it reads (QG 016 / M2 L1)", async () => {
     const content = fullAnnouncement();
     const assembled = await assembleMemorial(input(content), { resolveMedia: recordingResolver().resolve });
     const ceremony = assembled.sections.find((s) => s.rendererKey === "CeremonyV2");
@@ -164,7 +170,8 @@ describe("renderer props", () => {
       headingLevel: "section",
     });
     const story = assembled.sections.find((s) => s.rendererKey === "RecitDeVieV2");
-    expect(story?.props).toEqual({ content, language: "fr", skinVariant: "light" });
+    expect(story?.props).toEqual({ content: lifeStoryRendererContent(content), language: "fr", skinVariant: "light" });
+    expect(JSON.stringify(story?.props)).not.toContain("guidedFlow");
   });
 });
 

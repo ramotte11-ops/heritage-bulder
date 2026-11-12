@@ -438,8 +438,9 @@ describe("receiveEtsyPurchase — nothing personal crosses this boundary", () =>
       expect(serialised).not.toContain(value);
     }
     // No full Etsy payload is retained anywhere on the path: the domain
-    // receives four fields and no more.
+    // receives five fields and no more.
     expect(Object.keys(issueWithActivationKey.mock.calls[0][0]).sort()).toEqual([
+      "accessLevel",
       "activationKeyHash",
       "externalOrderId",
       "offerId",

@@ -1,5 +1,6 @@
 import type { EditorialContext } from "@/config/memorial";
 import type { MemorialContent } from "@/types/memorial";
+import { EMPTY_HERO_CONTENT } from "@/types/hero";
 
 /**
  * Builder Welcome — the one screen between T01 (language) and the rest
@@ -14,7 +15,9 @@ import type { MemorialContent } from "@/types/memorial";
  * NOT a `StepId` in `human-steps.ts`: adding one would change every
  * screen's progress denominator (`guidedFlowProgress`) for a screen that
  * carries no progress bar of its own. Its only persisted trace is
- * `content.welcome`, written once, when the family presses the CTA.
+ * written once, when the family presses the CTA: `content.welcome` in
+ * the guest Builder's local draft (`commitWelcome`), the empty Hero in
+ * an authenticated durable draft (`commitAuthenticatedWelcome`).
  *
  * ## Shown once, never on a resumed draft
  *
@@ -46,4 +49,27 @@ export function needsWelcome(editorialContext: EditorialContext | null, content:
 export function commitWelcome(content: MemorialContent): MemorialContent {
   const marker: WelcomeContent = { welcome: { status: "completed" } };
   return { ...content, ...marker } as MemorialContent;
+}
+
+/**
+ * QG 008 Lot 2 — the AUTHENTICATED Builder's Welcome CTA (the guest
+ * Builder and the demo keep `commitWelcome`).
+ *
+ * A durable draft can only be written through the audited, authorized
+ * edit path, and `welcome` is no authorized edit target
+ * (lib/memorial/edit-authorization.ts): the marker was refused, leaving
+ * the family on the Welcome. Instead, the CTA records the canonical EMPTY
+ * Hero (`EMPTY_HERO_CONTENT`, every field `null`) — the very shape the
+ * first Hero screen writes next, already an authorized pre-publication
+ * edit. The content is no longer empty, so `needsWelcome` is false and
+ * the Welcome is never shown again; an empty Hero is not a complete one
+ * (`isHeroContentComplete`), so nothing becomes publishable or visible.
+ *
+ * Only an absent (or `null`) Hero is filled; any other content is
+ * returned untouched — an existing draft is never rewritten.
+ */
+export function commitAuthenticatedWelcome(content: MemorialContent): MemorialContent {
+  const hero = (content as { hero?: unknown }).hero;
+  if (hero !== undefined && hero !== null) return content;
+  return { ...content, hero: { ...EMPTY_HERO_CONTENT } } as MemorialContent;
 }

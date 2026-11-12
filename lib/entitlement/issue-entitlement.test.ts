@@ -40,7 +40,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository },
-      { offerId: "juif", source: "direct" },
+      { offerId: "juif", source: "direct", accessLevel: "complet" },
     );
 
     expect(result.status).toBe("issued");
@@ -56,7 +56,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository },
-      { offerId: "intemporel", source: "etsy", externalOrderId: "order-1" },
+      { offerId: "intemporel", source: "etsy", accessLevel: "complet", externalOrderId: "order-1" },
     );
 
     if (result.status !== "issued") throw new Error("unreachable");
@@ -79,12 +79,30 @@ describe("issueEntitlementWithActivationKey", () => {
 
     await issueEntitlementWithActivationKey(
       { entitlementRepository: repository({ issueWithActivationKey }) },
-      { offerId: "musulman", source: "etsy", externalOrderId: "receipt-42" },
+      { offerId: "musulman", source: "etsy", accessLevel: "complet", externalOrderId: "receipt-42" },
     );
 
     expect(issueWithActivationKey).toHaveBeenCalledWith(
-      expect.objectContaining({ offerId: "musulman", source: "etsy", externalOrderId: "receipt-42" }),
+      expect.objectContaining({ offerId: "musulman", source: "etsy", accessLevel: "complet", externalOrderId: "receipt-42" }),
     );
+  });
+
+  it("passes the access level through untouched — never defaulted (D12)", async () => {
+    const issueWithActivationKey = vi
+      .fn()
+      .mockResolvedValue({ status: "issued", entitlement: entitlement() });
+
+    for (const accessLevel of ["avis", "complet"] as const) {
+      await issueEntitlementWithActivationKey(
+        { entitlementRepository: repository({ issueWithActivationKey }) },
+        { offerId: "intemporel", source: "direct", accessLevel },
+      );
+    }
+
+    expect(issueWithActivationKey.mock.calls.map(([input]) => input.accessLevel)).toEqual([
+      "avis",
+      "complet",
+    ]);
   });
 
   it("normalises a missing externalOrderId to null", async () => {
@@ -94,7 +112,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     await issueEntitlementWithActivationKey(
       { entitlementRepository: repository({ issueWithActivationKey }) },
-      { offerId: "musulman", source: "direct" },
+      { offerId: "musulman", source: "direct", accessLevel: "complet" },
     );
 
     expect(issueWithActivationKey).toHaveBeenCalledWith(
@@ -107,7 +125,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository: repository({ issueWithActivationKey }) },
-      { offerId: "an-offer-from-the-future" as never, source: "direct" },
+      { offerId: "an-offer-from-the-future" as never, source: "direct", accessLevel: "complet" },
     );
 
     expect(result).toEqual({ status: "invalidOffer" });
@@ -124,7 +142,7 @@ describe("issueEntitlementWithActivationKey", () => {
 
     const result = await issueEntitlementWithActivationKey(
       { entitlementRepository },
-      { offerId: "intemporel", source: "etsy", externalOrderId: "order-1" },
+      { offerId: "intemporel", source: "etsy", accessLevel: "complet", externalOrderId: "order-1" },
     );
 
     expect(result).toEqual({ status: "duplicateExternalOrder", entitlement: existing });
@@ -138,7 +156,7 @@ describe("issueEntitlementWithActivationKey", () => {
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const result = await issueEntitlementWithActivationKey(
         { entitlementRepository },
-        { offerId: "hindou", source: "direct" },
+        { offerId: "hindou", source: "direct", accessLevel: "complet" },
       );
       if (result.status !== "issued") throw new Error("unreachable");
       keys.add(result.rawActivationKey);

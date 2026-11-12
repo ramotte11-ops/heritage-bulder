@@ -91,8 +91,9 @@ export function fullAnnouncement(): MemorialContent {
   return ok(commitPersonSheet(content));
 }
 
-/** Same, but the A10–A12 sheet skipped: all three matters empty (QG
- * decision — still renderable, with HERITAGE fallbacks). */
+/** Same, but the A10–A12 sheet skipped: all three matters empty (QG 016 —
+ * the Récit is then absent, never shown with fallbacks alone). Renderer-level
+ * tests still use it to prove the renderers' own fallback contract. */
 export function fullAnnouncementEmptyRecit(): MemorialContent {
   return ok(skipPersonSheet(throughA09WithCeremony()));
 }

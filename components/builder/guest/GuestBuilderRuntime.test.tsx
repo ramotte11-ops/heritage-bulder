@@ -1318,7 +1318,7 @@ describe("GuestBuilderRuntime", () => {
       const back = await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") });
       const preview = view.container.querySelector("[data-memorial-preview]")!;
       expect([...preview.querySelectorAll("[data-memorial-section]")].map((node) => node.getAttribute("data-memorial-section")))
-        .toEqual(["hero", "deathNotice", "story", "symbolicOfferings"]);
+        .toEqual(["hero", "deathNotice", "symbolicOfferings"]); // QG 016: the A10–A12 sheet is passed in this fixture — no Récit
       expect(preview.querySelector('[data-memorial-section="hero"]')?.innerHTML).toContain("blob:preview-1");
       expect(view.container.querySelector("[data-builder-screen]")?.hasAttribute("hidden")).toBe(true);
 
@@ -1477,6 +1477,23 @@ describe("GuestBuilderRuntime", () => {
       fireEvent.click(await screen.findByRole("button", { name: translate("fr", "journey.backToPreview") }));
       await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
       expect(store.value).toEqual(before);
+    });
+
+    it("QG 008 Lot 2 — offers « Enregistrer mon hommage » under the screen, hidden with it while the Preview is open, with no network", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const { view, fetchSpy } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      const entry = screen.getByRole("button", { name: translate("fr", "durableSave.entry") });
+      const builderScreen = entry.closest("[data-builder-screen]");
+      expect(builderScreen).not.toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      await vi.waitFor(() => expect(view.container.querySelector("[data-memorial-preview]")).toBeTruthy());
+      expect(builderScreen!.hasAttribute("hidden")).toBe(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 });

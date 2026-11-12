@@ -1,0 +1,33 @@
+/* QG 008 Lot 2 — sober entry, outside the Masters' compositions. To be
+   reviewed artistically by the PO before any public test. */
+.entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 2rem auto 1.5rem;
+  padding: 0 16px;
+  max-width: 36rem;
+  text-align: center;
+}
+
+.button {
+  font: inherit;
+  padding: 0.65rem 1.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.8;
+}

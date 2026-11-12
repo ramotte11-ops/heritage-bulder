@@ -41,3 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# sauvegardes Supabase (scripts/db/backup-supabase.sh) — données de familles, jamais dans le dépôt
+/backups/
+*.dump
+*.dump.counts
+*.dump.sha256

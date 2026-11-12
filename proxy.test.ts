@@ -22,11 +22,18 @@ describe("proxy matcher", () => {
     "/login",
     "/auth/callback",
     "/admin",
+    "/brouillon/reprise",
+    "/brouillon/sauvegarder",
   ])("refreshes the session for %s", (url) => {
     expect(matches(url)).toBe(true);
   });
 
   it("never runs for the public root", () => {
     expect(matches("/")).toBe(false);
+  });
+
+  it("QG 008 Lot 2: never runs for the guest Builder, which holds no session", () => {
+    expect(matches("/creer")).toBe(false);
+    expect(matches("/pilote/builder-invite")).toBe(false);
   });
 });

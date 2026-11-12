@@ -13,8 +13,8 @@ import type { SectionId } from "./sections";
  *   5. traditions    Traditions & repères
  *   6. gallery       Galerie photos
  *   7. video         Vidéo — emplacement réservé (inchangé)
- *   8. symbolicOfferings  Offrandes symboliques V1 (M3 : Preview du
- *                    Builder seulement — voir plus bas)
+ *   8. symbolicOfferings  Offrandes symboliques V1 (Preview du Builder,
+ *                    simulée ; page publique depuis QG 016)
  *   9. testimonials  Contributions des proches
  *  10. condolences   Condoléances (rubrique distincte, jamais fusionnée)
  *  11. Livre de mémoire — futur chantier, aucune réservation technique
