@@ -242,5 +242,29 @@ export function reopenGuestHeroPhoto(options: GuestHeroMediaOptions, expectedRev
   });
 }
 
+/** The Hero steps, in order (T06 photo, T07 crop, T08 reveal). */
+export const GUEST_HERO_STEPS = ["T06", "T07", "T08"] as const;
+export type GuestHeroStep = (typeof GUEST_HERO_STEPS)[number];
+
+/**
+ * QG 003 — recovery: reopens the Hero flow at `from` by clearing ONLY the
+ * completion marks of that step and the Hero steps after it, so the family
+ * is brought back to a screen that can render. Nothing else changes: texts,
+ * answers, photos, crop and skin variant stay in the draft, and the steps
+ * after T08 keep their marks (the family returns to where it was once the
+ * Hero is redone). Never deletes a photo.
+ */
+export function reopenGuestHeroFrom(options: GuestHeroMediaOptions, from: GuestHeroStep, expectedRevision: number) {
+  return saveDraftUpdate(options, expectedRevision, (draft) => {
+    const flow = readGuidedFlowState(draft.content);
+    for (const step of GUEST_HERO_STEPS.slice(GUEST_HERO_STEPS.indexOf(from))) delete flow[step];
+    const updated = updateGuestDraftV3(draft, {
+      now: options.now(),
+      content: writeGuidedFlowState(draft.content, flow),
+    });
+    return updated.ok ? updated.draft : null;
+  });
+}
+
 /** Compile-time guard: guest prepared media only admits the repository image allowlist. */
 export type GuestHeroPreparedMimeType = AllowedImageMimeType;
