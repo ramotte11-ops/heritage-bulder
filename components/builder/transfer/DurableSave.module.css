@@ -83,3 +83,27 @@
   gap: 0.75rem;
   margin-top: 1rem;
 }
+
+/* QG 003 — « Créer mon compte » / « J'ai déjà un compte ». Functional,
+   to be reviewed by the PO like the rest of this screen. */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.tab {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}

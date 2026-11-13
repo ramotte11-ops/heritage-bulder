@@ -25,13 +25,13 @@ export default async function LoginPage({
     <main className={styles.main}>
       <h1 className={styles.title}>Connexion</h1>
       <p className={styles.subtitle}>
-        Saisissez votre adresse email pour recevoir un lien de connexion. Aucun mot de passe
-        n&rsquo;est nécessaire.
+        Connectez-vous avec votre adresse e-mail et votre mot de passe.
       </p>
 
       {error === "auth" && (
         <p className={styles.callbackError} role="alert">
-          Le lien de connexion n&rsquo;est plus valide ou a expiré. Merci de redemander un lien.
+          Ce lien n&rsquo;est plus valide ou a expiré. Connectez-vous avec votre mot de passe,
+          ou utilisez « Mot de passe oublié ».
         </p>
       )}
 
