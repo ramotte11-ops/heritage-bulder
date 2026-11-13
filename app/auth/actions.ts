@@ -5,7 +5,17 @@ import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { getSiteUrl } from "@/lib/supabase/site-url";
 import { isValidEmail } from "@/lib/auth/validate-email";
 import { sanitizeReturnPath } from "@/lib/auth/return-path";
-import type { MagicLinkFormState } from "@/lib/auth/magic-link-state";
+import {
+  EMAIL_CODE_PATTERN,
+  type EmailCodeFormState,
+  type EmailCodeVerifyFailure,
+  type MagicLinkFormState,
+} from "@/lib/auth/magic-link-state";
+
+/** Supabase Auth's rate-limit answers (HTTP 429 or its own `over_*` codes). */
+function isRateLimited(error: { status?: number; code?: string }): boolean {
+  return error.status === 429 || (typeof error.code === "string" && error.code.startsWith("over_"));
+}
 
 /**
  * Requests a Supabase Auth magic link for the submitted email.
@@ -44,7 +54,7 @@ export async function requestMagicLink(
   const next = sanitizeReturnPath(formData.get("next") as string | null);
 
   if (!isValidEmail(email)) {
-    return { status: "error", message: "Merci de saisir une adresse email valide." };
+    return { status: "error", reason: "invalid_email", message: "Merci de saisir une adresse email valide." };
   }
 
   let supabase;
@@ -56,6 +66,7 @@ export async function requestMagicLink(
     console.error("Magic link request failed (client init):", detail);
     return {
       status: "error",
+      reason: "send_failed",
       message: `Configuration Supabase indisponible : ${detail}`,
     };
   }
@@ -82,6 +93,7 @@ export async function requestMagicLink(
       );
       return {
         status: "error",
+        reason: isRateLimited(error) ? "rate_limited" : "send_failed",
         message: `Le lien n'a pas pu être envoyé (réponse Supabase : ${error.message}).`,
       };
     }
@@ -91,12 +103,14 @@ export async function requestMagicLink(
     console.error("Magic link request failed (unexpected):", detail);
     return {
       status: "error",
+      reason: "send_failed",
       message: `Erreur inattendue lors de l'envoi du lien : ${detail}`,
     };
   }
 
   return {
     status: "success",
+    email,
     // Includes the resolved redirect target on purpose: it is only ever
     // a public base URL (never a credential), and showing it is what
     // makes a wrong resolution (e.g. localhost on a Deploy Preview)
@@ -106,6 +120,57 @@ export async function requestMagicLink(
     // header rather than platform metadata.
     message: `Un lien de connexion vient d'être envoyé à ${email}. Consultez votre boîte mail. (Redirection configurée vers ${redirectTo})`,
   };
+}
+
+/**
+ * QG 003 — verifies the 6-digit code from the sign-in e-mail
+ * (`{{ .Token }}`) IN THE TAB THAT ASKED FOR IT, then redirects to `next`.
+ *
+ * Why this exists: the e-mailed link uses PKCE, whose verifier lives in a
+ * cookie of the browser that requested it. A link opened from Gmail lands
+ * in another browser context (Gmail's in-app tab, or normal Chrome when
+ * the request came from a private tab) and fails with "PKCE code verifier
+ * not found" — proven in production logs (13/11/2026). A code typed back
+ * into the same tab needs no verifier, and keeps the family in the browser
+ * that holds its local guest draft (IndexedDB), which the transfer needs.
+ *
+ * `verifyOtp` runs on the server client, so the session cookie is written
+ * on this response — exactly like the link callback. Expiry, single use
+ * and attempt limits are Supabase Auth's own: a wrong, expired or already
+ * used code all come back as `otp_expired` and are shown as one message.
+ * Never logs the e-mail address or the code.
+ */
+export async function verifyEmailCode(
+  _prevState: EmailCodeFormState,
+  formData: FormData,
+): Promise<EmailCodeFormState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const code = String(formData.get("code") ?? "").replace(/\s+/g, "");
+  const next = sanitizeReturnPath(formData.get("next") as string | null);
+
+  if (!isValidEmail(email)) return { status: "error", reason: "invalid_email" };
+  if (!EMAIL_CODE_PATTERN.test(code)) return { status: "error", reason: "invalid_format" };
+
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
+    if (error) {
+      const reason: EmailCodeVerifyFailure = error.code === "otp_expired"
+        ? "invalid_or_expired"
+        : isRateLimited(error) ? "rate_limited" : "failed";
+      console.error("Email code verification failed:", error.code ?? "no_code", "status:", error.status ?? "none");
+      return { status: "error", reason };
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error(
+      "Email code verification failed (unexpected):",
+      error instanceof Error ? error.message : String(error),
+    );
+    return { status: "error", reason: "failed" };
+  }
+
+  redirect(next);
 }
 
 /**

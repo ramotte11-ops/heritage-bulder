@@ -9,6 +9,7 @@ import {
   guestHeroStepProgress,
   isGuestHeroRevealComplete,
   loadGuestHeroPhoto,
+  reopenGuestHeroFrom,
   reopenGuestHeroPhoto,
   saveGuestHeroCrop,
   savePreparedGuestHeroPhoto,
@@ -244,5 +245,54 @@ describe("guest Hero local media", () => {
     await savePreparedGuestHeroPhoto(h.options(), prepared(), 0);
     await expect(completeGuestHeroPhoto(h.options(), 0)).resolves.toEqual({ status: "conflict" });
     expect(h.draft().revision).toBe(1);
+  });
+
+  describe("QG 003 — reopenGuestHeroFrom (recovery)", () => {
+    async function revealed() {
+      const h = harness();
+      const crop = { focalX: 0.2, focalY: 0.8, zoom: 1.6 };
+      await savePreparedGuestHeroPhoto(h.options(), prepared([1]), 0);
+      await completeGuestHeroPhoto(h.options(), 1);
+      await completeGuestHeroCrop(h.options(), crop, 2);
+      await completeGuestHeroReveal(h.options(), "dark", 3);
+      expect(isGuestHeroRevealComplete(h.draft())).toBe(true);
+      return { h, crop };
+    }
+
+    it("reopens at T08 only: crop, photo and ambiance stay, the reveal shows again", async () => {
+      const { h, crop } = await revealed();
+      const before = structuredClone(h.draft());
+      await expect(reopenGuestHeroFrom(h.options(), "T08", 4)).resolves.toMatchObject({ status: "saved" });
+      const flow = readGuidedFlowState(h.draft().content);
+      expect(flow.T06?.status).toBe("completed");
+      expect(flow.T07?.status).toBe("completed");
+      expect(flow.T08).toBeUndefined();
+      expect(h.draft().skinVariant).toBe("dark");
+      expect(findGuestHeroReference(h.draft())).toMatchObject({ placement: { purpose: "hero", crop } });
+      expect(h.draft().photos).toEqual(before.photos);
+      expect(resolveGuestBuilderStage(h.draft())).toBe("heroReveal");
+    });
+
+    it("reopens at T06: clears the Hero marks from the photo on, never a photo or a text", async () => {
+      const { h } = await revealed();
+      const before = structuredClone(h.draft());
+      await reopenGuestHeroFrom(h.options(), "T06", 4);
+      const flow = readGuidedFlowState(h.draft().content);
+      expect(flow.T06).toBeUndefined();
+      expect(flow.T07).toBeUndefined();
+      expect(flow.T08).toBeUndefined();
+      expect(flow.A00).toEqual({ status: "completed", answer: "no" });
+      expect(h.draft().photos).toEqual(before.photos);
+      expect(h.store.assets.size).toBe(1);
+      expect(h.draft().content).toMatchObject({ hero: { displayName: "Jeanne" } });
+      expect(resolveGuestBuilderStage(h.draft())).toBe("heroPhoto");
+    });
+
+    it("refuses a stale tab without writing", async () => {
+      const { h } = await revealed();
+      const before = structuredClone(h.draft());
+      await expect(reopenGuestHeroFrom(h.options(), "T07", 1)).resolves.toEqual({ status: "conflict" });
+      expect(h.draft()).toEqual(before);
+    });
   });
 });

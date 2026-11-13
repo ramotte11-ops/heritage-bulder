@@ -1,42 +1,58 @@
 "use client";
 
-import { useActionState } from "react";
-import { requestMagicLink } from "@/app/auth/actions";
+import { EmailCodeSignIn } from "@/components/auth/EmailCodeSignIn";
 import type { Language } from "@/config/languages";
-import { INITIAL_MAGIC_LINK_STATE } from "@/lib/auth/magic-link-state";
+import type { TranslationKey } from "@/lib/i18n/keys";
 import { translate } from "@/lib/i18n/translate";
 import { DURABLE_SAVE_RETURN_PATH } from "./durable-save-language";
 import styles from "./DurableSave.module.css";
 
 /**
- * QG 008 Lot 2 — the e-mail step of the durable save. Reuses the existing
- * magic-link Server Action (`requestMagicLink`), whose return path is
- * re-sanitized server-side (lib/auth/return-path.ts). The family's local
- * draft is not sent anywhere here; it stays in this browser until the
- * verified session opens /brouillon/reprise.
- *
- * The action's own messages are French and technical; this screen shows
- * its own translated wording for each state instead.
+ * QG 008 Lot 2, QG 003 — the e-mail step of the durable save: the family
+ * enters its address, receives a 6-digit code and types it back here, in
+ * this tab (`EmailCodeSignIn`). The verified session then opens
+ * /brouillon/reprise (return path re-sanitized server-side,
+ * lib/auth/return-path.ts). The family's local draft is not sent anywhere
+ * here; it stays in this browser until the transfer.
  */
 export function DurableSaveForm({ language }: { language: Language }) {
-  const [state, formAction, isPending] = useActionState(requestMagicLink, INITIAL_MAGIC_LINK_STATE);
-
+  const t = (key: TranslationKey) => translate(language, key);
   return (
-    <form action={formAction} className={styles.form}>
-      <input type="hidden" name="next" value={DURABLE_SAVE_RETURN_PATH} />
-      <label className={styles.field}>
-        <span>{translate(language, "durableSave.emailLabel")}</span>
-        <input type="email" name="email" required autoComplete="email" disabled={isPending} />
-      </label>
-      <button type="submit" disabled={isPending} className={styles.primary}>
-        {isPending ? translate(language, "durableSave.sending") : translate(language, "durableSave.submit")}
-      </button>
-      {state.status === "success" ? (
-        <p role="status" className={styles.notice}>{translate(language, "durableSave.sent")}</p>
-      ) : null}
-      {state.status === "error" ? (
-        <p role="alert" className={styles.alert}>{translate(language, "durableSave.sendFailed")}</p>
-      ) : null}
-    </form>
+    <EmailCodeSignIn
+      next={DURABLE_SAVE_RETURN_PATH}
+      classNames={{
+        form: styles.form,
+        field: styles.field,
+        primary: styles.primary,
+        secondary: styles.secondary,
+        notice: styles.notice,
+        alert: styles.alert,
+      }}
+      labels={{
+        emailLabel: t("durableSave.emailLabel"),
+        requestSubmit: t("durableSave.submit"),
+        requestSending: t("durableSave.sending"),
+        codeSent: t("durableSave.codeSent"),
+        codeLabel: t("durableSave.codeLabel"),
+        codeSubmit: t("durableSave.codeSubmit"),
+        codeVerifying: t("durableSave.codeVerifying"),
+        resend: t("durableSave.codeResend"),
+        resendWait: t("durableSave.codeResendWait"),
+        resent: t("durableSave.codeResent"),
+        changeEmail: t("durableSave.changeEmail"),
+        requestErrors: {
+          invalid_email: t("durableSave.invalidEmail"),
+          rate_limited: t("durableSave.rateLimited"),
+          send_failed: t("durableSave.sendFailed"),
+        },
+        verifyErrors: {
+          invalid_email: t("durableSave.invalidEmail"),
+          invalid_format: t("durableSave.codeFormat"),
+          invalid_or_expired: t("durableSave.codeInvalid"),
+          rate_limited: t("durableSave.rateLimited"),
+          failed: t("durableSave.codeFailed"),
+        },
+      }}
+    />
   );
 }
