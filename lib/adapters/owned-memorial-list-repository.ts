@@ -27,6 +27,11 @@ export interface OwnedMemorialSummary {
    * an expired free notice, an `editing` or `archived` memorial, any
    * unreadable column. Drives the « Voir mon hommage » link only. */
   publicSlug: string | null;
+  /** QG 004-B — the free offer's own deadlines, for a discreet reminder:
+   * only for a free (« avis ») memorial never published yet, and only the
+   * deadlines still ahead. `null` otherwise. Display only — the database
+   * alone decides (free_publish_until, free_draft_until). */
+  freeDeadlines?: { publishUntil: string | null; draftUntil: string | null } | null;
 }
 
 export interface OwnedMemorialListRepository {

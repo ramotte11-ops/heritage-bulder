@@ -1268,7 +1268,7 @@ describe("GuestBuilderRuntime", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("surfaces an unavailable local store with existing generic copy", async () => {
+  it("surfaces an unavailable local store with a visible, non-destructive recovery (QG 003)", async () => {
     const createStore = () => ({
       read: async (): Promise<GuestDraftV3ReadResult> => ({
         status: "error",
@@ -1282,17 +1282,105 @@ describe("GuestBuilderRuntime", () => {
       removePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
     });
 
-    render(
+    const reload = vi.fn();
+    const view = render(
       <GuestBuilderRuntime
         createStore={createStore}
         createId={() => "unused"}
         now={() => "2026-10-26T09:01:00.000Z"}
+        reload={reload}
       />,
     );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe(translate("en", "errors.generic"));
-    expect(alert.getAttribute("data-guest-builder-error")).toBe("unavailable");
+    const retry = await screen.findByRole("button", { name: translate("en", "guestRecovery.retry") });
+    expect(view.container.querySelector('[data-guest-builder-error="unavailable"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-guest-builder-recovery="storage_unavailable"]')).not.toBeNull();
+    expect(screen.getByText(translate("en", "guestRecovery.unavailableBody"))).toBeTruthy();
+    expect(screen.getByText(translate("en", "guestRecovery.kept"))).toBeTruthy();
+    fireEvent.click(retry);
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  describe("QG 003 — never an empty screen on resume", () => {
+    function failingStore(reason: "blocked" | "unavailable") {
+      return () => ({
+        read: async (): Promise<GuestDraftV3ReadResult> => ({
+          status: "error",
+          error: Object.assign(new Error(reason), { code: reason }),
+        }),
+        save: async (): Promise<GuestDraftV3WriteResult> => ({ ok: false, reason: "unavailable" }),
+        readPhoto: async () => ({ ok: false as const, reason: "photo_not_found" as const }),
+        addPhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
+        replacePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
+        updatePhotoPlacement: async () => ({ ok: false as const, reason: "unavailable" as const }),
+        removePhoto: async () => ({ ok: false as const, reason: "unavailable" as const }),
+      });
+    }
+
+    it("explains a draft held by another tab and offers to try again", async () => {
+      const view = render(
+        <GuestBuilderRuntime createStore={failingStore("blocked")} createId={() => "unused"} now={() => "2026-10-26T09:01:00.000Z"} reload={vi.fn()} />,
+      );
+      await screen.findByText(translate("en", "guestRecovery.blockedBody"));
+      expect(view.container.querySelector('[data-guest-builder-recovery="storage_blocked"]')).not.toBeNull();
+    });
+
+    it("turns a load that never settles into a visible screen with a retry", async () => {
+      const reload = vi.fn();
+      const store = new MemoryStore(null);
+      store.read = () => new Promise<GuestDraftV3ReadResult>(() => {});
+      const view = render(
+        <GuestBuilderRuntime
+          createStore={() => store}
+          createId={() => "unused"}
+          now={() => "2026-10-26T09:01:00.000Z"}
+          reload={reload}
+          loadingTimeoutMs={20}
+        />,
+      );
+      expect(view.container.textContent).toBe("");
+      fireEvent.click(await screen.findByRole("button", { name: translate("en", "guestRecovery.retry") }));
+      expect(screen.getByRole("heading", { name: translate("en", "guestRecovery.slowTitle") })).toBeTruthy();
+      expect(reload).toHaveBeenCalledOnce();
+      expect(store.value).toBeNull();
+    });
+
+    it("opens a draft whose Hero photo cannot be read, then reopens the photo step without losing anything", async () => {
+      const fixture = revealDraft();
+      const store = new MemoryStore(fixture.draft);
+      // No asset: the stored photo cannot be read (the Chrome mobile case).
+      const before = structuredClone(fixture.draft);
+      const view = render(
+        <GuestBuilderRuntime
+          createStore={() => store}
+          createId={() => "unused"}
+          now={() => "2026-10-26T10:02:00.000Z"}
+          createObjectUrl={() => "blob:never"}
+          revokeObjectUrl={vi.fn()}
+        />,
+      );
+
+      const action = await screen.findByRole("button", { name: translate("fr", "guestRecovery.photoAction") });
+      expect(view.container.querySelector('[data-guest-builder-recovery="hero_photo_missing"]')).not.toBeNull();
+      expect(screen.getByText(translate("fr", "guestRecovery.photoBody"))).toBeTruthy();
+      // Nothing was written by merely showing the recovery.
+      expect(store.value).toEqual(before);
+
+      fireEvent.click(action);
+      await vi.waitFor(() => {
+        expect(view.container.querySelector("[data-guest-builder-recovery]")).toBeNull();
+      });
+      const after = store.value!;
+      const flow = localContent(after).guidedFlow;
+      expect(flow.T06).toBeUndefined();
+      expect(flow.T07).toBeUndefined();
+      expect(flow.T05).toEqual({ status: "completed" });
+      expect(flow.A00).toEqual({ status: "completed", answer: "no" });
+      expect(after.content).toMatchObject({ hero: { displayName: "Jeanne", shortPhrase: "Toujours dans nos cœurs" } });
+      // The photo reference and its crop are kept: nothing is ever deleted.
+      expect(after.photos).toEqual(before.photos);
+      expect(after.language).toBe("fr");
+    });
   });
 
   describe("QG 003 — the real Preview of the local draft", () => {

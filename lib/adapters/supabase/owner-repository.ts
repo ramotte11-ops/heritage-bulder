@@ -42,8 +42,13 @@ function normalizeEmail(email: string): string {
  * answer rather than a failure — see the port's `create` docstring. */
 const UNIQUE_VIOLATION = "23505";
 
+/** QG 004-B — owners_guard_reserved_email_v1: the address is reserved by
+ * another owner's free-offer history. Answered like a blocking address (no
+ * owner is created), never as a crash. */
+const RESERVED_EMAIL = "HD424";
+
 function isUniqueViolation(error: PostgrestError | null): boolean {
-  return error?.code === UNIQUE_VIOLATION;
+  return error?.code === UNIQUE_VIOLATION || error?.code === RESERVED_EMAIL;
 }
 
 export class SupabaseOwnerRepository implements OwnerRepository {

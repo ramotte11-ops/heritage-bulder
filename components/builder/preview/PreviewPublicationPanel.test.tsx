@@ -228,4 +228,15 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     renderPanel({ publication: publication({ premiumSections: ["video"] }) });
     expect(screen.getByText(/réservées à l'hommage complet/)).toBeTruthy();
   });
+  it("QG 004-B — an unverified address opens the one-time verification step, nothing is published", async () => {
+    const { publish } = renderPanel({ outcome: "email_unverified" });
+    fireEvent.click(screen.getByRole("button", { name: "Publier" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
+    });
+    expect(publish).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Confirmez votre adresse e-mail.")).toBeTruthy();
+    expect(document.querySelector("[data-email-verification=\"start\"]")).not.toBeNull();
+    expect(document.querySelector("[data-publication=\"done\"]")).toBeNull();
+  });
 });

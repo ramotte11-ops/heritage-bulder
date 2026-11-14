@@ -4,6 +4,7 @@ import { fullAnnouncement, recordingResolver, FIXTURE_HERO_MEDIA_ID } from "@/li
 import { computePublicationPreview } from "./publication-preview";
 import { FreePublicationRefusedError } from "./publish-memorial";
 import {
+  EmailVerificationRequiredError,
   HeroPhotoRequiredError,
   publicationOutcomeOf,
   publishFromPreview,
@@ -251,5 +252,43 @@ describe("publicationOutcomeOf — what the Builder shows", () => {
     [{ ok: false, code: "free_content_refused" }, "failed"],
   ] as const)("%j → %s", (result, outcome) => {
     expect(publicationOutcomeOf(result as never)).toBe(outcome);
+  });
+});
+
+describe("publishFromPreview — QG 004-B: the owner's address must be proven", () => {
+  it("refuses before any commit when HERITAGE's proof is missing", async () => {
+    const current = snapshot();
+    const repo = repository(current);
+    const isOwnerEmailVerified = vi.fn().mockResolvedValue(false);
+    const result = await publishFromPreview(
+      { repository: repo.value, resolveMedia: recordingResolver().resolve, isOwnerEmailVerified },
+      input(current),
+    );
+    expect(result).toEqual({ ok: false, code: "email_unverified" });
+    expect(isOwnerEmailVerified).toHaveBeenCalledWith(OWNER_ID);
+    expect(repo.commitFirstPublication).not.toHaveBeenCalled();
+    expect(publicationOutcomeOf(result)).toBe("email_unverified");
+  });
+
+  it("publishes once the proof exists", async () => {
+    const current = snapshot();
+    const repo = repository(current);
+    const result = await publishFromPreview(
+      { repository: repo.value, resolveMedia: recordingResolver().resolve, isOwnerEmailVerified: vi.fn().mockResolvedValue(true) },
+      input(current),
+    );
+    expect(result).toMatchObject({ ok: true, outcome: "published" });
+  });
+
+  it("maps the database's own refusal (HV403 → EmailVerificationRequiredError) even when the pre-check passed", async () => {
+    const current = snapshot();
+    const repo = repository(current, async () => {
+      throw new EmailVerificationRequiredError();
+    });
+    const result = await publishFromPreview(
+      { repository: repo.value, resolveMedia: recordingResolver().resolve, isOwnerEmailVerified: vi.fn().mockResolvedValue(true) },
+      input(current),
+    );
+    expect(result).toEqual({ ok: false, code: "email_unverified" });
   });
 });

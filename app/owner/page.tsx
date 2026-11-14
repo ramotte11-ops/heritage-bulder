@@ -107,6 +107,18 @@ export default async function OwnerPage() {
               <li key={memorial.id} className={styles.item}>
                 <p className={styles.itemName}>{memorial.displayName ?? "Mémorial en cours de création"}</p>
                 {createdAt ? <p className={styles.itemMeta}>Créé le {createdAt}</p> : null}
+                {/* QG 004-B — discreet reminder of the free offer's deadlines. */}
+                {memorial.freeDeadlines?.publishUntil ? (
+                  <p className={styles.itemMeta} data-free-deadline="publish">
+                    Publication gratuite de votre avis possible jusqu&rsquo;au{" "}
+                    {formatCreatedAt(memorial.freeDeadlines.publishUntil)}
+                  </p>
+                ) : null}
+                {memorial.freeDeadlines?.draftUntil ? (
+                  <p className={styles.itemMeta} data-free-deadline="draft">
+                    Brouillon disponible jusqu&rsquo;au {formatCreatedAt(memorial.freeDeadlines.draftUntil)}
+                  </p>
+                ) : null}
                 <Link href={`/builder/${encodeURIComponent(memorial.id)}`} className={styles.itemLink}>
                   <PendingLinkLabel pendingLabel="Ouverture de l’atelier…">Ouvrir l&rsquo;atelier</PendingLinkLabel>
                 </Link>

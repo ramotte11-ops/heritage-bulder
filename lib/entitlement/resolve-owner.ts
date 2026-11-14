@@ -55,12 +55,23 @@ export type ResolveOwnerResult =
 /**
  * Is this session's identity one we are willing to mint an owner from?
  *
- * `email_confirmed_at` is the load-bearing check. Supabase sets it once
- * the address has actually been proven (which the magic-link flow this
- * app uses does by construction — app/auth/callback/route.ts exchanges a
- * code sent to that very address). Without it, `email` is an unverified
- * string, and `owners.email` is unique — so accepting one would let an
- * unverified address squat the identity a real buyer will later need.
+ * QG 004-B — `email_confirmed_at` is deliberately NOT read any more.
+ * Supabase « Confirm email » is disabled so that a family can save its
+ * draft right after choosing a password; Supabase then fills
+ * `email_confirmed_at` automatically and it proves nothing. Owning the
+ * address is proven by HERITAGE instead (lib/auth/email-verification.ts,
+ * `owner_email_verifications`), and the DATABASE requires that proof
+ * (HV403) for everything an unverified address could abuse: publication,
+ * the « complet » upgrade and Etsy redemption. Creating an owner and
+ * saving a free draft stay open to an unverified address.
+ *
+ * Why this cannot hand over someone else's account: an owner is only
+ * ever resolved by `auth_user_id` (case A); an existing owner at this
+ * address without an Auth account is never linked automatically (case C),
+ * and one bound to another account is refused (case D). If someone
+ * registers an address before its real owner, the real owner takes the
+ * account back with « Mot de passe oublié » (a code sent to that very
+ * mailbox), which revokes every other session (app/auth/actions.ts).
  */
 function checkIdentity(identity: AuthenticatedIdentity): string | null {
   if (identity.is_anonymous) {
@@ -76,9 +87,6 @@ function checkIdentity(identity: AuthenticatedIdentity): string | null {
   }
   if (!isValidEmail(email)) {
     return "the authenticated user's email address is malformed";
-  }
-  if (!identity.email_confirmed_at) {
-    return "the authenticated user's email address is not confirmed";
   }
 
   return null;

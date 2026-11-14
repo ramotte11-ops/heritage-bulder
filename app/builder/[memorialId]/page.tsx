@@ -28,6 +28,7 @@ import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GalleryStep } from "@/components/builder/GalleryStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
+import { FirstSaveNotice } from "@/components/builder/FirstSaveNotice";
 import { isPreviewUnlocked } from "@/lib/builder/guided-flow/preview-lock";
 import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
 import { resolveSectionRenderer } from "@/config/memorial-section-renderers";
@@ -386,6 +387,12 @@ export default async function BuilderMemorialPage({
   // nothing the family could not open with « Voir l'aperçu », writes
   // nothing, and is honored only where the route says so below.
   const fromPreview = query.apercu === "1";
+  // QG 004-B — right after the first durable save (/brouillon/reprise adds
+  // `?sauvegarde=1`): a discreet notice of the free offer's deadlines,
+  // under the screen. A display claim only: it writes nothing.
+  const firstSaveNotice = query.sauvegarde === "1"
+    ? <FirstSaveNotice language={resumed.memorial.language ?? "fr"} />
+    : null;
   // Étape 3 — Preview réel. Every Guided Flow screen below is returned
   // inside the SAME `BuilderPreviewHost` wrapper (`withPreview`), locked
   // or not, so the tree's shape never changes and the host can hide —
@@ -437,6 +444,7 @@ export default async function BuilderMemorialPage({
         language={memorialLanguage}
         loadPreview={loadPreview}
         publish={publish}
+        footer={firstSaveNotice}
         draftRevision={initialDraft.revision ?? 0}
         draftContent={journeyContent ?? initialDraft.content}
         journey={

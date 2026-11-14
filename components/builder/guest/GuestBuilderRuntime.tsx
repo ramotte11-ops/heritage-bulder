@@ -1,13 +1,11 @@
 "use client";
 
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { translate } from "@/lib/i18n/translate";
 import { DraftRevisionProvider } from "@/lib/builder/draft-revision";
 import type { DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   BuilderStepCompletionProvider,
 } from "@/components/builder/journey/journey-context";
-import { BuilderScreen } from "@/components/builder/BuilderScreen";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { LanguageStep } from "@/components/builder/LanguageStep";
@@ -48,7 +46,9 @@ import {
   completeGuestHeroReveal,
   guestHeroStepProgress,
   loadGuestHeroPhoto,
+  reopenGuestHeroFrom,
   reopenGuestHeroPhoto,
+  type GuestHeroStep,
   saveGuestHeroCrop,
   savePreparedGuestHeroPhoto,
   type GuestHeroMediaOptions,
@@ -69,6 +69,8 @@ import { journeySectionForScreen, type JourneyScreenId, type JourneySection } fr
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 import { createUuidV4 } from "@/lib/browser/uuid-v4";
 import { GuestDurableSaveEntry } from "./GuestDurableSaveEntry";
+import { GuestRecoveryScreen, reportGuestRecovery } from "./GuestRecoveryScreen";
+import { isLanguage, type Language } from "@/config/languages";
 
 type GuestBuilderStore = GuestBuilderDraftStore & Pick<
   GuestDraftV3Store,
@@ -133,6 +135,23 @@ export interface GuestBuilderRuntimeProps {
   now?: () => string;
   createObjectUrl?: (blob: Blob) => string;
   revokeObjectUrl?: (url: string) => void;
+  /** QG 003 — « Réessayer » on a stuck or failed load (never destructive). */
+  reload?: () => void;
+  loadingTimeoutMs?: number;
+}
+
+/** QG 003 — after this, a still-loading draft shows a visible way out. */
+export const GUEST_LOADING_TIMEOUT_MS = 12_000;
+
+function defaultReload(): void {
+  window.location.reload();
+}
+
+/** The family's language when no draft is readable: the browser's own
+ * preference among the supported ones, else French (first market). */
+function fallbackLanguage(): Language {
+  const preferred = typeof navigator === "undefined" ? "" : navigator.language.slice(0, 2).toLowerCase();
+  return isLanguage(preferred) ? preferred : "fr";
 }
 
 function defaultCreateStore(): GuestBuilderStore {
@@ -184,6 +203,8 @@ export function GuestBuilderRuntime({
   now = defaultNow,
   createObjectUrl = defaultCreateObjectUrl,
   revokeObjectUrl = defaultRevokeObjectUrl,
+  reload = defaultReload,
+  loadingTimeoutMs = GUEST_LOADING_TIMEOUT_MS,
 }: GuestBuilderRuntimeProps) {
   const [runtime, setRuntime] = useState<RuntimeState>({ status: "loading" });
   const draftRef = useRef<GuestDraftV3 | null>(null);
@@ -192,6 +213,15 @@ export function GuestBuilderRuntime({
   const viewRef = useRef<JourneyView>(NORMAL_VIEW);
   const previewSessionRef = useRef<GuestPreviewSession | null>(null);
   const mountedRef = useRef(true);
+  // QG 003 — a load that never settles becomes a visible screen.
+  const [loadingSlow, setLoadingSlow] = useState(false);
+  const [recovery, setRecovery] = useState<"idle" | "pending" | "failed">("idle");
+
+  useEffect(() => {
+    if (runtime.status !== "loading") return;
+    const timer = setTimeout(() => setLoadingSlow(true), loadingTimeoutMs);
+    return () => clearTimeout(timer);
+  }, [loadingTimeoutMs, runtime.status]);
 
   useEffect(() => {
     let active = true;
@@ -199,10 +229,21 @@ export function GuestBuilderRuntime({
     void (async () => {
       try {
         const draft = await loadOrCreateGuestDraft({ store, createId, now });
-        const heroPhoto = await loadGuestHeroPhoto(store, draft);
-        const heroReadUrl = heroPhoto !== null && showsReveal(draft, NORMAL_VIEW)
-          ? createObjectUrl(heroPhoto.blob)
-          : null;
+        // QG 003 — an unreadable Hero photo (seen on Chrome mobile) no longer
+        // blocks the whole draft: the draft opens, and the step that needs
+        // the photo shows the recovery screen instead.
+        let heroPhoto: LocalPhotoSnapshot | null = null;
+        let heroReadUrl: string | null = null;
+        try {
+          heroPhoto = await loadGuestHeroPhoto(store, draft);
+          heroReadUrl = heroPhoto !== null && showsReveal(draft, NORMAL_VIEW)
+            ? createObjectUrl(heroPhoto.blob)
+            : null;
+        } catch {
+          reportGuestRecovery("hero_photo_unreadable");
+          heroPhoto = null;
+          heroReadUrl = null;
+        }
         if (!active) {
           if (heroReadUrl !== null) revokeObjectUrl(heroReadUrl);
           return;
@@ -330,18 +371,86 @@ export function GuestBuilderRuntime({
     return toMemorialPreviewResult(result);
   }, [createObjectUrl, releasePreview, revokeObjectUrl, store]);
 
-  if (runtime.status === "loading") return null;
-  if (runtime.status === "error") {
+  /** QG 003 — the recovery action: reopens the Hero at `from` (marks only,
+   * see `reopenGuestHeroFrom`), then shows the screen the draft now leads to. */
+  const reopenHeroFrom = useCallback(async (from: GuestHeroStep) => {
+    const current = draftRef.current;
+    if (store === null || current === null) return;
+    setRecovery("pending");
+    try {
+      const result = await reopenGuestHeroFrom({
+        store,
+        getDraft: () => {
+          const draft = draftRef.current;
+          if (draft === null) throw new GuestBuilderRuntimeError("unavailable");
+          return draft;
+        },
+        acceptDraft,
+        createId,
+        now,
+      }, from, current.revision);
+      if (!mountedRef.current) return;
+      if (result.status !== "saved") {
+        setRecovery("failed");
+        return;
+      }
+      setRecovery("idle");
+      show(() => NORMAL_VIEW);
+    } catch {
+      if (mountedRef.current) setRecovery("failed");
+    }
+  }, [acceptDraft, createId, now, show, store]);
+
+  if (runtime.status === "loading") {
+    if (!loadingSlow) return null;
     return (
-      <BuilderScreen progress={0}>
-        <p role="alert" data-guest-builder-error={runtime.reason}>
-          {translate("en", "errors.generic")}
-        </p>
-      </BuilderScreen>
+      <GuestRecoveryScreen
+        reason="loading_slow"
+        language={fallbackLanguage()}
+        title="guestRecovery.slowTitle"
+        body="guestRecovery.slowBody"
+        action="guestRecovery.retry"
+        onAction={reload}
+      />
+    );
+  }
+  if (runtime.status === "error") {
+    const blocked = runtime.reason === "blocked";
+    return (
+      <div data-guest-builder-error={runtime.reason}>
+        <GuestRecoveryScreen
+          reason={blocked ? "storage_blocked" : "storage_unavailable"}
+          language={fallbackLanguage()}
+          body={blocked ? "guestRecovery.blockedBody" : "guestRecovery.unavailableBody"}
+          action="guestRecovery.retry"
+          onAction={reload}
+        />
+      </div>
     );
   }
 
   const { draft, view } = runtime;
+  // QG 003 — never an empty screen: a step that cannot render shows the
+  // recovery screen, whose one action reopens the Hero where it can.
+  const recover = (
+    reason: "hero_photo_missing" | "hero_crop_missing" | "skin_variant_missing",
+    from: GuestHeroStep,
+  ) => (
+    <GuestRecoveryScreen
+      reason={reason}
+      language={draft.language ?? fallbackLanguage()}
+      progress={guestHeroStepProgress(draft)}
+      body={reason === "hero_photo_missing"
+        ? "guestRecovery.photoBody"
+        : reason === "hero_crop_missing" ? "guestRecovery.cropBody" : "guestRecovery.variantBody"}
+      action={reason === "hero_photo_missing"
+        ? "guestRecovery.photoAction"
+        : reason === "hero_crop_missing" ? "guestRecovery.cropAction" : "guestRecovery.variantAction"}
+      onAction={() => void reopenHeroFrom(from)}
+      pending={recovery === "pending"}
+      failed={recovery === "failed"}
+    />
+  );
   const stage = resolveGuestBuilderStage(draft);
   const journeyOn = hasGuestJourney(draft);
   const shown = journeyOn ? shownScreen(draft, view) : null;
@@ -420,7 +529,7 @@ export function GuestBuilderRuntime({
           />
         );
       case "crop":
-        if (runtime.heroPhoto === null) return <span hidden data-guest-builder-error="missing-hero-photo" />;
+        if (runtime.heroPhoto === null) return recover("hero_photo_missing", "T06");
         return (
           <HeroCropStep
             mode="local"
@@ -447,9 +556,8 @@ export function GuestBuilderRuntime({
           />
         );
       case "reveal":
-        if (runtime.heroPhoto?.crop == null || runtime.heroReadUrl === null) {
-          return <span hidden data-guest-builder-error="missing-hero-reveal-photo" />;
-        }
+        if (runtime.heroPhoto === null || runtime.heroReadUrl === null) return recover("hero_photo_missing", "T06");
+        if (runtime.heroPhoto.crop == null) return recover("hero_crop_missing", "T07");
         return (
           <HeroRevealStep
             mode="local"
@@ -483,9 +591,7 @@ export function GuestBuilderRuntime({
           />
         );
       case "announcementPreview":
-        if (draft.skinVariant === null) {
-          return <span hidden data-guest-builder-error="missing-skin-variant" />;
-        }
+        if (draft.skinVariant === null) return recover("skin_variant_missing", "T08");
         return (
           <DeathNoticePreviewStep
             language={draft.language!}

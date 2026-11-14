@@ -1,0 +1,40 @@
+/*
+ * QG 003 — recovery screen. Reuses the Guided Flow copy grammar
+ * (GuidedFlowPause.module.css: .copy/.title/.body) — no new visual language.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.body {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-primary);
+}
+
+.kept {
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+}
+
+.alert {
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  font-weight: 600;
+}

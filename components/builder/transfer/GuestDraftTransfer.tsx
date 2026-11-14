@@ -71,7 +71,8 @@ export function GuestDraftTransfer() {
       onProgress: setProgress,
     });
     setResult(outcome);
-    if (outcome.status === "done") router.replace(`/builder/${outcome.memorialId}`);
+    // QG 004-B — `?sauvegarde=1`: the Builder shows the first-save notice once.
+    if (outcome.status === "done") router.replace(`/builder/${outcome.memorialId}?sauvegarde=1`);
   }, [router]);
 
   useEffect(() => {

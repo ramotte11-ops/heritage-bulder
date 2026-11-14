@@ -76,6 +76,9 @@ describe("guest Builder import graph", () => {
       "components/builder/GalleryWorkshop.tsx -> @/lib/media/authenticated-gallery-upload",
       "components/builder/GalleryWorkshop.tsx -> @/lib/media/authenticated-gallery-upload",
       "components/builder/HeroPhotoStep.tsx -> @/lib/supabase/browser-client",
+      // QG 004-B — the one-time address check, reached only by an
+      // authenticated publication refused for an unverified address.
+      "components/builder/preview/PreviewPublicationPanel.tsx -> @/components/auth/EmailVerificationStep",
     ]);
   });
 });
