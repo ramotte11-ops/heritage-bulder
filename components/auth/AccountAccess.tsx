@@ -40,6 +40,11 @@ const FAILURE_KEY: Record<AccountFailure, TranslationKey> = {
   rate_limited: "account.errorRateLimited",
   session_expired: "account.errorSessionExpired",
   failed: "account.errorFailed",
+  emails_differ: "account.errorEmailsDiffer",
+  signed_out: "verify.errorSignedOut",
+  email_taken: "verify.errorEmailTaken",
+  email_locked: "verify.errorEmailLocked",
+  same_email: "verify.errorSameEmail",
 };
 
 type EntryStep = "signup" | "signin" | "forgot";
@@ -233,6 +238,13 @@ export function AccountAccess({
         {hidden(step)}
         {step === "forgot" ? <h2>{t("account.forgotTitle")}</h2> : null}
         {emailField}
+        {step === "signup" ? (
+          // QG 004-B — typed twice: the address is verified only before publishing.
+          <label className={classNames.field}>
+            <span>{t("account.emailConfirm")}</span>
+            <input type="email" name="emailConfirm" required autoComplete="email" inputMode="email" defaultValue={email} disabled={pending} />
+          </label>
+        ) : null}
         {step === "signup" ? passwordField("new-password", "account.password") : null}
         {step === "signin" ? passwordField("current-password", "account.password") : null}
         {step !== "forgot" ? showToggle : null}

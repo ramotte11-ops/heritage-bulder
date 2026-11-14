@@ -62,4 +62,6 @@ export type PublishFromPreviewOutcome =
   | "free_quota_reached"
   | "signed_out"
   | "access_refused"
+  /** QG 004-B — the address must be proven once before publishing. */
+  | "email_unverified"
   | "failed";

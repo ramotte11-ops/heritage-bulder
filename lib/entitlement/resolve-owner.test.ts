@@ -173,7 +173,6 @@ describe("resolveOwnerForIdentity — case E: unusable identity", () => {
     ["no email at all", identity({ email: undefined })],
     ["an empty email", identity({ email: "   " })],
     ["a malformed email", identity({ email: "not-an-email" })],
-    ["an unconfirmed email", identity({ email_confirmed_at: undefined })],
     ["no auth user id", identity({ id: "" })],
   ])("refuses %s without touching the database", async (_label, badIdentity) => {
     const findByAuthUserId = vi.fn();
@@ -187,5 +186,41 @@ describe("resolveOwnerForIdentity — case E: unusable identity", () => {
     expect(findByAuthUserId).not.toHaveBeenCalled();
     expect(findByEmail).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveOwnerForIdentity — QG 004-B: email_confirmed_at is never a proof", () => {
+  it("resolves an existing owner whatever email_confirmed_at says (the proof is HERITAGE's, enforced by the database)", async () => {
+    const owner = { id: "owner-1", authUserId: "auth-1", email: "famille@example.com" };
+    const findByAuthUserId = vi.fn().mockResolvedValue(owner);
+    const repo = repository({ findByAuthUserId, findByEmail: vi.fn(), create: vi.fn() });
+
+    for (const confirmed of [undefined, "2026-11-14T10:00:00.000Z"]) {
+      const result = await resolveOwnerForIdentity(
+        repo,
+        identity({ id: "auth-1", email: "famille@example.com", email_confirmed_at: confirmed }),
+      );
+      expect(result).toEqual({ status: "resolved", owner });
+    }
+  });
+
+  it("still never links an existing owner by address alone (case C), even unconfirmed", async () => {
+    const repo = repository({
+      findByAuthUserId: vi.fn().mockResolvedValue(null),
+      findByEmail: vi.fn().mockResolvedValue({ id: "owner-x", authUserId: null, email: "famille@example.com" }),
+      create: vi.fn(),
+    });
+    const result = await resolveOwnerForIdentity(repo, identity({ email: "famille@example.com", email_confirmed_at: undefined }));
+    expect(result).toEqual({ status: "ownerLinkConflict" });
+  });
+
+  it("refuses an address already bound to another account (case D)", async () => {
+    const repo = repository({
+      findByAuthUserId: vi.fn().mockResolvedValue(null),
+      findByEmail: vi.fn().mockResolvedValue({ id: "owner-y", authUserId: "someone-else", email: "famille@example.com" }),
+      create: vi.fn(),
+    });
+    const result = await resolveOwnerForIdentity(repo, identity({ email: "famille@example.com" }));
+    expect(result).toEqual({ status: "ownerIdentityConflict" });
   });
 });

@@ -206,6 +206,8 @@ describe("SupabaseMemorialPublicationRepository — QG 008 Lot 3 v4 (commit_memo
     ["HD422", "hero photo required", "HERO_PHOTO_REQUIRED"],
     ["23514", "published gallery must come from the draft", "MEMORIAL_PUBLICATION_REJECTED"],
     ["40001", "memorial lifecycle changed", "MEMORIAL_PUBLICATION_CONFLICT"],
+    // QG 004-B — require_owner_email_verified_v1.
+    ["HV403", "owner email address not verified", "EMAIL_VERIFICATION_REQUIRED"],
   ])("maps %s to its own error", async (code, message, expected) => {
     const write = writeClient({ data: null, error: { code, message, details: "", hint: "" } });
     const repository = new SupabaseMemorialPublicationRepository({} as SupabaseClient, write.client);

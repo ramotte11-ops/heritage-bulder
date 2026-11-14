@@ -98,12 +98,12 @@ describe("QG 008 Lot 2 — startGuestDraftTransfer", () => {
     expect(transfers.begin).not.toHaveBeenCalled();
   });
 
-  it("never attributes a draft to an UNVERIFIED address", async () => {
+  it("never attributes a draft to an anonymous session (QG 004-B: an unverified address is no longer refused here)", async () => {
     const owners = ownerRepository();
     const transfers = transferRepository();
     const result = await startGuestDraftTransfer(
       { ownerRepository: owners, transferRepository: transfers },
-      { ...VERIFIED, email_confirmed_at: undefined },
+      { ...VERIFIED, is_anonymous: true },
       transferableDraft(),
     );
     expect(result).toEqual({ status: "identity_refused", reason: "invalidAuthenticatedIdentity" });

@@ -185,7 +185,7 @@ describe("activateHeritageAccess — every refusal collapses to one generic answ
     const d = deps();
 
     const result = await activateHeritageAccess(d, {
-      identity: { ...IDENTITY, email_confirmed_at: undefined },
+      identity: { ...IDENTITY, is_anonymous: true },
       rawActivationKey: generateActivationKey().rawKey,
     });
 

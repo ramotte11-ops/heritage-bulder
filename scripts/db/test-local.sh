@@ -552,6 +552,33 @@ for fn in current_owner_id create_memorial_draft set_updated_at redeem_entitleme
   check "PUBLIC has no EXECUTE on $fn" "f" "$PUB"
 done
 
+# --- QG 004-B bench fixture ---------------------------------------------
+# Publication, the « complet » upgrade and Etsy redemption now require
+# HERITAGE's e-mail proof (owner_email_verifications, written in production
+# only by record_owner_email_verification_v1 after a Supabase code check).
+# The bench predates that rule and publishes for ~40 owners: every LINKED
+# owner it creates is therefore auto-verified for its current address by a
+# fixture that lives OUTSIDE public (no effect on any public ACL/posture
+# check). The QG 004-B section at the end removes proofs explicitly to test
+# the refusals. Owners without an Auth account are never auto-verified.
+$DB -q <<'SQL'
+create schema bench_fixture;
+create function bench_fixture.autoverify_owner() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.auth_user_id is not null then
+    insert into public.owner_email_verifications (owner_id, auth_user_id, email_normalized, method)
+    values (new.id, new.auth_user_id, lower(btrim(new.email)), 'email_otp')
+    on conflict (owner_id) do update
+       set auth_user_id = excluded.auth_user_id, email_normalized = excluded.email_normalized;
+  end if;
+  return new;
+end;
+$$;
+create trigger zz_bench_autoverify_owner after insert or update of auth_user_id on public.owners
+  for each row execute function bench_fixture.autoverify_owner();
+SQL
+
 # --- the parcours actually works with exactly these privileges --------
 PM_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'privmodel@example.test') returning id;")
 PM_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
@@ -4502,6 +4529,101 @@ check "C3 parcours: read_public_memorial_v1 returns it to service_role" "1" \
   "$(svc "select count(*) from public.read_public_memorial_v1('$C3_SLUG');")"
 expect_error "C3 parcours: read_public_memorial_v1 stays refused to anon" \
   "set role anon; select * from public.read_public_memorial_v1('$C3_SLUG');"
+
+# ----------------------------------------------------------------------
+echo "== QG 004-B: HERITAGE e-mail proof, required by the database =="
+# ----------------------------------------------------------------------
+# Refusal with the expected SQLSTATE message, never just "some error".
+expect_refused() {
+  local desc="$1"; local sql="$2"; local needle="$3"
+  local out
+  if out=$($DB -t -A -c "$sql" 2>&1); then
+    echo "  [FAIL] $desc (expected a refusal, statement succeeded: $out)"
+    FAIL=$((FAIL + 1))
+  elif printf '%s' "$out" | grep -q "$needle"; then
+    echo "  [PASS] $desc"
+    PASS=$((PASS + 1))
+  else
+    echo "  [FAIL] $desc (refused for another reason: $out)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+check "QG 004-B: owner_email_verifications has RLS on" "t" \
+  "$($DB -t -A -c "select relrowsecurity from pg_class where oid = 'public.owner_email_verifications'::regclass;")"
+check "QG 004-B: no role holds any privilege on owner_email_verifications (anon|authenticated|service_role)" "false|false|false" \
+  "$($DB -t -A -c "select has_table_privilege('anon','public.owner_email_verifications','SELECT,INSERT,UPDATE,DELETE') || '|' || has_table_privilege('authenticated','public.owner_email_verifications','SELECT,INSERT,UPDATE,DELETE') || '|' || has_table_privilege('service_role','public.owner_email_verifications','SELECT,INSERT,UPDATE,DELETE');")"
+for fn in owner_email_verified_v1 record_owner_email_verification_v1 apply_owner_email_change_v1 owner_email_change_allowed_v1; do
+  check "QG 004-B: $fn callable by service_role only (anon|authenticated|service_role)" "false|false|true" \
+    "$($DB -t -A -c "select string_agg(has_function_privilege('anon', p.oid, 'EXECUTE') || '|' || has_function_privilege('authenticated', p.oid, 'EXECUTE') || '|' || has_function_privilege('service_role', p.oid, 'EXECUTE'), ' / ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
+  check "QG 004-B: $fn is SECURITY DEFINER with an empty search_path" "t|{search_path=\"\"}" \
+    "$($DB -t -A -c "select p.prosecdef || '|' || coalesce(p.proconfig::text, '') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
+done
+check "QG 004-B: the guard trigger function is executable by no application role" "false|false|false" \
+  "$($DB -t -A -c "select has_function_privilege('anon', 'public.require_owner_email_verified_v1()', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.require_owner_email_verified_v1()', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.require_owner_email_verified_v1()', 'EXECUTE');")"
+expect_error "QG 004-B: authenticated cannot write a proof directly" \
+  "set role authenticated; insert into public.owner_email_verifications (owner_id, auth_user_id, email_normalized, method) select id, auth_user_id, lower(email), 'email_otp' from public.owners limit 1;"
+expect_error "QG 004-B: service_role cannot write a proof directly either (RPC only)" \
+  "set role service_role; insert into public.owner_email_verifications (owner_id, auth_user_id, email_normalized, method) select id, auth_user_id, lower(email), 'email_otp' from public.owners limit 1;"
+
+# A published memorial and its (fixture-verified) owner.
+Q4_PUB=$($DB -t -A -c "select m.id || '|' || m.owner_id from memorials m join memorial_published_snapshots s on s.memorial_id = m.id join owners o on o.id = m.owner_id where o.auth_user_id is not null limit 1;")
+IFS='|' read -r Q4_PUB_MEM Q4_PUB_OWNER <<<"$Q4_PUB"
+check "QG 004-B: the bench holds a published memorial of a linked owner" "true" "$([ -n "$Q4_PUB_MEM" ] && echo true || echo false)"
+check "QG 004-B: a verified owner may republish (snapshot write accepted)" "UPDATE 1" \
+  "$($DB -c "begin;" -c "update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM';" -c "rollback;" 2>&1 | grep -o 'UPDATE 1' | head -1)"
+expect_refused "QG 004-B: without a proof, publication is refused by the database (HV403)" \
+  "begin; delete from owner_email_verifications where owner_id = '$Q4_PUB_OWNER'; update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM'; rollback;" \
+  "owner email address not verified"
+expect_refused "QG 004-B: a proof for a previous address no longer counts (address changed)" \
+  "begin; alter table owners disable trigger user; update owners set email = 'qg004b-moved-' || email where id = '$Q4_PUB_OWNER'; alter table owners enable trigger user; update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM'; rollback;" \
+  "owner email address not verified"
+expect_refused "QG 004-B: a proof bound to another Auth account does not count" \
+  "begin; update owner_email_verifications set auth_user_id = gen_random_uuid() where owner_id = '$Q4_PUB_OWNER'; update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM'; rollback;" \
+  "owner email address not verified"
+check "QG 004-B: email_confirmed_at plays no part — owner_email_verified_v1 reads only HERITAGE's proof" "0" \
+  "$($DB -t -A -c "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname in ('owner_email_verified_v1','require_owner_email_verified_v1','record_owner_email_verification_v1') and p.prosrc ilike '%email_confirmed_at%';")"
+
+# record_owner_email_verification_v1: by Auth account only, current address only.
+Q4_AUTH=$($DB -t -A -c "select gen_random_uuid();")
+Q4_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values ('$Q4_AUTH', 'qg004b-owner@example.test') returning id;")
+$DB -c "delete from owner_email_verifications where owner_id = '$Q4_OWNER';" >/dev/null
+check "QG 004-B: a new unverified owner is not verified" "f" "$(svc "select public.owner_email_verified_v1('$Q4_OWNER');")"
+check "QG 004-B: an unknown Auth account records nothing (no_owner)" "no_owner" \
+  "$(svc "select outcome from public.record_owner_email_verification_v1(gen_random_uuid(), 'qg004b-owner@example.test', 'email_otp');")"
+check "QG 004-B: a code checked for ANOTHER address records nothing (email_mismatch)" "email_mismatch" \
+  "$(svc "select outcome from public.record_owner_email_verification_v1('$Q4_AUTH', 'someone-else@example.test', 'email_otp');")"
+check "QG 004-B: email_change is not accepted as a plain verification method" "true" \
+  "$($DB -t -A -c "set role service_role; select * from public.record_owner_email_verification_v1('$Q4_AUTH', 'qg004b-owner@example.test', 'email_change');" >/dev/null 2>&1 && echo false || echo true)"
+check "QG 004-B: the right account and current address record the proof (case-insensitive)" "recorded" \
+  "$(svc "select outcome from public.record_owner_email_verification_v1('$Q4_AUTH', ' QG004B-Owner@Example.test ', 'email_otp');")"
+check "QG 004-B: the owner is now verified" "t" "$(svc "select public.owner_email_verified_v1('$Q4_OWNER');")"
+check "QG 004-B: recording again keeps a single proof" "1" \
+  "$(svc "select outcome from public.record_owner_email_verification_v1('$Q4_AUTH', 'qg004b-owner@example.test', 'password_recovery');" >/dev/null; $DB -t -A -c "select count(*) from owner_email_verifications where owner_id = '$Q4_OWNER';")"
+
+# Address change: only without free history; never onto a taken address.
+check "QG 004-B: an owner without free history may change address" "t" "$(svc "select public.owner_email_change_allowed_v1('$Q4_AUTH');")"
+check "QG 004-B: a taken address is refused (email_taken)" "email_taken" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_AUTH', (select email from owners where id = '$Q4_PUB_OWNER'));")"
+check "QG 004-B: the address change moves owners.email and the proof together" "changed|qg004b-new@example.test|t" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_AUTH', 'QG004B-New@example.test');")|$($DB -t -A -c "select email from owners where id = '$Q4_OWNER';")|$(svc "select public.owner_email_verified_v1('$Q4_OWNER');")"
+Q4_HIST_AUTH=$($DB -t -A -c "select o.auth_user_id from owners o where o.auth_user_id is not null and exists (select 1 from memorial_access_events ev where ev.owner_id = o.id) limit 1;")
+check "QG 004-B: the bench holds a linked owner with free history" "true" "$([ -n "$Q4_HIST_AUTH" ] && echo true || echo false)"
+check "QG 004-B: with free history, the address stays locked (allowed=false, HD423 kept → email_locked)" "f|email_locked" \
+  "$(svc "select public.owner_email_change_allowed_v1('$Q4_HIST_AUTH');")|$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', 'qg004b-locked@example.test');")"
+
+# Commercial rights.
+Q4_AVIS=$($DB -t -A -c "select m.id || '|' || m.owner_id from memorials m join owners o on o.id = m.owner_id where m.access_level = 'avis' and o.auth_user_id is not null limit 1;")
+IFS='|' read -r Q4_AVIS_MEM Q4_AVIS_OWNER <<<"$Q4_AVIS"
+check "QG 004-B: the bench holds a free memorial of a linked owner" "true" "$([ -n "$Q4_AVIS_MEM" ] && echo true || echo false)"
+expect_refused "QG 004-B: without a proof, the « complet » upgrade is refused (HV403)" \
+  "begin; delete from owner_email_verifications where owner_id = '$Q4_AVIS_OWNER'; update memorials set access_level = 'complet' where id = '$Q4_AVIS_MEM'; rollback;" \
+  "owner email address not verified"
+expect_refused "QG 004-B: without a proof, an Etsy right cannot be linked to the owner (HV403)" \
+  "begin; delete from owner_email_verifications where owner_id = '$Q4_OWNER'; insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet', 'etsy', 'intemporel', 'qg004b-etsy'); update entitlements set owner_id = '$Q4_OWNER' where external_order_id = 'qg004b-etsy'; rollback;" \
+  "owner email address not verified"
+check "QG 004-B: a direct « avis » right still links without a proof (free save stays immediate)" "UPDATE 1" \
+  "$($DB -c "begin;" -c "delete from owner_email_verifications where owner_id = '$Q4_OWNER';" -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('avis', 'direct', 'intemporel', 'qg004b-direct');" -c "update entitlements set owner_id = '$Q4_OWNER' where external_order_id = 'qg004b-direct';" -c "rollback;" 2>&1 | grep -o 'UPDATE 1' | head -1)"
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

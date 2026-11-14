@@ -78,6 +78,15 @@ export class HeroPhotoRequiredError extends Error {
   }
 }
 
+/** QG 004-B — the database refused: the owner's address is not proven (HV403). */
+export class EmailVerificationRequiredError extends Error {
+  readonly code = "EMAIL_VERIFICATION_REQUIRED";
+  constructor() {
+    super("Publication refused: the owner's e-mail address is not verified.");
+    this.name = "EmailVerificationRequiredError";
+  }
+}
+
 export interface PublishFromPreviewInput {
   memorialId: string;
   ownerId: string;
@@ -103,7 +112,9 @@ export type PublishFromPreviewResult =
         | "preview_outdated"
         | "publication_conflict"
         | "not_publishable"
-        | "hero_photo_required";
+        | "hero_photo_required"
+        /** QG 004-B — the owner's address must be proven before publishing. */
+        | "email_unverified";
     }
   | { ok: false; code: "publication_policy_refused"; policy: PublicationProjectionError }
   | { ok: false; code: FreePublicationRefusal };
@@ -126,7 +137,13 @@ export async function heroPhotoUsable(content: MemorialContent, resolveMedia: Me
 }
 
 export async function publishFromPreview(
-  deps: { repository: MemorialFirstPublicationRepository; resolveMedia: MediaResolver },
+  deps: {
+    repository: MemorialFirstPublicationRepository;
+    resolveMedia: MediaResolver;
+    /** QG 004-B — HERITAGE's proof of the owner's CURRENT address. The
+     * database enforces it anyway (HV403); asking first gives a clear answer. */
+    isOwnerEmailVerified?: (ownerId: string) => Promise<boolean>;
+  },
   input: PublishFromPreviewInput,
 ): Promise<PublishFromPreviewResult> {
   const snapshot = await deps.repository.load(input.memorialId);
@@ -164,6 +181,10 @@ export async function publishFromPreview(
   );
   if (assembled.status !== "assembled") return { ok: false, code: "not_publishable" };
 
+  if (deps.isOwnerEmailVerified && !(await deps.isOwnerEmailVerified(input.ownerId))) {
+    return { ok: false, code: "email_unverified" };
+  }
+
   try {
     const committed = await deps.repository.commitFirstPublication({
       memorialId: input.memorialId,
@@ -183,6 +204,9 @@ export async function publishFromPreview(
     if (error instanceof FreePublicationRefusedError) return { ok: false, code: error.refusal };
     if (error instanceof HeroPhotoRequiredError || hasCode(error, "HERO_PHOTO_REQUIRED")) {
       return { ok: false, code: "hero_photo_required" };
+    }
+    if (error instanceof EmailVerificationRequiredError || hasCode(error, "EMAIL_VERIFICATION_REQUIRED")) {
+      return { ok: false, code: "email_unverified" };
     }
     if (hasCode(error, "MEMORIAL_PUBLICATION_CONFLICT")) return { ok: false, code: "publication_conflict" };
     if (hasCode(error, "MEMORIAL_PUBLICATION_REJECTED")) return { ok: false, code: "not_publishable" };
@@ -208,6 +232,8 @@ export function publicationOutcomeOf(result: PublishFromPreviewResult): PublishF
       return "signed_out";
     case "not_found_or_forbidden":
       return "access_refused";
+    case "email_unverified":
+      return "email_unverified";
     default:
       return "failed";
   }

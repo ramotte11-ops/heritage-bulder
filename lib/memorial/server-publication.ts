@@ -9,6 +9,7 @@ import type { MediaResolver } from "@/lib/memorial/assembly/media-resolver";
 import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
+import { createEmailVerificationStore } from "@/lib/auth/email-verification";
 import {
   publishMemorial,
   type MemorialPublicationRepository,
@@ -87,6 +88,8 @@ export async function authorizeAndPublishFromPreview(
     memorialOwnershipRepository: MemorialOwnershipRepository;
     publicationRepository: MemorialFirstPublicationRepository;
     resolveMedia: MediaResolver;
+    /** QG 004-B — HERITAGE's proof of the owner's current address. */
+    isOwnerEmailVerified?: (ownerId: string) => Promise<boolean>;
   },
   actor: HeritageActor,
   input: { memorialId: string; expectedRevision: number; expectedDigest: string; gallerySelection?: unknown },
@@ -101,7 +104,7 @@ export async function authorizeAndPublishFromPreview(
   );
   if (access.status !== "granted") return { ok: false, code: "not_found_or_forbidden" };
   return publishFromPreview(
-    { repository: deps.publicationRepository, resolveMedia: deps.resolveMedia },
+    { repository: deps.publicationRepository, resolveMedia: deps.resolveMedia, isOwnerEmailVerified: deps.isOwnerEmailVerified },
     {
       memorialId: access.memorialId,
       ownerId: access.ownerId,
@@ -128,6 +131,7 @@ export async function publishFromPreviewForCurrentOwner(
       ),
       publicationRepository: createSupabaseMemorialPublicationRepository(readClient),
       resolveMedia: createOwnerDraftMediaResolver(mediaEngine, actor, memorialId),
+      isOwnerEmailVerified: (ownerId) => createEmailVerificationStore().isOwnerVerified(ownerId),
     },
     actor,
     { memorialId, expectedRevision, expectedDigest, gallerySelection },

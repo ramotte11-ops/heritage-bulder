@@ -189,7 +189,7 @@ describe("redeemActivationKey — reuses Mission 011B, never re-implements it", 
     const d = deps();
 
     const result = await redeemActivationKey(d, {
-      identity: { ...IDENTITY, email_confirmed_at: undefined },
+      identity: { ...IDENTITY, is_anonymous: true },
       rawActivationKey: generateActivationKey().rawKey,
     });
 

@@ -53,6 +53,8 @@ describe("AccountAccess (QG 003)", () => {
     const view = render(<AccountAccess language="fr" next="/brouillon/reprise" />);
 
     fill(fr("account.email"), "famille@example.com");
+
+    fill(fr("account.emailConfirm"), "famille@example.com");
     fill(fr("account.password"), "les lilas du jardin");
     await submit(fr("account.signupSubmit"));
     expect(lastSent()).toMatchObject({ intent: "signup", email: "famille@example.com", password: "les lilas du jardin", next: "/brouillon/reprise" });
@@ -76,6 +78,7 @@ describe("AccountAccess (QG 003)", () => {
       .mockResolvedValueOnce({ step: "confirm", email: "famille@example.com", notice: "code_resent", sentAt: Date.now() + 61_000 });
     render(<AccountAccess language="fr" />);
     fill(fr("account.email"), "famille@example.com");
+    fill(fr("account.emailConfirm"), "famille@example.com");
     fill(fr("account.password"), "les lilas du jardin");
     await submit(fr("account.signupSubmit"));
 
@@ -125,6 +128,7 @@ describe("AccountAccess (QG 003)", () => {
     accountAction.mockResolvedValueOnce({ step: "confirm", email: "famille@example.com", notice: "code_sent", sentAt: Date.now() });
     const view = render(<AccountAccess language="fr" />);
     fill(fr("account.email"), "famille@example.com");
+    fill(fr("account.emailConfirm"), "famille@example.com");
     fill(fr("account.password"), "les lilas du jardin");
     await submit(fr("account.signupSubmit"));
     fireEvent.click(screen.getByRole("button", { name: fr("account.back") }));

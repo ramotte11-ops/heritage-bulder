@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
 import { heroPhotoPath } from "./hero-photo-path";
 import styles from "./PreviewPublicationPanel.module.css";
+
+// QG 004-B — loaded only when an authenticated publication is refused for an
+// unverified address: the guest Builder (/creer), which shares this panel's
+// module graph, must never statically reach a Server Action or Supabase
+// (components/builder/guest/guest-import-graph.test.ts).
+const EmailVerificationStep = lazy(() =>
+  import("@/components/auth/EmailVerificationStep").then((module) => ({ default: module.EmailVerificationStep })),
+);
 
 /**
  * QG 008 Lot 3 — « Publier » in the private Preview of the AUTHENTICATED
@@ -55,6 +63,12 @@ export function PreviewPublicationPanel({
   const [pending, setPending] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [outcome, setOutcome] = useState<PublishFromPreviewOutcome | null>(null);
+  const [justVerified, setJustVerified] = useState(false);
+  // QG 004-B — the proof is recorded: back to « Publier », the family's click.
+  const verified = useCallback(() => {
+    setOutcome(null);
+    setJustVerified(true);
+  }, []);
   const inFlight = useRef(false);
   const confirmButton = useRef<HTMLButtonElement | null>(null);
 
@@ -181,6 +195,30 @@ export function PreviewPublicationPanel({
       {outcome === "preview_outdated" && (
         <p role="status" className={styles.notice}>
           {translate(language, "publish.outdated")}
+        </p>
+      )}
+
+      {/* QG 004-B — once, before the first publication: prove the address. */}
+      {outcome === "email_unverified" && (
+        <Suspense fallback={null}>
+        <EmailVerificationStep
+          language={language}
+          onVerified={verified}
+          classNames={{
+            root: styles.choices,
+            form: styles.actions,
+            field: styles.verifyField,
+            primary: styles.primary,
+            secondary: styles.secondary,
+            notice: styles.notice,
+            alert: styles.alert,
+          }}
+        />
+        </Suspense>
+      )}
+      {justVerified && outcome === null && (
+        <p role="status" className={styles.notice} data-publication-verified="">
+          {translate(language, "verify.readyToPublish")}
         </p>
       )}
 

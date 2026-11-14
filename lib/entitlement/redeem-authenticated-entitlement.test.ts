@@ -343,7 +343,7 @@ describe("redeemAuthenticatedEntitlement — owner resolution short-circuits", (
     const d = deps();
 
     const result = await redeemAuthenticatedEntitlement(d, {
-      identity: { ...IDENTITY, email_confirmed_at: undefined },
+      identity: { ...IDENTITY, is_anonymous: true },
       entitlementId: ENTITLEMENT_ID,
     });
 

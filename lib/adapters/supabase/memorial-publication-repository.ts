@@ -9,6 +9,7 @@ import {
   type MemorialPublicationSnapshot,
 } from "@/lib/memorial/publish-memorial";
 import {
+  EmailVerificationRequiredError,
   HeroPhotoRequiredError,
   type FirstPublicationCommit,
   type FirstPublicationResult,
@@ -80,6 +81,8 @@ function throwFirstPublicationError(error: PostgrestError): never {
 }
 
 function throwPublicationError(error: PostgrestError): never {
+  // QG 004-B — require_owner_email_verified_v1: no HERITAGE proof of the address.
+  if (error.code === "HV403") throw new EmailVerificationRequiredError();
   if (error.code === "40001") throw new MemorialPublicationConflictError();
   if (error.code === "HD428") throw new FreePublicationRefusedError("free_requires_verified_save");
   if (error.code === "HD410") throw new FreePublicationRefusedError("free_window_closed");

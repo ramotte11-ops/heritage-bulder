@@ -13,13 +13,28 @@ interface MemorialListRow {
   slug: unknown;
   access_level: unknown;
   free_public_until: unknown;
+  first_published_at?: unknown;
+  free_publish_until?: unknown;
+  free_draft_until?: unknown;
 }
 
-/** QG 016 / M4 — `memorials` columns this list reads. The last four are
+/** QG 016 / M4 — `memorials` columns this list reads. The last ones are
  * existing columns of the Owner's OWN rows, already readable by
  * `authenticated` (table-level SELECT, 20260905160000_builder_owner_access.sql)
- * under `memorials_select_own`: no new grant, policy or function. */
-const MEMORIAL_LIST_COLUMNS = "id, created_at, status, slug, access_level, free_public_until";
+ * under `memorials_select_own`: no new grant, policy or function.
+ * QG 004-B adds the free deadlines (same table, same rows). */
+const MEMORIAL_LIST_COLUMNS =
+  "id, created_at, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until";
+
+/** QG 004-B — the free deadlines still ahead, for a never-published « avis ». */
+function freeDeadlinesOf(row: MemorialListRow, now: Date): OwnedMemorialSummary["freeDeadlines"] {
+  if (row.access_level !== "avis" || row.first_published_at != null) return null;
+  const ahead = (value: unknown) =>
+    typeof value === "string" && !Number.isNaN(Date.parse(value)) && Date.parse(value) > now.getTime() ? value : null;
+  const publishUntil = ahead(row.free_publish_until);
+  const draftUntil = ahead(row.free_draft_until);
+  return publishUntil === null && draftUntil === null ? null : { publishUntil, draftUntil };
+}
 
 interface DraftNameRow {
   memorial_id: string;
@@ -121,6 +136,7 @@ export class SupabaseOwnedMemorialListRepository implements OwnedMemorialListRep
       displayName: names.get(row.id) ?? null,
       createdAt: row.created_at,
       publicSlug: publicSlugOf(row, now),
+      freeDeadlines: freeDeadlinesOf(row, now),
     }));
   }
 }
