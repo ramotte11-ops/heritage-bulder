@@ -23,8 +23,13 @@ export interface EmailVerificationStore {
   isOwnerVerified(ownerId: string): Promise<boolean>;
   record(authUserId: string, email: string, method: VerificationMethod): Promise<"recorded" | "no_owner" | "email_mismatch">;
   isChangeAllowed(authUserId: string): Promise<boolean>;
-  applyChange(authUserId: string, newEmail: string): Promise<"changed" | "no_owner" | "email_taken" | "email_locked">;
+  /** QG 004-B — the new address is neither another owner's current address
+   * nor an address reserved by another owner's free history. */
+  isAddressAvailable(authUserId: string, email: string): Promise<boolean>;
+  applyChange(authUserId: string, newEmail: string): Promise<EmailChangeOutcome>;
 }
+
+export type EmailChangeOutcome = "changed" | "unchanged" | "no_owner" | "email_taken" | "email_reserved" | "email_locked";
 
 function firstOutcome<T extends string>(data: unknown): T {
   const row = Array.isArray(data) ? data[0] : data;
@@ -56,13 +61,18 @@ export function createEmailVerificationStore(
       if (error) throw new Error(`E-mail change lookup failed: ${error.code ?? "unknown"}`);
       return data === true;
     },
+    async isAddressAvailable(authUserId, email) {
+      const { data, error } = await client.rpc("owner_email_available_v1", { p_auth_user_id: authUserId, p_email: email });
+      if (error) throw new Error(`E-mail availability lookup failed: ${error.code ?? "unknown"}`);
+      return data === true;
+    },
     async applyChange(authUserId, newEmail) {
       const { data, error } = await client.rpc("apply_owner_email_change_v1", {
         p_auth_user_id: authUserId,
         p_new_email: newEmail,
       });
       if (error) throw new Error(`E-mail change failed: ${error.code ?? "unknown"}`);
-      return firstOutcome<"changed" | "no_owner" | "email_taken" | "email_locked">(data);
+      return firstOutcome<EmailChangeOutcome>(data);
     },
   };
 }

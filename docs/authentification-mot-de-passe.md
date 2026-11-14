@@ -28,17 +28,34 @@
 | Permissions SQL | table sans aucun droit (RLS) ; RPC `service_role` seul ; `search_path = ''` ; fonction de déclencheur non exécutable | banc SQL |
 | Changement d'adresse sûr | mot de passe actuel exigé ; adresse prise refusée ; **verrou anti-abus HD423 conservé** (adresse figée dès un historique gratuit) | `actions.test.ts` ; banc |
 
+**Correction de l'adresse après la première sauvegarde (complément QG 004-B)** —
+migration `20261114130000_qg004b_owner_email_correction.sql` :
+- même `owner_id`, même compte Auth : brouillons, publications, droits Etsy/premium, dates 10 j / 45 j /
+  visibilité et compteurs gratuits (`memorial_access_events`, par propriétaire) restent identiques ;
+  le changement n'écrit aucun événement gratuit ;
+- l'ancienne adresse est inscrite à `owner_email_history` ; **réservée** si elle avait été prouvée par
+  ce propriétaire : aucun autre compte ne peut la reprendre (HD424), donc pas de quota gratuit neuf ;
+  une adresse jamais prouvée (faute de frappe) est libérée — aucune publication gratuite n'a pu s'y faire ;
+- HD423 conservé : un changement direct reste refusé ; seul `apply_owner_email_change_v1` (même
+  transaction) l'autorise ; verrou de ligne du propriétaire + verrous consultatifs par adresse (triés),
+  aussi pris à toute création de propriétaire ;
+- nouvelle adresse refusée si elle est celle d'un autre compte ou réservée par un autre propriétaire,
+  vérifié avant de demander le changement à Supabase (`owner_email_available_v1`) puis dans la transaction.
+
 **Limites connues (à valider par le QG)**
-1. **Correction d'une faute de frappe après la première sauvegarde** : bloquée par le verrou existant
-   `owners_guard_free_email_v1` (HD423), qui protège le quota « une publication gratuite par adresse ».
-   Le message invite à contacter HERITAGE. Lever ce verrou demande une migration qui transporte
-   l'historique gratuit : décision QG.
-2. **Jetons d'accès déjà émis** : après révocation, le serveur HERITAGE les refuse immédiatement (il
+1. **Adresse réservée** : si une personne quitte une adresse prouvée, puis que cette boîte change de
+   titulaire, le nouveau titulaire ne pourra pas l'utiliser sans intervention HERITAGE (rare, voulu
+   pour protéger le quota). Le propriétaire d'origine peut, lui, y revenir.
+2. **Écart Auth / HERITAGE résiduel** : Supabase change l'adresse Auth avant la transaction HERITAGE ;
+   si une autre personne prend la nouvelle adresse entre les deux (fenêtre de quelques secondes,
+   vérifiée juste avant), la transaction refuse et le serveur le journalise ; la publication reste
+   alors bloquée jusqu'à correction (aucune donnée perdue).
+3. **Jetons d'accès déjà émis** : après révocation, le serveur HERITAGE les refuse immédiatement (il
    vérifie la session auprès de Supabase via `getUser`) ; un jeton déjà émis reste accepté par
    Supabase en accès direct jusqu'à son expiration (1 h par défaut, réglable).
-3. **Énumération à l'inscription** : sans confirmation native, Supabase indique qu'une adresse existe
+4. **Énumération à l'inscription** : sans confirmation native, Supabase indique qu'une adresse existe
    déjà ; message neutre côté HERITAGE, atténuation par CAPTCHA et limites.
-4. Le chemin « code de confirmation » (`confirm`) reste dans le code **uniquement** tant que « Confirm
+5. Le chemin « code de confirmation » (`confirm`) reste dans le code **uniquement** tant que « Confirm
    email » est actif (compatibilité) ; il n'apparaît plus une fois le réglage désactivé.
 
 ## Migration (non appliquée)

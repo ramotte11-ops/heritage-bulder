@@ -155,6 +155,20 @@ describe("SupabaseOwnerRepository.create", () => {
     expect(result).toEqual({ status: "conflict" });
   });
 
+  it("QG 004-B — reports an address reserved by another owner's free history (HD424) as a conflict", async () => {
+    const { client } = fakeClient({
+      data: null,
+      error: { code: "HD424", message: "owner e-mail is reserved by another owner's free access history" },
+    });
+
+    const result = await new SupabaseOwnerRepository(client).create({
+      authUserId: "auth-user-2",
+      email: "ancienne@example.test",
+    });
+
+    expect(result).toEqual({ status: "conflict" });
+  });
+
   it("normalises the email it writes, so reads and the lower(email) index agree", async () => {
     const { client, insert } = fakeClient({ data: ROW, error: null });
 

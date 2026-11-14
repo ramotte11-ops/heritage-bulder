@@ -316,9 +316,11 @@ async function changeEmailSend(supabase: SupabaseClient, f: Fields): Promise<Out
     if (reauth.error) logAuthFailure("re-authentication", reauth.error);
     return fail(reauth.error && isRateLimited(reauth.error) ? "rate_limited" : "invalid_credentials");
   }
-  // Checked BEFORE asking Supabase, so auth.users and owners never diverge.
+  // Checked BEFORE asking Supabase, so auth.users and owners never diverge:
+  // the new address must be neither another owner's address nor one reserved
+  // by another owner's free history (quota per address, QG 004-B).
   const store = createEmailVerificationStore();
-  if (!(await store.isChangeAllowed(user.id))) return fail("email_locked");
+  if (!(await store.isAddressAvailable(user.id, f.newEmail))) return fail("email_taken");
 
   const { error } = await supabase.auth.updateUser({ email: f.newEmail });
   if (error) {
@@ -348,8 +350,15 @@ async function changeEmailCheck(supabase: SupabaseClient, f: Fields): Promise<Ou
     // e.g. « Secure email change » still waiting for the old address.
     return fail("failed");
   }
+  // One transaction in the database: the old address is kept in the history
+  // (reserved if it had been proven), owners.email moves, the proof follows.
+  // Same owner_id, same Auth account: drafts, publications, rights and every
+  // free-offer date are untouched, and no free right is granted.
   const changed = await createEmailVerificationStore().applyChange(user.id, user.email);
-  if (changed === "email_taken") return fail("email_taken");
+  if (changed === "email_taken" || changed === "email_reserved") {
+    console.error("Account e-mail change diverged:", changed);
+    return fail("email_taken");
+  }
   if (changed === "email_locked") return fail("email_locked");
   return { step: "verified", email: user.email };
 }

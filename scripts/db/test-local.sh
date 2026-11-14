@@ -4609,8 +4609,63 @@ check "QG 004-B: the address change moves owners.email and the proof together" "
   "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_AUTH', 'QG004B-New@example.test');")|$($DB -t -A -c "select email from owners where id = '$Q4_OWNER';")|$(svc "select public.owner_email_verified_v1('$Q4_OWNER');")"
 Q4_HIST_AUTH=$($DB -t -A -c "select o.auth_user_id from owners o where o.auth_user_id is not null and exists (select 1 from memorial_access_events ev where ev.owner_id = o.id) limit 1;")
 check "QG 004-B: the bench holds a linked owner with free history" "true" "$([ -n "$Q4_HIST_AUTH" ] && echo true || echo false)"
-check "QG 004-B: with free history, the address stays locked (allowed=false, HD423 kept → email_locked)" "f|email_locked" \
-  "$(svc "select public.owner_email_change_allowed_v1('$Q4_HIST_AUTH');")|$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', 'qg004b-locked@example.test');")"
+
+# --- QG 004-B complément : correcting the address after the first save ---
+echo "== QG 004-B: e-mail correction keeps the family's data and the free-offer protections =="
+check "QG 004-B+: owner_email_history has RLS on and grants nothing (anon|authenticated|service_role)" "t|false|false|false" \
+  "$($DB -t -A -c "select relrowsecurity from pg_class where oid = 'public.owner_email_history'::regclass;")|$($DB -t -A -c "select has_table_privilege('anon','public.owner_email_history','SELECT,INSERT,UPDATE,DELETE') || '|' || has_table_privilege('authenticated','public.owner_email_history','SELECT,INSERT,UPDATE,DELETE') || '|' || has_table_privilege('service_role','public.owner_email_history','SELECT,INSERT,UPDATE,DELETE');")"
+check "QG 004-B+: owner_email_available_v1 callable by service_role only" "false|false|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon', 'public.owner_email_available_v1(uuid,text)', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.owner_email_available_v1(uuid,text)', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.owner_email_available_v1(uuid,text)', 'EXECUTE');")"
+for fn in "owner_email_lock_v1(text)" "owners_guard_reserved_email_v1()" "owners_guard_free_email_v1()"; do
+  check "QG 004-B+: $fn executable by no application role" "false|false|false" \
+    "$($DB -t -A -c "select has_function_privilege('anon', 'public.$fn', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.$fn', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.$fn', 'EXECUTE');")"
+done
+
+Q4H=$($DB -t -A -c "select o.id || '|' || lower(o.email) from owners o where o.auth_user_id = '$Q4_HIST_AUTH';")
+IFS='|' read -r Q4H_OWNER Q4H_OLD <<<"$Q4H"
+check "QG 004-B+: the owner with free history starts verified for its current address" "t" "$(svc "select public.owner_email_verified_v1('$Q4H_OWNER');")"
+expect_refused "QG 004-B+: HD423 kept — a direct UPDATE of a free-history address is still refused" \
+  "update owners set email = 'qg004b-direct@example.test' where id = '$Q4H_OWNER';" \
+  "bound to its free access history"
+expect_refused "QG 004-B+: HD423 kept — an OLD history row does not open the door (same transaction only)" \
+  "begin; insert into owner_email_history (email_normalized, owner_id, released_at, reserved) values ('$Q4H_OLD', '$Q4H_OWNER', now() - interval '1 day', true); commit; update owners set email = 'qg004b-direct2@example.test' where id = '$Q4H_OWNER';" \
+  "bound to its free access history"
+$DB -c "delete from owner_email_history where owner_id = '$Q4H_OWNER';" >/dev/null
+
+Q4H_BEFORE=$($DB -t -A -c "select (select count(*) from memorial_access_events where owner_id = '$Q4H_OWNER') || '|' || coalesce((select string_agg(id || ':' || coalesce(free_anchor_at::text,'') || ':' || coalesce(free_publish_until::text,'') || ':' || coalesce(free_draft_until::text,'') || ':' || coalesce(free_public_until::text,'') || ':' || access_level || ':' || status, ',' order by id) from memorials where owner_id = '$Q4H_OWNER'), '') || '|' || coalesce((select string_agg(id || ':' || status || ':' || access_level, ',' order by id) from entitlements where owner_id = '$Q4H_OWNER'), '') || '|' || (select coalesce(w.window_opened_at::text,'') || ':' || w.publications from free_access_window_v1('$Q4H_OWNER', now()) w);")
+check "QG 004-B+: the change goes through the one sanctioned path (changed)" "changed" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', 'qg004b-corrected@example.test');")"
+check "QG 004-B+: same owner_id and same Auth account after the change" "$Q4H_OWNER|$Q4_HIST_AUTH|qg004b-corrected@example.test" \
+  "$($DB -t -A -c "select id || '|' || auth_user_id || '|' || email from owners where id = '$Q4H_OWNER';")"
+check "QG 004-B+: events, memorial dates/levels, rights and the free window are byte-identical" "$Q4H_BEFORE" \
+  "$($DB -t -A -c "select (select count(*) from memorial_access_events where owner_id = '$Q4H_OWNER') || '|' || coalesce((select string_agg(id || ':' || coalesce(free_anchor_at::text,'') || ':' || coalesce(free_publish_until::text,'') || ':' || coalesce(free_draft_until::text,'') || ':' || coalesce(free_public_until::text,'') || ':' || access_level || ':' || status, ',' order by id) from memorials where owner_id = '$Q4H_OWNER'), '') || '|' || coalesce((select string_agg(id || ':' || status || ':' || access_level, ',' order by id) from entitlements where owner_id = '$Q4H_OWNER'), '') || '|' || (select coalesce(w.window_opened_at::text,'') || ':' || w.publications from free_access_window_v1('$Q4H_OWNER', now()) w);")"
+check "QG 004-B+: the proven old address is RESERVED in the history, the proof follows the new one" "t|t" \
+  "$($DB -t -A -c "select reserved from owner_email_history where owner_id = '$Q4H_OWNER' and email_normalized = '$Q4H_OLD';")|$(svc "select public.owner_email_verified_v1('$Q4H_OWNER');")"
+expect_refused "QG 004-B+: a NEW account cannot take the reserved old address (HD424, no fresh free quota)" \
+  "insert into owners (auth_user_id, email) values (gen_random_uuid(), '$Q4H_OLD');" \
+  "reserved by another owner"
+check "QG 004-B+: another owner can neither see it as available nor move onto it (email_reserved)" "f|email_reserved" \
+  "$(svc "select public.owner_email_available_v1('$Q4_AUTH', '$Q4H_OLD');")|$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_AUTH', '$Q4H_OLD');")"
+check "QG 004-B+: the same owner may come back to its own former address" "changed|t" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', '$Q4H_OLD');")|$(svc "select public.owner_email_verified_v1('$Q4H_OWNER');")"
+check "QG 004-B+: an address still held by another owner is refused (email_taken), case-insensitively" "email_taken" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', upper((select email from owners where id = '$Q4_OWNER')));")"
+
+# A never-proven address (a typo) is released: nobody could publish under it.
+Q4T_AUTH=$($DB -t -A -c "select gen_random_uuid();")
+Q4T_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values ('$Q4T_AUTH', 'qg004b-typo@exmaple.test') returning id;")
+$DB -c "insert into memorial_access_events (memorial_id, owner_id, event, from_level, to_level) select m.id, '$Q4T_OWNER', 'free.created', 'avis', 'avis' from memorials m limit 1;" >/dev/null 2>&1 || true
+$DB -c "delete from owner_email_verifications where owner_id = '$Q4T_OWNER';" >/dev/null
+check "QG 004-B+: an unproven typo address is corrected and released, not reserved" "changed|f" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1('$Q4T_AUTH', 'qg004b-typo@example.test');")|$($DB -t -A -c "select reserved from owner_email_history where owner_id = '$Q4T_OWNER';")"
+check "QG 004-B+: the released typo address can be used by its real owner" "1" \
+  "$($DB -t -A -c "begin;" -c "with o as (insert into owners (auth_user_id, email) values (gen_random_uuid(), 'qg004b-typo@exmaple.test') returning 1) select count(*) from o;" -c "rollback;" 2>&1 | grep -E '^[0-9]+$' | head -1)"
+check "QG 004-B+: unknown Auth account → no_owner; same address → unchanged" "no_owner|unchanged" \
+  "$(svc "select outcome from public.apply_owner_email_change_v1(gen_random_uuid(), 'x@example.test');")|$(svc "select outcome from public.apply_owner_email_change_v1('$Q4_HIST_AUTH', upper('$Q4H_OLD'));")"
+expect_error "QG 004-B+: authenticated cannot write the e-mail history" \
+  "set role authenticated; insert into public.owner_email_history (email_normalized, owner_id, reserved) values ('x@example.test', '$Q4_OWNER', false);"
+expect_error "QG 004-B+: service_role cannot write the e-mail history directly (RPC only)" \
+  "set role service_role; insert into public.owner_email_history (email_normalized, owner_id, reserved) values ('x@example.test', '$Q4_OWNER', false);"
 
 # Commercial rights.
 Q4_AVIS=$($DB -t -A -c "select m.id || '|' || m.owner_id from memorials m join owners o on o.id = m.owner_id where m.access_level = 'avis' and o.auth_user_id is not null limit 1;")

@@ -34,6 +34,7 @@ const { proofs } = vi.hoisted(() => ({
     isOwnerVerified: vi.fn(),
     record: vi.fn(),
     isChangeAllowed: vi.fn(),
+    isAddressAvailable: vi.fn(),
     applyChange: vi.fn(),
   },
 }));
@@ -409,7 +410,7 @@ describe("QG 004-B — changement d'adresse", () => {
       signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } }, error: null }),
       updateUser: vi.fn().mockResolvedValue({ data: {}, error: null }),
     });
-    proofs.isChangeAllowed.mockResolvedValue(true);
+    proofs.isAddressAvailable.mockResolvedValue(true);
     expect(await accountAction(START, form({ intent: "change_email_send", newEmail: NEW, password: GOOD_PASSWORD })))
       .toMatchObject({ step: "change_email_code", email: NEW });
     expect(a.signInWithPassword).toHaveBeenCalledWith({ email: EMAIL, password: GOOD_PASSWORD });
@@ -427,15 +428,15 @@ describe("QG 004-B — changement d'adresse", () => {
     expect(a.updateUser).not.toHaveBeenCalled();
   });
 
-  it("keeps the anti-abuse lock: an address bound to a free history is not changed online", async () => {
+  it("refuses an address reserved by another account's free history (no fresh free quota)", async () => {
     const a = auth({
       getUser: vi.fn().mockResolvedValue(signedIn),
       signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } }, error: null }),
       updateUser: vi.fn(),
     });
-    proofs.isChangeAllowed.mockResolvedValue(false);
+    proofs.isAddressAvailable.mockResolvedValue(false);
     expect(await accountAction(START, form({ intent: "change_email_send", newEmail: NEW, password: GOOD_PASSWORD })))
-      .toMatchObject({ error: "email_locked" });
+      .toMatchObject({ error: "email_taken" });
     expect(a.updateUser).not.toHaveBeenCalled();
   });
 
@@ -448,7 +449,7 @@ describe("QG 004-B — changement d'adresse", () => {
       signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } }, error: null }),
       updateUser: vi.fn().mockResolvedValue({ data: {}, error: { code: "email_exists", status: 422 } }),
     });
-    proofs.isChangeAllowed.mockResolvedValue(true);
+    proofs.isAddressAvailable.mockResolvedValue(true);
     expect(await accountAction(START, form({ intent: "change_email_send", newEmail: NEW, password: GOOD_PASSWORD })))
       .toMatchObject({ error: "email_taken" });
   });
@@ -463,6 +464,16 @@ describe("QG 004-B — changement d'adresse", () => {
       .toEqual({ step: "verified", email: NEW });
     expect(a.verifyOtp).toHaveBeenCalledWith({ email: NEW, token: "123456", type: "email_change" });
     expect(proofs.applyChange).toHaveBeenCalledWith("u1", NEW);
+  });
+
+  it("refuses (and logs the divergence) when the database finds the address reserved at the last moment", async () => {
+    const getUser = vi.fn()
+      .mockResolvedValueOnce(signedIn)
+      .mockResolvedValueOnce({ data: { user: { id: "u1", email: NEW } }, error: null });
+    auth({ getUser, verifyOtp: vi.fn().mockResolvedValue({ data: {}, error: null }) });
+    proofs.applyChange.mockResolvedValue("email_reserved");
+    expect(await accountAction(START, form({ intent: "change_email_check", newEmail: NEW, code: "123456" })))
+      .toMatchObject({ error: "email_taken" });
   });
 
   it("changes nothing on HERITAGE's side while Supabase has not switched the address", async () => {
