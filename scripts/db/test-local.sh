@@ -4556,8 +4556,8 @@ check "QG 004-B: no role holds any privilege on owner_email_verifications (anon|
 for fn in owner_email_verified_v1 record_owner_email_verification_v1 apply_owner_email_change_v1 owner_email_change_allowed_v1; do
   check "QG 004-B: $fn callable by service_role only (anon|authenticated|service_role)" "false|false|true" \
     "$($DB -t -A -c "select string_agg(has_function_privilege('anon', p.oid, 'EXECUTE') || '|' || has_function_privilege('authenticated', p.oid, 'EXECUTE') || '|' || has_function_privilege('service_role', p.oid, 'EXECUTE'), ' / ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
-  check "QG 004-B: $fn is SECURITY DEFINER with an empty search_path" "t|{search_path=\"\"}" \
-    "$($DB -t -A -c "select p.prosecdef || '|' || coalesce(p.proconfig::text, '') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
+  check "QG 004-B: $fn is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" \
+    "$($DB -t -A -c "select p.prosecdef || '|' || array_to_string(p.proconfig, ',') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '$fn';")"
 done
 check "QG 004-B: the guard trigger function is executable by no application role" "false|false|false" \
   "$($DB -t -A -c "select has_function_privilege('anon', 'public.require_owner_email_verified_v1()', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.require_owner_email_verified_v1()', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.require_owner_email_verified_v1()', 'EXECUTE');")"
@@ -4570,8 +4570,8 @@ expect_error "QG 004-B: service_role cannot write a proof directly either (RPC o
 Q4_PUB=$($DB -t -A -c "select m.id || '|' || m.owner_id from memorials m join memorial_published_snapshots s on s.memorial_id = m.id join owners o on o.id = m.owner_id where o.auth_user_id is not null limit 1;")
 IFS='|' read -r Q4_PUB_MEM Q4_PUB_OWNER <<<"$Q4_PUB"
 check "QG 004-B: the bench holds a published memorial of a linked owner" "true" "$([ -n "$Q4_PUB_MEM" ] && echo true || echo false)"
-check "QG 004-B: a verified owner may republish (snapshot write accepted)" "UPDATE 1" \
-  "$($DB -c "begin;" -c "update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM';" -c "rollback;" 2>&1 | grep -o 'UPDATE 1' | head -1)"
+check "QG 004-B: a verified owner may republish (snapshot write accepted)" "1" \
+  "$($DB -t -A -c "begin;" -c "with u as (update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM' returning 1) select count(*) from u;" -c "rollback;" 2>&1 | grep -E '^[0-9]+$' | head -1)"
 expect_refused "QG 004-B: without a proof, publication is refused by the database (HV403)" \
   "begin; delete from owner_email_verifications where owner_id = '$Q4_PUB_OWNER'; update memorial_published_snapshots set content = content where memorial_id = '$Q4_PUB_MEM'; rollback;" \
   "owner email address not verified"
@@ -4622,8 +4622,8 @@ expect_refused "QG 004-B: without a proof, the « complet » upgrade is refused 
 expect_refused "QG 004-B: without a proof, an Etsy right cannot be linked to the owner (HV403)" \
   "begin; delete from owner_email_verifications where owner_id = '$Q4_OWNER'; insert into entitlements (access_level, source, offer_id, external_order_id) values ('complet', 'etsy', 'intemporel', 'qg004b-etsy'); update entitlements set owner_id = '$Q4_OWNER' where external_order_id = 'qg004b-etsy'; rollback;" \
   "owner email address not verified"
-check "QG 004-B: a direct « avis » right still links without a proof (free save stays immediate)" "UPDATE 1" \
-  "$($DB -c "begin;" -c "delete from owner_email_verifications where owner_id = '$Q4_OWNER';" -c "insert into entitlements (access_level, source, offer_id, external_order_id) values ('avis', 'direct', 'intemporel', 'qg004b-direct');" -c "update entitlements set owner_id = '$Q4_OWNER' where external_order_id = 'qg004b-direct';" -c "rollback;" 2>&1 | grep -o 'UPDATE 1' | head -1)"
+check "QG 004-B: a direct « avis » right still links without a proof (free save stays immediate)" "1" \
+  "$($DB -t -A -c "begin;" -c "delete from owner_email_verifications where owner_id = '$Q4_OWNER';" -c "create temp table q4_direct on commit drop as with e as (insert into entitlements (access_level, source, offer_id) values ('avis', 'direct', 'intemporel') returning id) select id from e;" -c "with u as (update entitlements set owner_id = '$Q4_OWNER' where id in (select id from q4_direct) returning 1) select count(*) from u;" -c "rollback;" 2>&1 | grep -E '^[0-9]+$' | head -1)"
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
