@@ -160,7 +160,7 @@ export function AccountAccess({
       : active?.notice === "not_confirmed" ? `${t("account.notConfirmed")} ` : "";
     return (
       <div className={classNames.root} data-account-step={step}>
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           {hidden(isConfirm ? "confirm" : "verify_reset")}
           <input type="hidden" name="email" value={email} />
           <h2>{t(isConfirm ? "account.confirmTitle" : "account.resetTitle")}</h2>
@@ -185,7 +185,7 @@ export function AccountAccess({
           {submit("account.codeSubmit")}
           {alert}
         </form>
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           {hidden(isConfirm ? "resend_confirm" : "resend_reset")}
           <input type="hidden" name="email" value={email} />
           <button type="submit" className={classNames.secondary} disabled={pending || remaining > 0} data-account-resend>
@@ -202,7 +202,7 @@ export function AccountAccess({
   if (step === "new_password") {
     return (
       <div className={classNames.root} data-account-step="new_password">
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           {hidden("new_password")}
           <input type="hidden" name="email" value={email} />
           <h2>{t("account.newPasswordTitle")}</h2>
@@ -234,7 +234,7 @@ export function AccountAccess({
         </div>
       ) : null}
 
-      <form action={formAction} className={classNames.form} key={step}>
+      <form action={formAction} className={classNames.form} noValidate key={step}>
         {hidden(step)}
         {step === "forgot" ? <h2>{t("account.forgotTitle")}</h2> : null}
         {emailField}

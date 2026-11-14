@@ -4,7 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { getSiteUrl } from "@/lib/supabase/site-url";
-import { isValidEmail } from "@/lib/auth/validate-email";
+import { isAcceptableNewEmail, isValidEmail } from "@/lib/auth/validate-email";
 import { sanitizeReturnPath } from "@/lib/auth/return-path";
 import { checkPassword, type PasswordProblem } from "@/lib/auth/password-policy";
 import { createEmailVerificationStore } from "@/lib/auth/email-verification";
@@ -85,13 +85,23 @@ interface Fields {
   next: string;
 }
 
+/**
+ * An address as typed or pasted: surrounding spaces (including the
+ * non-breaking space some keyboards and copy-pastes add) and invisible
+ * zero-width characters are dropped. The account forms use `noValidate`, so
+ * this — not the browser — decides, and every refusal gets a visible message.
+ */
+function cleanEmail(value: FormDataEntryValue | null): string {
+  return String(value ?? "").replace(/[​-‍⁠﻿]/g, "").trim();
+}
+
 function readFields(formData: FormData): Fields {
-  const email = String(formData.get("email") ?? "").trim();
+  const email = cleanEmail(formData.get("email"));
   return {
     email,
     // Absent on the forms that do not ask for it: then it is the address itself.
-    emailConfirm: formData.has("emailConfirm") ? String(formData.get("emailConfirm") ?? "").trim() : email,
-    newEmail: String(formData.get("newEmail") ?? "").trim(),
+    emailConfirm: formData.has("emailConfirm") ? cleanEmail(formData.get("emailConfirm")) : email,
+    newEmail: cleanEmail(formData.get("newEmail")),
     password: String(formData.get("password") ?? ""),
     code: String(formData.get("code") ?? "").replace(/\s+/g, ""),
     next: sanitizeReturnPath(formData.get("next") as string | null),
@@ -107,7 +117,7 @@ type Outcome = AccountFormState | { redirectTo: string };
 
 async function signUp(supabase: SupabaseClient, f: Fields): Promise<Outcome> {
   const fail = (error: AccountFailure): AccountFormState => ({ step: "signup", email: f.email, error });
-  if (!isValidEmail(f.email)) return fail("invalid_email");
+  if (!isAcceptableNewEmail(f.email)) return fail("invalid_email");
   // QG 004-B — the address is typed twice: a typo would otherwise leave the
   // family with an account it can never recover nor verify.
   if (f.emailConfirm.toLowerCase() !== f.email.toLowerCase()) return fail("emails_differ");
@@ -305,7 +315,7 @@ async function changeEmailSend(supabase: SupabaseClient, f: Fields): Promise<Out
   const user = current.user;
   if (!user?.email) return { step: "change_email", error: "signed_out" };
   const fail = (error: AccountFailure): AccountFormState => ({ step: "change_email", email: user.email, error });
-  if (!isValidEmail(f.newEmail)) return fail("invalid_email");
+  if (!isAcceptableNewEmail(f.newEmail)) return fail("invalid_email");
   if (f.newEmail.toLowerCase() === user.email.toLowerCase()) return fail("same_email");
   if (f.password.length === 0) return fail("missing_password");
 

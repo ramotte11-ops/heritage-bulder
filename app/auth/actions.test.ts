@@ -294,6 +294,22 @@ describe("QG 004-B — inscription immédiate, adresse saisie deux fois", () => 
       .toMatchObject({ step: "signup", error: "emails_differ" });
     expect(a.signUp).not.toHaveBeenCalled();
   });
+
+  it("QG 004-G: a non-breaking space or an invisible character around the address no longer blocks the account", async () => {
+    const a = auth({ signUp: vi.fn().mockResolvedValue({ data: { user: { id: "u1" }, session: { access_token: "t" } }, error: null }) });
+    await expect(accountAction(START, form({ intent: "signup", email: `${EMAIL} `, emailConfirm: `​${EMAIL} `, password: GOOD_PASSWORD, next: "/brouillon/reprise" })))
+      .rejects.toThrow("REDIRECT:/brouillon/reprise");
+    expect(a.signUp).toHaveBeenCalledWith(expect.objectContaining({ email: EMAIL }));
+  });
+
+  it("QG 004-G: an address the browser would have refused silently gets a visible error instead", async () => {
+    const a = auth({ signUp: vi.fn() });
+    for (const email of ["", "famille dupont@example.com", "famille@example", "marié@example.com", "famille@example.com.", "famille,dupont@example.com"]) {
+      expect(await accountAction(START, form({ intent: "signup", email, emailConfirm: email, password: GOOD_PASSWORD })))
+        .toMatchObject({ step: "signup", error: "invalid_email" });
+    }
+    expect(a.signUp).not.toHaveBeenCalled();
+  });
 });
 
 describe("QG 004-B — récupération : révocation des sessions non autorisées", () => {

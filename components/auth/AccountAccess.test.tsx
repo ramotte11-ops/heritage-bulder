@@ -148,4 +148,33 @@ describe("AccountAccess (QG 003)", () => {
     expect(translate("en", "account.tabSignin")).not.toBe(translate("fr", "account.tabSignin"));
     expect(translate("es", "account.tabSignin")).not.toBe(translate("fr", "account.tabSignin"));
   });
+
+  it("QG 004-G: the browser never blocks « Créer mon compte » silently — the server answers with a visible message", async () => {
+    accountAction.mockResolvedValueOnce({ step: "signup", email: "famille@exämple.com", error: "invalid_email" });
+    const view = render(<AccountAccess language="fr" />);
+    for (const formElement of view.container.querySelectorAll("form")) expect(formElement.noValidate).toBe(true);
+    fill(fr("account.email"), "famille@exämple.com");
+    fill(fr("account.emailConfirm"), "famille@exämple.com");
+    fill(fr("account.password"), "court");
+    await submit(fr("account.signupSubmit"));
+    expect(accountAction).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert").textContent).toBe(fr("account.errorInvalidEmail"));
+  });
+
+  it("QG 004-G: the server's input errors are shown in French, English and Spanish", async () => {
+    const errors = ["invalid_email", "emails_differ", "missing_password", "password_too_short"] as const;
+    for (const language of ["fr", "en", "es"] as const) {
+      for (const error of errors) {
+        accountAction.mockResolvedValueOnce({ step: "signup", email: "famille@example.com", error });
+        render(<AccountAccess language={language} />);
+        await submit(translate(language, "account.signupSubmit"));
+        const shown = screen.getByRole("alert").textContent ?? "";
+        expect(shown.length, `${language} ${error}`).toBeGreaterThan(10);
+        expect(shown, `${language} ${error}`).not.toContain("account.");
+        cleanup();
+      }
+    }
+    expect(translate("en", "account.errorInvalidEmail")).not.toBe(translate("fr", "account.errorInvalidEmail"));
+    expect(translate("es", "account.errorInvalidEmail")).not.toBe(translate("fr", "account.errorInvalidEmail"));
+  });
 });

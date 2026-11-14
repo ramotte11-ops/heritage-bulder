@@ -97,7 +97,7 @@ export function EmailVerificationStep({
   if (step === "change_email") {
     return (
       <div className={classNames.root} data-email-verification="change_email">
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           <input type="hidden" name="intent" value="change_email_send" />
           <p className={classNames.notice}>{t("verify.changeIntro")}</p>
           <label className={classNames.field}>
@@ -125,7 +125,7 @@ export function EmailVerificationStep({
   if (step === "change_email_code") {
     return (
       <div className={classNames.root} data-email-verification="change_email_code">
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           <input type="hidden" name="intent" value="change_email_check" />
           <input type="hidden" name="newEmail" value={state.email ?? ""} />
           <p role="status" className={classNames.notice}>
@@ -146,7 +146,7 @@ export function EmailVerificationStep({
     <div className={classNames.root} data-email-verification={sent ? "code" : "start"}>
       <p className={classNames.notice}><strong>{t("verify.title")}</strong> {t("verify.intro")}</p>
       {sent ? (
-        <form action={formAction} className={classNames.form}>
+        <form action={formAction} className={classNames.form} noValidate>
           <input type="hidden" name="intent" value="verify_email_check" />
           <p role="status" className={classNames.notice}>
             {translateWith(language, "verify.codeSentTo", { email: state.email ?? "" })}
@@ -158,7 +158,7 @@ export function EmailVerificationStep({
           {alert}
         </form>
       ) : null}
-      <form action={formAction} className={classNames.form}>
+      <form action={formAction} className={classNames.form} noValidate>
         <input type="hidden" name="intent" value="verify_email_send" />
         <button type="submit" className={sent ? classNames.secondary : classNames.primary}
           disabled={pending || remaining > 0} data-verify-send>
