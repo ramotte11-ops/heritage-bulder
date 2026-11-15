@@ -27,6 +27,11 @@ const { createServerSupabaseClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server-client", () => ({ createServerSupabaseClient }));
 
+const { createServiceRoleSupabaseClient } = vi.hoisted(() => ({
+  createServiceRoleSupabaseClient: vi.fn(() => ({ fake: "service-role" })),
+}));
+vi.mock("@/lib/supabase/service-role-client", () => ({ createServiceRoleSupabaseClient }));
+
 const { SupabaseMemorialConfigRepository } = vi.hoisted(() => ({
   SupabaseMemorialConfigRepository: vi.fn(function (this: Record<string, unknown>) {
     this.kind = "config";
@@ -57,16 +62,18 @@ const { loadPublicationSnapshot, createSupabaseMemorialPublicationRepository } =
 });
 vi.mock("@/lib/adapters/supabase/memorial-publication-repository", () => ({ createSupabaseMemorialPublicationRepository }));
 
-const { listOwnedMemorials, SupabaseOwnedMemorialListRepository } = vi.hoisted(() => {
-  const listOwnedMemorials = vi.fn();
+const { readFreePublicationStatus, SupabaseOwnerFreePublicationStatusRepository } = vi.hoisted(() => {
+  const readFreePublicationStatus = vi.fn();
   return {
-    listOwnedMemorials,
-    SupabaseOwnedMemorialListRepository: vi.fn(function (this: Record<string, unknown>) {
-      this.listOwnedMemorials = listOwnedMemorials;
+    readFreePublicationStatus,
+    SupabaseOwnerFreePublicationStatusRepository: vi.fn(function (this: Record<string, unknown>) {
+      this.read = readFreePublicationStatus;
     }),
   };
 });
-vi.mock("@/lib/adapters/supabase/owned-memorial-list-repository", () => ({ SupabaseOwnedMemorialListRepository }));
+vi.mock("@/lib/adapters/supabase/owner-free-publication-status-repository", () => ({
+  SupabaseOwnerFreePublicationStatusRepository,
+}));
 
 const { createServerMediaEngineDeps } = vi.hoisted(() => ({
   createServerMediaEngineDeps: vi.fn(() => ({ fake: "media-engine-deps" })),
@@ -135,7 +142,12 @@ beforeEach(() => {
   resolverCalls.length = 0;
   getHeritageActor.mockResolvedValue(OWNER_ACTOR);
   authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: "authorized-id" });
-  listOwnedMemorials.mockResolvedValue([]);
+  readFreePublicationStatus.mockResolvedValue({
+    status: "window_open",
+    windowUntil: "2026-11-25T10:00:00Z",
+    activeFreeDrafts: 1,
+    maxFreeDrafts: 3,
+  });
   resolverAnswering((mediaId) => ({ mediaId, readUrl: FIXTURE_READ_URL }));
 });
 
@@ -292,16 +304,26 @@ describe("loadMemorialPreviewAction — QG 008 Lot 3: exactly what « Publier »
 
   it("counts only the other active free drafts for the account warning", async () => {
     resumable(fullAnnouncement(), {}, { accessLevel: "avis" });
-    listOwnedMemorials.mockResolvedValue([
-      { id: "authorized-id", activeFreeDraft: true },
-      { id: "other-active", activeFreeDraft: true },
-      { id: "other-complete", activeFreeDraft: false },
-    ]);
+    readFreePublicationStatus.mockResolvedValue({
+      status: "window_open",
+      windowUntil: "2026-11-25T10:00:00Z",
+      activeFreeDrafts: 2,
+      maxFreeDrafts: 3,
+    });
 
     const result = await loadMemorialPreviewAction("claimed-id");
 
     expect(result.status === "ready" && result.publication?.otherActiveFreeDrafts).toBe(1);
-    expect(listOwnedMemorials).toHaveBeenCalledWith("owner-a");
+    expect(createServiceRoleSupabaseClient).toHaveBeenCalledTimes(1);
+    expect(SupabaseOwnerFreePublicationStatusRepository).toHaveBeenCalledWith({ fake: "service-role" });
+    expect(readFreePublicationStatus).toHaveBeenCalledWith("owner-a");
+  });
+
+  it("fails closed when the official account status is unavailable", async () => {
+    resumable(fullAnnouncement(), {}, { accessLevel: "avis" });
+    readFreePublicationStatus.mockResolvedValue({ status: "unknown" });
+
+    await expect(loadMemorialPreviewAction("claimed-id")).resolves.toEqual({ status: "unavailable" });
   });
 
   it("describes a publishable first publication: revision, stored level, fingerprint", async () => {

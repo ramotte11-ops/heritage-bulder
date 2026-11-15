@@ -643,6 +643,8 @@ export const TRANSLATION_KEYS = [
   "owner.freePublicationAvailableOnSave",
   "owner.freePublicationUsed",
   "owner.freePublicationExpired",
+  "owner.freePublicationRenewsAt",
+  "owner.freePublicationUnknown",
   "owner.defaultName",
   "owner.createdAt",
   "owner.publishUntil",

@@ -404,11 +404,13 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "owner.title": "Mis homenajes",
   "owner.activeDraftCount": "Homenajes en preparación: {count} / {max}",
   "owner.freePublicationAvailable":
-    "Publicación gratuita de su cuenta: disponible hasta el {date} para uno de sus homenajes.",
+    "Publicación gratuita disponible hasta el {date}, para uno solo de sus homenajes.",
   "owner.freePublicationAvailableOnSave":
-    "Publicación gratuita de su cuenta: disponible para su próximo homenaje guardado.",
-  "owner.freePublicationUsed": "Publicación gratuita de su cuenta: ya utilizada.",
-  "owner.freePublicationExpired": "Publicación gratuita de su cuenta: terminada.",
+    "Su cuenta puede publicar un homenaje gratis: el periodo de publicación gratuita empezará al guardar un nuevo homenaje.",
+  "owner.freePublicationUsed": "La publicación gratuita de su cuenta ya se utilizó.",
+  "owner.freePublicationExpired": "El plazo de publicación gratuita de su cuenta ha terminado.",
+  "owner.freePublicationRenewsAt": "Será posible una nueva publicación gratuita a partir del {date}.",
+  "owner.freePublicationUnknown": "Cada cuenta dispone de una publicación gratuita por periodo de 12 meses.",
   "owner.defaultName": "Homenaje en curso de creación",
   "owner.createdAt": "Creado el {date}",
   "owner.publishUntil": "Publicación gratuita posible hasta el {date}",

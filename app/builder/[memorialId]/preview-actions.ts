@@ -25,7 +25,8 @@ import type {
   PublicationReadiness,
 } from "@/lib/memorial/publication-preview-types";
 import type { MemorialPreviewResult } from "@/components/builder/preview/BuilderPreviewHost";
-import { SupabaseOwnedMemorialListRepository } from "@/lib/adapters/supabase/owned-memorial-list-repository";
+import { SupabaseOwnerFreePublicationStatusRepository } from "@/lib/adapters/supabase/owner-free-publication-status-repository";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 
 /**
  * Étape 3 — the Builder's private Preview, re-read on the server each time
@@ -110,16 +111,19 @@ export async function loadMemorialPreviewAction(
     return { status: "unavailable" };
   }
 
-  let otherActiveFreeDrafts: number;
-  try {
-    const owned = await new SupabaseOwnedMemorialListRepository(supabase).listOwnedMemorials(access.ownerId);
-    otherActiveFreeDrafts = owned.filter(
-      (memorial) => memorial.id !== access.memorialId && memorial.activeFreeDraft,
-    ).length;
-  } catch {
-    // Do not offer a first free publication without the required account
-    // warning when the account-wide read could not be established.
-    return { status: "unavailable" };
+  let otherActiveFreeDrafts = 0;
+  if (snapshot.accessLevel === "avis" && snapshot.firstPublishedAt === null) {
+    try {
+      const accountStatus = await new SupabaseOwnerFreePublicationStatusRepository(
+        createServiceRoleSupabaseClient(),
+      ).read(access.ownerId);
+      if (accountStatus.status === "unknown") return { status: "unavailable" };
+      otherActiveFreeDrafts = Math.max(0, accountStatus.activeFreeDrafts - 1);
+    } catch {
+      // Do not offer a first free publication without the required account
+      // warning when the account-wide read could not be established.
+      return { status: "unavailable" };
+    }
   }
 
   return {

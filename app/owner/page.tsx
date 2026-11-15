@@ -5,16 +5,20 @@ import { requireOwner } from "@/lib/auth/heritage-actor";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { SupabaseOwnedMemorialListRepository } from "@/lib/adapters/supabase/owned-memorial-list-repository";
 import type { OwnedMemorialSummary } from "@/lib/adapters/owned-memorial-list-repository";
+import {
+  UNKNOWN_OWNER_FREE_PUBLICATION_STATUS,
+  type OwnerFreePublicationStatus,
+} from "@/lib/adapters/owner-free-publication-status-repository";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { PendingLinkLabel } from "@/components/auth/PendingLinkLabel";
 import { isLanguage, type Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
+import { loadOwnerFreePublicationStatus } from "@/lib/memorial/load-owner-free-publication-status";
 import styles from "./page.module.css";
 
 /** The owner space: every card stays the existing Builder/public-page path. */
 export const dynamic = "force-dynamic";
 
-const MAX_FREE_DRAFTS = 3;
 const DATE_LOCALES: Record<Language, string> = {
   fr: "fr-FR",
   en: "en-GB",
@@ -36,12 +40,6 @@ type OwnerSpace =
   | { status: "none" }
   | { status: "error" };
 
-type FreePublicationStatus =
-  | { status: "available"; until: string }
-  | { status: "available_on_save" }
-  | { status: "used" }
-  | { status: "expired" };
-
 function requestedLanguage(raw: string | string[] | undefined): Language | null {
   return typeof raw === "string" && isLanguage(raw) ? raw : null;
 }
@@ -50,53 +48,25 @@ function familyLanguage(requested: Language | null, memorials: readonly OwnedMem
   return requested ?? memorials.find((memorial) => memorial.language !== null)?.language ?? "fr";
 }
 
-/**
- * QG 017 — display-only account state derived from the account's own real
- * memorial timestamps. No deadline is created or extended here.
- */
-function freePublicationStatus(memorials: readonly OwnedMemorialSummary[], now: Date): FreePublicationStatus {
-  const cycleStart = new Date(now);
-  cycleStart.setUTCFullYear(cycleStart.getUTCFullYear() - 1);
-  if (
-    memorials.some(
-      (memorial) =>
-        memorial.freeFirstPublishedAt !== null &&
-        Date.parse(memorial.freeFirstPublishedAt) > cycleStart.getTime(),
-    )
-  ) {
-    return { status: "used" };
-  }
-
-  const available = memorials
-    .filter((memorial) => memorial.activeFreeDraft)
-    .map((memorial) => memorial.freeDeadlines?.publishUntil ?? null)
-    .filter((until): until is string => until !== null && Date.parse(until) > now.getTime())
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
-  if (available !== undefined) return { status: "available", until: available };
-
-  const hasFreeHistory = memorials.some(
-    (memorial) => memorial.activeFreeDraft || memorial.freeDeadlines != null || memorial.freeFirstPublishedAt !== null,
-  );
-  return hasFreeHistory ? { status: "expired" } : { status: "available_on_save" };
-}
-
 function freePublicationText(
-  status: FreePublicationStatus,
+  status: OwnerFreePublicationStatus,
   language: Language,
 ): string {
   switch (status.status) {
-    case "available": {
-      const until = formatDate(status.until, language);
+    case "window_open": {
+      const until = formatDate(status.windowUntil, language);
       return until === null
-        ? translate(language, "owner.freePublicationExpired")
+        ? translate(language, "owner.freePublicationUnknown")
         : translateWith(language, "owner.freePublicationAvailable", { date: until });
     }
-    case "available_on_save":
+    case "opens_on_next_save":
       return translate(language, "owner.freePublicationAvailableOnSave");
     case "used":
       return translate(language, "owner.freePublicationUsed");
     case "expired":
       return translate(language, "owner.freePublicationExpired");
+    case "unknown":
+      return translate(language, "owner.freePublicationUnknown");
   }
 }
 
@@ -105,6 +75,7 @@ export default async function OwnerPage(
 ) {
   let actor: Awaited<ReturnType<typeof getHeritageActor>> | null = null;
   let space: OwnerSpace;
+  let publication: OwnerFreePublicationStatus = UNKNOWN_OWNER_FREE_PUBLICATION_STATUS;
 
   try {
     actor = await getHeritageActor();
@@ -121,6 +92,7 @@ export default async function OwnerPage(
     if (gate.status !== "granted") {
       space = { status: "none" };
     } else {
+      publication = await loadOwnerFreePublicationStatus(gate.owner.id);
       try {
         const repository = new SupabaseOwnedMemorialListRepository(await createServerSupabaseClient());
         const memorials = await repository.listOwnedMemorials(gate.owner.id);
@@ -135,8 +107,7 @@ export default async function OwnerPage(
   const memorials = space.status === "memorials" ? space.memorials : [];
   const language = familyLanguage(requestedLanguage((await searchParams).langue), memorials);
   const email = actor?.identity?.email ?? null;
-  const activeFreeDrafts = memorials.filter((memorial) => memorial.activeFreeDraft).length;
-  const publication = freePublicationStatus(memorials, new Date());
+  const now = new Date();
 
   return (
     <main className={styles.main} lang={language}>
@@ -146,15 +117,24 @@ export default async function OwnerPage(
 
       {space.status !== "error" && actor?.audience === "owner" ? (
         <section className={styles.notice} data-owner-free-summary="">
-          <p>
-            {translateWith(language, "owner.activeDraftCount", {
-              count: activeFreeDrafts,
-              max: MAX_FREE_DRAFTS,
-            })}
-          </p>
+          {publication.status !== "unknown" ? (
+            <p>
+              {translateWith(language, "owner.activeDraftCount", {
+                count: publication.activeFreeDrafts,
+                max: publication.maxFreeDrafts,
+              })}
+            </p>
+          ) : null}
           <p data-owner-free-publication={publication.status}>
             {freePublicationText(publication, language)}
           </p>
+          {(publication.status === "used" || publication.status === "expired") && publication.renewsAt !== null ? (
+            <p data-owner-free-renewal="">
+              {translateWith(language, "owner.freePublicationRenewsAt", {
+                date: formatDate(publication.renewsAt, language) ?? "",
+              })}
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -162,8 +142,12 @@ export default async function OwnerPage(
         <ul className={styles.list}>
           {space.memorials.map((memorial) => {
             const createdAt = formatDate(memorial.createdAt, language);
-            const publishUntil = memorial.freeDeadlines?.publishUntil
-              ? formatDate(memorial.freeDeadlines.publishUntil, language)
+            const storedPublishUntil = memorial.freeDeadlines?.publishUntil ?? null;
+            const publishUntil =
+              publication.status === "window_open" &&
+              storedPublishUntil !== null &&
+              Date.parse(storedPublishUntil) > now.getTime()
+              ? formatDate(storedPublishUntil, language)
               : null;
             const draftUntil = memorial.freeDeadlines?.draftUntil
               ? formatDate(memorial.freeDeadlines.draftUntil, language)

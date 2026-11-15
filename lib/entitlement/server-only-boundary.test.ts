@@ -150,6 +150,10 @@ const SERVER_ONLY_MODULES = [
   // real boundary is where those deps get CONSTRUCTED, which is this
   // file, and that is what is guarded.
   "lib/media/server-media-engine.ts",
+  // QG 017 A2: constructs the service-role client for the account-wide
+  // publication-status RPC. Only Server Components / Server Actions may
+  // reach it; the browser receives the mapped status, never the client.
+  "lib/memorial/load-owner-free-publication-status.ts",
   // QG 016 / M2: the public consultation. The reader calls
   // read_public_memorial_v1 with the service-role client and receives
   // private storage paths; the resolver signs them; the loader wires

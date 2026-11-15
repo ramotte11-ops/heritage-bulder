@@ -40,12 +40,6 @@ function freeDeadlinesOf(row: MemorialListRow): OwnedMemorialSummary["freeDeadli
   return publishUntil === null && draftUntil === null ? null : { publishUntil, draftUntil };
 }
 
-function isActiveFreeDraft(row: MemorialListRow, now: Date): boolean {
-  if (row.access_level !== "avis" || row.first_published_at != null || row.status === "archived") return false;
-  const draftUntil = storedInstant(row.free_draft_until);
-  return row.free_draft_until == null || (draftUntil !== null && Date.parse(draftUntil) > now.getTime());
-}
-
 interface DraftNameRow {
   memorial_id: string;
   display_name: unknown;
@@ -147,8 +141,6 @@ export class SupabaseOwnedMemorialListRepository implements OwnedMemorialListRep
       createdAt: row.created_at,
       language: typeof row.language === "string" && isLanguage(row.language) ? row.language : null,
       publicSlug: publicSlugOf(row, now),
-      activeFreeDraft: isActiveFreeDraft(row, now),
-      freeFirstPublishedAt: row.access_level === "avis" ? storedInstant(row.first_published_at) : null,
       freeDeadlines: freeDeadlinesOf(row),
     }));
   }

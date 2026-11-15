@@ -400,11 +400,13 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "owner.title": "Mes hommages",
   "owner.activeDraftCount": "Hommages en préparation : {count} / {max}",
   "owner.freePublicationAvailable":
-    "Publication gratuite de votre compte : disponible jusqu'au {date} pour un de vos hommages.",
+    "Publication gratuite disponible jusqu'au {date}, pour un seul de vos hommages.",
   "owner.freePublicationAvailableOnSave":
-    "Publication gratuite de votre compte : disponible pour votre prochain hommage enregistré.",
-  "owner.freePublicationUsed": "Publication gratuite de votre compte : déjà utilisée.",
-  "owner.freePublicationExpired": "Publication gratuite de votre compte : terminée.",
+    "Votre compte peut publier gratuitement un hommage : la période de publication gratuite commencera à la sauvegarde d'un nouvel hommage.",
+  "owner.freePublicationUsed": "La publication gratuite de votre compte a été utilisée.",
+  "owner.freePublicationExpired": "Le délai de publication gratuite de votre compte est écoulé.",
+  "owner.freePublicationRenewsAt": "Une nouvelle publication gratuite sera possible à partir du {date}.",
+  "owner.freePublicationUnknown": "Chaque compte dispose d'une publication gratuite par période de 12 mois.",
   "owner.defaultName": "Mémorial en cours de création",
   "owner.createdAt": "Créé le {date}",
   "owner.publishUntil": "Publication gratuite possible jusqu'au {date}",

@@ -31,15 +31,9 @@ export interface OwnedMemorialSummary {
    * an expired free notice, an `editing` or `archived` memorial, any
    * unreadable column. Drives the « Voir mon hommage » link only. */
   publicSlug: string | null;
-  /** QG 017 — true under the exact active-free-draft predicate used by
-   * the database quota. Complete and published tributes never count. */
-  activeFreeDraft: boolean;
-  /** First free publication time, when this free tribute consumed the
-   * account right. Used only for the account-level status. */
-  freeFirstPublishedAt: string | null;
   /** The real stored deadlines of an unpublished free tribute. Past dates
-   * are preserved so the interface can say that a window ended instead of
-   * silently hiding it. `null` otherwise. */
+   * are preserved for the account-authorized per-tribute reminder.
+   * `null` otherwise. They never decide the account's free right. */
   freeDeadlines?: { publishUntil: string | null; draftUntil: string | null } | null;
 }
 
