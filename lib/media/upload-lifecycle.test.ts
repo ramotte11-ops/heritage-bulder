@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_MEDIA_BYTES, MEDIA_PENDING_TTL_MS } from "@/config/media";
 import { finalizeMediaUpload, reserveMediaUpload } from "./upload-lifecycle";
 import { sweepAbandonedUploads } from "./orphan-sweep";
+import { MediaStorageBudgetReachedError } from "@/lib/adapters/media-security-repository";
 import {
   ADMIN_NON_OWNER,
   AUTHENTICATED_NON_OWNER,
@@ -52,6 +53,34 @@ async function uploadedMedia(
 
   return reserved.value;
 }
+
+describe("QG 017 — free storage budget", () => {
+  it("keeps HD507 distinct at reservation so the interface can explain the free photo space", async () => {
+    const engine = createTestEngine();
+    engine.mediaRepository.failOn.createPending = new MediaStorageBudgetReachedError();
+
+    await expect(
+      reserveMediaUpload(engine, ownerActor(OWNER_A), {
+        memorialId: MEMORIAL_A,
+        purpose: "hero",
+        declaredMimeType: "image/jpeg",
+      }),
+    ).resolves.toEqual({ ok: false, code: "storage_budget_reached" });
+  });
+
+  it("keeps HD507 distinct at finalization", async () => {
+    const engine = createTestEngine();
+    const reserved = await uploadedMedia(engine, { bytes: JPEG_BYTES });
+    engine.mediaRepository.failOn.markReady = new MediaStorageBudgetReachedError();
+
+    await expect(
+      finalizeMediaUpload(engine, ownerActor(OWNER_A), {
+        memorialId: MEMORIAL_A,
+        mediaId: reserved.mediaId,
+      }),
+    ).resolves.toEqual({ ok: false, code: "storage_budget_reached" });
+  });
+});
 
 // =====================================================================
 // OWNERSHIP — section 11: "Auth ≠ ownership"

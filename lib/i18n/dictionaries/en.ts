@@ -155,6 +155,8 @@ export const en: Record<TranslationKey, string> = {
   "hero.photoErrorUnsupportedFormat":
     "This photo format isn't supported yet. Please choose a JPEG, PNG or WebP photo.",
   "hero.photoErrorInvalidFile": "We couldn't use this photo. Please try another one.",
+  "hero.photoErrorStorageBudgetReached":
+    "The photo space included with your account's free offer is full. Upgrade to the complete offer or remove some photos.",
   "hero.photoErrorGeneric": "We couldn't add the photo right now. You can try again.",
   "hero.cropTitle": "Adjust your photo",
   "hero.cropSubtitle": "Move and zoom to frame it the way you'd like.",
@@ -391,6 +393,44 @@ export const en: Record<TranslationKey, string> = {
   "durableSave.retry": "Try again",
   "durableSave.identityRefused": "This address cannot be used to save this tribute. Please contact HERITAGE.",
   "durableSave.signInAgain": "Your session has expired. Sign in to save your tribute.",
+  "durableSave.previewing": "Checking the save for this account…",
+  "durableSave.connectedAccount": "Connected account: {email}",
+  "durableSave.createDraftUntil": "This tribute will be kept until {date}.",
+  "durableSave.resumeAlreadySaved": "This tribute is already saved.",
+  "durableSave.freePublicationAvailable": "You can publish one of your tributes for free until {date}.",
+  "durableSave.freePublicationUnavailable":
+    "Your account's free publication has already been used or has ended; this tribute can be published with the complete offer.",
+  "durableSave.activeDraftCount": "Tributes being prepared: {count} / {max}",
+  "durableSave.limitReached":
+    "Your account already has {max} tributes being prepared. The current tribute is kept only in this browser: do not close this page or clear the site data. Publish or complete a tribute from your family space.",
+  "durableSave.previewRefused":
+    "This tribute cannot be saved with this account. It is kept only in this browser; you can change account or try again.",
+  "durableSave.changeAccount": "Change account",
+  "durableSave.changingAccount": "Changing account…",
+  "durableSave.changeAccountFailed": "The account could not be changed. Your tribute remains in this browser.",
+  "durableSave.storageBudgetReached":
+    "The photo space included with your account's free offer is full. Upgrade to the complete offer or remove some photos.",
+  "owner.eyebrow": "Family space",
+  "owner.title": "My tributes",
+  "owner.activeDraftCount": "Tributes in preparation: {count} / {max}",
+  "owner.freePublicationAvailable":
+    "Free publication available until {date}, for one of your tributes only.",
+  "owner.freePublicationAvailableOnSave":
+    "Your account can publish one tribute for free: the free publication period will start when you save a new tribute.",
+  "owner.freePublicationUsed": "Your account's free publication has been used.",
+  "owner.freePublicationExpired": "Your account's free publication period has ended.",
+  "owner.freePublicationRenewsAt": "A new free publication will be possible from {date}.",
+  "owner.freePublicationUnknown": "Each account has one free publication per 12-month period.",
+  "owner.defaultName": "Tribute being created",
+  "owner.createdAt": "Created on {date}",
+  "owner.publishUntil": "Free publication possible until {date}",
+  "owner.draftUntil": "Preparation available until {date}",
+  "owner.openBuilder": "Open the workshop",
+  "owner.openingBuilder": "Opening the workshop…",
+  "owner.viewTribute": "View my tribute",
+  "owner.none": "No tribute is associated with this account yet.",
+  "owner.activate": "Activate my HERITAGE access",
+  "owner.loadFailed": "Your tributes could not be loaded right now. Please try again in a few moments.",
   "guestRecovery.title": "Let's pick up together",
   "guestRecovery.kept": "Your texts and choices are kept on this device.",
   "guestRecovery.photoBody": "The main photograph could not be read on this device. Choose it again to continue.",
@@ -472,6 +512,8 @@ export const en: Record<TranslationKey, string> = {
   "publish.cta": "Publish",
   "publish.confirmTitle": "Publish your tribute?",
   "publish.confirmBody": "Your tribute will be published exactly as shown in this preview.",
+  "publish.freeAccountWarning":
+    "By publishing this tribute for free, you use your account's free publication for twelve months.",
   "publish.confirm": "Confirm publication",
   "publish.cancel": "Back to the preview",
   "publish.pending": "Publishing…",

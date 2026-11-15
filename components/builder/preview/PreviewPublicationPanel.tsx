@@ -274,6 +274,11 @@ export function PreviewPublicationPanel({
             <p id="publication-confirm-body" className={styles.text}>
               {translate(language, "publish.confirmBody")}
             </p>
+            {publication.accessLevel === "avis" && publication.otherActiveFreeDrafts > 0 ? (
+              <p className={styles.notice} data-free-publication-warning="">
+                {translate(language, "publish.freeAccountWarning")}
+              </p>
+            ) : null}
             <div className={styles.actions}>
               <button
                 ref={confirmButton}

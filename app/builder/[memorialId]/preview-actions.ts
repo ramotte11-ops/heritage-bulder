@@ -25,6 +25,8 @@ import type {
   PublicationReadiness,
 } from "@/lib/memorial/publication-preview-types";
 import type { MemorialPreviewResult } from "@/components/builder/preview/BuilderPreviewHost";
+import { SupabaseOwnerFreePublicationStatusRepository } from "@/lib/adapters/supabase/owner-free-publication-status-repository";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 
 /**
  * Étape 3 — the Builder's private Preview, re-read on the server each time
@@ -109,13 +111,33 @@ export async function loadMemorialPreviewAction(
     return { status: "unavailable" };
   }
 
-  return { status: "ready", assembled, publication: await describePublication(snapshot, preview, resolveMedia) };
+  let otherActiveFreeDrafts = 0;
+  if (snapshot.accessLevel === "avis" && snapshot.firstPublishedAt === null) {
+    try {
+      const accountStatus = await new SupabaseOwnerFreePublicationStatusRepository(
+        createServiceRoleSupabaseClient(),
+      ).read(access.ownerId);
+      if (accountStatus.status === "unknown") return { status: "unavailable" };
+      otherActiveFreeDrafts = Math.max(0, accountStatus.activeFreeDrafts - 1);
+    } catch {
+      // Do not offer a first free publication without the required account
+      // warning when the account-wide read could not be established.
+      return { status: "unavailable" };
+    }
+  }
+
+  return {
+    status: "ready",
+    assembled,
+    publication: await describePublication(snapshot, preview, resolveMedia, otherActiveFreeDrafts),
+  };
 }
 
 async function describePublication(
   snapshot: MemorialPublicationSnapshot,
   preview: Extract<PublicationPreviewComputation, { ok: true }>,
   resolveMedia: MediaResolver,
+  otherActiveFreeDrafts: number,
 ): Promise<PreviewPublication> {
   // The Preview only reaches this point once assembleMemorial assembled the
   // Hero — which requires its main photo, resolved for this owner — so a
@@ -156,6 +178,7 @@ async function describePublication(
     },
     premiumSections: preview.premiumSections,
     readiness,
+    otherActiveFreeDrafts,
   };
 }
 

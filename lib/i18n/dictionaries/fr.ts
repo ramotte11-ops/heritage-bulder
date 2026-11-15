@@ -156,6 +156,8 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "hero.photoErrorUnsupportedFormat":
     "Ce format de photo n'est pas encore pris en charge. Choisissez une photo JPEG, PNG ou WebP.",
   "hero.photoErrorInvalidFile": "Nous n'avons pas pu utiliser cette photo. Essayez-en une autre.",
+  "hero.photoErrorStorageBudgetReached":
+    "L'espace photos de l'offre gratuite de votre compte est plein. Passez à l'offre complète ou retirez des photos.",
   "hero.photoErrorGeneric": "Nous n'avons pas pu ajouter la photo pour le moment. Vous pouvez réessayer.",
   "hero.cropTitle": "Ajustez votre photo",
   "hero.cropSubtitle": "Déplacez et zoomez pour la cadrer comme vous le souhaitez.",
@@ -376,6 +378,45 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "durableSave.retry": "Réessayer",
   "durableSave.identityRefused": "Cette adresse ne peut pas être utilisée pour enregistrer cet hommage. Contactez HERITAGE.",
   "durableSave.signInAgain": "Votre session a expiré. Connectez-vous pour enregistrer votre hommage.",
+  "durableSave.previewing": "Vérification de l'enregistrement pour ce compte…",
+  "durableSave.connectedAccount": "Compte connecté : {email}",
+  "durableSave.createDraftUntil": "Cet hommage sera conservé jusqu'au {date}.",
+  "durableSave.resumeAlreadySaved": "Cet hommage est déjà enregistré.",
+  "durableSave.freePublicationAvailable":
+    "Vous pouvez publier gratuitement un de vos hommages jusqu'au {date}.",
+  "durableSave.freePublicationUnavailable":
+    "La publication gratuite de votre compte est déjà utilisée ou terminée ; cet hommage pourra être publié avec l'offre complète.",
+  "durableSave.activeDraftCount": "Hommages en préparation : {count} / {max}",
+  "durableSave.limitReached":
+    "Votre compte a déjà {max} hommages en préparation. L'hommage en cours est conservé uniquement dans ce navigateur : ne fermez pas cette page et n'effacez pas les données du site. Publiez ou terminez un hommage depuis votre espace famille.",
+  "durableSave.previewRefused":
+    "Cet hommage ne peut pas être enregistré avec ce compte. Il est conservé uniquement dans ce navigateur ; vous pouvez changer de compte ou réessayer.",
+  "durableSave.changeAccount": "Changer de compte",
+  "durableSave.changingAccount": "Changement de compte…",
+  "durableSave.changeAccountFailed": "Le changement de compte n'a pas abouti. Votre hommage reste conservé dans ce navigateur.",
+  "durableSave.storageBudgetReached":
+    "L'espace photos de l'offre gratuite de votre compte est plein. Passez à l'offre complète ou retirez des photos.",
+  "owner.eyebrow": "Espace famille",
+  "owner.title": "Mes hommages",
+  "owner.activeDraftCount": "Hommages en préparation : {count} / {max}",
+  "owner.freePublicationAvailable":
+    "Publication gratuite disponible jusqu'au {date}, pour un seul de vos hommages.",
+  "owner.freePublicationAvailableOnSave":
+    "Votre compte peut publier gratuitement un hommage : la période de publication gratuite commencera à la sauvegarde d'un nouvel hommage.",
+  "owner.freePublicationUsed": "La publication gratuite de votre compte a été utilisée.",
+  "owner.freePublicationExpired": "Le délai de publication gratuite de votre compte est écoulé.",
+  "owner.freePublicationRenewsAt": "Une nouvelle publication gratuite sera possible à partir du {date}.",
+  "owner.freePublicationUnknown": "Chaque compte dispose d'une publication gratuite par période de 12 mois.",
+  "owner.defaultName": "Mémorial en cours de création",
+  "owner.createdAt": "Créé le {date}",
+  "owner.publishUntil": "Publication gratuite possible jusqu'au {date}",
+  "owner.draftUntil": "Préparation possible jusqu'au {date}",
+  "owner.openBuilder": "Ouvrir l’atelier",
+  "owner.openingBuilder": "Ouverture de l’atelier…",
+  "owner.viewTribute": "Voir mon hommage",
+  "owner.none": "Aucun hommage n'est encore associé à ce compte.",
+  "owner.activate": "Activer mon accès HERITAGE",
+  "owner.loadFailed": "Vos hommages n'ont pas pu être chargés pour le moment. Merci de réessayer dans quelques instants.",
   "guestRecovery.title": "Reprenons ensemble",
   "guestRecovery.kept": "Vos textes et vos choix sont conservés sur cet appareil.",
   "guestRecovery.photoBody": "La photographie principale n'a pas pu être relue sur cet appareil. Choisissez-la à nouveau pour continuer.",
@@ -457,6 +498,8 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "publish.cta": "Publier",
   "publish.confirmTitle": "Publier votre hommage ?",
   "publish.confirmBody": "Votre hommage sera publié tel que vous le voyez dans cet aperçu.",
+  "publish.freeAccountWarning":
+    "En publiant cet hommage gratuitement, vous utilisez la publication gratuite de votre compte pour douze mois.",
   "publish.confirm": "Confirmer la publication",
   "publish.cancel": "Revenir à l'aperçu",
   "publish.pending": "Publication en cours…",

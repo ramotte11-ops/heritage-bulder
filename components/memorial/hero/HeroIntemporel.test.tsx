@@ -1048,10 +1048,9 @@ describe("HeroIntemporel — Mobile Text Contract REV1", () => {
  * the real-browser geometry is QA'd with captures, not here.
  */
 describe("HeroIntemporel — photo alignment below 960px (Light and Dark)", () => {
-  const CSS = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(
-    /\/\*[\s\S]*?\*\//g,
-    "",
-  );
+  const CSS = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
   const SUB_DESKTOP = "@media (max-width: 959.98px)";
   const SUB_DESKTOP_BLOCKS = CSS.split(SUB_DESKTOP).slice(1).join("\n");
   const RUNTIME_DIR = path.resolve(import.meta.dirname, "../../../public/assets/hero/intemporel/runtime");

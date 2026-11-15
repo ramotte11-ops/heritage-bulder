@@ -16,6 +16,7 @@ const ROOT = resolve(import.meta.dirname, "../../..");
 const ENTRY = join(ROOT, "app/pilote/builder-invite/page.dev.tsx");
 const STATIC_IMPORT = /(?:^|\n)\s*(?:import|export)\s+(?!type\s)(?:[^'";]*?\sfrom\s+)?["']([^"']+)["']/g;
 const DYNAMIC_IMPORT = /import\(\s*["']([^"']+)["']\s*\)/g;
+const repoRelative = (file: string): string => relative(ROOT, file).split("\\").join("/");
 
 function resolveModule(from: string, specifier: string): string | null {
   let base: string;
@@ -25,7 +26,7 @@ function resolveModule(from: string, specifier: string): string | null {
   for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]) {
     if (/\.(?:ts|tsx|css)$/.test(candidate) && existsSync(candidate)) return candidate;
   }
-  throw new Error(`Unresolved import ${specifier} from ${relative(ROOT, from)}`);
+  throw new Error(`Unresolved import ${specifier} from ${repoRelative(from)}`);
 }
 
 function staticGraph(entry: string = ENTRY) {
@@ -44,9 +45,9 @@ function staticGraph(entry: string = ENTRY) {
       if (target === null) packages.add(specifier);
       else stack.push(target);
     }
-    for (const [, specifier] of source.matchAll(DYNAMIC_IMPORT)) dynamic.push(`${relative(ROOT, file)} -> ${specifier}`);
+    for (const [, specifier] of source.matchAll(DYNAMIC_IMPORT)) dynamic.push(`${repoRelative(file)} -> ${specifier}`);
   }
-  return { modules: [...modules].map((file) => relative(ROOT, file)), packages: [...packages], dynamic };
+  return { modules: [...modules].map(repoRelative), packages: [...packages], dynamic };
 }
 
 describe("guest Builder import graph", () => {

@@ -154,6 +154,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "hero.photoErrorUnsupportedFormat":
     "Este formato de foto aún no es compatible. Elija una foto JPEG, PNG o WebP.",
   "hero.photoErrorInvalidFile": "No pudimos usar esta foto. Pruebe con otra.",
+  "hero.photoErrorStorageBudgetReached":
+    "El espacio para fotos de la oferta gratuita de su cuenta está lleno. Pase a la oferta completa o retire algunas fotos.",
   "hero.photoErrorGeneric": "No pudimos añadir la foto en este momento. Puede volver a intentarlo.",
   "hero.cropTitle": "Ajuste su foto",
   "hero.cropSubtitle": "Mueva y haga zoom para encuadrarla como desee.",
@@ -381,6 +383,44 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "durableSave.retry": "Reintentar",
   "durableSave.identityRefused": "Esta dirección no puede utilizarse para guardar este homenaje. Póngase en contacto con HERITAGE.",
   "durableSave.signInAgain": "Su sesión ha caducado. Inicie sesión para guardar su homenaje.",
+  "durableSave.previewing": "Comprobando el guardado para esta cuenta…",
+  "durableSave.connectedAccount": "Cuenta conectada: {email}",
+  "durableSave.createDraftUntil": "Este homenaje se conservará hasta el {date}.",
+  "durableSave.resumeAlreadySaved": "Este homenaje ya está guardado.",
+  "durableSave.freePublicationAvailable": "Puede publicar gratis uno de sus homenajes hasta el {date}.",
+  "durableSave.freePublicationUnavailable":
+    "La publicación gratuita de su cuenta ya se ha utilizado o ha terminado; este homenaje podrá publicarse con la oferta completa.",
+  "durableSave.activeDraftCount": "Homenajes en preparación: {count} / {max}",
+  "durableSave.limitReached":
+    "Su cuenta ya tiene {max} homenajes en preparación. El homenaje actual se conserva únicamente en este navegador: no cierre esta página ni borre los datos del sitio. Publique o termine un homenaje desde su espacio familiar.",
+  "durableSave.previewRefused":
+    "Este homenaje no puede guardarse con esta cuenta. Se conserva únicamente en este navegador; puede cambiar de cuenta o volver a intentarlo.",
+  "durableSave.changeAccount": "Cambiar de cuenta",
+  "durableSave.changingAccount": "Cambiando de cuenta…",
+  "durableSave.changeAccountFailed": "No se pudo cambiar de cuenta. Su homenaje sigue conservado en este navegador.",
+  "durableSave.storageBudgetReached":
+    "El espacio para fotos de la oferta gratuita de su cuenta está lleno. Pase a la oferta completa o retire algunas fotos.",
+  "owner.eyebrow": "Espacio familiar",
+  "owner.title": "Mis homenajes",
+  "owner.activeDraftCount": "Homenajes en preparación: {count} / {max}",
+  "owner.freePublicationAvailable":
+    "Publicación gratuita disponible hasta el {date}, para uno solo de sus homenajes.",
+  "owner.freePublicationAvailableOnSave":
+    "Su cuenta puede publicar un homenaje gratis: el periodo de publicación gratuita empezará al guardar un nuevo homenaje.",
+  "owner.freePublicationUsed": "La publicación gratuita de su cuenta ya se utilizó.",
+  "owner.freePublicationExpired": "El plazo de publicación gratuita de su cuenta ha terminado.",
+  "owner.freePublicationRenewsAt": "Será posible una nueva publicación gratuita a partir del {date}.",
+  "owner.freePublicationUnknown": "Cada cuenta dispone de una publicación gratuita por periodo de 12 meses.",
+  "owner.defaultName": "Homenaje en curso de creación",
+  "owner.createdAt": "Creado el {date}",
+  "owner.publishUntil": "Publicación gratuita posible hasta el {date}",
+  "owner.draftUntil": "Preparación posible hasta el {date}",
+  "owner.openBuilder": "Abrir el taller",
+  "owner.openingBuilder": "Abriendo el taller…",
+  "owner.viewTribute": "Ver mi homenaje",
+  "owner.none": "Todavía no hay ningún homenaje asociado a esta cuenta.",
+  "owner.activate": "Activar mi acceso HERITAGE",
+  "owner.loadFailed": "No se han podido cargar sus homenajes por el momento. Vuelva a intentarlo dentro de unos instantes.",
   "guestRecovery.title": "Retomemos juntos",
   "guestRecovery.kept": "Sus textos y sus elecciones se conservan en este dispositivo.",
   "guestRecovery.photoBody": "La fotografía principal no se pudo leer en este dispositivo. Elíjala de nuevo para continuar.",
@@ -462,6 +502,8 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "publish.cta": "Publicar",
   "publish.confirmTitle": "¿Publicar su homenaje?",
   "publish.confirmBody": "Su homenaje se publicará tal como lo ve en esta vista previa.",
+  "publish.freeAccountWarning":
+    "Al publicar este homenaje gratuitamente, utiliza la publicación gratuita de su cuenta durante doce meses.",
   "publish.confirm": "Confirmar la publicación",
   "publish.cancel": "Volver a la vista previa",
   "publish.pending": "Publicando…",

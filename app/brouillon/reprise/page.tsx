@@ -8,8 +8,9 @@ import { getAuthenticatedUser } from "@/lib/supabase/session";
  * QG 008 Lot 2 — where the magic link brings the family back
  * (/auth/callback?next=/brouillon/reprise). Without a session, nothing is
  * read or sent: the family is offered a new link. With one, the transfer
- * runs in this browser (the guest draft lives in its IndexedDB); the
- * server refuses an unconfirmed address on every step.
+ * first shows the connected address and the QG 017 read-only preview in
+ * this browser (the guest draft lives in its IndexedDB). A new transfer
+ * starts only after « Continuer »; an interrupted `resume` stays direct.
  */
 export default async function GuestDraftResumePage() {
   const user = await getAuthenticatedUser();
@@ -19,7 +20,7 @@ export default async function GuestDraftResumePage() {
     <main className={styles.main}>
       <h1 className={styles.title}>{translate(language, "durableSave.title")}</h1>
       {user ? (
-        <GuestDraftTransfer />
+        <GuestDraftTransfer accountEmail={user.email ?? ""} fallbackLanguage={language} />
       ) : (
         <>
           <p className={styles.text}>{translate(language, "durableSave.signInAgain")}</p>

@@ -19,8 +19,17 @@ import {
 import { IMAGE_HEADER_BYTES, readImageDimensions } from "./image-dimensions";
 import type { MediaEngineDeps } from "./media-engine";
 import { authorizeMediaEdit, mediaTarget } from "./authorize-media-edit";
-import { MediaSecurityDeniedError } from "@/lib/adapters/media-security-repository";
+import {
+  MediaSecurityDeniedError,
+  MediaStorageBudgetReachedError,
+} from "@/lib/adapters/media-security-repository";
 import { cleanupPendingMedia } from "./cleanup-pending-media";
+
+function repositoryFailureCode(error: unknown): "access_denied" | "storage_budget_reached" | "storage_unavailable" {
+  if (error instanceof MediaSecurityDeniedError) return "access_denied";
+  if (error instanceof MediaStorageBudgetReachedError) return "storage_budget_reached";
+  return "storage_unavailable";
+}
 
 /**
  * Mission 030 — creating a media, in two server-verified steps.
@@ -101,7 +110,7 @@ export async function reserveMediaUpload(
       return mediaFailure("access_denied");
     }
   } catch (error) {
-    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
+    return mediaFailure(repositoryFailureCode(error));
   }
 
   // A cheap pre-filter, NOT the decision. Refusing an obviously
@@ -143,7 +152,7 @@ export async function reserveMediaUpload(
     });
   } catch (error) {
     // Nothing was reserved and nothing was issued. No cleanup to do.
-    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
+    return mediaFailure(repositoryFailureCode(error));
   }
 
   try {
@@ -208,7 +217,7 @@ export async function finalizeMediaUpload(
       mediaId: input.mediaId,
     });
   } catch (error) {
-    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
+    return mediaFailure(repositoryFailureCode(error));
   }
 
   // `null` is "no such media in THIS memorial" — which covers both a
@@ -344,7 +353,7 @@ export async function finalizeMediaUpload(
       height: dimensions?.height ?? null,
     });
   } catch (error) {
-    return mediaFailure(error instanceof MediaSecurityDeniedError ? "access_denied" : "storage_unavailable");
+    return mediaFailure(repositoryFailureCode(error));
   }
 
   if (ready === null) {

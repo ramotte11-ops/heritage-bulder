@@ -5,53 +5,34 @@ import { requireOwner } from "@/lib/auth/heritage-actor";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { SupabaseOwnedMemorialListRepository } from "@/lib/adapters/supabase/owned-memorial-list-repository";
 import type { OwnedMemorialSummary } from "@/lib/adapters/owned-memorial-list-repository";
+import {
+  UNKNOWN_OWNER_FREE_PUBLICATION_STATUS,
+  type OwnerFreePublicationStatus,
+} from "@/lib/adapters/owner-free-publication-status-repository";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { PendingLinkLabel } from "@/components/auth/PendingLinkLabel";
+import { isLanguage, type Language } from "@/config/languages";
+import { translate, translateWith } from "@/lib/i18n/translate";
+import { loadOwnerFreePublicationStatus } from "@/lib/memorial/load-owner-free-publication-status";
 import styles from "./page.module.css";
 
-/**
- * The owner space — where a signed-in family finds their memorial again.
- *
- * Mission 004 built this page as a bare "you are signed in" shell.
- * Builder continuity mission: it is now the minimal client entry point
- * the parcours was missing. It is already where everyone lands by
- * default after a magic link (`DEFAULT_RETURN_PATH`,
- * lib/auth/return-path.ts), so nothing about Auth or its redirects
- * changes — this page simply lists the memorials this Owner owns, each
- * linking to its Builder, so no family ever has to keep a UUID.
- *
- * Who is asking is resolved server-side only (`getHeritageActor`: the
- * validated session, then the Owner by `auth_user_id`). Being signed in
- * is still not being an Owner (Mission 004's rule): a session with no
- * Owner behind it sees no memorial, only the way to /activate. The list
- * itself is read through the session-scoped client, under RLS, filtered
- * by that server-resolved Owner (see SupabaseOwnedMemorialListRepository).
- * And a link is only a link: opening it still goes through the Builder
- * route's own `authorizeMemorialForRequest`, unchanged.
- *
- * QG 016 / M4 — « Voir mon hommage »: under « Ouvrir l'atelier », a link
- * to the public page `/hommage/<slug>`, same tab, ONLY when the memorial is
- * publicly consultable right now (`publicSlug`, decided server-side by the
- * repository from the Owner's own row — see
- * lib/memorial/public/public-visibility.ts). Nothing at all otherwise: no
- * link and no mention for a draft or an expired free notice (PO decision).
- * `prefetch={false}`: the public page is only rendered when the family
- * actually opens it. The public page still asks M1 on its own.
- *
- * A list, never a single hard-wired memorial: V1 is 1 purchase = 1
- * memorial, but an Owner may hold several, and nothing here assumes
- * otherwise. No automatic redirect into "the" Builder, on purpose.
- */
+/** The owner space: every card stays the existing Builder/public-page path. */
 export const dynamic = "force-dynamic";
 
-const CREATED_AT_FORMAT = new Intl.DateTimeFormat("fr-FR", {
-  dateStyle: "long",
-  timeZone: "Europe/Paris",
-});
+const DATE_LOCALES: Record<Language, string> = {
+  fr: "fr-FR",
+  en: "en-GB",
+  es: "es-ES",
+};
 
-function formatCreatedAt(iso: string): string | null {
+function formatDate(iso: string, language: Language): string | null {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : CREATED_AT_FORMAT.format(date);
+  return Number.isNaN(date.getTime())
+    ? null
+    : new Intl.DateTimeFormat(DATE_LOCALES[language], {
+        dateStyle: "long",
+        timeZone: "Europe/Paris",
+      }).format(date);
 }
 
 type OwnerSpace =
@@ -59,9 +40,42 @@ type OwnerSpace =
   | { status: "none" }
   | { status: "error" };
 
-export default async function OwnerPage() {
+function requestedLanguage(raw: string | string[] | undefined): Language | null {
+  return typeof raw === "string" && isLanguage(raw) ? raw : null;
+}
+
+function familyLanguage(requested: Language | null, memorials: readonly OwnedMemorialSummary[]): Language {
+  return requested ?? memorials.find((memorial) => memorial.language !== null)?.language ?? "fr";
+}
+
+function freePublicationText(
+  status: OwnerFreePublicationStatus,
+  language: Language,
+): string {
+  switch (status.status) {
+    case "window_open": {
+      const until = formatDate(status.windowUntil, language);
+      return until === null
+        ? translate(language, "owner.freePublicationUnknown")
+        : translateWith(language, "owner.freePublicationAvailable", { date: until });
+    }
+    case "opens_on_next_save":
+      return translate(language, "owner.freePublicationAvailableOnSave");
+    case "used":
+      return translate(language, "owner.freePublicationUsed");
+    case "expired":
+      return translate(language, "owner.freePublicationExpired");
+    case "unknown":
+      return translate(language, "owner.freePublicationUnknown");
+  }
+}
+
+export default async function OwnerPage(
+  { searchParams = Promise.resolve({}) }: { searchParams?: Promise<{ langue?: string | string[] }> } = {},
+) {
   let actor: Awaited<ReturnType<typeof getHeritageActor>> | null = null;
   let space: OwnerSpace;
+  let publication: OwnerFreePublicationStatus = UNKNOWN_OWNER_FREE_PUBLICATION_STATUS;
 
   try {
     actor = await getHeritageActor();
@@ -69,9 +83,7 @@ export default async function OwnerPage() {
     console.error("Owner space: actor resolution failed:", error instanceof Error ? error.message : error);
   }
 
-  if (actor && actor.audience === "visitor") {
-    redirect("/login");
-  }
+  if (actor && actor.audience === "visitor") redirect("/login");
 
   if (!actor) {
     space = { status: "error" };
@@ -80,6 +92,7 @@ export default async function OwnerPage() {
     if (gate.status !== "granted") {
       space = { status: "none" };
     } else {
+      publication = await loadOwnerFreePublicationStatus(gate.owner.id);
       try {
         const repository = new SupabaseOwnedMemorialListRepository(await createServerSupabaseClient());
         const memorials = await repository.listOwnedMemorials(gate.owner.id);
@@ -91,36 +104,74 @@ export default async function OwnerPage() {
     }
   }
 
+  const memorials = space.status === "memorials" ? space.memorials : [];
+  const language = familyLanguage(requestedLanguage((await searchParams).langue), memorials);
   const email = actor?.identity?.email ?? null;
+  const now = new Date();
 
   return (
-    <main className={styles.main}>
-      <p className={styles.eyebrow}>Espace propriétaire</p>
-      <h1 className={styles.title}>Mes mémoriaux</h1>
+    <main className={styles.main} lang={language}>
+      <p className={styles.eyebrow}>{translate(language, "owner.eyebrow")}</p>
+      <h1 className={styles.title}>{translate(language, "owner.title")}</h1>
       {email ? <p className={styles.email}>{email}</p> : null}
+
+      {space.status !== "error" && actor?.audience === "owner" ? (
+        <section className={styles.notice} data-owner-free-summary="">
+          {publication.status !== "unknown" ? (
+            <p>
+              {translateWith(language, "owner.activeDraftCount", {
+                count: publication.activeFreeDrafts,
+                max: publication.maxFreeDrafts,
+              })}
+            </p>
+          ) : null}
+          <p data-owner-free-publication={publication.status}>
+            {freePublicationText(publication, language)}
+          </p>
+          {(publication.status === "used" || publication.status === "expired") && publication.renewsAt !== null ? (
+            <p data-owner-free-renewal="">
+              {translateWith(language, "owner.freePublicationRenewsAt", {
+                date: formatDate(publication.renewsAt, language) ?? "",
+              })}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {space.status === "memorials" && (
         <ul className={styles.list}>
           {space.memorials.map((memorial) => {
-            const createdAt = formatCreatedAt(memorial.createdAt);
+            const createdAt = formatDate(memorial.createdAt, language);
+            const storedPublishUntil = memorial.freeDeadlines?.publishUntil ?? null;
+            const publishUntil =
+              publication.status === "window_open" &&
+              storedPublishUntil !== null &&
+              Date.parse(storedPublishUntil) > now.getTime()
+              ? formatDate(storedPublishUntil, language)
+              : null;
+            const draftUntil = memorial.freeDeadlines?.draftUntil
+              ? formatDate(memorial.freeDeadlines.draftUntil, language)
+              : null;
             return (
               <li key={memorial.id} className={styles.item}>
-                <p className={styles.itemName}>{memorial.displayName ?? "Mémorial en cours de création"}</p>
-                {createdAt ? <p className={styles.itemMeta}>Créé le {createdAt}</p> : null}
-                {/* QG 004-B — discreet reminder of the free offer's deadlines. */}
-                {memorial.freeDeadlines?.publishUntil ? (
+                <p className={styles.itemName}>{memorial.displayName ?? translate(language, "owner.defaultName")}</p>
+                {createdAt ? (
+                  <p className={styles.itemMeta}>{translateWith(language, "owner.createdAt", { date: createdAt })}</p>
+                ) : null}
+                {publishUntil ? (
                   <p className={styles.itemMeta} data-free-deadline="publish">
-                    Publication gratuite de votre avis possible jusqu&rsquo;au{" "}
-                    {formatCreatedAt(memorial.freeDeadlines.publishUntil)}
+                    {translateWith(language, "owner.publishUntil", { date: publishUntil })}
                   </p>
                 ) : null}
-                {memorial.freeDeadlines?.draftUntil ? (
+                {draftUntil ? (
                   <p className={styles.itemMeta} data-free-deadline="draft">
-                    Brouillon disponible jusqu&rsquo;au {formatCreatedAt(memorial.freeDeadlines.draftUntil)}
+                    {translateWith(language, "owner.draftUntil", { date: draftUntil })}
                   </p>
                 ) : null}
                 <Link href={`/builder/${encodeURIComponent(memorial.id)}`} className={styles.itemLink}>
-                  <PendingLinkLabel pendingLabel="Ouverture de l’atelier…">Ouvrir l&rsquo;atelier</PendingLinkLabel>
+                  <PendingLinkLabel pendingLabel={translate(language, "owner.openingBuilder")}>
+                    {translate(language, "owner.openBuilder")}
+                  </PendingLinkLabel>
                 </Link>
                 {memorial.publicSlug ? (
                   <Link
@@ -128,7 +179,7 @@ export default async function OwnerPage() {
                     prefetch={false}
                     className={styles.itemLink}
                   >
-                    Voir mon hommage
+                    {translate(language, "owner.viewTribute")}
                   </Link>
                 ) : null}
               </li>
@@ -139,17 +190,16 @@ export default async function OwnerPage() {
 
       {space.status === "none" && (
         <>
-          <p className={styles.notice}>Aucun mémorial n&rsquo;est encore associé à ce compte.</p>
+          <p className={styles.notice}>{translate(language, "owner.none")}</p>
           <Link href="/activate" className={styles.itemLink}>
-            Activer mon accès HERITAGE
+            {translate(language, "owner.activate")}
           </Link>
         </>
       )}
 
       {space.status === "error" && (
         <p role="alert" className={styles.notice}>
-          Vos mémoriaux n&rsquo;ont pas pu être chargés pour le moment. Merci de réessayer dans
-          quelques instants.
+          {translate(language, "owner.loadFailed")}
         </p>
       )}
 

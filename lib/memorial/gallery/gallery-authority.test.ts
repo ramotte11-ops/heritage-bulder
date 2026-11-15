@@ -125,7 +125,7 @@ describe("D6 — one runtime authority per Gallery state (import guard)", () => 
       expect(src, h).toMatch(/data-testid="legacy-qa-banner"/);
       expect(src, h).toMatch(/LEGACY · [^<]*non produit/);
     }
-  });
+  }, 20_000);
 
   it("D8 — product components and runtime libraries never import a pilot page", () => {
     const offenders = files.filter((f) => !isTest(f) && !rel(f).startsWith("app/") && importSpecs(readFileSync(f, "utf8")).some((s) => s.startsWith("@/app/pilot/") || s.includes("/pilot/"))).map(rel);

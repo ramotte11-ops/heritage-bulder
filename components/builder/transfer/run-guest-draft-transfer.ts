@@ -6,6 +6,7 @@ import type {
   StartGuestTransferResult,
 } from "@/lib/guest-draft/guest-draft-transfer";
 import { serializableGuestDraft } from "@/lib/guest-draft/guest-transfer-plan";
+import { MediaActionError } from "@/lib/media/media-error-copy";
 
 /**
  * QG 008 Lot 2 — the browser side of « Builder invité → brouillon
@@ -46,7 +47,12 @@ export type GuestTransferRunResult =
   | { status: "active_draft_exists"; memorialId: string | null; language: GuestDraftV3["language"] }
   | { status: "unauthenticated" }
   | { status: "identity_refused" }
-  | { status: "failed"; language: GuestDraftV3["language"]; step: "read" | "begin" | "photo" | "record" | "commit" };
+  | {
+      status: "failed";
+      language: GuestDraftV3["language"];
+      step: "read" | "begin" | "photo" | "record" | "commit";
+      reason?: "storage_budget_reached";
+    };
 
 function photoFile(asset: GuestDraftPhotoAsset): File {
   const name = asset.source.originalFilename ?? `${asset.localId}`;
@@ -90,8 +96,15 @@ export async function runGuestDraftTransfer(deps: GuestTransferRunDeps): Promise
       let media: { id: string };
       try {
         media = await deps.upload(memorialId, photo.purpose, photoFile(asset));
-      } catch {
-        return { status: "failed", language, step: "photo" };
+      } catch (error) {
+        return {
+          status: "failed",
+          language,
+          step: "photo",
+          ...(error instanceof MediaActionError && error.code === "storage_budget_reached"
+            ? { reason: "storage_budget_reached" as const }
+            : {}),
+        };
       }
       const recorded = await deps.record(transferKey, photo.localId, media.id, photo.purpose).catch(() => null);
       if (recorded === null || (recorded.status !== "recorded" && recorded.status !== "already_recorded")) {

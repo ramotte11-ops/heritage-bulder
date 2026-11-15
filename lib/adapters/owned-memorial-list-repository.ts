@@ -1,3 +1,5 @@
+import type { Language } from "@/config/languages";
+
 /**
  * Builder continuity mission — the narrowest contract for the one
  * question the owner space (/owner) asks: "which memorials does this
@@ -20,6 +22,8 @@ export interface OwnedMemorialSummary {
    * only, `null` until then. Never used for any decision. */
   displayName: string | null;
   createdAt: string; // ISO 8601
+  /** The Builder language, for the family-space copy. */
+  language: Language | null;
   /** QG 016 / M4 — the public slug, ONLY while the memorial is publicly
    * consultable (`isMemorialPubliclyVisible`, the mirror of
    * `memorial_publicly_visible_v1`) and the slug has the only shape
@@ -27,10 +31,9 @@ export interface OwnedMemorialSummary {
    * an expired free notice, an `editing` or `archived` memorial, any
    * unreadable column. Drives the « Voir mon hommage » link only. */
   publicSlug: string | null;
-  /** QG 004-B — the free offer's own deadlines, for a discreet reminder:
-   * only for a free (« avis ») memorial never published yet, and only the
-   * deadlines still ahead. `null` otherwise. Display only — the database
-   * alone decides (free_publish_until, free_draft_until). */
+  /** The real stored deadlines of an unpublished free tribute. Past dates
+   * are preserved for the account-authorized per-tribute reminder.
+   * `null` otherwise. They never decide the account's free right. */
   freeDeadlines?: { publishUntil: string | null; draftUntil: string | null } | null;
 }
 

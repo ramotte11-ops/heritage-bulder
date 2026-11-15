@@ -5,10 +5,12 @@ import type {
 } from "@/lib/adapters/owned-memorial-list-repository";
 import { isPublicSlugShape } from "@/lib/memorial/public/read-public-memorial";
 import { isMemorialPubliclyVisible } from "@/lib/memorial/public/public-visibility";
+import { isLanguage } from "@/config/languages";
 
 interface MemorialListRow {
   id: string;
   created_at: string;
+  language: unknown;
   status: unknown;
   slug: unknown;
   access_level: unknown;
@@ -24,15 +26,17 @@ interface MemorialListRow {
  * under `memorials_select_own`: no new grant, policy or function.
  * QG 004-B adds the free deadlines (same table, same rows). */
 const MEMORIAL_LIST_COLUMNS =
-  "id, created_at, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until";
+  "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until";
 
-/** QG 004-B — the free deadlines still ahead, for a never-published « avis ». */
-function freeDeadlinesOf(row: MemorialListRow, now: Date): OwnedMemorialSummary["freeDeadlines"] {
+function storedInstant(value: unknown): string | null {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : null;
+}
+
+/** QG 017 — the real stored deadlines, including an already-passed one. */
+function freeDeadlinesOf(row: MemorialListRow): OwnedMemorialSummary["freeDeadlines"] {
   if (row.access_level !== "avis" || row.first_published_at != null) return null;
-  const ahead = (value: unknown) =>
-    typeof value === "string" && !Number.isNaN(Date.parse(value)) && Date.parse(value) > now.getTime() ? value : null;
-  const publishUntil = ahead(row.free_publish_until);
-  const draftUntil = ahead(row.free_draft_until);
+  const publishUntil = storedInstant(row.free_publish_until);
+  const draftUntil = storedInstant(row.free_draft_until);
   return publishUntil === null && draftUntil === null ? null : { publishUntil, draftUntil };
 }
 
@@ -135,8 +139,9 @@ export class SupabaseOwnedMemorialListRepository implements OwnedMemorialListRep
       id: row.id,
       displayName: names.get(row.id) ?? null,
       createdAt: row.created_at,
+      language: typeof row.language === "string" && isLanguage(row.language) ? row.language : null,
       publicSlug: publicSlugOf(row, now),
-      freeDeadlines: freeDeadlinesOf(row, now),
+      freeDeadlines: freeDeadlinesOf(row),
     }));
   }
 }

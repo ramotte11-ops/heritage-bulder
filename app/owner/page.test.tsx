@@ -23,6 +23,13 @@ vi.mock("@/lib/adapters/supabase/owned-memorial-list-repository", () => ({
   SupabaseOwnedMemorialListRepository,
 }));
 
+const { loadOwnerFreePublicationStatus } = vi.hoisted(() => ({
+  loadOwnerFreePublicationStatus: vi.fn(),
+}));
+vi.mock("@/lib/memorial/load-owner-free-publication-status", () => ({
+  loadOwnerFreePublicationStatus,
+}));
+
 const { redirect } = vi.hoisted(() => ({
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
@@ -47,9 +54,11 @@ const OWNER = {
   isHeritageAdmin: false,
 };
 
-async function render(): Promise<string> {
+async function render(langue?: "fr" | "en" | "es"): Promise<string> {
   const { renderToStaticMarkup } = await import("react-dom/server");
-  return renderToStaticMarkup(await OwnerPage());
+  return renderToStaticMarkup(
+    await OwnerPage({ searchParams: Promise.resolve(langue ? { langue } : {}) }),
+  );
 }
 
 describe("OwnerPage — the owner space (Builder continuity entry point)", () => {
@@ -58,6 +67,12 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     listOwnedMemorials.mockReset();
     SupabaseOwnedMemorialListRepository.mockClear();
     createServerSupabaseClient.mockClear();
+    loadOwnerFreePublicationStatus.mockReset();
+    loadOwnerFreePublicationStatus.mockResolvedValue({
+      status: "opens_on_next_save",
+      activeFreeDrafts: 0,
+      maxFreeDrafts: 3,
+    });
     redirect.mockClear();
   });
 
@@ -93,6 +108,7 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     expect(createServerSupabaseClient).toHaveBeenCalledTimes(1);
     expect(SupabaseOwnedMemorialListRepository).toHaveBeenCalledWith({ session: "client" });
     expect(listOwnedMemorials).toHaveBeenCalledWith("owner-1");
+    expect(loadOwnerFreePublicationStatus).toHaveBeenCalledWith("owner-1");
   });
 
   it("a signed-in session with no Owner sees no memorial, only the way to /activate — nothing is read", async () => {
@@ -101,6 +117,7 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     const html = await render();
 
     expect(listOwnedMemorials).not.toHaveBeenCalled();
+    expect(loadOwnerFreePublicationStatus).not.toHaveBeenCalled();
     expect(html).not.toContain("/builder/");
     expect(html).toContain('href="/activate"');
   });
@@ -126,10 +143,11 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     expect(html).not.toContain('href="/activate"');
   });
 
-  it("never uses the service-role client for the list — the session client (RLS) only", () => {
+  it("keeps the memorial list on the session client and delegates the privileged status read to a server-only loader", () => {
     const source = readFileSync(path.join(import.meta.dirname, "page.tsx"), "utf8");
     expect(source).not.toContain("service-role-client");
     expect(source).not.toContain("createServiceRoleSupabaseClient");
+    expect(source).toContain("loadOwnerFreePublicationStatus");
   });
 
   // -------------------------------------------------------------------
@@ -178,7 +196,7 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
 
     expect(html).not.toContain("/hommage/");
     expect(html).not.toContain("Voir mon hommage");
-    expect(html).not.toMatch(/expir|plus visible|n.est plus/i);
+    expect(cardOf(html, DRAFT.id)).not.toMatch(/expir|plus visible|n.est plus/i);
     expect(html).toContain(`href="/builder/${DRAFT.id}"`);
   });
 
@@ -223,5 +241,94 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     expect(source).not.toContain("NEXT_PUBLIC_SITE_URL");
     expect(source).not.toContain("netlify");
     expect(source).not.toContain("vercel");
+  });
+
+  it("shows three active free drafts, their real deadlines and the account publication availability in Spanish", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    loadOwnerFreePublicationStatus.mockResolvedValue({
+      status: "window_open",
+      windowUntil: "2099-11-20T10:00:00Z",
+      activeFreeDrafts: 3,
+      maxFreeDrafts: 3,
+    });
+    listOwnedMemorials.mockResolvedValue([1, 2, 3].map((index) => ({
+      id: `11111111-1111-4111-8111-11111111111${index}`,
+      displayName: `Homenaje ${index}`,
+      createdAt: "2026-11-10T10:00:00Z",
+      language: "es",
+      publicSlug: null,
+      freeDeadlines: {
+        publishUntil: "2099-11-20T10:00:00Z",
+        draftUntil: "2099-12-25T10:00:00Z",
+      },
+    })));
+
+    const html = await render("es");
+
+    expect(html).toContain("Homenajes en preparación: 3 / 3");
+    expect(html).toContain("Publicación gratuita disponible hasta el 20 de noviembre de 2099, para uno solo de sus homenajes.");
+    expect(html.match(/Publicación gratuita posible hasta el 20 de noviembre de 2099/g)).toHaveLength(3);
+    expect(html.match(/Preparación posible hasta el 25 de diciembre de 2099/g)).toHaveLength(3);
+  });
+
+  it("shows the official used state and renewal, hiding another draft's future publication date", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    loadOwnerFreePublicationStatus.mockResolvedValue({
+      status: "used",
+      renewsAt: "2099-12-01T10:00:00Z",
+      activeFreeDrafts: 1,
+      maxFreeDrafts: 3,
+    });
+    listOwnedMemorials.mockResolvedValue([
+      {
+        id: DRAFT.id,
+        displayName: DRAFT.displayName,
+        createdAt: DRAFT.createdAt,
+        language: "en",
+        publicSlug: null,
+        freeDeadlines: { publishUntil: "2099-11-20T10:00:00Z", draftUntil: "2099-12-25T10:00:00Z" },
+      },
+    ]);
+
+    const html = await render("en");
+    expect(html).toContain("Tributes in preparation: 1 / 3");
+    expect(html).toContain("Your account&#x27;s free publication has been used.");
+    expect(html).toContain("A new free publication will be possible from 1 December 2099.");
+    expect(html).not.toContain("Free publication possible until 20 November 2099");
+  });
+
+  it("shows that a renewed right will open on the next save", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([]);
+
+    const html = await render("en");
+    expect(html).toContain("Your account can publish one tribute for free");
+    expect(html).toContain("Tributes in preparation: 0 / 3");
+  });
+
+  it("shows an expired right without inventing a renewal date", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([DRAFT]);
+    loadOwnerFreePublicationStatus.mockResolvedValue({
+      status: "expired",
+      renewsAt: null,
+      activeFreeDrafts: 1,
+      maxFreeDrafts: 3,
+    });
+
+    const html = await render("fr");
+    expect(html).toContain("Le délai de publication gratuite de votre compte est écoulé.");
+    expect(html).not.toContain("Une nouvelle publication gratuite sera possible");
+  });
+
+  it("shows neutral copy and no guessed counter when the official status is unavailable", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([DRAFT]);
+    loadOwnerFreePublicationStatus.mockResolvedValue({ status: "unknown" });
+
+    const html = await render("es");
+    expect(html).toContain("Cada cuenta dispone de una publicación gratuita por periodo de 12 meses.");
+    expect(html).not.toContain("Homenajes en preparación:");
+    expect(html).not.toMatch(/owner\.freePublication/);
   });
 });
