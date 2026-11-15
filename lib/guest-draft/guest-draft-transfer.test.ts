@@ -5,6 +5,7 @@ import type { Owner } from "@/types/owner";
 import type { MemorialContent } from "@/types/memorial";
 import {
   commitGuestDraftTransfer,
+  previewGuestDraftSave,
   recordGuestTransferPhoto,
   startGuestDraftTransfer,
   type GuestDraftTransferRepository,
@@ -51,6 +52,14 @@ function transferRepository(overrides: Partial<GuestDraftTransferRepository> = {
       freePublishUntil: "p",
       freeDraftUntil: "d",
     }),
+    preview: vi.fn().mockResolvedValue({
+      outcome: "create",
+      activeFreeDrafts: 1,
+      maxFreeDrafts: 3,
+      memorialId: null,
+      freePublishUntil: "2026-11-24T10:00:00Z",
+      freeDraftUntil: "2026-12-29T10:00:00Z",
+    }),
     find: vi.fn().mockResolvedValue(null),
     recordMedia: vi.fn().mockResolvedValue("recorded"),
     complete: vi.fn().mockResolvedValue("completed"),
@@ -69,6 +78,41 @@ const FULL_MAP = {
 function state(overrides: Partial<GuestTransferState> = {}): GuestTransferState {
   return { memorialId: MEMORIAL_ID, status: "started", mediaMap: FULL_MAP, baseDraftRevision: 0, ...overrides };
 }
+
+describe("QG 017 — previewGuestDraftSave", () => {
+  it("returns the deadlines a save would give, for the verified owner and this local draft, without creating anything", async () => {
+    const transfers = transferRepository();
+    await expect(previewGuestDraftSave({ ownerRepository: ownerRepository(), transferRepository: transfers }, VERIFIED, transferableDraft()))
+      .resolves.toEqual({
+        status: "preview",
+        outcome: "create",
+        activeFreeDrafts: 1,
+        maxFreeDrafts: 3,
+        memorialId: null,
+        freePublishUntil: "2026-11-24T10:00:00Z",
+        freeDraftUntil: "2026-12-29T10:00:00Z",
+      });
+    expect(transfers.preview).toHaveBeenCalledWith({ ownerId: OWNER_ID, transferKey: TRANSFER_KEY });
+    expect(transfers.begin).not.toHaveBeenCalled();
+  });
+
+  it("passes limit_reached through, with the latest draft to open", async () => {
+    const transfers = transferRepository({
+      preview: vi.fn().mockResolvedValue({ outcome: "limit_reached", activeFreeDrafts: 3, maxFreeDrafts: 3, memorialId: MEMORIAL_ID, freePublishUntil: null, freeDraftUntil: null }),
+    });
+    await expect(previewGuestDraftSave({ ownerRepository: ownerRepository(), transferRepository: transfers }, VERIFIED, transferableDraft()))
+      .resolves.toMatchObject({ status: "preview", outcome: "limit_reached", memorialId: MEMORIAL_ID });
+  });
+
+  it("asks nothing of the database without a session or with an invalid draft; a refused preview stays refused", async () => {
+    const transfers = transferRepository({ preview: vi.fn().mockResolvedValue({ outcome: "refused" }) });
+    const deps = { ownerRepository: ownerRepository(), transferRepository: transfers };
+    await expect(previewGuestDraftSave(deps, null, transferableDraft())).resolves.toEqual({ status: "unauthenticated" });
+    await expect(previewGuestDraftSave(deps, VERIFIED, { not: "a draft" })).resolves.toEqual({ status: "invalid_draft" });
+    expect(transfers.preview).not.toHaveBeenCalled();
+    await expect(previewGuestDraftSave(deps, VERIFIED, transferableDraft())).resolves.toEqual({ status: "refused" });
+  });
+});
 
 describe("QG 008 Lot 2 — startGuestDraftTransfer", () => {
   it("creates the durable draft for the VERIFIED owner and lists every photo to upload", async () => {

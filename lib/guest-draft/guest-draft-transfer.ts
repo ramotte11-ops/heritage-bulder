@@ -54,7 +54,29 @@ export type BeginGuestTransferRow =
 
 export type RecordGuestTransferMediaOutcome = "recorded" | "already_recorded" | "conflict" | "refused";
 
+/**
+ * QG 017 — what a save of this guest draft WOULD give, read before the
+ * family confirms (preview_free_draft_save_v1, same rules as the anchoring):
+ *   resume         this local draft was already saved: its own deadlines;
+ *   create         a new draft would be created with these deadlines;
+ *   limit_reached  the account already has its maximum of free drafts in
+ *                  preparation; nothing would be created (`memorialId` =
+ *                  the latest one).
+ * `freePublishUntil` is null when no free publication is possible for it.
+ */
+export type GuestSavePreviewRow =
+  | {
+      outcome: "resume" | "create" | "limit_reached";
+      activeFreeDrafts: number;
+      maxFreeDrafts: number;
+      memorialId: string | null;
+      freePublishUntil: string | null;
+      freeDraftUntil: string | null;
+    }
+  | { outcome: "refused" };
+
 export interface GuestDraftTransferRepository {
+  preview(input: { ownerId: string; transferKey: string }): Promise<GuestSavePreviewRow>;
   begin(input: {
     ownerId: string;
     transferKey: string;
@@ -119,6 +141,32 @@ export type StartGuestTransferResult =
     }
   | { status: "active_draft_exists"; memorialId: string | null }
   | { status: "refused" };
+
+export type PreviewGuestSaveResult =
+  | IdentityFailure
+  | ({ status: "preview" } & Exclude<GuestSavePreviewRow, { outcome: "refused" }>)
+  | { status: "refused" };
+
+/**
+ * QG 017 — read-only: the real deadlines a save would give, shown with the
+ * connected account BEFORE « Continuer ». Same identity and draft checks as
+ * `startGuestDraftTransfer`; nothing is created, anchored or journaled.
+ * The deadlines actually received are returned again by the save itself.
+ */
+export async function previewGuestDraftSave(
+  deps: GuestTransferDeps,
+  identity: AuthenticatedIdentity | null,
+  rawDraft: unknown,
+): Promise<PreviewGuestSaveResult> {
+  if (identity === null) return { status: "unauthenticated" };
+  const draft = validDraft(rawDraft);
+  if (draft === null) return { status: "invalid_draft" };
+  const owner = await resolveVerifiedOwner(deps, identity);
+  if (!owner.ok) return owner.failure;
+  const row = await deps.transferRepository.preview({ ownerId: owner.ownerId, transferKey: draft.transferKey });
+  if (row.outcome === "refused") return { status: "refused" };
+  return { status: "preview", ...row };
+}
 
 export async function startGuestDraftTransfer(
   deps: GuestTransferDeps,

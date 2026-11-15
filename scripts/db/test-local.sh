@@ -579,6 +579,17 @@ create trigger zz_bench_autoverify_owner after insert or update of auth_user_id 
   for each row execute function bench_fixture.autoverify_owner();
 SQL
 
+# --- QG 017 bench fixture -------------------------------------------------
+# The migrations leave the production values (3 active free drafts per
+# account, 300 MB free storage budget) — checked here, before anything else
+# touches the settings. The historical sections below (M1-A B6, QG 008,
+# Lot 2) exercise the SAME draft-limit code path with a limit of 1, as they
+# were written; the QG 017 section at the end restores the migration's
+# values and tests three drafts, the refused fourth and the shared deadlines.
+check "QG 017: the migration sets 3 active free drafts per account and a 300 MB free storage budget" "3|314572800" \
+  "$($DB -t -A -c "select free_active_drafts_per_owner || '|' || free_storage_bytes_per_owner from memorial_access_settings where id;")"
+$DB -c "update memorial_access_settings set free_active_drafts_per_owner = 1 where id;" >/dev/null
+
 # --- the parcours actually works with exactly these privileges --------
 PM_OWNER=$($DB -t -A -c "insert into owners (auth_user_id, email) values (gen_random_uuid(), 'privmodel@example.test') returning id;")
 PM_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
@@ -4679,6 +4690,146 @@ expect_refused "QG 004-B: without a proof, an Etsy right cannot be linked to the
   "owner email address not verified"
 check "QG 004-B: a direct « avis » right still links without a proof (free save stays immediate)" "1" \
   "$($DB -t -A -c "begin;" -c "delete from owner_email_verifications where owner_id = '$Q4_OWNER';" -c "create temp table q4_direct on commit drop as with e as (insert into entitlements (access_level, source, offer_id) values ('avis', 'direct', 'intemporel') returning id) select id from e;" -c "with u as (update entitlements set owner_id = '$Q4_OWNER' where id in (select id from q4_direct) returning 1) select count(*) from u;" -c "rollback;" 2>&1 | grep -E '^[0-9]+$' | head -1)"
+
+echo ""
+echo "== QG 017: up to 3 free drafts per account, shared deadlines, free storage budget =="
+$DB -c "update memorial_access_settings set free_active_drafts_per_owner = 3 where id;" >/dev/null
+
+g7_key() { $DB -t -A -c "select gen_random_uuid();"; }
+g7_preview() {
+  # $1 owner, $2 transfer key -> "outcome|active|max|memorial|publish_until|draft_until"
+  svc "select outcome || '|' || active_free_drafts || '|' || max_free_drafts || '|' || coalesce(memorial_id::text, '-') || '|' || coalesce(free_publish_until::text, '-') || '|' || coalesce(free_draft_until::text, '-') from preview_free_draft_save_v1('$1', '$2');"
+}
+g7_deadlines() { $DB -t -A -c "select free_publish_until || '|' || free_draft_until from memorials where id='$1';"; }
+g7_events() { $DB -t -A -c "select count(*) from memorial_access_events where owner_id='$1';"; }
+g7_finalize() {
+  # $1 memorial, $2 owner, $3 media, $4 bytes
+  svc "select id from finalize_memorial_media_upload_v1('$1','$2','$3','gallery','image/jpeg',$4,10,10);"
+}
+
+# --- Three drafts, the fourth refused, deadlines shared ---------------------
+G7_A=$(q8_owner g7-a)
+G7_K1=$(g7_key); G7_K2=$(g7_key); G7_K3=$(g7_key); G7_K4=$(g7_key)
+G7_P1=$(g7_preview "$G7_A" "$G7_K1")
+check "QG 017: preview of a first save — create, 0 of 3, own 10 d / 45 d" "create|0|3|-" "$(echo "$G7_P1" | cut -d'|' -f1-4)"
+G7_M1=$(l2_begin "$G7_A" "$G7_K1" light "'fr'" | cut -d'|' -f2)
+check "QG 017: the previewed deadlines are the ones the first save receives (within a minute)" "t|t" \
+  "$($DB -t -A -c "select abs(extract(epoch from ('$(echo "$G7_P1" | cut -d'|' -f5)'::timestamptz - free_publish_until))) < 60 from memorials where id='$G7_M1';")|$($DB -t -A -c "select abs(extract(epoch from ('$(echo "$G7_P1" | cut -d'|' -f6)'::timestamptz - free_draft_until))) < 60 from memorials where id='$G7_M1';")"
+G7_D1=$(g7_deadlines "$G7_M1")
+check "QG 017: preview of a second save shows the SHARED deadlines exactly" "create|1|3|-|$G7_D1" "$(g7_preview "$G7_A" "$G7_K2")"
+G7_M2=$(l2_begin "$G7_A" "$G7_K2" light null | cut -d'|' -f2)
+G7_M3=$(l2_begin "$G7_A" "$G7_K3" light null | cut -d'|' -f2)
+check "QG 017: second and third saves are created, 3 distinct drafts" "3|3" \
+  "$($DB -t -A -c "select count(*) from memorials where owner_id='$G7_A';")|$($DB -t -A -c "select count(distinct memorial_id) from guest_draft_transfers where owner_id='$G7_A';")"
+check "QG 017: the three drafts share one free window and one preparation deadline" "$G7_D1|$G7_D1|$G7_D1" \
+  "$(g7_deadlines "$G7_M1")|$(g7_deadlines "$G7_M2")|$(g7_deadlines "$G7_M3")"
+check "QG 017: only one free window is opened for the account" "1" \
+  "$($DB -t -A -c "select count(*) from memorial_access_events where owner_id='$G7_A' and event='free.window_opened';")"
+G7_EV=$(g7_events "$G7_A")
+check "QG 017: preview at the limit — limit_reached, the latest draft named" "limit_reached|3|3|$G7_M3|-|-" "$(g7_preview "$G7_A" "$G7_K4")"
+check "QG 017: a fourth save is refused, nothing created, nothing journaled" "active_draft_exists|$G7_M3|3|$G7_EV" \
+  "$(l2_begin "$G7_A" "$G7_K4" light null | cut -d'|' -f1-2)|$($DB -t -A -c "select count(*) from memorials where owner_id='$G7_A';")|$(g7_events "$G7_A")"
+check "QG 017: create_free_memorial_v1 refuses a fourth active free draft too" "free_draft_limit" \
+  "$(svc "select outcome from create_free_memorial_v1('$G7_A','intemporel','light');")"
+
+# --- Resume, idempotence, reconnection --------------------------------------
+check "QG 017: preview of an already saved local draft — resume, its own deadlines" "resume|3|3|$G7_M2|$G7_D1" "$(g7_preview "$G7_A" "$G7_K2")"
+m1a_age "$G7_A" '3 days'
+G7_D1=$(g7_deadlines "$G7_M1"); G7_EV=$(g7_events "$G7_A")
+check "QG 017: reconnecting 3 days later resumes the same draft, no deadline recomputed, nothing journaled" "resumed|$G7_M2|$G7_D1|$G7_EV" \
+  "$(l2_begin "$G7_A" "$G7_K2" light null | cut -d'|' -f1-2)|$(g7_deadlines "$G7_M2")|$(g7_events "$G7_A")"
+
+# --- A paid (complet) memorial is not counted -------------------------------
+G7_PAID_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct', 'intemporel') returning id;")
+G7_PAID=$(svc "select memorial_id from redeem_entitlement('$G7_PAID_ENT','$G7_A','person','intemporel','light');")
+check "QG 017: a complete (paid) memorial opens beside the 3 free drafts and is not counted" "complet|limit_reached|3" \
+  "$($DB -t -A -c "select access_level from memorials where id='$G7_PAID';")|$(g7_preview "$G7_A" "$G7_K4" | cut -d'|' -f1-2)"
+
+# --- One free publication per account, whatever the number of drafts --------
+q8_ready "$G7_M1" g7-a1 "$Q8_HERO"
+svc "$(q8_v2_sql "$G7_M1" "$G7_A" g7-a1 avis "$Q8_HERO")" >/dev/null
+check "QG 017: the first free publication succeeds" "published|1" "$(q8_status "$G7_M1")|$(q8_published_count "$G7_A")"
+q8_ready "$G7_M2" g7-a2 "$Q8_HERO"
+svc_expect_error "QG 017: a second draft of the same account cannot be published free (quota)" \
+  "$(q8_v2_sql "$G7_M2" "$G7_A" g7-a2 avis "$Q8_HERO")" "free publication quota reached"
+check "QG 017: ... and stays an unpublished draft with its deadlines" "ready|true|$G7_D1" \
+  "$($DB -t -A -c "select status || '|' || (first_published_at is null) from memorials where id='$G7_M2';")|$(g7_deadlines "$G7_M2")"
+G7_COMMON=$($DB -t -A -c "select free_draft_until from memorials where id='$G7_M2';")
+check "QG 017: the published one frees a slot; the preview shows no free publication and the common deadline" "create|2|3|-|-|$G7_COMMON" \
+  "$(g7_preview "$G7_A" "$G7_K4")"
+G7_M4_ROW=$(l2_begin "$G7_A" "$G7_K4" light null)
+G7_M4=$(echo "$G7_M4_ROW" | cut -d'|' -f2)
+check "QG 017: that save is anchored without free publication, on the common deadline (no extension)" "anchored_without_free_publication|t|$G7_COMMON" \
+  "$(echo "$G7_M4_ROW" | cut -d'|' -f4)|$($DB -t -A -c "select free_publish_until = free_anchor_at from memorials where id='$G7_M4';")|$($DB -t -A -c "select free_draft_until from memorials where id='$G7_M4';")"
+
+# --- Window closed, nothing published: shared deadline, no free window -----
+G7_B=$(q8_owner g7-b)
+G7_B1=$(l2_begin "$G7_B" "$(g7_key)" light null | cut -d'|' -f2)
+m1a_age "$G7_B" '11 days'
+G7_BD=$(g7_deadlines "$G7_B1")
+G7_BK=$(g7_key)
+check "QG 017: after the 10-day window, the preview offers no free publication and the SAME preparation deadline" \
+  "create|1|3|-|-|$(echo "$G7_BD" | cut -d'|' -f2)" "$(g7_preview "$G7_B" "$G7_BK")"
+G7_B2=$(l2_begin "$G7_B" "$G7_BK" light null | cut -d'|' -f2)
+check "QG 017: the new draft gets no free window and does not extend the common deadline; the first is unchanged" \
+  "t|$(echo "$G7_BD" | cut -d'|' -f2)|$G7_BD" \
+  "$($DB -t -A -c "select free_publish_until = free_anchor_at from memorials where id='$G7_B2';")|$($DB -t -A -c "select free_draft_until from memorials where id='$G7_B2';")|$(g7_deadlines "$G7_B1")"
+
+# --- Double tab at the limit: exactly one draft created ---------------------
+G7_C=$(q8_owner g7-c)
+l2_begin "$G7_C" "$(g7_key)" light null >/dev/null
+l2_begin "$G7_C" "$(g7_key)" light null >/dev/null
+G7_CONC="$PGDATA_DIR/concurrency-qg017"; mkdir -p "$G7_CONC"
+for i in 1 2; do
+  key=$(g7_key)
+  (
+    $DB -t -A -c "set role service_role; select pg_sleep(0.7); select outcome from begin_guest_draft_transfer_v1('$G7_C','$key',3,'light',null);" >"$G7_CONC/$i.out" 2>"$G7_CONC/$i.err" || true
+  ) &
+done
+wait
+check "QG 017: two simultaneous saves at 2 of 3 — one created, one refused, 3 drafts" "1|1|3" \
+  "$(cat "$G7_CONC"/1.out "$G7_CONC"/2.out | grep -c '^created$' || true)|$(cat "$G7_CONC"/1.out "$G7_CONC"/2.out | grep -c '^active_draft_exists$' || true)|$($DB -t -A -c "select count(*) from memorials where owner_id='$G7_C';")"
+
+# --- Free storage budget (bytes, per account, free-offer memorials only) ----
+G7_S=$(q8_owner g7-s)
+G7_S1=$(l2_begin "$G7_S" "$(g7_key)" light null | cut -d'|' -f2)
+$DB -c "update memorial_access_settings set free_storage_bytes_per_owner = 1000 where id;" >/dev/null
+G7_MA=$(m1a_reserve "$G7_S1" "$G7_S")
+check "QG 017: under the budget, a photo is finalized" "$G7_MA" "$(g7_finalize "$G7_S1" "$G7_S" "$G7_MA" 600)"
+G7_MB=$(m1a_reserve "$G7_S1" "$G7_S")
+svc_expect_error "QG 017: a finalization beyond the account's free budget is refused (HD507)" \
+  "select id from finalize_memorial_media_upload_v1('$G7_S1','$G7_S','$G7_MB','gallery','image/jpeg',600,10,10);" "free storage budget reached"
+check "QG 017: the refused photo stays pending, nothing is deleted" "pending|2" \
+  "$($DB -t -A -c "select status from media where id='$G7_MB';")|$($DB -t -A -c "select count(*) from media where memorial_id='$G7_S1';")"
+check "QG 017: a photo that fits exactly is accepted" "$G7_MB" "$(g7_finalize "$G7_S1" "$G7_S" "$G7_MB" 400)"
+G7_MX=$(g7_key)
+svc_expect_error "QG 017: once the budget is used, a new upload is refused at reservation" \
+  "select id from reserve_memorial_media_upload_v1('$G7_S1','$G7_S','$G7_MX','$G7_S1/$G7_MX/original.jpg','gallery','image/jpeg');" "free storage budget reached"
+G7_SP_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct', 'intemporel') returning id;")
+G7_SP=$(svc "select memorial_id from redeem_entitlement('$G7_SP_ENT','$G7_S','person','intemporel','light');")
+G7_MP=$(m1a_reserve "$G7_SP" "$G7_S")
+check "QG 017: a complete (paid) memorial of the same account is never limited by the free budget" "$G7_MP" "$(g7_finalize "$G7_SP" "$G7_S" "$G7_MP" 50000)"
+check "QG 017: the free budget counts only free-offer memorials" "1000" "$($DB -t -A -c "select public.owner_free_storage_bytes_v1('$G7_S');")"
+G7_MANY=0
+for n in $(seq 1 60); do
+  id=$(m1a_reserve "$G7_SP" "$G7_S" 2>/dev/null) && g7_finalize "$G7_SP" "$G7_S" "$id" 350000 >/dev/null 2>&1 && G7_MANY=$((G7_MANY + 1))
+done
+check "QG 017: no photo-count cap — 60 more photos are prepared on the complete memorial" "60" "$G7_MANY"
+$DB -c "update memorial_access_settings set free_storage_bytes_per_owner = 314572800 where id;" >/dev/null
+G7_MANY=0
+for n in $(seq 1 60); do
+  id=$(m1a_reserve "$G7_S1" "$G7_S" 2>/dev/null) && g7_finalize "$G7_S1" "$G7_S" "$id" 350000 >/dev/null 2>&1 && G7_MANY=$((G7_MANY + 1))
+done
+check "QG 017: with the 300 MB budget, a FREE draft prepares 60 more typical photos (premium preparation stays possible)" "60" "$G7_MANY"
+
+# --- Privileges -------------------------------------------------------------
+for fn in "preview_free_draft_save_v1(uuid,text)|false|false|true" "owner_free_storage_bytes_v1(uuid)|false|false|false" "guard_free_storage_budget_v1()|false|false|false"; do
+  sig=${fn%%|*}; expect=${fn#*|}
+  check "QG 017: $sig executable by (anon|authenticated|service_role)" "$expect" \
+    "$($DB -t -A -c "select has_function_privilege('anon', 'public.$sig', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.$sig', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.$sig', 'EXECUTE');")"
+  check "QG 017: $sig is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" \
+    "$($DB -t -A -c "select p.prosecdef || '|' || array_to_string(p.proconfig, ',') from pg_proc p where p.oid = 'public.$sig'::regprocedure;")"
+done
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

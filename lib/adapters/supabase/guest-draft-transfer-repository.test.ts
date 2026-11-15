@@ -45,6 +45,29 @@ describe("QG 008 Lot 2 — SupabaseGuestDraftTransferRepository", () => {
     await expect(new SupabaseGuestDraftTransferRepository(c).begin(BEGIN_INPUT)).resolves.toEqual({ outcome: "refused" });
   });
 
+  it("QG 017: preview passes the owner and the local draft key, and maps the deadlines", async () => {
+    const { client: c, rpc } = client({
+      data: [{ outcome: "create", active_free_drafts: 1, max_free_drafts: 3, memorial_id: null, free_publish_until: "p", free_draft_until: "d" }],
+      error: null,
+    });
+    await expect(new SupabaseGuestDraftTransferRepository(c).preview({ ownerId: "owner", transferKey: "k" })).resolves.toEqual({
+      outcome: "create", activeFreeDrafts: 1, maxFreeDrafts: 3, memorialId: null, freePublishUntil: "p", freeDraftUntil: "d",
+    });
+    expect(rpc).toHaveBeenCalledWith("preview_free_draft_save_v1", { p_owner_id: "owner", p_transfer_key: "k" });
+  });
+
+  it.each([
+    [[]],
+    [null],
+    [[{ outcome: "refused", active_free_drafts: 0, max_free_drafts: 3, memorial_id: null, free_publish_until: null, free_draft_until: null }]],
+    [[{ outcome: "create", active_free_drafts: "1", max_free_drafts: 3, memorial_id: null, free_publish_until: null, free_draft_until: "d" }]],
+    [[{ outcome: "create", active_free_drafts: 1, max_free_drafts: 3, memorial_id: null, free_publish_until: null, free_draft_until: null }]],
+    [[{ outcome: "resume", active_free_drafts: 1, max_free_drafts: 3, memorial_id: 7, free_publish_until: null, free_draft_until: "d" }]],
+  ])("QG 017: preview fails CLOSED on a malformed answer (%o)", async (data) => {
+    const { client: c } = client({ data, error: null });
+    await expect(new SupabaseGuestDraftTransferRepository(c).preview({ ownerId: "o", transferKey: "k" })).resolves.toEqual({ outcome: "refused" });
+  });
+
   it("find returns null rather than a guessed transfer", async () => {
     const { client: c } = client({ data: [], error: null });
     await expect(new SupabaseGuestDraftTransferRepository(c).find({ ownerId: "o", transferKey: "k" })).resolves.toBeNull();
