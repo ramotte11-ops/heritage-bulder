@@ -516,6 +516,7 @@ describe("QG 008 Lot 3 — « Publier » exists only where the page asks for it"
     gallery: { total: 0, limit: 6, selection: undefined, proposed: false, choices: [] },
     premiumSections: [],
     readiness: "publishable" as const,
+    otherActiveFreeDrafts: 0,
   };
   async function withPublication(): Promise<HostResult> {
     const ready = await readyResult();

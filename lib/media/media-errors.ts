@@ -59,6 +59,8 @@ export type MediaErrorCode =
    * Never says which.
    */
   | "access_denied"
+  /** The account-wide photo space included with the free offer is full. */
+  | "storage_budget_reached"
   /**
    * The storage backend or the database failed. A technical fault, not
    * a judgement about the file.

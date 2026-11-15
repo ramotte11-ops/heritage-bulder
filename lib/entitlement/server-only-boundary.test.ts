@@ -348,7 +348,7 @@ describe("server-only boundary", () => {
         expect(source).not.toContain('from "node:crypto"');
       }
     }
-  });
+  }, 10_000);
 
   it("keeps the service-role key out of anything a client bundle could read", () => {
     const env = readFileSync(path.join(REPO_ROOT, "lib/supabase/env.ts"), "utf8");

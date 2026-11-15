@@ -50,6 +50,9 @@ export interface PreviewPublication {
   /** Filled sections reserved to the complete tribute, not published. */
   premiumSections: readonly string[];
   readiness: PublicationReadiness;
+  /** Other active free drafts on the same account. Display-only warning;
+   * the publication guard remains unchanged and server-enforced. */
+  otherActiveFreeDrafts: number;
 }
 
 /** What the confirmation returns to the Builder (no technical message). */

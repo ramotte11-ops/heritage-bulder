@@ -65,6 +65,14 @@ export class MediaSecurityDeniedError extends Error {
   }
 }
 
+/** QG 017 — the account-wide free photo budget refused a new upload. */
+export class MediaStorageBudgetReachedError extends Error {
+  constructor() {
+    super("The free media storage budget has been reached.");
+    this.name = "MediaStorageBudgetReachedError";
+  }
+}
+
 export class MediaSecurityRetainedError extends Error {
   constructor() {
     super("The media is retained because durable content still references it.");

@@ -57,6 +57,17 @@ const { loadPublicationSnapshot, createSupabaseMemorialPublicationRepository } =
 });
 vi.mock("@/lib/adapters/supabase/memorial-publication-repository", () => ({ createSupabaseMemorialPublicationRepository }));
 
+const { listOwnedMemorials, SupabaseOwnedMemorialListRepository } = vi.hoisted(() => {
+  const listOwnedMemorials = vi.fn();
+  return {
+    listOwnedMemorials,
+    SupabaseOwnedMemorialListRepository: vi.fn(function (this: Record<string, unknown>) {
+      this.listOwnedMemorials = listOwnedMemorials;
+    }),
+  };
+});
+vi.mock("@/lib/adapters/supabase/owned-memorial-list-repository", () => ({ SupabaseOwnedMemorialListRepository }));
+
 const { createServerMediaEngineDeps } = vi.hoisted(() => ({
   createServerMediaEngineDeps: vi.fn(() => ({ fake: "media-engine-deps" })),
 }));
@@ -124,6 +135,7 @@ beforeEach(() => {
   resolverCalls.length = 0;
   getHeritageActor.mockResolvedValue(OWNER_ACTOR);
   authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: "authorized-id" });
+  listOwnedMemorials.mockResolvedValue([]);
   resolverAnswering((mediaId) => ({ mediaId, readUrl: FIXTURE_READ_URL }));
 });
 
@@ -277,6 +289,20 @@ describe("loadMemorialPreviewAction — QG 008 Lot 3: exactly what « Publier »
       ...fullAnnouncement(),
       gallery: { items: Array.from({ length: count }, (_, i) => ({ mediaId: galleryId(i + 1), caption: null })) },
     }) as MemorialContent;
+
+  it("counts only the other active free drafts for the account warning", async () => {
+    resumable(fullAnnouncement(), {}, { accessLevel: "avis" });
+    listOwnedMemorials.mockResolvedValue([
+      { id: "authorized-id", activeFreeDraft: true },
+      { id: "other-active", activeFreeDraft: true },
+      { id: "other-complete", activeFreeDraft: false },
+    ]);
+
+    const result = await loadMemorialPreviewAction("claimed-id");
+
+    expect(result.status === "ready" && result.publication?.otherActiveFreeDrafts).toBe(1);
+    expect(listOwnedMemorials).toHaveBeenCalledWith("owner-a");
+  });
 
   it("describes a publishable first publication: revision, stored level, fingerprint", async () => {
     resumable(fullAnnouncement(), {}, { accessLevel: "avis", revision: 9 });

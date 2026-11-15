@@ -47,9 +47,11 @@ const OWNER = {
   isHeritageAdmin: false,
 };
 
-async function render(): Promise<string> {
+async function render(langue?: "fr" | "en" | "es"): Promise<string> {
   const { renderToStaticMarkup } = await import("react-dom/server");
-  return renderToStaticMarkup(await OwnerPage());
+  return renderToStaticMarkup(
+    await OwnerPage({ searchParams: Promise.resolve(langue ? { langue } : {}) }),
+  );
 }
 
 describe("OwnerPage — the owner space (Builder continuity entry point)", () => {
@@ -178,7 +180,7 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
 
     expect(html).not.toContain("/hommage/");
     expect(html).not.toContain("Voir mon hommage");
-    expect(html).not.toMatch(/expir|plus visible|n.est plus/i);
+    expect(cardOf(html, DRAFT.id)).not.toMatch(/expir|plus visible|n.est plus/i);
     expect(html).toContain(`href="/builder/${DRAFT.id}"`);
   });
 
@@ -223,5 +225,59 @@ describe("OwnerPage — the owner space (Builder continuity entry point)", () =>
     expect(source).not.toContain("NEXT_PUBLIC_SITE_URL");
     expect(source).not.toContain("netlify");
     expect(source).not.toContain("vercel");
+  });
+
+  it("shows three active free drafts, their real deadlines and the account publication availability in Spanish", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([1, 2, 3].map((index) => ({
+      id: `11111111-1111-4111-8111-11111111111${index}`,
+      displayName: `Homenaje ${index}`,
+      createdAt: "2026-11-10T10:00:00Z",
+      language: "es",
+      publicSlug: null,
+      activeFreeDraft: true,
+      freeFirstPublishedAt: null,
+      freeDeadlines: {
+        publishUntil: "2099-11-20T10:00:00Z",
+        draftUntil: "2099-12-25T10:00:00Z",
+      },
+    })));
+
+    const html = await render("es");
+
+    expect(html).toContain("Homenajes en preparación: 3 / 3");
+    expect(html).toContain("Publicación gratuita de su cuenta: disponible hasta el 20 de noviembre de 2099");
+    expect(html.match(/Preparación posible hasta el 25 de diciembre de 2099/g)).toHaveLength(3);
+  });
+
+  it("shows a recent free publication as used even while other draft deadlines are still ahead", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([
+      {
+        id: DRAFT.id,
+        displayName: DRAFT.displayName,
+        createdAt: DRAFT.createdAt,
+        language: "en",
+        publicSlug: null,
+        activeFreeDraft: true,
+        freeFirstPublishedAt: null,
+        freeDeadlines: { publishUntil: "2099-11-20T10:00:00Z", draftUntil: "2099-12-25T10:00:00Z" },
+      },
+      {
+        id: PUBLISHED.id,
+        displayName: PUBLISHED.displayName,
+        createdAt: PUBLISHED.createdAt,
+        language: "en",
+        publicSlug: PUBLISHED.publicSlug,
+        activeFreeDraft: false,
+        freeFirstPublishedAt: "2026-11-12T10:00:00Z",
+        freeDeadlines: null,
+      },
+    ]);
+
+    const html = await render("en");
+    expect(html).toContain("Tributes being prepared: 1 / 3");
+    expect(html).toContain("Your account&#x27;s free publication has already been used.");
+    expect(html).not.toContain("available until 20 November 2099 for one of your tributes");
   });
 });

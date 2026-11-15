@@ -2,7 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MediaPurpose, MediaStatus } from "@/config/media";
 import type { MediaRepository } from "@/lib/adapters/media-repository";
 import type { Media } from "@/types/media";
-import { MediaSecurityConflictError, MediaSecurityDeniedError } from "@/lib/adapters/media-security-repository";
+import {
+  MediaSecurityConflictError,
+  MediaSecurityDeniedError,
+  MediaStorageBudgetReachedError,
+} from "@/lib/adapters/media-security-repository";
 
 /**
  * SERVER ONLY. Reads and writes `media` with the service-role client
@@ -56,6 +60,7 @@ const MEDIA_COLUMNS =
   "id, memorial_id, owner_id, storage_path, media_type, purpose, status, mime_type, original_filename, size_bytes, width, height, created_at, updated_at";
 
 function throwMutationError(error: { code?: string }): never {
+  if (error.code === "HD507") throw new MediaStorageBudgetReachedError();
   if (error.code === "42501" || error.code === "23514") throw new MediaSecurityDeniedError();
   if (error.code === "40001") throw new MediaSecurityConflictError();
   throw error;

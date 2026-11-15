@@ -10,6 +10,7 @@ const ALL_CODES: MediaErrorCode[] = [
   "invalid_file",
   "upload_incomplete",
   "access_denied",
+  "storage_budget_reached",
   "storage_unavailable",
 ];
 
@@ -34,6 +35,7 @@ describe("mediaErrorTranslationKey — Mission 033 section 12, closed human voca
     expect(mediaErrorTranslationKey("file_too_large")).toBe("hero.photoErrorTooLarge");
     expect(mediaErrorTranslationKey("unsupported_format")).toBe("hero.photoErrorUnsupportedFormat");
     expect(mediaErrorTranslationKey("invalid_file")).toBe("hero.photoErrorInvalidFile");
+    expect(mediaErrorTranslationKey("storage_budget_reached")).toBe("hero.photoErrorStorageBudgetReached");
   });
 
   it("collapses upload_incomplete/access_denied/storage_unavailable into the one generic 'incident' key — never an oracle", () => {

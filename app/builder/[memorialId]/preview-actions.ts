@@ -25,6 +25,7 @@ import type {
   PublicationReadiness,
 } from "@/lib/memorial/publication-preview-types";
 import type { MemorialPreviewResult } from "@/components/builder/preview/BuilderPreviewHost";
+import { SupabaseOwnedMemorialListRepository } from "@/lib/adapters/supabase/owned-memorial-list-repository";
 
 /**
  * Étape 3 — the Builder's private Preview, re-read on the server each time
@@ -109,13 +110,30 @@ export async function loadMemorialPreviewAction(
     return { status: "unavailable" };
   }
 
-  return { status: "ready", assembled, publication: await describePublication(snapshot, preview, resolveMedia) };
+  let otherActiveFreeDrafts: number;
+  try {
+    const owned = await new SupabaseOwnedMemorialListRepository(supabase).listOwnedMemorials(access.ownerId);
+    otherActiveFreeDrafts = owned.filter(
+      (memorial) => memorial.id !== access.memorialId && memorial.activeFreeDraft,
+    ).length;
+  } catch {
+    // Do not offer a first free publication without the required account
+    // warning when the account-wide read could not be established.
+    return { status: "unavailable" };
+  }
+
+  return {
+    status: "ready",
+    assembled,
+    publication: await describePublication(snapshot, preview, resolveMedia, otherActiveFreeDrafts),
+  };
 }
 
 async function describePublication(
   snapshot: MemorialPublicationSnapshot,
   preview: Extract<PublicationPreviewComputation, { ok: true }>,
   resolveMedia: MediaResolver,
+  otherActiveFreeDrafts: number,
 ): Promise<PreviewPublication> {
   // The Preview only reaches this point once assembleMemorial assembled the
   // Hero — which requires its main photo, resolved for this owner — so a
@@ -156,6 +174,7 @@ async function describePublication(
     },
     premiumSections: preview.premiumSections,
     readiness,
+    otherActiveFreeDrafts,
   };
 }
 

@@ -24,6 +24,8 @@ export function mediaErrorTranslationKey(code: MediaErrorCode): TranslationKey {
       return "hero.photoErrorUnsupportedFormat";
     case "invalid_file":
       return "hero.photoErrorInvalidFile";
+    case "storage_budget_reached":
+      return "hero.photoErrorStorageBudgetReached";
     // `upload_incomplete`, `access_denied` and `storage_unavailable` are
     // all "an incident, not a judgement about the file" from the
     // family's point of view — mission brief section 12's "incident

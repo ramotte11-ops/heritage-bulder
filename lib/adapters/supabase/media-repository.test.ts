@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SupabaseMediaRepository } from "./media-repository";
+import { MediaStorageBudgetReachedError } from "@/lib/adapters/media-security-repository";
 
 /**
  * Mission 030 — the adapter behind the media engine.
@@ -123,6 +124,21 @@ const ROW = {
 };
 
 describe("createPending", () => {
+  it("maps HD507 to the closed free-storage-budget error", async () => {
+    const { repo } = repository({ data: null, error: { code: "HD507", message: "free storage budget reached" } });
+
+    await expect(
+      repo.createPending({
+        memorialId: "memorial-a",
+        ownerId: "owner-a",
+        mediaId: "media-1",
+        storagePath: "memorial-a/media-1/original.jpg",
+        purpose: "hero",
+        declaredMimeType: "image/jpeg",
+      }),
+    ).rejects.toBeInstanceOf(MediaStorageBudgetReachedError);
+  });
+
   it("uses the lifecycle-locked reservation RPC", async () => {
     const { repo, log } = repository({ data: { ...ROW, status: "pending" }, error: null });
 
@@ -184,6 +200,11 @@ describe("markReady", () => {
     expectedPurpose: "hero" as const, mimeType: "image/jpeg", sizeBytes: 2048,
     width: 1600, height: 1200,
   };
+
+  it("maps HD507 at finalization too", async () => {
+    const { repo } = repository({ data: null, error: { code: "HD507", message: "free storage budget reached" } });
+    await expect(repo.markReady(input)).rejects.toBeInstanceOf(MediaStorageBudgetReachedError);
+  });
 
   it("uses the lifecycle-locked finalization RPC", async () => {
     const { repo, log } = repository({ data: ROW, error: null });

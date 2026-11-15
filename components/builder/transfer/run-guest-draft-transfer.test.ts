@@ -9,6 +9,7 @@ import {
   transferableDraft,
 } from "@/lib/guest-draft/guest-transfer-test-fixtures";
 import { runGuestDraftTransfer, type GuestTransferRunDeps } from "./run-guest-draft-transfer";
+import { MediaActionError } from "@/lib/media/media-error-copy";
 
 const MEMORIAL_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -94,6 +95,22 @@ describe("QG 008 Lot 2 — runGuestDraftTransfer", () => {
   ])("when %s, it stops and KEEPS the local draft", async (_label, override, step) => {
     const { value } = deps(override as Partial<GuestTransferRunDeps>);
     await expect(runGuestDraftTransfer(value)).resolves.toEqual({ status: "failed", language: "fr", step });
+    expect(value.clearLocalDraft).not.toHaveBeenCalled();
+  });
+
+  it("preserves the HD507 reason and keeps the local draft", async () => {
+    const { value } = deps({
+      upload: vi.fn(async () => {
+        throw new MediaActionError("storage_budget_reached");
+      }),
+    });
+
+    await expect(runGuestDraftTransfer(value)).resolves.toEqual({
+      status: "failed",
+      language: "fr",
+      step: "photo",
+      reason: "storage_budget_reached",
+    });
     expect(value.clearLocalDraft).not.toHaveBeenCalled();
   });
 

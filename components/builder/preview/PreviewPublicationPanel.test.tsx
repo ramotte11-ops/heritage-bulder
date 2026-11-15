@@ -23,6 +23,7 @@ function publication(overrides: Partial<PreviewPublication> = {}): PreviewPublic
     gallery: { total: 2, limit: 6, selection: undefined, proposed: false, choices: [] },
     premiumSections: [],
     readiness: "publishable",
+    otherActiveFreeDrafts: 0,
     ...overrides,
   };
 }
@@ -62,6 +63,20 @@ describe("PreviewPublicationPanel — confirmation", () => {
     expect(dialog.textContent).toContain("tel que vous le voyez dans cet aperçu");
     expect(publish).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Confirmer la publication" })));
+  });
+
+  it("warns before a free publication when another free draft is being prepared", () => {
+    renderPanel({
+      publication: publication({ accessLevel: "avis", otherActiveFreeDrafts: 2 }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Publier" }));
+    expect(screen.getByText(/utilisez la publication gratuite de votre compte pour douze mois/)).toBeTruthy();
+  });
+
+  it("does not show the account warning without another free draft", () => {
+    renderPanel({ publication: publication({ accessLevel: "avis", otherActiveFreeDrafts: 0 }) });
+    fireEvent.click(screen.getByRole("button", { name: "Publier" }));
+    expect(document.querySelector("[data-free-publication-warning]")).toBeNull();
   });
 
   it("« Revenir à l'aperçu » and Escape close the confirmation without publishing", () => {

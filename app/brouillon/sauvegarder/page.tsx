@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import { DurableSaveForm } from "@/components/builder/transfer/DurableSaveForm";
+import { GuestDraftTransfer } from "@/components/builder/transfer/GuestDraftTransfer";
 import {
-  DURABLE_SAVE_RETURN_PATH,
   durableSaveLanguage,
 } from "@/components/builder/transfer/durable-save-language";
 import styles from "@/components/builder/transfer/DurableSave.module.css";
@@ -13,8 +12,8 @@ import { getAuthenticatedUser } from "@/lib/supabase/session";
  *
  *   /brouillon/sauvegarder?langue=fr
  *
- * A family already signed in goes straight to the transfer (whose server
- * side still refuses an unconfirmed address).
+ * QG 017: a family already signed in stays on this page and sees the
+ * connected address plus the read-only save preview before any new transfer.
  */
 export default async function DurableSavePage({
   searchParams,
@@ -22,14 +21,20 @@ export default async function DurableSavePage({
   searchParams: Promise<{ langue?: string | string[] }>;
 }) {
   const language = durableSaveLanguage((await searchParams).langue);
-  if (await getAuthenticatedUser()) redirect(DURABLE_SAVE_RETURN_PATH);
+  const user = await getAuthenticatedUser();
 
   return (
     <main className={styles.main} lang={language}>
       <h1 className={styles.title}>{translate(language, "durableSave.title")}</h1>
-      <p className={styles.text}>{translate(language, "durableSave.intro")}</p>
-      <p className={styles.text}><strong>{translate(language, "durableSave.sameBrowser")}</strong></p>
-      <DurableSaveForm language={language} />
+      {user ? (
+        <GuestDraftTransfer accountEmail={user.email ?? ""} fallbackLanguage={language} />
+      ) : (
+        <>
+          <p className={styles.text}>{translate(language, "durableSave.intro")}</p>
+          <p className={styles.text}><strong>{translate(language, "durableSave.sameBrowser")}</strong></p>
+          <DurableSaveForm language={language} />
+        </>
+      )}
       <div className={styles.actions}>
         <a className={styles.secondary} href="/creer">{translate(language, "durableSave.backToBuilder")}</a>
       </div>

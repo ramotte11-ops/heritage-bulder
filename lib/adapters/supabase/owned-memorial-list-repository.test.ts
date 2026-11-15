@@ -48,7 +48,7 @@ describe("SupabaseOwnedMemorialListRepository.listOwnedMemorials", () => {
     await new SupabaseOwnedMemorialListRepository(client).listOwnedMemorials("owner-1");
 
     expect(memorialsQuery.select).toHaveBeenCalledWith(
-      "id, created_at, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until",
+      "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until",
     );
     expect(memorialsQuery.eq).toHaveBeenCalledWith("owner_id", "owner-1");
     expect(memorialsQuery.order).toHaveBeenCalledWith("created_at", { ascending: true });
@@ -65,8 +65,14 @@ describe("SupabaseOwnedMemorialListRepository.listOwnedMemorials", () => {
     expect(draftsQuery.select).toHaveBeenCalledWith("memorial_id, display_name:content->hero->>displayName");
     expect(draftsQuery.in).toHaveBeenCalledWith("memorial_id", [M1.id, M2.id]);
     expect(result).toEqual([
-      { id: M1.id, displayName: "Jeanne Martin", createdAt: M1.created_at, publicSlug: null, freeDeadlines: null },
-      { id: M2.id, displayName: null, createdAt: M2.created_at, publicSlug: null, freeDeadlines: null },
+      {
+        id: M1.id, displayName: "Jeanne Martin", createdAt: M1.created_at, language: null,
+        publicSlug: null, activeFreeDraft: true, freeFirstPublishedAt: null, freeDeadlines: null,
+      },
+      {
+        id: M2.id, displayName: null, createdAt: M2.created_at, language: null,
+        publicSlug: null, activeFreeDraft: true, freeFirstPublishedAt: null, freeDeadlines: null,
+      },
     ]);
   });
 
@@ -90,7 +96,10 @@ describe("SupabaseOwnedMemorialListRepository.listOwnedMemorials", () => {
 
     const result = await new SupabaseOwnedMemorialListRepository(client).listOwnedMemorials("owner-1");
 
-    expect(result).toEqual([{ id: M1.id, displayName: null, createdAt: M1.created_at, publicSlug: null, freeDeadlines: null }]);
+    expect(result).toEqual([{
+      id: M1.id, displayName: null, createdAt: M1.created_at, language: null,
+      publicSlug: null, activeFreeDraft: true, freeFirstPublishedAt: null, freeDeadlines: null,
+    }]);
     errorSpy.mockRestore();
   });
 
@@ -209,7 +218,10 @@ describe("SupabaseOwnedMemorialListRepository — publicSlug (« Voir mon hommag
       error: null,
     });
     const [summary] = await new SupabaseOwnedMemorialListRepository(client, () => NOW).listOwnedMemorials("owner-1");
-    expect(Object.keys(summary).sort()).toEqual(["createdAt", "displayName", "freeDeadlines", "id", "publicSlug"]);
+    expect(Object.keys(summary).sort()).toEqual([
+      "activeFreeDraft", "createdAt", "displayName", "freeDeadlines",
+      "freeFirstPublishedAt", "id", "language", "publicSlug",
+    ]);
     expect(summary.freeDeadlines).toBeNull();
   });
 });
@@ -227,10 +239,38 @@ describe("SupabaseOwnedMemorialListRepository — QG 004-B free deadlines remind
       .toEqual({ publishUntil: "2026-11-20T10:00:00Z", draftUntil: "2026-12-25T10:00:00Z" });
   });
 
-  it("drops a passed deadline, and everything once published or for the complete offer", async () => {
+  it("preserves a passed deadline, and drops everything once published or for the complete offer", async () => {
     expect(await deadlinesOf({ access_level: "avis", first_published_at: null, free_publish_until: "2026-11-10T10:00:00Z", free_draft_until: "2026-12-25T10:00:00Z" }))
-      .toEqual({ publishUntil: null, draftUntil: "2026-12-25T10:00:00Z" });
+      .toEqual({ publishUntil: "2026-11-10T10:00:00Z", draftUntil: "2026-12-25T10:00:00Z" });
     expect(await deadlinesOf({ access_level: "avis", first_published_at: "2026-11-12T10:00:00Z", free_publish_until: "2026-11-20T10:00:00Z" })).toBeNull();
     expect(await deadlinesOf({ access_level: "complet", first_published_at: null, free_publish_until: "2026-11-20T10:00:00Z" })).toBeNull();
+  });
+});
+
+describe("SupabaseOwnedMemorialListRepository — QG 017 active free drafts", () => {
+  const NOW = new Date("2026-11-15T10:00:00Z");
+
+  async function summary(columns: Record<string, unknown>) {
+    const { client } = fakeClient({ data: [{ ...M1, ...columns }], error: null });
+    return (await new SupabaseOwnedMemorialListRepository(client, () => NOW).listOwnedMemorials("owner-1"))[0];
+  }
+
+  it("counts an unpublished active free draft and keeps its stored language", async () => {
+    await expect(summary({
+      language: "es",
+      access_level: "avis",
+      status: "draft",
+      first_published_at: null,
+      free_draft_until: "2026-12-25T10:00:00Z",
+    })).resolves.toMatchObject({ language: "es", activeFreeDraft: true, freeFirstPublishedAt: null });
+  });
+
+  it.each([
+    [{ access_level: "complet", status: "draft", first_published_at: null, free_draft_until: null }],
+    [{ access_level: "avis", status: "published", first_published_at: "2026-11-12T10:00:00Z", free_draft_until: "2026-12-25T10:00:00Z" }],
+    [{ access_level: "avis", status: "archived", first_published_at: null, free_draft_until: "2026-12-25T10:00:00Z" }],
+    [{ access_level: "avis", status: "draft", first_published_at: null, free_draft_until: "2026-11-10T10:00:00Z" }],
+  ])("does not count a complete, published, archived or expired draft (%o)", async (columns) => {
+    expect((await summary(columns)).activeFreeDraft).toBe(false);
   });
 });
