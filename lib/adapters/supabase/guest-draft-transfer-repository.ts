@@ -4,6 +4,7 @@ import type { SkinVariant } from "@/config/skins";
 import type {
   BeginGuestTransferRow,
   GuestDraftTransferRepository,
+  GuestSavePreviewRow,
   GuestTransferState,
   RecordGuestTransferMediaOutcome,
 } from "@/lib/guest-draft/guest-draft-transfer";
@@ -53,8 +54,49 @@ interface FindRow {
   base_draft_revision: number | null;
 }
 
+interface PreviewRow {
+  outcome: string;
+  active_free_drafts: number | null;
+  max_free_drafts: number | null;
+  memorial_id: string | null;
+  free_publish_until: string | null;
+  free_draft_until: string | null;
+}
+
+const optionalText = (value: unknown): value is string | null => value === null || typeof value === "string";
+
 export class SupabaseGuestDraftTransferRepository implements GuestDraftTransferRepository {
   constructor(private readonly client: SupabaseClient) {}
+
+  /** QG 017 — preview_free_draft_save_v1 (read-only, service_role). Fails CLOSED. */
+  async preview(input: { ownerId: string; transferKey: string }): Promise<GuestSavePreviewRow> {
+    const { data, error } = await this.client.rpc("preview_free_draft_save_v1", {
+      p_owner_id: input.ownerId,
+      p_transfer_key: input.transferKey,
+    });
+    if (error) throw error;
+    const row = firstRow<PreviewRow>(data);
+    if (
+      row === undefined ||
+      (row.outcome !== "resume" && row.outcome !== "create" && row.outcome !== "limit_reached") ||
+      typeof row.active_free_drafts !== "number" ||
+      typeof row.max_free_drafts !== "number" ||
+      !optionalText(row.memorial_id) ||
+      !optionalText(row.free_publish_until) ||
+      !optionalText(row.free_draft_until) ||
+      (row.outcome !== "limit_reached" && row.free_draft_until === null)
+    ) {
+      return { outcome: "refused" };
+    }
+    return {
+      outcome: row.outcome,
+      activeFreeDrafts: row.active_free_drafts,
+      maxFreeDrafts: row.max_free_drafts,
+      memorialId: row.memorial_id,
+      freePublishUntil: row.free_publish_until,
+      freeDraftUntil: row.free_draft_until,
+    };
+  }
 
   async begin(input: {
     ownerId: string;

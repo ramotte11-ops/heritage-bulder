@@ -8,10 +8,12 @@ import { SupabaseOwnerRepository } from "@/lib/adapters/supabase/owner-repositor
 import type { AuthenticatedIdentity } from "@/lib/entitlement/resolve-owner";
 import {
   commitGuestDraftTransfer,
+  previewGuestDraftSave,
   recordGuestTransferPhoto,
   startGuestDraftTransfer,
   type CommitGuestTransferResult,
   type GuestTransferDeps,
+  type PreviewGuestSaveResult,
   type RecordGuestTransferPhotoResult,
   type SaveTransferredContent,
   type StartGuestTransferResult,
@@ -91,6 +93,11 @@ const saveTransferredContent: SaveTransferredContent = async ({ memorialId, cont
     throw error;
   }
 };
+
+/** QG 017 — read-only: the deadlines a save would give, before « Continuer ». */
+export async function previewGuestDraftSaveAction(rawDraft: unknown): Promise<PreviewGuestSaveResult> {
+  return previewGuestDraftSave(deps(), await sessionIdentity(), rawDraft);
+}
 
 export async function beginGuestDraftTransferAction(rawDraft: unknown): Promise<StartGuestTransferResult> {
   return startGuestDraftTransfer(deps(), await sessionIdentity(), rawDraft);
