@@ -4831,6 +4831,135 @@ for fn in "preview_free_draft_save_v1(uuid,text)|false|false|true" "owner_free_s
     "$($DB -t -A -c "select p.prosecdef || '|' || array_to_string(p.proconfig, ',') from pg_proc p where p.oid = 'public.$sig'::regprocedure;")"
 done
 
+echo ""
+echo "== QG 017 A2: the account's free publication status, from the rules themselves =="
+a2_status() {
+  # $1 owner -> free_status|window_status|window_until|quota_used|publications|waiver|renews_at|renewal|active|max
+  svc "select free_status || '|' || coalesce(window_status, '-') || '|' || coalesce(window_until::text, '-') || '|' || coalesce(quota_used::text, '-') || '|' || coalesce(publications_in_period::text, '-') || '|' || coalesce(waiver_active::text, '-') || '|' || coalesce(renews_at::text, '-') || '|' || renewal || '|' || coalesce(active_free_drafts::text, '-') || '|' || max_free_drafts from owner_free_publication_status_v1('$1');"
+}
+a2_field() { a2_status "$1" | cut -d'|' -f"$2"; }
+a2_rule_at() {
+  # $1 owner, $2 instant, $3 optional "before" -> the rule's outcome at that instant (or 1 µs before)
+  local at="'$2'::timestamptz"
+  [ "${3:-}" = before ] && at="$at - interval '1 microsecond'"
+  $DB -t -A -c "select outcome from free_window_status_v1('$1', $at);"
+}
+a2_publish() {
+  # $1 memorial, $2 owner, $3 slug -> status after a free publication
+  q8_ready "$1" "$3" "$Q8_HERO"
+  svc "$(q8_v2_sql "$1" "$2" "$3" avis "$Q8_HERO")" >/dev/null
+  q8_status "$1"
+}
+
+# --- Exact end of a sliding period (same inequality as the rules) ----------
+for row in \
+  "2026-11-15 09:00:00+00|12 months|2027-11-15 09:00:00+00" \
+  "2026-11-15 09:00:00+00|240 hours|2026-11-25 09:00:00+00" \
+  "2028-02-29 12:00:00+00|12 months|2029-03-01 00:00:00+00" \
+  "2027-01-31 12:00:00+00|1 mon|2027-03-01 00:00:00+00"; do
+  IFS='|' read -r a2_start a2_period a2_expected <<<"$row"
+  check "QG 017 A2: free_period_end_v1($a2_start, $a2_period) is the exact first instant the event stops counting" "$a2_expected|true|false" \
+    "$($DB -t -A -c "set timezone = 'UTC'; select free_period_end_v1('$a2_start', '$a2_period')::text || '|' || (free_period_end_v1('$a2_start', '$a2_period') - interval '$a2_period' >= '$a2_start'::timestamptz) || '|' || ((free_period_end_v1('$a2_start', '$a2_period') - interval '1 microsecond') - interval '$a2_period' >= '$a2_start'::timestamptz);" | tail -1)"
+done
+
+# --- 1. New account, nothing saved -----------------------------------------
+A2_NEW=$(q8_owner a2-new)
+check "QG 017 A2 (1): a new account — a free right that opens at the next save, 0 of 3 drafts" \
+  "opens_on_next_save|open_new|-|false|0|false|-|not_applicable|0|3" "$(a2_status "$A2_NEW")"
+
+# --- 2. Three drafts inside the window ---------------------------------------
+A2_WIN=$(q8_owner a2-window)
+A2_W1=$(l2_begin "$A2_WIN" "$(g7_key)" light null | cut -d'|' -f2)
+l2_begin "$A2_WIN" "$(g7_key)" light null >/dev/null
+l2_begin "$A2_WIN" "$(g7_key)" light null >/dev/null
+A2_W_UNTIL=$($DB -t -A -c "select free_publish_until from memorials where id='$A2_W1';")
+check "QG 017 A2 (2): three drafts in the window — window open until the drafts' own date, 3 of 3" \
+  "window_open|inherit|$A2_W_UNTIL|false|0|false|-|not_applicable|3|3" "$(a2_status "$A2_WIN")"
+check "QG 017 A2 (2): ... the same date on every draft" "1" \
+  "$($DB -t -A -c "select count(distinct free_publish_until) from memorials where owner_id='$A2_WIN';")"
+
+# --- 3. Window elapsed, nothing published ------------------------------------
+A2_EXP=$(q8_owner a2-expired)
+l2_begin "$A2_EXP" "$(g7_key)" light null >/dev/null
+m1a_age "$A2_EXP" '11 days'
+A2_EXP_RENEW=$($DB -t -A -c "select free_period_end_v1(max(created_at), (select free_window_cycle from memorial_access_settings where id)) from memorial_access_events where owner_id='$A2_EXP' and event='free.window_opened';")
+check "QG 017 A2 (3): window elapsed, nothing published — expired, renewal at the end of the window cycle" \
+  "expired|unavailable|-|false|0|false|$A2_EXP_RENEW|scheduled|1|3" "$(a2_status "$A2_EXP")"
+check "QG 017 A2 (3): renews_at is exact — the rule still refuses 1 µs before, grants a new window at it" "unavailable|open_new" \
+  "$(a2_rule_at "$A2_EXP" "$(a2_field "$A2_EXP" 7)" before)|$(a2_rule_at "$A2_EXP" "$(a2_field "$A2_EXP" 7)")"
+
+# --- 4. A free publication made; other drafts keep a future date --------------
+A2_USED=$(q8_owner a2-used)
+A2_U1=$(l2_begin "$A2_USED" "$(g7_key)" light null | cut -d'|' -f2)
+A2_U2=$(l2_begin "$A2_USED" "$(g7_key)" light null | cut -d'|' -f2)
+check "QG 017 A2 (4): the first free publication succeeds" "published" "$(a2_publish "$A2_U1" "$A2_USED" a2-used-1)"
+A2_USED_RENEW=$($DB -t -A -c "select free_period_end_v1(max(created_at), (select free_publication_quota_window from memorial_access_settings where id)) from memorial_access_events where owner_id='$A2_USED' and event='free.first_published';")
+check "QG 017 A2 (4): used — although the other draft still carries a future free date" \
+  "used|unavailable|-|true|1|false|$A2_USED_RENEW|scheduled|1|3|t" \
+  "$(a2_status "$A2_USED")|$($DB -t -A -c "select free_publish_until > now() from memorials where id='$A2_U2';")"
+svc_expect_error "QG 017 A2 (4): ... and the rule indeed refuses that draft's free publication" \
+  "$(q8_ready "$A2_U2" a2-used-2 "$Q8_HERO"; q8_v2_sql "$A2_U2" "$A2_USED" a2-used-2 avis "$Q8_HERO")" "free publication quota reached"
+
+# --- 5. Published free, then upgraded to the complete offer ------------------
+check "QG 017 A2 (5): the free publication is upgraded to complete" "upgraded|complet" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$A2_U1','$A2_USED','direct_payment','pay-a2-upgrade');")|$($DB -t -A -c "select access_level from memorials where id='$A2_U1';")"
+check "QG 017 A2 (5): ... the right stays USED, same renewal" "used|true|1|$A2_USED_RENEW|scheduled" \
+  "$(a2_status "$A2_USED" | cut -d'|' -f1,4,5,7,8)"
+
+# --- 6. Published free, then archived -----------------------------------------
+A2_ARC=$(q8_owner a2-archived)
+A2_A1=$(l2_begin "$A2_ARC" "$(g7_key)" light null | cut -d'|' -f2)
+a2_publish "$A2_A1" "$A2_ARC" a2-archived >/dev/null
+$DB -c "update memorials set status = 'archived' where id = '$A2_A1';" >/dev/null
+check "QG 017 A2 (6): published free then archived — still used" "archived|used|true|1|scheduled" \
+  "$(q8_status "$A2_A1")|$(a2_status "$A2_ARC" | cut -d'|' -f1,4,5,8)"
+
+# --- 7. Twelve months later -----------------------------------------------------
+check "QG 017 A2 (7): renews_at is exact for a used right — refused 1 µs before, open at it" "unavailable|open_new" \
+  "$(a2_rule_at "$A2_USED" "$A2_USED_RENEW" before)|$(a2_rule_at "$A2_USED" "$A2_USED_RENEW")"
+m1a_age "$A2_USED" '12 months 1 day'
+check "QG 017 A2 (7): 12 months and a day later — a new right, opening at the next save" \
+  "opens_on_next_save|open_new|false|0|-|not_applicable" "$(a2_status "$A2_USED" | cut -d'|' -f1,2,4,5,7,8)"
+
+# --- 8. Administrative waiver ---------------------------------------------------
+A2_WVR=$(q8_owner a2-waiver)
+A2_V1=$(l2_begin "$A2_WVR" "$(g7_key)" light null | cut -d'|' -f2)
+a2_publish "$A2_V1" "$A2_WVR" a2-waiver-1 >/dev/null
+check "QG 017 A2 (8): before the waiver — used" "used|false" "$(a2_status "$A2_WVR" | cut -d'|' -f1,6)"
+check "QG 017 A2 (8): an administrative waiver is granted" "granted" "$(q8_grant "$A2_WVR" a2-waiver)"
+check "QG 017 A2 (8): waiver, no window yet — a right that opens at the next save" \
+  "opens_on_next_save|waiver_new|true|true|-|not_applicable" "$(a2_status "$A2_WVR" | cut -d'|' -f1,2,4,6,7,8)"
+A2_V2=$(l2_begin "$A2_WVR" "$(g7_key)" light null | cut -d'|' -f2)
+check "QG 017 A2 (8): after a new save the waiver window is open, until that draft's own date" \
+  "window_open|waiver_inherit|$($DB -t -A -c "select free_publish_until from memorials where id='$A2_V2';")|true" \
+  "$(a2_status "$A2_WVR" | cut -d'|' -f1,2,3,6)"
+check "QG 017 A2 (8): the waived free publication succeeds" "published" "$(a2_publish "$A2_V2" "$A2_WVR" a2-waiver-2)"
+check "QG 017 A2 (8): once the waiver is consumed — used again, no active waiver" "used|2|false|scheduled" \
+  "$(a2_status "$A2_WVR" | cut -d'|' -f1,5,6,8)"
+
+# --- 9. Unknown owner, invalid request -----------------------------------------
+check "QG 017 A2 (9): an unknown account gets an explicit refusal, no date" "refused|-|-|-|-|-|-|undetermined|-|3" \
+  "$(a2_status "$(g7_key)")"
+svc_expect_error "QG 017 A2 (9): a request without an account is refused" \
+  "select * from owner_free_publication_status_v1(null);" "invalid free publication status request"
+
+# --- 10. Reading writes nothing ------------------------------------------------
+A2_STATE="select (select count(*) from memorial_access_events) || '|' || (select md5(string_agg(id::text || coalesce(free_anchor_at::text,'') || coalesce(free_publish_until::text,'') || coalesce(free_draft_until::text,'') || coalesce(first_published_at::text,'') || access_level || status, ',' order by id)) from memorials) || '|' || (select md5(coalesce(string_agg(id::text || coalesce(window_opened_at::text,'') || coalesce(consumed_at::text,''), ',' order by id), '')) from free_publication_waivers);"
+A2_BEFORE=$($DB -t -A -c "$A2_STATE")
+for o in "$A2_NEW" "$A2_WIN" "$A2_EXP" "$A2_USED" "$A2_ARC" "$A2_WVR"; do for n in 1 2 3; do a2_status "$o" >/dev/null; done; done
+check "QG 017 A2 (10): reading the status 18 times writes no event, no deadline, no waiver" "$A2_BEFORE" "$($DB -t -A -c "$A2_STATE")"
+check "QG 017 A2 (10): both functions are STABLE (PostgreSQL forbids writes in them)" "s|s" \
+  "$($DB -t -A -c "select provolatile from pg_proc where oid = 'public.owner_free_publication_status_v1(uuid)'::regprocedure;")|$($DB -t -A -c "select provolatile from pg_proc where oid = 'public.free_period_end_v1(timestamptz,interval)'::regprocedure;")"
+
+# --- Privileges -------------------------------------------------------------------
+for fn in "owner_free_publication_status_v1(uuid)|false|false|true" "free_period_end_v1(timestamptz,interval)|false|false|false"; do
+  sig=${fn%%|*}; expect=${fn#*|}
+  check "QG 017 A2: $sig executable by (anon|authenticated|service_role)" "$expect" \
+    "$($DB -t -A -c "select has_function_privilege('anon', 'public.$sig', 'EXECUTE') || '|' || has_function_privilege('authenticated', 'public.$sig', 'EXECUTE') || '|' || has_function_privilege('service_role', 'public.$sig', 'EXECUTE');")"
+  check "QG 017 A2: $sig is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" \
+    "$($DB -t -A -c "select p.prosecdef || '|' || array_to_string(p.proconfig, ',') from pg_proc p where p.oid = 'public.$sig'::regprocedure;")"
+done
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
