@@ -9,7 +9,6 @@
 |---|---|
 | `/owner` | « Mon espace famille » : cartes d'hommage (photo du Hero, nom, années, statut réel, actions), « Créer un nouvel hommage », sélecteur d'hommage, « Offrandes reçues » (compteurs réels), « Carnet des attentions » (deux derniers gestes), « Gérer les contributions » (annoncée, non simulée). |
 | `/owner/hommages/[memorialId]/attentions` | Carnet privé d'un hommage : totaux, puis chaque geste daté, 30 par page. |
-| `/pilote/espace-famille` | Recette visuelle, données illustratives. `page.dev.tsx` : absent de tout build de production. |
 
 ## Données et sécurité (lectures seules, existantes)
 
@@ -50,6 +49,9 @@ la base refuse de toute façon un 4ᵉ brouillon à la sauvegarde.
 
 - Lot 2 : migration (signature facultative) — GO QG en chef.
 - Lot 3 : dépôt public, droits et modération des contributions — GO QG en chef.
-- Recette sur données réelles : à faire sur un aperçu de déploiement (cette session n'a pas accès à la base).
+- Recette sur données réelles : par la PO sur `hommages.netlify.app`, après intégration et publication autorisées.
 
-Captures : `docs/validation/espace-famille-lot1/`.
+Captures : `docs/validation/espace-famille-lot1/`. Documentaires seulement : elles ont été produites
+pendant le développement avec des données illustratives (noms, compteurs, portraits dessinés) depuis une page
+de démonstration désormais retirée (directive PO « un seul produit de référence »). Elles ne sont plus
+régénérables ainsi ; la recette se fait sur le site réel, après intégration autorisée.
