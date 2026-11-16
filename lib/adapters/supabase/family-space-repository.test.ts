@@ -115,25 +115,26 @@ describe("SupabaseFamilySpaceRepository — symbolic offerings", () => {
     await expect(new SupabaseFamilySpaceRepository(client).countOfferings(M1)).rejects.toThrow("denied");
   });
 
-  it("lists the gestures newest first, one page at a time, reading nothing but id, kind and date", async () => {
+  it("lists the gestures newest first, one page at a time, reading nothing but id, kind, date and the Lot 2 signature", async () => {
     const rows = [
-      { id: "o3", kind: "lys", created_at: "2026-11-15T09:00:00.000Z" },
-      { id: "o2", kind: "bougie", created_at: "2026-11-12T09:00:00.000Z" },
-      { id: "o1", kind: "coeur", created_at: "2026-11-10T09:00:00.000Z" },
+      { id: "o3", kind: "lys", created_at: "2026-11-15T09:00:00.000Z", signature: "Marie" },
+      { id: "o2", kind: "bougie", created_at: "2026-11-12T09:00:00.000Z", signature: null },
+      { id: "o1", kind: "coeur", created_at: "2026-11-10T09:00:00.000Z", signature: null },
     ];
     const list = query({ data: rows, error: null });
     const { client } = clientOf({ symbolic_offerings: [list] });
 
     const page = await new SupabaseFamilySpaceRepository(client).listOfferings(M1, { offset: 4, limit: 2 });
 
-    expect(list.calls).toContainEqual(["select", ["id, kind, created_at"]]);
+    // Never the idempotency key (Lot 2: not even readable by the family any more).
+    expect(list.calls).toContainEqual(["select", ["id, kind, created_at, signature"]]);
     expect(list.calls).toContainEqual(["eq", ["memorial_id", M1]]);
     expect(list.calls).toContainEqual(["order", ["created_at", { ascending: false }]]);
     expect(list.calls).toContainEqual(["range", [4, 6]]);
     expect(page).toEqual({
       offerings: [
-        { id: "o3", kind: "lys", createdAt: "2026-11-15T09:00:00.000Z" },
-        { id: "o2", kind: "bougie", createdAt: "2026-11-12T09:00:00.000Z" },
+        { id: "o3", kind: "lys", createdAt: "2026-11-15T09:00:00.000Z", signature: "Marie" },
+        { id: "o2", kind: "bougie", createdAt: "2026-11-12T09:00:00.000Z", signature: null },
       ],
       hasMore: true,
     });
@@ -144,8 +145,25 @@ describe("SupabaseFamilySpaceRepository — symbolic offerings", () => {
       symbolic_offerings: [query({ data: [{ id: "o1", kind: "rose", created_at: "x" }, { id: "o2", kind: "coeur", created_at: "y" }], error: null })],
     });
     expect(await new SupabaseFamilySpaceRepository(client).listOfferings(M1, { offset: 0, limit: 30 })).toEqual({
-      offerings: [{ id: "o2", kind: "coeur", createdAt: "y" }],
+      offerings: [{ id: "o2", kind: "coeur", createdAt: "y", signature: null }],
       hasMore: false,
     });
+  });
+
+  it("Lot 2: a missing, blank or non-text signature is an anonymous gesture", async () => {
+    const { client } = clientOf({
+      symbolic_offerings: [
+        query({
+          data: [
+            { id: "o1", kind: "lys", created_at: "x", signature: "   " },
+            { id: "o2", kind: "coeur", created_at: "y", signature: 42 },
+            { id: "o3", kind: "bougie", created_at: "z" },
+          ],
+          error: null,
+        }),
+      ],
+    });
+    const page = await new SupabaseFamilySpaceRepository(client).listOfferings(M1, { offset: 0, limit: 30 });
+    expect(page.offerings.map((o) => o.signature)).toEqual([null, null, null]);
   });
 });

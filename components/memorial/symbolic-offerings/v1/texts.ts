@@ -37,6 +37,10 @@ export interface OfferingsV1Texts {
   retry: string;
   /** Mention de la Preview du Builder (réponse simulée). */
   previewNotice: string;
+  /** Lot 2 — signature facultative, proposée après le geste (V2 validée). */
+  signInvite: string;
+  signPlaceholder: string;
+  signFailure: string;
 }
 
 const SIGNATURE = { heritage: "HERITAGE", subtitle: "HOMMAGE INTEMPOREL" } as const;
@@ -75,6 +79,9 @@ export const OFFERINGS_V1_TEXTS: Readonly<Record<Language, OfferingsV1Texts>> = 
     failure: "Votre geste n’a pas pu être enregistré.",
     retry: "Réessayer",
     previewNotice: "Aperçu — essai libre des gestes. La confirmation est simulée : aucun geste n’est enregistré.",
+    signInvite: "Souhaitez-vous signer votre geste ?",
+    signPlaceholder: "Prénom ou surnom (facultatif)",
+    signFailure: "Votre signature n’a pas pu être ajoutée.",
   },
   en: {
     ...SIGNATURE,
@@ -111,6 +118,9 @@ export const OFFERINGS_V1_TEXTS: Readonly<Record<Language, OfferingsV1Texts>> = 
     failure: "Your gesture could not be saved.",
     retry: "Try again",
     previewNotice: "Preview — try the gestures freely. The confirmation is simulated: no gesture is saved.",
+    signInvite: "Would you like to sign your gesture?",
+    signPlaceholder: "Name or nickname (optional)",
+    signFailure: "Your signature could not be added.",
   },
   es: {
     ...SIGNATURE,
@@ -145,5 +155,8 @@ export const OFFERINGS_V1_TEXTS: Readonly<Record<Language, OfferingsV1Texts>> = 
     failure: "Su gesto no se pudo guardar.",
     retry: "Reintentar",
     previewNotice: "Vista previa — pruebe libremente los gestos. La confirmación es simulada: no se guarda ningún gesto.",
+    signInvite: "¿Desea firmar su gesto?",
+    signPlaceholder: "Nombre o apodo (opcional)",
+    signFailure: "No se pudo añadir su firma.",
   },
 };

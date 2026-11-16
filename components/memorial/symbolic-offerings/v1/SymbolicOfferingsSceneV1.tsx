@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import {
@@ -85,6 +85,12 @@ export interface SymbolicOfferingsV1Props {
   /** « Poursuivre la visite » : retour aux cartes, action de l'hôte, ou
    * rien (bouton inerte, contrôle statique). */
   continueAction?: "returnToCards" | ((offering: OfferingKind) => void) | null;
+  /** Lot 2 — signature facultative du geste DÉJÀ enregistré, envoyée par
+   * « Poursuivre la visite » (ou Entrée) quand le champ n'est pas vide ;
+   * `true` = rattachée. Sans valeur (Preview du Builder, contrôle statique) :
+   * le champ se remplit librement, rien n'est envoyé. Un échec n'annule
+   * jamais le geste : la scène l'indique et un second « Poursuivre » continue. */
+  sign?: (offering: OfferingKind, signature: string) => Promise<boolean>;
   /** Force la réduction des animations (sinon : préférence du système). */
   reducedMotion?: boolean;
   /** Facteur de durée (pilote : 4 = ralenti à 25 %). */
@@ -110,6 +116,12 @@ function useSystemReducedMotion(): boolean {
 
 type AnimRequest = { type: "enter"; offering: OfferingKind } | { type: "status" } | { type: "return" };
 
+/** Lot 2 — état de la signature du geste affiché. */
+export type SignatureStatus = "idle" | "sending" | "signed" | "failed";
+
+/** Longueur maximale d'une signature (décision PO), en caractères. */
+export const SIGNATURE_MAX_LENGTH = 40;
+
 export function SymbolicOfferingsV1({
   skinVariant,
   language = "fr",
@@ -117,6 +129,7 @@ export function SymbolicOfferingsV1({
   initialOffering = null,
   transmit,
   continueAction = "returnToCards",
+  sign,
   reducedMotion,
   timeScale = 1,
   onStateChange,
@@ -131,6 +144,8 @@ export function SymbolicOfferingsV1({
     initialOffering !== null ? { phase: "scene", offering: initialOffering, status: "confirmed" } : { phase: "cards" },
   );
   const [announcement, setAnnouncement] = useState("");
+  const [signature, setSignature] = useState("");
+  const [signStatus, setSignStatus] = useState<SignatureStatus>("idle");
   const [warm, setWarm] = useState<ReadonlySet<OfferingKind>>(() => new Set());
   const warmUp = useCallback((offering: OfferingKind) => setWarm((w) => (w.has(offering) ? w : new Set([...w, offering]))), []);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -222,6 +237,8 @@ export function SymbolicOfferingsV1({
       if (!reduced) animRequest.current = { type: "enter", offering };
       focusRequest.current = "status";
       setAnnouncement("");
+      setSignature("");
+      setSignStatus("idle");
       setState({ phase: "scene", offering, status: "pending" });
       void settle(run, offering, reduced ? Promise.resolve() : wait(MOTION_END[offering] * timeScale));
     },
@@ -237,19 +254,46 @@ export function SymbolicOfferingsV1({
     void settle(run, state.offering, Promise.resolve());
   }, [state, settle]);
 
-  const onContinue = useCallback(() => {
+  const onContinue = useCallback(async () => {
     if (state.phase !== "scene" || state.status !== "confirmed" || continueAction === null) return;
+    if (signStatus === "sending") return;
+    const offering = state.offering;
+
+    // Lot 2 — signature facultative : une seule tentative, après le geste
+    // déjà enregistré. Champ vide, aperçu (pas de `sign`), déjà signée ou
+    // déjà en échec : on poursuit directement.
+    const value = signature.trim();
+    if (value !== "" && sign !== undefined && signStatus === "idle") {
+      const signRun = runRef.current;
+      setSignStatus("sending");
+      let signed = false;
+      try {
+        signed = (await sign(offering, value)) === true;
+      } catch {
+        signed = false;
+      }
+      if (signRun !== runRef.current) return;
+      if (!signed) {
+        setSignStatus("failed");
+        setAnnouncement(text.signFailure);
+        focusRequest.current = "continue";
+        return;
+      }
+      setSignStatus("signed");
+    }
+
     if (typeof continueAction === "function") {
-      continueAction(state.offering);
+      continueAction(offering);
       return;
     }
     clearPending();
     const run = ++runRef.current;
-    const offering = state.offering;
     setAnnouncement("");
     const done = () => {
       if (run !== runRef.current) return;
       focusRequest.current = `card-${offering}`;
+      setSignature("");
+      setSignStatus("idle");
       setState({ phase: "cards" });
     };
     if (reduced) {
@@ -259,7 +303,7 @@ export function SymbolicOfferingsV1({
     animRequest.current = { type: "return" };
     setState({ phase: "returning", offering });
     void wait(stepsEnd(returnSteps()) * timeScale).then(done);
-  }, [state, continueAction, clearPending, reduced, wait, timeScale]);
+  }, [state, continueAction, clearPending, reduced, wait, timeScale, signStatus, signature, sign, text]);
 
   return (
     <SkinScope skin="intemporel" skinVariant={skinVariant}>
@@ -279,6 +323,11 @@ export function SymbolicOfferingsV1({
             "--ink-script": ink.script,
             "--button-line": ink.buttonLine,
             "--button-label": ink.buttonLabel,
+            "--field-fill": ink.fieldFill,
+            "--field-line": ink.fieldLine,
+            "--field-hint": ink.fieldHint,
+            "--field-focus-fill": ink.fieldFocusFill,
+            "--field-focus-line": ink.fieldFocusLine,
             "--veil": VEIL[skinVariant].color,
           } as CSSProperties
         }
@@ -294,7 +343,10 @@ export function SymbolicOfferingsV1({
             interactive={continueAction !== null}
             onPerform={perform}
             onRetry={retry}
-            onContinue={onContinue}
+            onContinue={() => void onContinue()}
+            signature={signature}
+            signStatus={signStatus}
+            onSignatureChange={setSignature}
             warm={warm}
             onWarm={warmUp}
             reduced={reduced}
@@ -434,6 +486,9 @@ function Composition({
   onPerform,
   onRetry,
   onContinue,
+  signature,
+  signStatus,
+  onSignatureChange,
   warm,
   onWarm,
   reduced,
@@ -447,13 +502,31 @@ function Composition({
   onPerform: (offering: OfferingKind) => void;
   onRetry: () => void;
   onContinue: () => void;
+  signature: string;
+  signStatus: SignatureStatus;
+  onSignatureChange: (value: string) => void;
   warm: ReadonlySet<OfferingKind>;
   onWarm: (offering: OfferingKind) => void;
   reduced: boolean;
 }) {
   const TitleTag = headingLevel === "page" ? "h1" : "h2";
   const offering = state.phase === "cards" ? null : state.offering;
-  const scene = offering !== null ? C.scenes[offering] : null;
+  const placed = offering !== null ? C.scenes[offering] : null;
+  // Lot 2 — l'objet et tout ce qui l'accompagne descendent ou montent
+  // ensemble (`lift`), à taille inchangée ; flamme calée sur la mèche et
+  // lueur de la cire sont relatives à leur boîte, donc inchangées.
+  const scene =
+    placed === null
+      ? null
+      : {
+          ...placed,
+          box: { ...placed.box, top: placed.box.top + placed.lift },
+          ...(placed.flame !== undefined && { flame: { ...placed.flame, box: { ...placed.flame.box, top: placed.flame.box.top + placed.lift } } }),
+          ...(placed.halo !== undefined && { halo: { ...placed.halo, cy: placed.halo.cy + placed.lift } }),
+        };
+  const L = C.confirmationLayout;
+  const fieldId = `${useId()}-signature`;
+  const signLocked = signStatus === "sending" || signStatus === "signed";
   const inCards = state.phase === "cards";
   const status = state.phase === "scene" ? state.status : null;
   const sel = C.selection;
@@ -469,11 +542,18 @@ function Composition({
     ...textVars("script", C.header.script),
     ...(scene !== null && {
       "--conf-size": scene.confirmation.size,
-      "--conf-base": scene.confirmation.baseline,
+      "--conf-base": L.phraseBaseline,
       "--conf-lh": scene.confirmation.lineHeight,
-      "--conf-max": scene.confirmation.textMaxWidth,
-      "--button-gap": scene.buttonGap,
-      "--button-max": scene.buttonMaxWidth,
+      "--conf-max": L.phraseMaxWidth ?? scene.confirmation.textMaxWidth,
+      "--button-max": L.buttonMaxWidth ?? scene.buttonMaxWidth,
+      "--invite-base": L.inviteBaseline,
+      "--invite-size": L.inviteSize,
+      "--actions-top": L.actionsTop,
+      "--button-top": L.buttonTop ?? L.actionsTop,
+      "--field-w": `${L.fieldWidth}px`,
+      "--field-h": `${L.fieldHeight}px`,
+      "--actions-max": L.actionsMaxWidth,
+      "--invite-max": C.canvas.width * 0.62,
     }),
   } as CSSProperties;
 
@@ -508,7 +588,7 @@ function Composition({
               syncDecode={reduced}
               style={{
                 ...boxVars(scene.flame.box),
-                transformOrigin: `calc(var(--px) * ${scene.flame.wick[0] - scene.flame.box.left}) calc(var(--px) * ${scene.flame.wick[1] - scene.flame.box.top})`,
+                transformOrigin: `calc(var(--px) * ${scene.flame.wick[0] - scene.flame.box.left}) calc(var(--px) * ${scene.flame.wick[1] + (placed?.lift ?? 0) - scene.flame.box.top})`,
               }}
             />
           )}
@@ -606,34 +686,84 @@ function Composition({
       </div>
 
       {scene !== null && (
-        <div className={styles.confirm} data-a="status" tabIndex={-1} data-focus="status" style={{ opacity: state.phase === "returning" ? 0 : 1 }}>
-          {status !== "failed" && (
-            <p className={styles.confirmText} tabIndex={-1} data-focus="confirmation" hidden={status === "pending"}>
-              {confirmation.map((line) => (
-                <span key={line} className={styles.line}>
-                  {line}{" "}
-                </span>
-              ))}
-            </p>
-          )}
-          {status === "failed" && <p className={styles.confirmText}>{text.failure}</p>}
-          {status === "failed" ? (
-            <button type="button" className={styles.continue} data-a="continue" data-focus="retry" data-interactive="" onClick={onRetry}>
-              {text.retry}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.continue}
-              data-a="continue"
-              data-interactive={interactive ? "" : undefined}
-              hidden={status === "pending"}
-              onClick={onContinue}
-            >
-              {text.continue}
-            </button>
-          )}
-        </div>
+        <>
+          {/* Lot 2 (V2 validée) : la phrase émotionnelle, sous le grand titre. */}
+          <div className={styles.confirm} data-a="status" tabIndex={-1} data-focus="status" style={{ opacity: state.phase === "returning" ? 0 : 1 }}>
+            {status !== "failed" && (
+              <p className={styles.confirmText} tabIndex={-1} data-focus="confirmation" hidden={status === "pending"}>
+                {confirmation.map((line) => (
+                  <span key={line} className={styles.line}>
+                    {line}{" "}
+                  </span>
+                ))}
+              </p>
+            )}
+            {status === "failed" && <p className={styles.confirmText}>{text.failure}</p>}
+          </div>
+
+          {/* Sous l'objet : l'invitation, le champ facultatif et « Poursuivre
+              la visite » (empilés en Mobile, côte à côte en Desktop) ; après
+              un échec du geste, « Réessayer » seul. */}
+          <div
+            className={styles.actions}
+            data-a="continue"
+            data-arrangement={L.arrangement}
+            style={{ opacity: state.phase === "returning" ? 0 : 1 }}
+            hidden={status === "pending"}
+          >
+            {status === "failed" ? (
+              <div className={styles.signRow}>
+                <button type="button" className={styles.continue} data-focus="retry" data-interactive="" onClick={onRetry}>
+                  {text.retry}
+                </button>
+              </div>
+            ) : (
+              <form
+                className={styles.signForm}
+                noValidate
+                data-signature-status={signStatus}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onContinue();
+                }}
+              >
+                <label htmlFor={fieldId} className={`${styles.invite} ${styles.line}`}>
+                  <span className={signStatus === "failed" ? styles.srOnly : undefined}>{text.signInvite}</span>
+                  {signStatus === "failed" && <span data-signature-failure="">{text.signFailure}</span>}
+                </label>
+                <div className={styles.signRow}>
+                  <input
+                    id={fieldId}
+                    className={styles.field}
+                    type="text"
+                    name="signature"
+                    inputMode="text"
+                    maxLength={SIGNATURE_MAX_LENGTH}
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    spellCheck={false}
+                    enterKeyHint="go"
+                    placeholder={text.signPlaceholder}
+                    value={signature}
+                    readOnly={signLocked}
+                    aria-readonly={signLocked || undefined}
+                    data-focus="signature"
+                    onChange={(event) => onSignatureChange(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className={styles.continue}
+                    data-focus="continue"
+                    data-interactive={interactive ? "" : undefined}
+                    aria-busy={signStatus === "sending" || undefined}
+                  >
+                    {text.continue}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </>
       )}
     </section>
   );

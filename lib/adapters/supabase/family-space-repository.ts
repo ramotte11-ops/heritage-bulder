@@ -26,6 +26,7 @@ interface OfferingRow {
   id: string;
   kind: unknown;
   created_at: string;
+  signature: unknown;
 }
 
 function statusOf(value: unknown): MemorialStatus | null {
@@ -120,7 +121,7 @@ export class SupabaseFamilySpaceRepository implements FamilySpaceRepository {
     // One extra row tells whether older gestures exist, without a count.
     const { data, error } = await this.client
       .from("symbolic_offerings")
-      .select("id, kind, created_at")
+      .select("id, kind, created_at, signature")
       .eq("memorial_id", memorialId)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -131,7 +132,11 @@ export class SupabaseFamilySpaceRepository implements FamilySpaceRepository {
 
     const offerings: FamilyOffering[] = [];
     for (const row of data ?? []) {
-      if (isOfferingKind(row.kind)) offerings.push({ id: row.id, kind: row.kind, createdAt: row.created_at });
+      if (isOfferingKind(row.kind)) {
+        // Lot 2: column-level grant, RLS `symbolic_offerings_select_own` — never the idempotency key.
+        const signature = typeof row.signature === "string" && row.signature.trim() !== "" ? row.signature : null;
+        offerings.push({ id: row.id, kind: row.kind, createdAt: row.created_at, signature });
+      }
     }
     return {
       offerings: offerings.slice(0, range.limit),

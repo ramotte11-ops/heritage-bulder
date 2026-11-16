@@ -109,6 +109,54 @@ describe("Offrandes V1 — géométrie des maquettes validées", () => {
   });
 });
 
+describe("Offrandes V1 — Lot 2 : scène de confirmation recomposée (V2 validée PO)", () => {
+  it.each(COMPOSITIONS)("%s : phrase sous le titre, objet à sa taille, invitation puis champ et bouton sous l'objet, dans le canevas", (name, C) => {
+    const L = C.confirmationLayout;
+    const mobile = name.includes("mobile");
+    expect(L.arrangement).toBe(mobile ? "column" : "row");
+    // La phrase émotionnelle sous le grand titre (« pour sa mémoire »).
+    expect(L.phraseBaseline).toBeGreaterThan(C.header.script.baseline + 30);
+    for (const k of OFFERING_KINDS) {
+      const s = C.scenes[k];
+      // Les images d'objet ont des marges transparentes (lueur du cœur) : on
+      // borne le CENTRE de l'objet, et la flamme, entre la phrase et l'invitation.
+      const center = s.box.top + s.lift + s.box.height / 2;
+      expect(center, `${name} ${k}`).toBeGreaterThan(L.phraseBaseline + 100);
+      expect(center, `${name} ${k}`).toBeLessThan(L.inviteBaseline - 100);
+      if (s.flame !== undefined) expect(s.flame.box.top + s.lift, `${name} flamme`).toBeGreaterThan(L.phraseBaseline);
+      expect(s.box.top + s.lift + s.box.height, `${name} ${k}`).toBeLessThan(L.inviteBaseline + 20);
+    }
+    expect(L.inviteBaseline).toBeLessThan(L.actionsTop);
+    if (mobile) {
+      expect(L.buttonTop).toBeGreaterThan(L.actionsTop);
+      // Marge de sécurité sous le bouton (62 px de canevas) avant le bas de la carte.
+      expect(C.canvas.height - (L.buttonTop! + 62)).toBeGreaterThanOrEqual(400);
+    } else {
+      expect(L.buttonTop).toBeUndefined();
+      expect(C.canvas.height - (L.actionsTop + 62)).toBeGreaterThanOrEqual(55);
+    }
+    // Champ V2 : largeur réduite (≈ −17 %), cible tactile ≥ 44 px en Mobile.
+    expect(L.fieldWidth).toBeGreaterThanOrEqual(190);
+    expect(L.fieldWidth).toBeLessThanOrEqual(200);
+    expect(L.fieldHeight).toBeGreaterThanOrEqual(mobile ? 44 : 40);
+  });
+
+  it("le champ V2 : matière translucide, filet bronze, indication bronze — jamais de blanc opaque", async () => {
+    const { OFFERINGS_V1_INK } = await import("@/config/symbolic-offerings-v1-tokens");
+    for (const variant of ["light", "dark"] as const) {
+      const ink = OFFERINGS_V1_INK[variant];
+      const alpha = Number(ink.fieldFill.match(/\/ ([\d.]+)\)$/)?.[1]);
+      expect(alpha, variant).toBeGreaterThan(0);
+      expect(alpha, variant).toBeLessThanOrEqual(0.4);
+    }
+    const css = readFileSync(path.join(import.meta.dirname, "SymbolicOfferingsSceneV1.module.css"), "utf8");
+    const field = css.slice(css.indexOf(".field {"), css.indexOf("}", css.indexOf(".field {")));
+    expect(field).toContain("font-size: 16px"); // pas de zoom automatique sur iPhone
+    expect(field).toContain("box-shadow: none");
+    expect(field).toContain("border: 1px solid var(--field-line)");
+  });
+});
+
 describe("Offrandes V1 — rendu", () => {
   it.each(OFFERING_KINDS.flatMap((g) => (["light", "dark"] as const).map((v) => [g, v] as const)))(
     "%s %s : une seule offrande, textes vivants validés, bouton réel",

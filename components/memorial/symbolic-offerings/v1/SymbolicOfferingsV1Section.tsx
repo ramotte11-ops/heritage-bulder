@@ -39,6 +39,7 @@ export function SymbolicOfferingsV1Section({ skinVariant, language }: SymbolicOf
           language={language}
           transmit={host.transmit}
           continueAction={host.continueAction ?? null}
+          sign={host.sign}
         />
       </div>
     );

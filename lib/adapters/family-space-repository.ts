@@ -32,6 +32,9 @@ export interface FamilyOffering {
   id: string;
   kind: OfferingKind;
   createdAt: string; // ISO 8601
+  /** Lot 2 — the visitor's optional signature (first name or nickname),
+   * private to the family; `null` for an anonymous gesture. */
+  signature: string | null;
 }
 
 export type FamilyOfferingCounts = Readonly<Record<OfferingKind, number>>;

@@ -39,9 +39,12 @@ export interface OfferingsV1Scene {
   flame?: { image: ImageBase; box: OfferingsV1Box; wick: readonly [number, number] };
   halo?: OfferingsV1Glow;
   wax?: OfferingsV1Glow;
-  confirmation: { lines: readonly string[]; size: number; baseline: number; lineHeight: number; textMaxWidth: number };
-  /** Écart vertical entre le bas des lignes de confirmation et le bouton. */
-  buttonGap: number;
+  confirmation: { lines: readonly string[]; size: number; lineHeight: number; textMaxWidth: number };
+  /** Lot 2 — recomposition de la scène de confirmation (V2 validée PO) :
+   * déplacement vertical, en px de canevas, de l'objet ET de tout ce qui
+   * l'accompagne (ombres, flamme, halo, lueur), à taille inchangée. Les
+   * coordonnées ci-dessus restent celles mesurées sur les maquettes. */
+  lift: number;
   /** Largeur libre du fond autour de l'axe à hauteur du bouton (marge de
    * 8 px) : avec les planchers de lecture, le bouton n'en sort jamais ; son
    * libellé passe sur deux lignes s'il le faut. */
@@ -73,8 +76,38 @@ export interface OfferingsV1Selection {
   cards: readonly OfferingsV1Card[];
 }
 
+/**
+ * Lot 2 — composition de la scène de confirmation retenue par la PO (V2) :
+ * la phrase émotionnelle sous le grand titre, puis, sous l'objet,
+ * l'invitation à signer, le champ facultatif et « Poursuivre la visite »
+ * — empilés en Mobile (`column`), côte à côte en Desktop (`row`).
+ * Lignes de base et hauts en px de canevas ; `fieldWidth` en px CSS.
+ */
+export interface OfferingsV1ConfirmationLayout {
+  phraseBaseline: number;
+  inviteBaseline: number;
+  inviteSize: number;
+  /** Haut du champ (`column`) ou de la ligne champ + bouton (`row`). */
+  actionsTop: number;
+  /** `column` seulement : haut du bouton. */
+  buttonTop?: number;
+  arrangement: "column" | "row";
+  fieldWidth: number;
+  fieldHeight: number;
+  /** Largeur de papier libre, en px de canevas, à la hauteur du champ :
+   * aux petites largeurs, le champ s'y resserre plutôt que de mordre le décor. */
+  actionsMaxWidth: number;
+  /** Largeurs libres (px de canevas) à la NOUVELLE hauteur de la phrase et
+   * du bouton, quand elles diffèrent de celles mesurées à leur ancienne
+   * place (`confirmation.textMaxWidth`, `buttonMaxWidth`) : la phrase garde
+   * ses deux lignes validées, le bouton son unique ligne. */
+  phraseMaxWidth?: number;
+  buttonMaxWidth?: number;
+}
+
 export interface OfferingsV1Composition {
   canvas: { width: number; height: number };
+  confirmationLayout: OfferingsV1ConfirmationLayout;
   fond: ImageBase;
   /** Axe des textes (x). */
   axis: number;
@@ -83,20 +116,42 @@ export interface OfferingsV1Composition {
   selection: OfferingsV1Selection;
 }
 
-export interface OfferingsV1Ink { title: string; lockup: string; body: string; script: string; buttonLine: string; buttonLabel: string }
+export interface OfferingsV1Ink {
+  title: string;
+  lockup: string;
+  body: string;
+  script: string;
+  buttonLine: string;
+  buttonLabel: string;
+  /** Lot 2 — champ de signature V2 : matière translucide (le Master
+   * transparaît), filet bronze patiné, indication en encre bronze. Contrastes
+   * mesurés sur les fonds : filet ≥ 3:1, indication ≥ 4,5:1. */
+  fieldFill: string;
+  fieldLine: string;
+  fieldHint: string;
+  fieldFocusFill: string;
+  fieldFocusLine: string;
+}
 
 const IMG = "/assets/offrandes/v1";
 
 /** Encres relevées sur les Masters (Light : Mobile Light ; Dark : Mobile Dark), communes Mobile/Desktop. */
 export const OFFERINGS_V1_INK: Readonly<Record<SkinVariant, OfferingsV1Ink>> = {
-  light: { title: "rgb(44 38 28)", lockup: "rgb(44 38 28)", body: "rgb(60 55 44)", script: "rgb(111 81 40)", buttonLine: "rgb(111 81 40 / 0.784)", buttonLabel: "rgb(60 55 44)" },
-  dark: { title: "rgb(246 232 216)", lockup: "rgb(232 224 208)", body: "rgb(216 213 201)", script: "rgb(229 209 175)", buttonLine: "rgb(216 191 144 / 0.824)", buttonLabel: "rgb(232 224 208)" },
+  light: {
+    title: "rgb(44 38 28)", lockup: "rgb(44 38 28)", body: "rgb(60 55 44)", script: "rgb(111 81 40)", buttonLine: "rgb(111 81 40 / 0.784)", buttonLabel: "rgb(60 55 44)",
+    fieldFill: "rgb(236 224 200 / 0.36)", fieldLine: "rgb(116 86 46 / 0.82)", fieldHint: "rgb(96 70 34 / 0.95)", fieldFocusFill: "rgb(240 230 210 / 0.5)", fieldFocusLine: "rgb(96 70 34)",
+  },
+  dark: {
+    title: "rgb(246 232 216)", lockup: "rgb(232 224 208)", body: "rgb(216 213 201)", script: "rgb(229 209 175)", buttonLine: "rgb(216 191 144 / 0.824)", buttonLabel: "rgb(232 224 208)",
+    fieldFill: "rgb(14 11 8 / 0.28)", fieldLine: "rgb(201 170 118 / 0.62)", fieldHint: "rgb(229 209 175 / 0.78)", fieldFocusFill: "rgb(14 11 8 / 0.4)", fieldFocusLine: "rgb(222 198 152 / 0.95)",
+  },
 };
 
 export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: OfferingsV1Composition; desktop: OfferingsV1Composition }>> = {
   light: {
     mobile: {
       canvas: { width: 941, height: 1672 },
+      confirmationLayout: { phraseBaseline: 352, inviteBaseline: 975, inviteSize: 26, actionsTop: 1010, buttonTop: 1165, arrangement: "column", fieldWidth: 196, fieldHeight: 44, actionsMaxWidth: 560, phraseMaxWidth: 470, buttonMaxWidth: 380 },
       fond: `${IMG}/fonds/mobile-light`,
       axis: 472,
       header: {
@@ -107,6 +162,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
       },
       scenes: {
         bougie: {
+          lift: -150,
           object: `${IMG}/objets/bougie`,
           box: { left: 154, top: 640, width: 622, height: 415 },
           shadows: [
@@ -116,30 +172,29 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           flame: { image: `${IMG}/objets/flamme`, box: { left: 350, top: 596, width: 239, height: 159 }, wick: [471.72, 741.25] },
           halo: { cx: 471.72, cy: 667.58, rx: 167.44, ry: 180.84, peak: 0.22, rgb: [255, 226, 180] },
           wax: { cx: 317.72, cy: 111.38, rx: 151.88, ry: 70.88, peak: 0.42, rgb: [255, 214, 150] },
-          confirmation: { lines: ["Une lumière brille désormais", "en sa mémoire."], size: 28, baseline: 1065.0, lineHeight: 1.35714, textMaxWidth: 382 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une lumière brille désormais", "en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 382 },
           buttonMaxWidth: 262,
         },
         lys: {
+          lift: -150,
           object: `${IMG}/objets/lys`,
           box: { left: 204, top: 667, width: 538, height: 358 },
           shadows: [
             { dx: 5, dy: 10, sigma: 14, color: "rgba(78,52,30,0.3)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(60,40,22,0.16)" },
           ],
-          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, baseline: 1064.0, lineHeight: 1.35714, textMaxWidth: 506 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 506 },
           buttonMaxWidth: 272,
         },
         coeur: {
+          lift: -150,
           object: `${IMG}/objets/coeur`,
           box: { left: 168, top: 643, width: 599, height: 399 },
           shadows: [
             { dx: 6, dy: 11, sigma: 14, color: "rgba(78,52,30,0.3)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(60,40,22,0.16)" },
           ],
-          confirmation: { lines: ["Une pensée d’amour offerte", "en sa mémoire."], size: 28, baseline: 1064.0, lineHeight: 1.35714, textMaxWidth: 382 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une pensée d’amour offerte", "en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 382 },
           buttonMaxWidth: 262,
         },
       },
@@ -156,6 +211,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
     },
     desktop: {
       canvas: { width: 1670, height: 942 },
+      confirmationLayout: { phraseBaseline: 300, inviteBaseline: 800, inviteSize: 24, actionsTop: 816, arrangement: "row", fieldWidth: 196, fieldHeight: 40, actionsMaxWidth: 700 },
       fond: `${IMG}/fonds/desktop-light`,
       axis: 836,
       header: {
@@ -166,6 +222,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
       },
       scenes: {
         bougie: {
+          lift: -8,
           object: `${IMG}/objets/bougie`,
           box: { left: 510, top: 360, width: 637, height: 425 },
           shadows: [
@@ -175,30 +232,29 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           flame: { image: `${IMG}/objets/flamme`, box: { left: 711, top: 315, width: 245, height: 163 }, wick: [835.57, 463.75] },
           halo: { cx: 835.57, cy: 388.26, rx: 171.58, ry: 185.3, peak: 0.22, rgb: [255, 226, 180] },
           wax: { cx: 325.57, cy: 114.12, rx: 155.62, ry: 72.62, peak: 0.42, rgb: [255, 214, 150] },
-          confirmation: { lines: ["Une lumière brille désormais en sa mémoire."], size: 28, baseline: 794.0, lineHeight: 1.35714, textMaxWidth: 646 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une lumière brille désormais en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 646 },
           buttonMaxWidth: 284,
         },
         lys: {
+          lift: -8,
           object: `${IMG}/objets/lys`,
           box: { left: 536, top: 372, width: 576, height: 384 },
           shadows: [
             { dx: 6, dy: 10, sigma: 14, color: "rgba(78,52,30,0.3)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(60,40,22,0.16)" },
           ],
-          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, baseline: 795.0, lineHeight: 1.35714, textMaxWidth: 644 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 644 },
           buttonMaxWidth: 282,
         },
         coeur: {
+          lift: -8,
           object: `${IMG}/objets/coeur`,
           box: { left: 542, top: 392, width: 568, height: 379 },
           shadows: [
             { dx: 6, dy: 10, sigma: 14, color: "rgba(78,52,30,0.3)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(60,40,22,0.16)" },
           ],
-          confirmation: { lines: ["Une pensée d’amour offerte en sa mémoire."], size: 28, baseline: 795.0, lineHeight: 1.35714, textMaxWidth: 644 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une pensée d’amour offerte en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 644 },
           buttonMaxWidth: 282,
         },
       },
@@ -217,6 +273,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
   dark: {
     mobile: {
       canvas: { width: 941, height: 1672 },
+      confirmationLayout: { phraseBaseline: 372, inviteBaseline: 925, inviteSize: 26, actionsTop: 960, buttonTop: 1115, arrangement: "column", fieldWidth: 200, fieldHeight: 44, actionsMaxWidth: 500, phraseMaxWidth: 470, buttonMaxWidth: 396 },
       fond: `${IMG}/fonds/mobile-dark`,
       axis: 470,
       header: {
@@ -227,6 +284,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
       },
       scenes: {
         bougie: {
+          lift: -20,
           object: `${IMG}/objets/bougie`,
           box: { left: 213, top: 528, width: 507, height: 338 },
           shadows: [
@@ -236,30 +294,29 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           flame: { image: `${IMG}/objets/flamme`, box: { left: 373, top: 492, width: 195, height: 130 }, wick: [471.88, 610.5] },
           halo: { cx: 471.88, cy: 550.47, rx: 136.43, ry: 147.35, peak: 0.22, rgb: [255, 226, 180] },
           wax: { cx: 258.88, cy: 90.75, rx: 123.75, ry: 57.75, peak: 0.42, rgb: [255, 214, 150] },
-          confirmation: { lines: ["Une lumière brille désormais", "en sa mémoire."], size: 28, baseline: 884.0, lineHeight: 1.35714, textMaxWidth: 348 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une lumière brille désormais", "en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 348 },
           buttonMaxWidth: 396,
         },
         lys: {
+          lift: -20,
           object: `${IMG}/objets/lys`,
           box: { left: 217, top: 496, width: 522, height: 348 },
           shadows: [
             { dx: 5, dy: 9, sigma: 14, color: "rgba(0,0,0,0.55)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(0,0,0,0.35)" },
           ],
-          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, baseline: 884.0, lineHeight: 1.35714, textMaxWidth: 354 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 354 },
           buttonMaxWidth: 376,
         },
         coeur: {
+          lift: -20,
           object: `${IMG}/objets/coeur`,
           box: { left: 202, top: 486, width: 561, height: 374 },
           shadows: [
             { dx: 5, dy: 10, sigma: 14, color: "rgba(0,0,0,0.55)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(0,0,0,0.35)" },
           ],
-          confirmation: { lines: ["Une pensée d’amour offerte", "en sa mémoire."], size: 28, baseline: 884.0, lineHeight: 1.35714, textMaxWidth: 348 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une pensée d’amour offerte", "en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 348 },
           buttonMaxWidth: 396,
         },
       },
@@ -279,6 +336,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
     },
     desktop: {
       canvas: { width: 1670, height: 942 },
+      confirmationLayout: { phraseBaseline: 312, inviteBaseline: 806, inviteSize: 24, actionsTop: 822, arrangement: "row", fieldWidth: 196, fieldHeight: 40, actionsMaxWidth: 700 },
       fond: `${IMG}/fonds/desktop-dark`,
       axis: 848,
       header: {
@@ -289,6 +347,7 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
       },
       scenes: {
         bougie: {
+          lift: -8,
           object: `${IMG}/objets/bougie`,
           box: { left: 534, top: 374, width: 614, height: 410 },
           shadows: [
@@ -298,30 +357,29 @@ export const OFFERINGS_V1_TOKENS: Readonly<Record<SkinVariant, { mobile: Offerin
           flame: { image: `${IMG}/objets/flamme`, box: { left: 727, top: 330, width: 236, height: 158 }, wick: [847.8, 474.0] },
           halo: { cx: 847.8, cy: 401.24, rx: 165.38, ry: 178.61, peak: 0.22, rgb: [255, 226, 180] },
           wax: { cx: 313.8, cy: 110.0, rx: 150.0, ry: 70.0, peak: 0.42, rgb: [255, 214, 150] },
-          confirmation: { lines: ["Une lumière brille désormais en sa mémoire."], size: 28, baseline: 795.0, lineHeight: 1.35714, textMaxWidth: 528 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une lumière brille désormais en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 528 },
           buttonMaxWidth: 258,
         },
         lys: {
+          lift: -8,
           object: `${IMG}/objets/lys`,
           box: { left: 522, top: 322, width: 653, height: 435 },
           shadows: [
             { dx: 6, dy: 12, sigma: 14, color: "rgba(0,0,0,0.55)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(0,0,0,0.35)" },
           ],
-          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, baseline: 794.0, lineHeight: 1.35714, textMaxWidth: 528 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une fleur déposée en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 528 },
           buttonMaxWidth: 260,
         },
         coeur: {
+          lift: -20,
           object: `${IMG}/objets/coeur`,
           box: { left: 485, top: 287, width: 737, height: 492 },
           shadows: [
             { dx: 7, dy: 13, sigma: 14, color: "rgba(0,0,0,0.55)" },
             { dx: 2, dy: 4, sigma: 4, color: "rgba(0,0,0,0.35)" },
           ],
-          confirmation: { lines: ["Une pensée d’amour offerte en sa mémoire."], size: 28, baseline: 795.0, lineHeight: 1.35714, textMaxWidth: 528 },
-          buttonGap: 42.93,
+          confirmation: { lines: ["Une pensée d’amour offerte en sa mémoire."], size: 28, lineHeight: 1.35714, textMaxWidth: 528 },
           buttonMaxWidth: 258,
         },
       },

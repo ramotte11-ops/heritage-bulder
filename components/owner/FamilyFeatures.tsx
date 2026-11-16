@@ -3,7 +3,7 @@ import { OFFERING_KINDS, type OfferingKind } from "@/config/symbolic-offerings-v
 import type { Language } from "@/config/languages";
 import type { FamilyOffering, FamilyOfferingCounts } from "@/lib/adapters/family-space-repository";
 import type { TranslationKey } from "@/lib/i18n/keys";
-import { translate } from "@/lib/i18n/translate";
+import { translate, translateWith } from "@/lib/i18n/translate";
 import type { FamilyTribute } from "@/lib/owner/family-space";
 import { ArrowIcon, BookIcon, GiftIcon, MessageIcon, OfferingIcon } from "./FamilyIcons";
 import styles from "./FamilySpace.module.css";
@@ -21,6 +21,13 @@ const ATTENTION_LABELS: Record<OfferingKind, TranslationKey> = {
   coeur: "owner.attentionCoeur",
   bougie: "owner.attentionBougie",
   lys: "owner.attentionLys",
+};
+
+/** Lot 2 — the same gestures, signed by the visitor (Carnet only, private). */
+const SIGNED_ATTENTION_LABELS: Record<OfferingKind, TranslationKey> = {
+  coeur: "owner.attentionCoeurSigned",
+  bougie: "owner.attentionBougieSigned",
+  lys: "owner.attentionLysSigned",
 };
 
 const DATE_LOCALES: Record<Language, string> = { fr: "fr-FR", en: "en-GB", es: "es-ES" };
@@ -119,7 +126,12 @@ export function AttentionList({ offerings, language }: { offerings: readonly Fam
         <li key={offering.id} className={styles.attention} data-kind={offering.kind}>
           <OfferingIcon kind={offering.kind} className={styles.attentionIcon} />
           <p className={styles.attentionText}>
-            {translate(language, ATTENTION_LABELS[offering.kind])}
+            {typeof offering.signature === "string" && offering.signature !== "" ? (
+              // Lot 2 — the visitor's signature, private: shown here, to the family only.
+              translateWith(language, SIGNED_ATTENTION_LABELS[offering.kind], { name: offering.signature })
+            ) : (
+              translate(language, ATTENTION_LABELS[offering.kind])
+            )}
             <time className={styles.attentionDate} dateTime={offering.createdAt}>
               {formatAttentionDate(offering.createdAt, language)}
             </time>

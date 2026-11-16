@@ -5,10 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * délégation au module C1, réponse booléenne seulement, jamais de raison.
  */
 vi.mock("server-only", () => ({}));
-const { recordSymbolicOfferingOnServer } = vi.hoisted(() => ({ recordSymbolicOfferingOnServer: vi.fn() }));
+const { recordSymbolicOfferingOnServer, signSymbolicOfferingOnServer } = vi.hoisted(() => ({
+  recordSymbolicOfferingOnServer: vi.fn(),
+  signSymbolicOfferingOnServer: vi.fn(),
+}));
 vi.mock("@/lib/memorial/symbolic-offerings/server-record-symbolic-offering", () => ({ recordSymbolicOfferingOnServer }));
+vi.mock("@/lib/memorial/symbolic-offerings/server-sign-symbolic-offering", () => ({ signSymbolicOfferingOnServer }));
 
-const { depositSymbolicOffering } = await import("./actions");
+const { depositSymbolicOffering, signSymbolicOfferingAction } = await import("./actions");
 
 const SLUG = "d7f78a1b1b16";
 const KEY = "4f1d2c3b-5a6e-4f70-8a9b-0c1d2e3f4a5b";
@@ -45,6 +49,34 @@ describe("depositSymbolicOffering (Server Action)", () => {
     expect(await depositSymbolicOffering(SLUG, "bougie", KEY)).toBe(false);
     expect(log).toHaveBeenCalledTimes(1);
     expect(String(log.mock.calls[0])).not.toContain(SLUG);
+    expect(String(log.mock.calls[0])).not.toContain(KEY);
+    log.mockRestore();
+  });
+});
+
+describe("signSymbolicOfferingAction (Server Action, Lot 2)", () => {
+  it("a forged slug is refused before any server call", async () => {
+    for (const slug of [null, 42, "", "jeanne-test", "../builder"]) {
+      expect(await signSymbolicOfferingAction(slug, KEY, "Marie")).toBe(false);
+    }
+    expect(signSymbolicOfferingOnServer).not.toHaveBeenCalled();
+  });
+
+  it("forwards slug, key and signature to the signing module and answers its boolean", async () => {
+    signSymbolicOfferingOnServer.mockResolvedValueOnce({ ok: true });
+    expect(await signSymbolicOfferingAction(SLUG, KEY, "Marie")).toBe(true);
+    expect(signSymbolicOfferingOnServer).toHaveBeenCalledWith({ slug: SLUG, idempotencyKey: KEY, signature: "Marie" });
+  });
+
+  it("never logs the signature — not even on an infrastructure error", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    signSymbolicOfferingOnServer.mockResolvedValueOnce({ ok: false, reason: "refused" });
+    expect(await signSymbolicOfferingAction(SLUG, KEY, "Marie Secrète")).toBe(false);
+    expect(log).not.toHaveBeenCalled();
+    signSymbolicOfferingOnServer.mockResolvedValueOnce({ ok: false, reason: "error" });
+    expect(await signSymbolicOfferingAction(SLUG, KEY, "Marie Secrète")).toBe(false);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(String(log.mock.calls[0])).not.toContain("Marie");
     expect(String(log.mock.calls[0])).not.toContain(KEY);
     log.mockRestore();
   });
