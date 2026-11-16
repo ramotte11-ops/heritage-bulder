@@ -2639,7 +2639,9 @@ for t in $SO_TABLES; do
   for role in anon authenticated service_role; do
     for privilege in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
       expected="f"
-      if [ "$t" = "symbolic_offerings" ] && [ "$role" = "authenticated" ] && [ "$privilege" = "SELECT" ]; then expected="t"; fi
+      # Lot 2 (20261116120000): the owner's read moved to COLUMN privileges (the idempotency key is no
+      # longer readable by families) — no TABLE-level privilege remains for any client role; the column
+      # grants are asserted in the Lot 2 section below.
       check "$role $privilege on $t" "$expected" "$($DB -t -A -c "select has_table_privilege('$role','public.$t','$privilege');")"
     done
   done
@@ -2652,7 +2654,8 @@ check "PUBLIC has no execute privilege on record_symbolic_offering_v1" "f" "$($D
 check "record_symbolic_offering_v1 is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" "$($DB -t -A -c "select prosecdef || '|' || array_to_string(proconfig, ',') from pg_proc where oid='$SO_FN'::regprocedure;")"
 
 # Anonymity by construction: the exact column set, nothing about a visitor.
-check "symbolic_offerings carries no visitor data (exact column set)" "created_at,id,idempotency_key,kind,memorial_id,read_at" "$($DB -t -A -c "select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_schema='public' and table_name='symbolic_offerings';")"
+# Lot 2 adds exactly one visitor field, the OPTIONAL signature (and its timestamp), private to the family.
+check "symbolic_offerings carries no visitor data beyond the Lot 2 optional signature (exact column set)" "created_at,id,idempotency_key,kind,memorial_id,read_at,signature,signed_at" "$($DB -t -A -c "select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_schema='public' and table_name='symbolic_offerings';")"
 
 # Configurable, provisional ceilings.
 check "provisional ceilings are seeded (30 per hour, 200 per day)" "30|200" "$($DB -t -A -c "select max_per_hour || '|' || max_per_day from symbolic_offering_settings;")"
@@ -4960,6 +4963,126 @@ for fn in "owner_free_publication_status_v1(uuid)|false|false|true" "free_period
     "$($DB -t -A -c "select p.prosecdef || '|' || array_to_string(p.proconfig, ',') from pg_proc p where p.oid = 'public.$sig'::regprocedure;")"
 done
 
+# =====================================================================
+# Lot 2 — optional signature of a symbolic offering (20261116120000)
+# =====================================================================
+echo ""
+echo "== Lot 2: optional offering signature, private to the family =="
+
+L2S_FN='public.sign_symbolic_offering_v1(text,uuid,text)'
+l2s_sign() {
+  # $1 slug, $2 idempotency key, $3 signature (SQL literal, already quoted)
+  svc "select outcome from sign_symbolic_offering_v1('$1','$2',$3);"
+}
+l2s_sig() { $DB -t -A -c "select coalesce(signature, '<null>') || '|' || (signed_at is not null) from symbolic_offerings where idempotency_key='$1';"; }
+
+L2S_MEM=$(so_memorial lot2-signature published "$SNAP")
+L2S_OTHER_MEM=$(so_memorial lot2-signature-other published "$SNAP")
+check "Lot 2: the first publication opened both memorials (QG 016 unchanged)" "2" "$($DB -t -A -c "select count(*) from symbolic_offering_eligibility where memorial_id in ('$L2S_MEM','$L2S_OTHER_MEM') and closes_at is null;")"
+
+# --- S1. The anonymous gesture is unchanged ---
+L2S_ANON=$(svc "select gen_random_uuid();")
+check "Lot 2 (S1): record_symbolic_offering_v1 still records an anonymous gesture" "recorded" "$(so_record lot2-signature lys "$L2S_ANON")"
+check "Lot 2 (S1): an unsigned gesture has no signature and no signing time" "<null>|false" "$(l2s_sig "$L2S_ANON")"
+
+# --- S2. Signing the gesture just recorded ---
+L2S_KEY=$(svc "select gen_random_uuid();")
+so_record lot2-signature bougie "$L2S_KEY" >/dev/null
+check "Lot 2 (S2): a recorded gesture is signed" "signed" "$(l2s_sign lot2-signature "$L2S_KEY" "'Marie'")"
+check "Lot 2 (S2): the signature and its time are stored on THAT gesture" "Marie|true" "$(l2s_sig "$L2S_KEY")"
+check "Lot 2 (S2): signing creates no gesture (still 2 on this memorial)" "2" "$(so_count "$L2S_MEM")"
+check "Lot 2 (S2): signing is not counted against the ceilings" "2|2" "$($DB -t -A -c "select hour_count || '|' || day_count from symbolic_offering_rate_limits where memorial_id='$L2S_MEM';")"
+check "Lot 2 (S2): the same signature sent again is the success it already was" "already_signed" "$(l2s_sign lot2-signature "$L2S_KEY" "'Marie'")"
+check "Lot 2 (S2): a different signature never replaces the first" "refused|Marie|true" "$(l2s_sign lot2-signature "$L2S_KEY" "'Paul'")|$(l2s_sig "$L2S_KEY")"
+
+# --- S3. Only the right gesture, only in time ---
+check "Lot 2 (S3): an unknown slug is refused" "refused" "$(l2s_sign lot2-inconnu "$L2S_ANON" "'Marie'")"
+check "Lot 2 (S3): an unknown key is refused" "refused" "$(l2s_sign lot2-signature "$(svc "select gen_random_uuid();")" "'Marie'")"
+check "Lot 2 (S3): a key used on ANOTHER memorial is refused, nothing written" "refused|<null>|false" "$(l2s_sign lot2-signature-other "$L2S_ANON" "'Marie'")|$(l2s_sig "$L2S_ANON")"
+L2S_LATE=$(svc "select gen_random_uuid();")
+so_record lot2-signature coeur "$L2S_LATE" >/dev/null
+$DB -c "update symbolic_offerings set created_at = now() - interval '31 minutes' where idempotency_key='$L2S_LATE';" >/dev/null
+check "Lot 2 (S3): a gesture older than 30 minutes can no longer be signed" "refused|<null>|false" "$(l2s_sign lot2-signature "$L2S_LATE" "'Marie'")|$(l2s_sig "$L2S_LATE")"
+
+# --- S4. Shape: what the server normalises, the database enforces ---
+L2S_UNI=$(svc "select gen_random_uuid();")
+so_record lot2-signature lys "$L2S_UNI" >/dev/null
+check "Lot 2 (S4): accents, apostrophes and an emoji are kept, exactly 40 characters accepted" "signed|40" \
+  "$(l2s_sign lot2-signature "$L2S_UNI" "'Élise D''Arc 🌸 ' || repeat('a', 26)")|$($DB -t -A -c "select char_length(signature) from symbolic_offerings where idempotency_key='$L2S_UNI';")"
+L2S_BAD=$(svc "select gen_random_uuid();")
+so_record lot2-signature lys "$L2S_BAD" >/dev/null
+svc_expect_error "Lot 2 (S4): 41 characters are rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD',repeat('a', 41));" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): an empty signature is rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD','');" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): surrounding spaces are rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD',' Marie');" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): a line break is rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD',E'Ma\nrie');" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): a text-direction override is rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD',U&'Ma\202Erie');" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): a zero-width space is rejected" "select * from sign_symbolic_offering_v1('lot2-signature','$L2S_BAD',U&'Ma\200Brie');" "invalid symbolic offering signature request"
+svc_expect_error "Lot 2 (S4): a missing key is rejected" "select * from sign_symbolic_offering_v1('lot2-signature',null,'Marie');" "invalid symbolic offering signature request"
+check "Lot 2 (S4): every rejected request left the gesture unsigned" "<null>|false" "$(l2s_sig "$L2S_BAD")"
+expect_error "Lot 2 (S4): the column refuses 41 characters even outside the function" "update symbolic_offerings set signature = repeat('a', 41), signed_at = now() where idempotency_key='$L2S_BAD';"
+expect_error "Lot 2 (S4): a signature without its signing time is refused" "update symbolic_offerings set signature = 'Marie' where idempotency_key='$L2S_BAD';"
+expect_error "Lot 2 (S4): a signing time before the gesture is refused" "update symbolic_offerings set signature = 'Marie', signed_at = created_at - interval '1 second' where idempotency_key='$L2S_BAD';"
+
+# --- S5. Concurrent signatures of one gesture: exactly one is kept ---
+L2S_RACE=$(svc "select gen_random_uuid();")
+so_record lot2-signature coeur "$L2S_RACE" >/dev/null
+for i in 1 2 3 4 5; do
+  (l2s_sign lot2-signature "$L2S_RACE" "'Proche $i'" > "$PGDATA_DIR/l2s_race_$i") &
+done
+wait
+check "Lot 2 (S5): five concurrent signatures of one gesture: one signed, four refused" "refused=4 signed=1" \
+  "$(cat "$PGDATA_DIR"/l2s_race_* | sort | uniq -c | awk '{print $2 "=" $1}' | tr '\n' ' ' | sed 's/ $//')"
+check "Lot 2 (S5): the kept signature is the one that won" "1" "$($DB -t -A -c "select count(*) from symbolic_offerings where idempotency_key='$L2S_RACE' and signature like 'Proche _';")"
+
+# --- S6. Privacy: the family reads it, nobody else, and nobody writes it ---
+check "Lot 2 (S6): authenticated holds NO table-level privilege on symbolic_offerings" "false|false|false|false" \
+  "$($DB -t -A -c "select has_table_privilege('authenticated','public.symbolic_offerings','SELECT') || '|' || has_table_privilege('authenticated','public.symbolic_offerings','INSERT') || '|' || has_table_privilege('authenticated','public.symbolic_offerings','UPDATE') || '|' || has_table_privilege('authenticated','public.symbolic_offerings','DELETE');")"
+check "Lot 2 (S6): authenticated reads exactly these columns (never the idempotency key)" "created_at,id,kind,memorial_id,read_at,signature,signed_at" \
+  "$($DB -t -A -c "select string_agg(column_name, ',' order by column_name) from information_schema.columns c where table_schema='public' and table_name='symbolic_offerings' and has_column_privilege('authenticated', 'public.symbolic_offerings', c.column_name, 'SELECT');")"
+check "Lot 2 (S6): authenticated may UPDATE no column" "0" \
+  "$($DB -t -A -c "select count(*) from information_schema.columns c where table_schema='public' and table_name='symbolic_offerings' and has_column_privilege('authenticated', 'public.symbolic_offerings', c.column_name, 'UPDATE');")"
+check "Lot 2 (S6): anon reads no column at all" "0" \
+  "$($DB -t -A -c "select count(*) from information_schema.columns c where table_schema='public' and table_name='symbolic_offerings' and has_column_privilege('anon', 'public.symbolic_offerings', c.column_name, 'SELECT');")"
+check "Lot 2 (S6): the family reads its signatures (the Carnet's own query)" "Marie" \
+  "$(as_owner "$SO_AUTH" "select signature from symbolic_offerings where memorial_id='$L2S_MEM' and kind='bougie' order by created_at desc limit 1;")"
+check "Lot 2 (S6): the family still counts its gestures (the counters' own query)" "t" \
+  "$(as_owner "$SO_AUTH" "select count(*) > 0 from symbolic_offerings where memorial_id='$L2S_MEM' and kind='lys';")"
+check "Lot 2 (S6): another owner reads no signature" "0" "$(as_owner "$SO_OTHER_AUTH" "select count(*) from symbolic_offerings where signature is not null;")"
+expect_error "Lot 2 (S6): the family can no longer read the idempotency key" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; select idempotency_key from symbolic_offerings limit 1;"
+expect_error "Lot 2 (S6): the family cannot write a signature directly" "set role authenticated; set local request.jwt.claim.sub = '$SO_AUTH'; update symbolic_offerings set signature = 'Forgée', signed_at = now() where memorial_id='$L2S_MEM';"
+expect_error "Lot 2 (S6): a visitor cannot read signatures" "set role anon; select signature from symbolic_offerings;"
+for role in anon authenticated; do
+  check "Lot 2 (S6): $role cannot execute sign_symbolic_offering_v1" "f" "$($DB -t -A -c "select has_function_privilege('$role','$L2S_FN','EXECUTE');")"
+done
+check "Lot 2 (S6): service_role alone executes sign_symbolic_offering_v1" "t" "$($DB -t -A -c "select has_function_privilege('service_role','$L2S_FN','EXECUTE');")"
+check "Lot 2 (S6): PUBLIC has no execute privilege on sign_symbolic_offering_v1" "f" "$($DB -t -A -c "select exists (select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid='$L2S_FN'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE');")"
+check "Lot 2 (S6): sign_symbolic_offering_v1 is SECURITY DEFINER with an empty search_path" "true|search_path=\"\"" "$($DB -t -A -c "select prosecdef || '|' || array_to_string(proconfig, ',') from pg_proc where oid='$L2S_FN'::regprocedure;")"
+check "Lot 2 (S6): the public read of a memorial never mentions offerings or signatures" "0" \
+  "$($DB -t -A -c "select count(*) from pg_proc where proname like 'read_public_memorial%' and (prosrc ilike '%symbolic_offerings%' or prosrc ilike '%signature%');")"
+check "Lot 2 (S6): record_symbolic_offering_v1 has no signature parameter" "p_slug,p_kind,p_idempotency_key,outcome" \
+  "$($DB -t -A -c "select array_to_string(proargnames, ',') from pg_proc where oid='public.record_symbolic_offering_v1(text,text,uuid)'::regprocedure;")"
+
+# --- S7. Pre/postflight and rollback (never applied automatically) ---
+L2S_POST=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/lot2_signature_postflight.sql" 2>&1)
+check "Lot 2 postflight: zero ECHEC, every control OK (10)" "0|10" "$(echo "$L2S_POST" | grep -c 'ECHEC' || true)|$(echo "$L2S_POST" | grep -c '|OK$' || true)"
+check "Lot 2 postflight turns red if the idempotency key becomes readable again" "1" \
+  "$($DB -t -A -c "begin;" -c "grant select (idempotency_key) on symbolic_offerings to authenticated;" -f "$REPO_ROOT/supabase/verifications/lot2_signature_postflight.sql" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+L2S_PRE=$($DB -t -A -f "$REPO_ROOT/supabase/verifications/lot2_signature_preflight.sql" 2>&1)
+check "Lot 2 preflight after application: refuses (columns, function, table read), the other controls OK" "3|6" \
+  "$(echo "$L2S_PRE" | grep -c 'ECHEC' || true)|$(echo "$L2S_PRE" | grep -c '|OK$' || true)"
+L2S_DOWN="$REPO_ROOT/supabase/rollbacks/20261116120000_lot2_offering_signature.down.sql"
+$PSQL -d postgres -c "create database l2s_down template $DB_NAME;" >/dev/null
+L2S_KEEP="$($PSQL -d l2s_down -t -A -c "select count(*) from symbolic_offerings;")"
+check "Lot 2 rollback: function and columns gone, family read back at table level, every gesture kept" "0|absent|0|t|$L2S_KEEP" \
+  "$($PSQL -d l2s_down -f "$L2S_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d l2s_down -t -A -c "select case when to_regprocedure('$L2S_FN') is null then 'absent' else 'present' end;")|$($PSQL -d l2s_down -t -A -c "select count(*) from information_schema.columns where table_schema='public' and table_name='symbolic_offerings' and column_name in ('signature','signed_at');")|$($PSQL -d l2s_down -t -A -c "select has_table_privilege('authenticated','public.symbolic_offerings','SELECT');")|$($PSQL -d l2s_down -t -A -c "select count(*) from symbolic_offerings;")"
+L2S_PRE_DOWN=$($PSQL -d l2s_down -t -A -f "$REPO_ROOT/supabase/verifications/lot2_signature_preflight.sql" 2>&1)
+check "Lot 2: after the rollback the preflight is green again (9 OK)" "0|9" "$(echo "$L2S_PRE_DOWN" | grep -c 'ECHEC' || true)|$(echo "$L2S_PRE_DOWN" | grep -c '|OK$' || true)"
+check "Lot 2: ... then the migration re-applies and the postflight is green again (10 OK)" "0|0|10" \
+  "$($PSQL -d l2s_down -f "$MIGRATIONS_DIR/20261116120000_lot2_offering_signature.sql" >/dev/null 2>&1; echo $?)|$($PSQL -d l2s_down -t -A -f "$REPO_ROOT/supabase/verifications/lot2_signature_postflight.sql" 2>&1 | grep -c 'ECHEC' || true)|$($PSQL -d l2s_down -t -A -f "$REPO_ROOT/supabase/verifications/lot2_signature_postflight.sql" 2>&1 | grep -c '|OK$' || true)"
+check "Lot 2: the migration re-applies cleanly on itself (idempotent)" "0" "$($PSQL -d l2s_down -f "$MIGRATIONS_DIR/20261116120000_lot2_offering_signature.sql" >/dev/null 2>&1; echo $?)"
+$PSQL -d postgres -c "drop database l2s_down;" >/dev/null
+
+echo ""
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
