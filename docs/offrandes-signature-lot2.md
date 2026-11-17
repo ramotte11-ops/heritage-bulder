@@ -38,30 +38,62 @@ Côté application : le serveur normalise (NFC, invisibles retirés, espaces res
 
 Ordre proposé pour la base B (sur GO QG) : préflight (0 ECHEC) → migration → postflight (0 ECHEC) → déploiement du code. Si le code part avant la migration, la signature échoue proprement (« n'a pas pu être ajoutée ») et le geste reste enregistré.
 
-## Décisions attendues du QG (RGPD)
+## Décisions RGPD
 
-1. **Conservation** : aujourd'hui, une signature vit aussi longtemps que le geste, c'est-à-dire que l'hommage (suppression en cascade avec le mémorial). Faut-il une durée maximale propre aux signatures ?
-2. **Suppression** : ni la famille ni le visiteur ne peuvent aujourd'hui effacer une signature. Une fonction propriétaire « retirer la signature » serait une extension (nouvelle migration).
-3. **Demande d'un visiteur** (accès, effacement) : aucune donnée ne relie un visiteur à sa signature ; la demande passe par la famille ou le support, sur indication du prénom, de l'hommage et de la date.
-4. **Information** : la scène n'affiche pas de mention de confidentialité (décision PO) ; la politique de confidentialité du site doit décrire cette donnée facultative.
+1. **Conservation** : une signature vit aussi longtemps que le geste, c'est-à-dire que l'hommage (suppression en cascade avec le mémorial). Une durée maximale propre aux signatures reste à décider.
+2. **Suppression** : décidée (17/11/2026) — pas de bouton famille en V1 ; effacement exceptionnel par le support, procédure ci-dessous.
+3. **Demande d'un visiteur** : aucune donnée ne relie un visiteur à sa signature ; la demande passe par le support, sur indication de l'hommage, de la date et du texte. Recevabilité et information de la famille : à confirmer.
+4. **Information** : la scène n'affiche pas de mention de confidentialité (décision PO) ; projet de complément à la politique de confidentialité : `docs/offrandes-signature-confidentialite-projet.md`.
 5. **Retour arrière** : il détruit les signatures ; un export préalable relève du QG.
 
-## Retrait d'une signature par la famille — proposition (NON implémentée)
+## Effacement d'une signature — décision et procédure support
 
-Objectif : la famille retire une signature de son Carnet des attentions ; le geste (type, date) reste et continue d'être compté.
+**Décision QG / PO (17/11/2026)** : pas de bouton « Retirer la signature » dans l'espace famille V1. La signature reste facultative, privée, visible de la seule famille. Un effacement exceptionnel est traité par le **support HERITAGE**, sans jamais supprimer le geste.
 
-Migration additive supplémentaire (à faire après la migration du Lot 2) :
+### Constat technique (banc SQL local, 17/11/2026)
 
-- colonne `symbolic_offerings.signature_removed_at timestamptz` (NULL tant qu'aucune signature n'a été retirée) ;
-- fonction `remove_symbolic_offering_signature_v1(p_offering_id uuid)`, `SECURITY DEFINER`, `search_path` vide, exécutable par `authenticated` seulement. Une instruction UPDATE : `signature = NULL, signed_at = NULL, signature_removed_at = now()` **uniquement** si le geste appartient à un mémorial du propriétaire connecté (`memorial_id in (select id from memorials where owner_id = current_owner_id())`) et porte une signature. Issues : `removed`, `not_found` (geste d'un autre, inexistant ou déjà sans signature — indistinguables) ;
-- nouvelle version `sign_symbolic_offering_v2` qui refuse aussi un geste dont la signature a été retirée (`signature_removed_at is null`) : sans cela, le visiteur pourrait re-signer pendant la fenêtre de 30 minutes. La v1 est retirée à la même migration, le code passant à la v2 ;
-- aucun droit d'UPDATE direct accordé ; la famille garde la lecture par colonnes actuelle.
+- Effacer une signature = `signature = NULL, signed_at = NULL` sur la ligne du geste ; le geste (type, date) et les compteurs restent. La contrainte `signature` / `signed_at` impose d'effacer les deux ensemble.
+- **Fenêtre de 30 minutes** : `sign_symbolic_offering_v1` accepte une signature sur un geste non signé de moins de 30 minutes. Un effacement fait **dans** cette fenêtre peut donc être annulé par le navigateur du visiteur (vérifié : signé → effacé → re-signé). Un effacement fait **après** la fenêtre est définitif (vérifié : nouvelle tentative `refused`, geste conservé).
+- Conséquence : la procédure ci-dessous n'efface qu'un geste de **plus de 30 minutes**. Aucune modification technique n'est nécessaire pour la V1.
 
-Application : un lien discret « Retirer la signature » à côté d'un geste signé, dans le Carnet seulement, avec une confirmation (« La signature sera définitivement effacée. Le geste est conservé. ») ; action serveur sous la session de la famille ; réponse booléenne ; rien n'est journalisé.
+### Procédure (personnes habilitées seulement)
 
-Garanties à prouver au banc SQL : un autre propriétaire, un visiteur et `service_role` sans session ne retirent rien ; le geste et les compteurs sont inchangés ; une signature retirée ne revient pas ; retirer deux fois est sans effet.
+1. **Habilitation** : seules les personnes désignées par le QG, disposant d'un accès nominatif au projet Supabase B, exécutent l'effacement. Aucune clé `service_role` n'est transmise ni utilisée hors de l'application. Principe des quatre yeux : une personne exécute, une seconde vérifie le résultat.
+2. **Réception** : la demande arrive par le canal support officiel. Recevable de la famille titulaire (depuis l'adresse de son compte) ou d'un visiteur se déclarant auteur de la signature. Éléments demandés : l'hommage (lien public), la date approximative, le geste, le texte de la signature. Le ticket ne recopie pas la signature au-delà de ce qui est nécessaire, et est clos sans la conserver.
+3. **Identification** (lecture seule), dans l'éditeur SQL de Supabase B :
 
-Politique de confidentialité (aucune mention dans la scène, décision PO) : donnée (prénom ou surnom facultatif, saisi volontairement), finalité (transmettre une attention à la famille), destinataire unique (la famille titulaire de l'hommage), aucune publication, durée (celle de l'hommage, sauf décision du QG), droit d'effacement (par la famille dans son Carnet, ou sur demande au support).
+   ```sql
+   select o.id, o.kind, o.created_at, o.signed_at
+     from public.symbolic_offerings o
+     join public.memorials m on m.id = o.memorial_id
+    where m.slug = '<slug public>'
+      and o.signature = '<texte exact>'
+      and o.created_at >= '<date>'::date and o.created_at < '<date>'::date + 1;
+   ```
+
+   Exactement **une** ligne attendue ; sinon, ne rien faire et revenir vers le demandeur.
+4. **Effacement** (une seule ligne, désignée par son identifiant) :
+
+   ```sql
+   begin;
+   update public.symbolic_offerings
+      set signature = null, signed_at = null
+    where id = '<id relevé>'
+      and signature is not null
+      and created_at < now() - interval '30 minutes';
+   -- attendu : UPDATE 1 ; sinon ROLLBACK et analyse
+   commit;
+   ```
+
+   Si le geste a moins de 30 minutes, attendre la fin de la fenêtre avant d'exécuter.
+5. **Vérification** par la seconde personne : la ligne existe toujours, même type et même date, `signature` et `signed_at` à `NULL`.
+6. **Trace** : date de la demande, date d'exécution, identifiant du geste, personnes intervenues — **jamais** le texte de la signature.
+7. **Réponse** au demandeur ; la famille est informée si la demande vient d'un visiteur (à confirmer par le QG).
+8. **Sauvegardes** : la signature effacée peut subsister dans les sauvegardes de l'hébergeur jusqu'à leur expiration (durée à confirmer auprès de l'hébergeur) ; à mentionner dans la réponse si nécessaire.
+
+### Option technique (non implémentée, pour une version ultérieure)
+
+Si le QG souhaite un effacement définitif quel que soit le délai, ou un outil support sans SQL manuel : migration additive avec une colonne `signature_removed_at`, une fonction `remove_symbolic_offering_signature_v1(id)` réservée à un rôle support (jamais au navigateur), et une `sign_symbolic_offering_v2` qui refuse tout geste dont la signature a été retirée. Nécessite un GO produit et un GO migration distincts.
 
 ## Risque connu, hors périmètre
 
