@@ -26,8 +26,9 @@ import { v2SlotToA13 } from "@/lib/memorial/gallery/gallery-v2";
  *   peint au-dessus ne peut en couvrir un seul pixel.
  * - POLAROID : le Polaroid A13 inchangé (`shapeAt` → `layoutDynamicPolaroid` :
  *   ratio naturel, jamais de recadrage) avec le papier relevé en M0. Sa zone
- *   protégée couvre la photographie ET la bande de légende (légende et auteur
- *   restent lisibles).
+ *   protégée est la bande de LÉGENDE (légende et auteur restent intégralement
+ *   lisibles) ; la photographie accepte le « léger chevauchement
+ *   photographique » de la PO, borné par le papier visible ≥ 0,90 (M4.1).
  *
  * Pur, sans thème au-delà du choix de la géométrie de Master, sans DOM.
  */
@@ -115,10 +116,15 @@ export const CONTRIBUTIONS_POLAROID_PAPER: PaperProfile = {
   bottomBand: { heightFactor: CONTRIBUTIONS_POLAROID.paper.bottomBandFraction, minPx: 0, maxPx: Number.MAX_SAFE_INTEGER },
 };
 
-/** Forme POLAROID : le Polaroid A13 inchangé ; zone protégée = photographie + bande de légende. */
+/** Bande de légende du Polaroid (repère local du slot), entre les marges latérales. */
+export function polaroidCaptionBand(l: PolaroidLayout): Rect {
+  return { x: l.outer.x + l.window.x, y: l.outer.y + l.band.y, width: l.window.width, height: l.band.height };
+}
+
+/** Forme POLAROID : le Polaroid A13 inchangé ; zone protégée = bande de légende. */
 export function polaroidShape(v: V2Slot, source: PhotoSource, s: number): GroupShape<ContributionShapeLayout> {
   const base = shapeAt(v, source, s, CONTRIBUTIONS_POLAROID_PAPER);
   const l = base.layout;
-  const guarded: Rect = { x: l.outer.x + l.window.x, y: l.outer.y + l.window.y, width: l.window.width, height: l.outer.height - l.window.y };
+  const guarded = polaroidCaptionBand(l);
   return { ...base, layout: { kind: "polaroid", polaroid: l }, photo0: slotRectToCanvas(base.slot, guarded) };
 }

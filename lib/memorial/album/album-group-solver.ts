@@ -131,6 +131,10 @@ export interface AlbumSolverProfile<L = PolaroidLayout> {
    * every A13 rule, so it never changes an A13 rejection count.
    */
   forbiddenZones?: readonly (readonly Point[])[];
+  /** M4.1 — optional joint-evaluation budget; absent = `ALBUM_MAX_JOINT` (A13). */
+  maxJoint?: number;
+  /** M4.1 — optional local-repair budget; absent = the A13 repair budget. */
+  repairBudget?: number;
 }
 
 /** The slot's shape: the profile's factory, else the A13 Polaroid (unchanged). */
@@ -511,6 +515,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar, 
    * (V1.1: the seam never asks for another local solution — README §4.4-6).
    */
   private localRepair() {
+    const repairBudget = this.profile.repairBudget ?? REPAIR_BUDGET;
     if (!this.bestFailure) return;
     const slots = this.grammar.slots;
     const failing = [...new Set(this.bestFailure.map((f) => slots.findIndex((s) => s.slotId === f.slotId)))].filter((i) => i >= 0);
@@ -535,7 +540,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar, 
     // the best cost found so far; the single cheapest composition wins.
     let best: { cost: number; ix: number[] } | null = null;
     for (const i of list) {
-      for (let k = 1; k < REPAIR_BUDGET && this.streams[i].at(k); k++) {
+      for (let k = 1; k < repairBudget && this.streams[i].at(k); k++) {
         const ix = [...zero];
         ix[i] = k;
         const c = costOf(ix);
@@ -562,7 +567,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar, 
           heap.push({ ki, kj, c: costOf(ix) });
         };
         push(0, 0);
-        for (let n = 0; n < REPAIR_BUDGET && heap.size; n++) {
+        for (let n = 0; n < repairBudget && heap.size; n++) {
           const t = heap.pop()!;
           if (best && t.c >= best.cost - 1e-12) break;
           const ix = [...zero];
@@ -587,7 +592,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar, 
   candidate(k: number): GroupCandidate<L> | null {
     while (this.found.length <= k && !this.exhausted) {
       const top = this.heap.pop();
-      if (!top || this.evaluated >= ALBUM_MAX_JOINT) {
+      if (!top || this.evaluated >= (this.profile.maxJoint ?? ALBUM_MAX_JOINT)) {
         this.exhausted = true;
         if (top && !this.found.length) this.localRepair();
         break;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CONTRIBUTIONS_MASTER_ITEMS, type ContributionsFormat, type ContributionsTheme } from "@/config/contributions-master-measurements";
 import type { Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { cardLayout, cardPaperSize, cardShape, polaroidShape, type ContributionTextFormat } from "@/lib/memorial/contributions/contribution-shapes";
-import { contributionsMasterSlot } from "@/lib/memorial/contributions/contributions-scene";
+import { contributionAnchorSlot } from "@/lib/memorial/contributions/contributions-scene";
 
 const FRAMES: ContributionsFormat[] = ["desktop", "mobile"];
 const THEMES: ContributionsTheme[] = ["light", "dark"];
@@ -31,7 +31,7 @@ describe("M4 Contributions — forme Carte", () => {
       });
 
       it(`${frame} ${theme} : une carte n'est jamais mise à l'échelle (dimensions identiques à toute échelle)`, () => {
-        const v = contributionsMasterSlot(frame, theme, "C1", 0);
+        const v = contributionAnchorSlot(frame, theme, "C1", "condolence", CONTRIBUTIONS_MASTER_ITEMS[frame][theme].C1.center, 30, 0);
         const a = cardShape(v, "condolence", frame, theme);
         const b = cardShape({ ...v, scaleBounds: { preferred: [0.5, 0.5], hard: [0.5, 2] } }, "condolence", frame, theme);
         expect(a.outer0).toEqual(b.outer0);
@@ -42,7 +42,7 @@ describe("M4 Contributions — forme Carte", () => {
       it(`${frame} ${theme} : le papier suit l'inclinaison du Master et la zone de texte est dans le papier`, () => {
         for (const f of TEXT_FORMATS) {
           const slotId = SOURCE[f];
-          const sh = cardShape(contributionsMasterSlot(frame, theme, slotId, 0), f, frame, theme);
+          const sh = cardShape(contributionAnchorSlot(frame, theme, slotId, f, CONTRIBUTIONS_MASTER_ITEMS[frame][theme][slotId].center, 10, 0), f, frame, theme);
           expect(edgeAngle(sh.outer0)).toBeCloseTo(CONTRIBUTIONS_MASTER_ITEMS[frame][theme][slotId].rotationDeg, 6);
           for (const q of sh.photo0) expect(insideOrOn(q, sh.outer0)).toBe(true);
         }
@@ -64,19 +64,19 @@ describe("M4 Contributions — forme Carte", () => {
 });
 
 describe("M4 Contributions — forme Polaroid (A13 inchangé)", () => {
-  const v = contributionsMasterSlot("desktop", "light", "P1", 0);
+  const v = contributionAnchorSlot("desktop", "light", "P1", "polaroid", CONTRIBUTIONS_MASTER_ITEMS.desktop.light.P1.center, 40, 0);
   for (const [w, h] of [[3, 4], [4, 3], [1, 1], [9, 16], [16, 9], [239, 100]]) {
-    it(`ratio ${w}:${h} : photographie entière, jamais recadrée ; photo et légende protégées`, () => {
+    it(`ratio ${w}:${h} : photographie entière, jamais recadrée ; légende protégée`, () => {
       const sh = polaroidShape(v, { width: w * 100, height: h * 100 }, 1);
       expect(sh.layout.kind).toBe("polaroid");
       if (sh.layout.kind !== "polaroid") return;
       const l = sh.layout.polaroid;
       expect(l.visibleFraction).toBe(1);
       expect(l.photo.width / l.photo.height).toBeCloseTo((w * 100) / (h * 100), 6);
-      // Zone protégée : de la fenêtre photo jusqu'au bas du papier (bande de légende comprise).
+      // Zone protégée : la bande de légende (légende et auteur), entre les marges latérales.
       for (const q of sh.photo0) expect(insideOrOn(q, sh.outer0)).toBe(true);
       const area = (p: Point[]) => Math.abs(p.reduce((s, a, i) => s + a.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * a.y, 0)) / 2;
-      expect(area(sh.photo0)).toBeCloseTo(l.window.width * (l.outer.height - l.window.y), 4);
+      expect(area(sh.photo0)).toBeCloseTo(l.window.width * l.band.height, 4);
     });
   }
 });
