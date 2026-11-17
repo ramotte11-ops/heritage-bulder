@@ -1,6 +1,6 @@
 # Offrandes symboliques — Lot 2 : signature facultative
 
-> Branche `claude/offrandes-signature-lot2`, depuis `main@eff4ed6`. **Rien n'est fusionné, déployé ni appliqué à Supabase B.**
+> Branche `claude/offrandes-signature-lot2`, partie de `main@eff4ed6`, synchronisée avec `main@62648f4` (Next.js 16.4.6, PR #106) par une fusion, sans réécriture d'historique. **Rien n'est fusionné, déployé ni appliqué à Supabase B.**
 > La migration est prête et vérifiée sur le banc local ; son application à la base B demande un GO distinct du QG.
 
 ## Ce que le lot livre
@@ -45,6 +45,23 @@ Ordre proposé pour la base B (sur GO QG) : préflight (0 ECHEC) → migration �
 3. **Demande d'un visiteur** (accès, effacement) : aucune donnée ne relie un visiteur à sa signature ; la demande passe par la famille ou le support, sur indication du prénom, de l'hommage et de la date.
 4. **Information** : la scène n'affiche pas de mention de confidentialité (décision PO) ; la politique de confidentialité du site doit décrire cette donnée facultative.
 5. **Retour arrière** : il détruit les signatures ; un export préalable relève du QG.
+
+## Retrait d'une signature par la famille — proposition (NON implémentée)
+
+Objectif : la famille retire une signature de son Carnet des attentions ; le geste (type, date) reste et continue d'être compté.
+
+Migration additive supplémentaire (à faire après la migration du Lot 2) :
+
+- colonne `symbolic_offerings.signature_removed_at timestamptz` (NULL tant qu'aucune signature n'a été retirée) ;
+- fonction `remove_symbolic_offering_signature_v1(p_offering_id uuid)`, `SECURITY DEFINER`, `search_path` vide, exécutable par `authenticated` seulement. Une instruction UPDATE : `signature = NULL, signed_at = NULL, signature_removed_at = now()` **uniquement** si le geste appartient à un mémorial du propriétaire connecté (`memorial_id in (select id from memorials where owner_id = current_owner_id())`) et porte une signature. Issues : `removed`, `not_found` (geste d'un autre, inexistant ou déjà sans signature — indistinguables) ;
+- nouvelle version `sign_symbolic_offering_v2` qui refuse aussi un geste dont la signature a été retirée (`signature_removed_at is null`) : sans cela, le visiteur pourrait re-signer pendant la fenêtre de 30 minutes. La v1 est retirée à la même migration, le code passant à la v2 ;
+- aucun droit d'UPDATE direct accordé ; la famille garde la lecture par colonnes actuelle.
+
+Application : un lien discret « Retirer la signature » à côté d'un geste signé, dans le Carnet seulement, avec une confirmation (« La signature sera définitivement effacée. Le geste est conservé. ») ; action serveur sous la session de la famille ; réponse booléenne ; rien n'est journalisé.
+
+Garanties à prouver au banc SQL : un autre propriétaire, un visiteur et `service_role` sans session ne retirent rien ; le geste et les compteurs sont inchangés ; une signature retirée ne revient pas ; retirer deux fois est sans effet.
+
+Politique de confidentialité (aucune mention dans la scène, décision PO) : donnée (prénom ou surnom facultatif, saisi volontairement), finalité (transmettre une attention à la famille), destinataire unique (la famille titulaire de l'hommage), aucune publication, durée (celle de l'hommage, sauf décision du QG), droit d'effacement (par la famille dans son Carnet, ou sur demande au support).
 
 ## Risque connu, hors périmètre
 
