@@ -3,6 +3,7 @@ import {
   CONTRIBUTIONS_A13_REUSE_CONTRACT,
   CONTRIBUTIONS_CARD_BAND,
   CONTRIBUTIONS_MASTER_ITEMS,
+  CONTRIBUTIONS_POLAROID,
   CONTRIBUTIONS_PROTECTED_ZONES,
   type Box,
   type ContributionsFormat,
@@ -41,11 +42,17 @@ import { cardLayout, cardPaperSize, cardShape, polaroidShape, type ContributionS
  *    Polaroid visibles à 100 % ; papier visible ≥ 0,90 (contacts et légers
  *    chevauchements) ; aucune zone interdite (en-tête, actions, pied, sceau,
  *    extérieur de la bande) : la scène ne change jamais de dimensions.
- * 5. Recherche, deux passes déterministes du best-first A13 par suite
- *    d'ancrages : A, cartes fixes sur leur ancrage, Polaroids libres
- *    (translation, échelle) ; B, tout libre dans le territoire. Aucune suite
- *    harmonieuse → STOP explicite (`CONTRIBUTIONS_NO_HARMONIOUS_PLACEMENT`),
- *    jamais un rendu dégradé.
+ * 5. Recherche, passes déterministes du best-first A13, dans un ordre fixe :
+ *    A, cartes fixes, Polaroids libres (toutes les compositions) ; B, tout
+ *    libre (ordre de l'appelant, puis autres répartitions) ; C, dernier
+ *    recours pour les Polaroids, réduction considérée aussi tôt que les
+ *    déplacements, budget A13 complet. Aucune composition harmonieuse → STOP
+ *    explicite (`CONTRIBUTIONS_NO_HARMONIOUS_PLACEMENT`), jamais un rendu
+ *    dégradé.
+ *
+ * M4.2 : les cartes ont les MÊMES dimensions en Light et en Dark (formats
+ * communs, décision PO) ; seuls les ancrages (positions, inclinaisons,
+ * profondeurs) restent inspirés de chaque Master.
  *
  * Mobile : géométrie des Masters Mobile, résultat marqué `provisional` (O1
  * de M0 ouvert : lisibilité), sans empêcher les vérifications géométriques.
@@ -115,6 +122,13 @@ export function contributionFormat(kind: ContributionKind, storyIndex: number): 
   return storyIndex % 2 === 0 ? "story-tall" : "story-wide";
 }
 
+/**
+ * Passes de recherche, dans cet ordre : A cartes fixes (rapide) ; B tout
+ * libre ; C, dernier recours, réduction des Polaroids considérée aussi tôt
+ * que leurs déplacements, avec le budget A13 complet.
+ */
+export type ContributionsPass = "A" | "B" | "C";
+
 export type ContributionsSceneStatus = "PASS" | "CONTRIBUTIONS_EMPTY" | "CONTRIBUTIONS_INVALID_ITEM" | "CONTRIBUTIONS_NO_HARMONIOUS_PLACEMENT";
 
 export interface ContributionScenePlacement {
@@ -150,7 +164,7 @@ export interface ContributionsSceneResult extends ContributionsSceneVisibility {
   seed?: string;
   /** Suites essayées, dans l'ordre, et motif de chaque échec. */
   trials: { ids: ContributionsSlotId[]; offset: Point; outcome: string }[];
-  stats: { pass: "A" | "B"; candidateRank: number; jointEvaluated: number; repaired: boolean } | null;
+  stats: { pass: ContributionsPass; candidateRank: number; jointEvaluated: number; repaired: boolean } | null;
 }
 
 const BIG = 100_000;
@@ -173,14 +187,14 @@ export function contributionsForbiddenZones(frame: ContributionsFormat): Point[]
   return [...CONTRIBUTIONS_PROTECTED_ZONES[frame], ...outside].map(boxPoly);
 }
 
-/** Polaroid témoin : le P1 du Master (sa surface est celle de toute photographie de la scène). */
-const polaroidWitness = (frame: ContributionsFormat, theme: ContributionsTheme) => CONTRIBUTIONS_MASTER_ITEMS[frame][theme].P1.size;
+/** Polaroid témoin : format commun Light / Dark (M4.2) ; sa surface est celle de toute photographie. */
+const polaroidWitness = (frame: ContributionsFormat) => CONTRIBUTIONS_POLAROID.witness[frame];
 
 /**
  * Une contribution posée sur un ancrage du Master, au format V2 du solveur
  * A13 : centre et profondeur donnés par la composition, inclinaison de
- * l'ancrage, taille témoin = celle de la FORME (carte : son papier fixe ;
- * Polaroid : le P1 du Master), jamais celle de l'ancrage.
+ * l'ancrage, taille témoin = celle de la FORME au format commun Light / Dark
+ * (carte : son papier fixe ; Polaroid : son témoin), jamais celle de l'ancrage.
  */
 export function contributionAnchorSlot(
   frame: ContributionsFormat,
@@ -195,7 +209,7 @@ export function contributionAnchorSlot(
 ): V2Slot {
   const isPolaroid = format === "polaroid";
   const t = cardsFixed && !isPolaroid ? 0 : search.territoryPx;
-  const { width, height } = isPolaroid ? polaroidWitness(frame, theme) : cardPaperSize(format, frame, theme);
+  const { width, height } = isPolaroid ? polaroidWitness(frame) : cardPaperSize(format, frame);
   return {
     slotId: `contrib-${frame}-${theme}-${anchorId}`,
     mediaIndex,
@@ -269,7 +283,7 @@ export function contributionsSolverProfile(
     minima: (slots) => slots.map(() => ({ photo: 1, outer: search.minVisiblePaper })),
     shapeFor: (v, source, s, i) => {
       const f = formats[i];
-      return f === "polaroid" ? polaroidShape(v, source, s) : cardShape(v, f, frame, theme);
+      return f === "polaroid" ? polaroidShape(v, source, s) : cardShape(v, f, frame);
     },
     forbiddenZones: contributionsForbiddenZones(frame),
   };
@@ -305,7 +319,7 @@ const rad = (d: number) => (d * Math.PI) / 180;
 
 /** Largeur horizontale du papier incliné (boîte englobante). */
 function tiltedWidth(frame: ContributionsFormat, theme: ContributionsTheme, f: ContributionFormat, rotationDeg: number) {
-  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame, theme) : cardPaperSize(f, frame, theme);
+  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame) : cardPaperSize(f, frame);
   const a = rad(rotationDeg);
   return w * Math.abs(Math.cos(a)) + h * Math.abs(Math.sin(a));
 }
@@ -323,12 +337,12 @@ function coverAllowance(
   paperSlack: number,
 ): number {
   if (f === "polaroid") {
-    const { width, height } = polaroidWitness(frame, theme);
+    const { width, height } = polaroidWitness(frame);
     // Photo : légère couverture permise ; légende (bas) : jamais.
     if (side === "bottom") return 0;
     return paperSlack * (side === "top" ? height : width);
   }
-  const size = cardPaperSize(f, frame, theme);
+  const size = cardPaperSize(f, frame);
   const hull = cardLayout(f, size).protectedText;
   const text = { left: hull.x, right: size.width - (hull.x + hull.width), top: hull.y, bottom: size.height - (hull.y + hull.height) }[side];
   return Math.min(text, paperSlack * (side === "left" || side === "right" ? size.width : size.height));
@@ -336,7 +350,7 @@ function coverAllowance(
 
 /** Hauteur verticale du papier incliné (boîte englobante). */
 function tiltedHeight(frame: ContributionsFormat, theme: ContributionsTheme, f: ContributionFormat, rotationDeg: number) {
-  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame, theme) : cardPaperSize(f, frame, theme);
+  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame) : cardPaperSize(f, frame);
   const a = rad(rotationDeg);
   return h * Math.abs(Math.cos(a)) + w * Math.abs(Math.sin(a));
 }
@@ -540,24 +554,36 @@ export function solveContributionsScene(
   );
   const trials: ContributionsSceneResult["trials"] = [];
   let evaluated = 0;
-  const attempt = (seed: ContributionsSeed, cardsFixed: boolean) => {
-    const slots = seed.ids.map((id, i) => contributionAnchorSlot(frame, theme, id, seed.formats[i], seed.centers[i], seed.z[i], i, search, cardsFixed));
-    const profile = { ...contributionsSolverProfile(frame, theme, seed.formats, search), ...budget };
+  // Passe C : l'échelle du Polaroid n'est plus « préférée à 1 » (toute l'étendue permise l'est), budget A13.
+  const searchC: ContributionsSceneSearch = { ...search, polaroidScale: { preferred: [...search.polaroidScale.hard], hard: [...search.polaroidScale.hard] } };
+  const attempt = (seed: ContributionsSeed, pass: ContributionsPass) => {
+    const s = pass === "C" ? searchC : search;
+    const slots = seed.ids.map((id, i) => contributionAnchorSlot(frame, theme, id, seed.formats[i], seed.centers[i], seed.z[i], i, s, pass === "A"));
+    const profile = pass === "C" ? contributionsSolverProfile(frame, theme, seed.formats, s) : { ...contributionsSolverProfile(frame, theme, seed.formats, s), ...budget };
     const session = new GroupSession<{ slots: readonly V2Slot[] }, ContributionShapeLayout>({ slots }, seed.perm.map((j) => sources[j]), false, { profile });
     const best = session.structuralStop ? null : session.candidate(0);
     evaluated += session.evaluated + session.repairEvaluated;
     const f: GroupFailure | undefined = session.bestFailure?.[0];
     const outcome = best ? "PASS" : (session.structuralStop ?? `aucune solution locale${f ? ` — ${f.slotId} ${f.rule} ${f.value.toFixed(3)} < ${f.minimum.toFixed(3)}` : ""}`);
-    trials.push({ ids: seed.ids, offset: { x: 0, y: 0 }, outcome: `${cardsFixed ? "A" : "B"} ${seed.label} : ${outcome}` });
+    trials.push({ ids: seed.ids, offset: { x: 0, y: 0 }, outcome: `${pass} ${seed.label} : ${outcome}` });
     return { slots, session, best };
   };
 
-  // Passe A sur toutes les compositions (cartes fixes, peu coûteuse), puis B
-  // (tout libre, coûteuse) sur celles qui gardent l'ordre de l'appelant.
+  // Passe A sur toutes les compositions (cartes fixes, peu coûteuse) ; puis B
+  // (tout libre, coûteuse) sur celles qui gardent l'ordre de l'appelant ; en
+  // dernier recours, B sur les autres répartitions. Ordre fixe : déterministe.
   const identity = (s: ContributionsSeed) => s.perm.every((j, i) => j === i);
-  for (const pass of ["A", "B"] as const) {
-    for (const seed of pass === "A" ? seeds : seeds.filter(identity)) {
-      const { slots, session, best } = attempt(seed, pass === "A");
+  const formatsHavePolaroid = visible.some((it) => it.kind === "photo");
+  const plan: [ContributionsPass, ContributionsSeed][] = [
+    ...seeds.map((s): [ContributionsPass, ContributionsSeed] => ["A", s]),
+    ...seeds.filter(identity).map((s): [ContributionsPass, ContributionsSeed] => ["B", s]),
+    ...seeds.filter((s) => !identity(s)).map((s): [ContributionsPass, ContributionsSeed] => ["B", s]),
+    // Dernier recours, seulement pour des Polaroids (sans Polaroid, C répéterait B).
+    ...(formatsHavePolaroid ? seeds.filter(identity).map((s): [ContributionsPass, ContributionsSeed] => ["C", s]) : []),
+  ];
+  {
+    for (const [pass, seed] of plan) {
+      const { slots, session, best } = attempt(seed, pass);
       if (!best) continue;
       const placements = best.placements.map((p, i): ContributionScenePlacement => {
         const v = slots[i];

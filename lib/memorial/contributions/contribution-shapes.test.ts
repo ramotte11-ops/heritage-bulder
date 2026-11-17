@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONTRIBUTIONS_MASTER_ITEMS, type ContributionsFormat, type ContributionsTheme } from "@/config/contributions-master-measurements";
+import { CONTRIBUTIONS_COMMON_FORMATS, CONTRIBUTIONS_MASTER_ITEMS, type ContributionsFormat, type ContributionsTheme } from "@/config/contributions-master-measurements";
 import type { Point } from "@/lib/memorial/gallery/dynamic-polaroid-qa";
 import { cardLayout, cardPaperSize, cardShape, polaroidShape, type ContributionTextFormat } from "@/lib/memorial/contributions/contribution-shapes";
 import { contributionAnchorSlot } from "@/lib/memorial/contributions/contributions-scene";
@@ -19,6 +19,29 @@ const insideOrOn = (q: Point, poly: Point[]) => {
   return s.every((v) => v >= -1e-6) || s.every((v) => v <= 1e-6);
 };
 
+describe("M4.2 Contributions — contrat géométrique Light / Dark", () => {
+  it("les formats sont COMMUNS aux deux thèmes : référence Master Dark, arrondie au pixel", () => {
+    for (const frame of FRAMES)
+      for (const f of TEXT_FORMATS) {
+        const ref = CONTRIBUTIONS_MASTER_ITEMS[frame].dark[SOURCE[f]].size;
+        expect(cardPaperSize(f, frame)).toEqual({ width: Math.round(ref.width), height: Math.round(ref.height) });
+      }
+  });
+
+  it("Desktop et Mobile gardent chacun leurs formats (responsive)", () => {
+    for (const f of TEXT_FORMATS) expect(cardPaperSize(f, "desktop")).not.toEqual(cardPaperSize(f, "mobile"));
+  });
+
+  it("valeurs du contrat (px source)", () => {
+    expect(CONTRIBUTIONS_COMMON_FORMATS.desktop).toEqual({
+      condolence: { width: 437, height: 260 },
+      "story-tall": { width: 396, height: 356 },
+      "story-wide": { width: 423, height: 289 },
+      polaroid: { width: 337, height: 386 },
+    });
+  });
+});
+
 describe("M4 Contributions — forme Carte", () => {
   it("a exactement trois formats textuels : la condoléance et deux récits (haut, large)", () => {
     expect(TEXT_FORMATS.map((f) => cardLayout(f, { width: 400, height: 300 }).format)).toEqual(["condolence", "story-tall", "story-wide"]);
@@ -26,23 +49,26 @@ describe("M4 Contributions — forme Carte", () => {
 
   for (const frame of FRAMES)
     for (const theme of THEMES) {
-      it(`${frame} ${theme} : chaque format a les dimensions de son Master, sans moyenne Light / Dark`, () => {
-        for (const f of TEXT_FORMATS) expect(cardPaperSize(f, frame, theme)).toEqual(CONTRIBUTIONS_MASTER_ITEMS[frame][theme][SOURCE[f]].size);
+      it(`${frame} ${theme} : une carte posée dans ce thème a le format commun du repère`, () => {
+        for (const f of TEXT_FORMATS) {
+          const sh = cardShape(contributionAnchorSlot(frame, theme, SOURCE[f], f, CONTRIBUTIONS_MASTER_ITEMS[frame][theme][SOURCE[f]].center, 10, 0), f, frame);
+          expect(sh.layout.kind === "card" && [sh.layout.card.paper.width, sh.layout.card.paper.height]).toEqual([CONTRIBUTIONS_COMMON_FORMATS[frame][f].width, CONTRIBUTIONS_COMMON_FORMATS[frame][f].height]);
+        }
       });
 
       it(`${frame} ${theme} : une carte n'est jamais mise à l'échelle (dimensions identiques à toute échelle)`, () => {
         const v = contributionAnchorSlot(frame, theme, "C1", "condolence", CONTRIBUTIONS_MASTER_ITEMS[frame][theme].C1.center, 30, 0);
-        const a = cardShape(v, "condolence", frame, theme);
-        const b = cardShape({ ...v, scaleBounds: { preferred: [0.5, 0.5], hard: [0.5, 2] } }, "condolence", frame, theme);
+        const a = cardShape(v, "condolence", frame);
+        const b = cardShape({ ...v, scaleBounds: { preferred: [0.5, 0.5], hard: [0.5, 2] } }, "condolence", frame);
         expect(a.outer0).toEqual(b.outer0);
         expect(a.s).toBe(1);
-        expect(a.area).toBeCloseTo(cardPaperSize("condolence", frame, theme).width * cardPaperSize("condolence", frame, theme).height, 6);
+        expect(a.area).toBeCloseTo(cardPaperSize("condolence", frame).width * cardPaperSize("condolence", frame).height, 6);
       });
 
       it(`${frame} ${theme} : le papier suit l'inclinaison du Master et la zone de texte est dans le papier`, () => {
         for (const f of TEXT_FORMATS) {
           const slotId = SOURCE[f];
-          const sh = cardShape(contributionAnchorSlot(frame, theme, slotId, f, CONTRIBUTIONS_MASTER_ITEMS[frame][theme][slotId].center, 10, 0), f, frame, theme);
+          const sh = cardShape(contributionAnchorSlot(frame, theme, slotId, f, CONTRIBUTIONS_MASTER_ITEMS[frame][theme][slotId].center, 10, 0), f, frame);
           expect(edgeAngle(sh.outer0)).toBeCloseTo(CONTRIBUTIONS_MASTER_ITEMS[frame][theme][slotId].rotationDeg, 6);
           for (const q of sh.photo0) expect(insideOrOn(q, sh.outer0)).toBe(true);
         }

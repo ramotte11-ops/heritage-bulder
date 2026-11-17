@@ -35,21 +35,20 @@ export function itemsOf(seq: string, photo: { width: number; height: number } = 
 }
 
 /**
- * STOP attendus (mesurés en M4.1, ratio 1:1). Desktop Light : 3 condoléances
- * ou plus dans une rangée de 4 dépassent la largeur de la bande sans couvrir
- * un texte (preuve dans le rapport). Mobile : deux condoléances ne tiennent
- * pas côte à côte (520 px inclinées sur 919) et quatre Polaroids ne tiennent
- * pas sur deux rangées ; Mobile reste provisoire (O1).
+ * STOP attendus (mesurés en M4.2, formats communs Light / Dark, ratio 1:1).
+ * Desktop : aucun. Mobile : exactement les compositions à TROIS condoléances
+ * ou plus. Cause géométrique : sur la grille 2 × 2 des Masters Mobile, trois
+ * éléments imposent une rangée de deux, donc deux condoléances côte à côte ;
+ * condoléance commune 487 × 274, inclinée au moins de 3,8° → 504 px chacune,
+ * 1 008 px pour 915 utiles : 93 px de chevauchement pour 68 px de marge hors
+ * texte (75 px même en retranchant l'obliquité des bords). Mobile reste
+ * provisoire (lisibilité, O1).
  */
+const MOBILE_THREE_CONDOLENCES = ["CCC", "CCCC", "CCCP", "CCCR", "CCPC", "CCRC", "CPCC", "CRCC", "PCCC", "RCCC"] as const;
+
 export const EXPECTED_STOPS: Record<ContributionsFormat, Record<ContributionsTheme, readonly string[]>> = {
-  desktop: {
-    light: ["CCCC", "CCRC", "CRCC"],
-    dark: [],
-  },
-  mobile: {
-    light: ["CCC", "CCCC", "CCCR", "CCCP", "CCRC", "CCRR", "CCRP", "CCPC", "CCPR", "CRCC", "CPCC", "RCCC", "RRCC", "RPCC", "PCCC", "PRCC", "PPPP"],
-    dark: ["CCC", "CCCC", "CCCR", "CCCP", "CCRC", "CCPC", "CRCC", "CPCC", "RCCC", "RPPP", "PCCC", "PRPP", "PPRP", "PPPR", "PPPP"],
-  },
+  desktop: { light: [], dark: [] },
+  mobile: { light: MOBILE_THREE_CONDOLENCES, dark: MOBILE_THREE_CONDOLENCES },
 };
 
 /** Invariants artistiques et d'accessibilité d'une scène résolue. */
@@ -65,7 +64,7 @@ export function expectSceneInvariants(r: ContributionsSceneResult, items: readon
     if (item.kind === "story") expect(["story-tall", "story-wide"]).toContain(p.format);
     if (item.kind === "photo") expect(p.format).toBe("polaroid");
     if (p.layout.kind === "card") {
-      const size = cardPaperSize(p.layout.card.format, r.frame, r.theme);
+      const size = cardPaperSize(p.layout.card.format, r.frame);
       expect([p.layout.card.paper.width, p.layout.card.paper.height]).toEqual([size.width, size.height]);
       expect(p.scale).toBe(1);
     } else expect(p.scale).toBeGreaterThanOrEqual(CONTRIBUTIONS_SCENE_SEARCH.polaroidScale.hard[0] - 1e-9);

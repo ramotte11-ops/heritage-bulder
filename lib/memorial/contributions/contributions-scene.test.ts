@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CONTRIBUTIONS_MASTER_ITEMS, type ContributionsFormat, type ContributionsTheme } from "@/config/contributions-master-measurements";
+import { CONTRIBUTIONS_CARD_BAND, CONTRIBUTIONS_MASTER_ITEMS, type ContributionsFormat, type ContributionsTheme } from "@/config/contributions-master-measurements";
+import { cardLayout, cardPaperSize } from "@/lib/memorial/contributions/contribution-shapes";
 import {
   contributionAnchorRuns,
   contributionsSceneSnapshot,
@@ -115,13 +116,33 @@ describe("M4.1 Contributions — stabilité et refus", () => {
     }
   }, 120_000);
 
-  it("une composition impossible est un STOP explicite, jamais un rendu dégradé", () => {
-    expect(EXPECTED_STOPS.desktop.light).toContain("CCCC");
-    const r = solveContributionsScene(itemsOf("CCCC"), { frame: "desktop", theme: "light" });
+  it("M4.2 : les anciens STOP Desktop Light (CCCC, CCRC, CRCC) sont résolus, textes intacts", () => {
+    for (const seq of ["CCCC", "CCRC", "CRCC"]) {
+      const items = itemsOf(seq);
+      const r = solveContributionsScene(items, { frame: "desktop", theme: "light" });
+      expect(r.status, seq).toBe("PASS");
+      expectSceneInvariants(r, items);
+    }
+  }, 300_000);
+
+  it("une composition impossible est un STOP explicite, jamais un rendu dégradé (Mobile, trois condoléances)", () => {
+    expect(EXPECTED_STOPS.mobile.light).toContain("CCC");
+    const r = solveContributionsScene(itemsOf("CCC"), { frame: "mobile", theme: "light" });
     expect(r.status).toBe("CONTRIBUTIONS_NO_HARMONIOUS_PLACEMENT");
     expect(r.placements).toEqual([]);
     expect(r.detail).toMatch(/compositions essayées/);
-  }, 120_000);
+  }, 300_000);
+
+  it("Mobile, cause exacte : deux condoléances communes côte à côte dépassent la bande de plus que leur marge hors texte", () => {
+    const { width: w, height: h } = cardPaperSize("condolence", "mobile");
+    const tilts = THEMES.flatMap((t) => (["R1", "R2", "C1"] as const).map((id) => Math.abs(CONTRIBUTIONS_MASTER_ITEMS.mobile[t][id].rotationDeg)));
+    const a = (Math.min(...tilts) * Math.PI) / 180;
+    const tilted = w * Math.cos(a) + h * Math.sin(a);
+    const band = CONTRIBUTIONS_CARD_BAND.mobile;
+    const overlap = 2 * tilted - (band.x1 - band.x0 - 4);
+    const textMargin = cardLayout("condolence", { width: w, height: h }).protectedText.x;
+    expect(overlap - h * Math.sin(a)).toBeGreaterThan(textMargin);
+  });
 
   it("une photographie sans dimensions est refusée", () => {
     const r = solveContributionsScene([{ id: "p", kind: "photo" } as ContributionSceneItem], { frame: "desktop", theme: "light" });

@@ -156,6 +156,30 @@ export const CONTRIBUTIONS_MASTER_ITEMS: Record<ContributionsFormat, Record<Cont
   },
 };
 
+// ── M4.2 — Formats communs Light / Dark (décision PO) ──────────────────
+
+/**
+ * Décision PO M4.2 : les Masters sont des références d'INTENTION (harmonie,
+ * matières, inclinaisons, superpositions discrètes), pas des contrats de
+ * reproduction au pixel. Les cartes ont les MÊMES dimensions dans les deux
+ * thèmes ; seul l'habillage change (bleu pétrole, ivoire, pêche). Référence
+ * retenue : le Master Dark (proposée par la PO pour la condoléance, étendue
+ * aux deux récits et au Polaroid pour un contrat unique). Desktop et Mobile
+ * gardent chacun leurs formats (responsive). Arrondi au pixel.
+ */
+export const CONTRIBUTIONS_FORMAT_REFERENCE_THEME: ContributionsTheme = "dark";
+
+const referenceSize = (frame: ContributionsFormat, slot: ContributionsSlotId) => {
+  const s = CONTRIBUTIONS_MASTER_ITEMS[frame][CONTRIBUTIONS_FORMAT_REFERENCE_THEME][slot].size;
+  return { width: Math.round(s.width), height: Math.round(s.height) };
+};
+
+/** Formats communs par repère : identiques en Light et en Dark. */
+export const CONTRIBUTIONS_COMMON_FORMATS: Record<ContributionsFormat, Record<ContributionsCardFormat, { width: number; height: number }>> = {
+  desktop: { condolence: referenceSize("desktop", "C1"), "story-tall": referenceSize("desktop", "R1"), "story-wide": referenceSize("desktop", "R2"), polaroid: referenceSize("desktop", "P1") },
+  mobile: { condolence: referenceSize("mobile", "C1"), "story-tall": referenceSize("mobile", "R1"), "story-wide": referenceSize("mobile", "R2"), polaroid: referenceSize("mobile", "P1") },
+};
+
 /**
  * Géométrie canonique : moyenne Light / Dark par format, proposée en M0 (O3).
  * INFORMATIVE depuis M4 : la mission demande de ne pas imposer de moyenne
@@ -380,7 +404,7 @@ export interface Zone {
 
 export interface TextCardFormat {
   kind: "condolence" | "story";
-  /** Taille du papier, pixels source (moyenne Light / Dark). */
+  /** Taille du papier, pixels source : format COMMUN Light / Dark (M4.2). */
   paper: Record<ContributionsFormat, { width: number; height: number }>;
   /** Corps du message. Aucune autre carte ni photo ne peut couvrir cette zone. */
   body: Zone;
@@ -399,7 +423,7 @@ export interface TextCardFormat {
 export const CONTRIBUTIONS_TEXT_CARD_FORMATS: Record<Exclude<ContributionsCardFormat, "polaroid">, TextCardFormat> = {
   condolence: {
     kind: "condolence",
-    paper: { desktop: { width: 444, height: 264 }, mobile: { width: 500, height: 278 } },
+    paper: { desktop: CONTRIBUTIONS_COMMON_FORMATS.desktop.condolence, mobile: CONTRIBUTIONS_COMMON_FORMATS.mobile.condolence },
     overline: { x0: 0.2, y0: 0.24, x1: 0.8, y1: 0.33 },
     body: { x0: 0.14, y0: 0.36, x1: 0.86, y1: 0.71 },
     ruleY: null,
@@ -412,7 +436,7 @@ export const CONTRIBUTIONS_TEXT_CARD_FORMATS: Record<Exclude<ContributionsCardFo
   },
   "story-tall": {
     kind: "story",
-    paper: { desktop: { width: 389, height: 356 }, mobile: { width: 423, height: 353 } },
+    paper: { desktop: CONTRIBUTIONS_COMMON_FORMATS.desktop["story-tall"], mobile: CONTRIBUTIONS_COMMON_FORMATS.mobile["story-tall"] },
     overline: null,
     body: { x0: 0.15, y0: 0.06, x1: 0.85, y1: 0.7 },
     ruleY: 0.76,
@@ -422,7 +446,7 @@ export const CONTRIBUTIONS_TEXT_CARD_FORMATS: Record<Exclude<ContributionsCardFo
   },
   "story-wide": {
     kind: "story",
-    paper: { desktop: { width: 426, height: 293 }, mobile: { width: 438, height: 314 } },
+    paper: { desktop: CONTRIBUTIONS_COMMON_FORMATS.desktop["story-wide"], mobile: CONTRIBUTIONS_COMMON_FORMATS.mobile["story-wide"] },
     overline: null,
     body: { x0: 0.12, y0: 0.12, x1: 0.84, y1: 0.62 },
     ruleY: 0.72,
@@ -439,7 +463,8 @@ export const CONTRIBUTIONS_TEXT_CARD_FORMATS: Record<Exclude<ContributionsCardFo
  * du Master (photo portrait proche de 0,92).
  */
 export const CONTRIBUTIONS_POLAROID = {
-  witness: { desktop: { width: 338, height: 389 }, mobile: { width: 368, height: 424 } },
+  /** Polaroid témoin (surface de toute photographie) : format commun Light / Dark (M4.2). */
+  witness: { desktop: CONTRIBUTIONS_COMMON_FORMATS.desktop.polaroid, mobile: CONTRIBUTIONS_COMMON_FORMATS.mobile.polaroid },
   /** Papier, pixels source Desktop (≈ ×1,09 en Mobile). */
   paper: { sidePaddingPx: 18, topPaddingPx: 20, bottomBandFraction: 0.22 },
   /** Ruban adhésif en haut : matière, sans effet sur la géométrie. */

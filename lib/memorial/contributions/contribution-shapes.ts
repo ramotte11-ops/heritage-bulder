@@ -1,10 +1,8 @@
 import type { V2Slot } from "@/config/gallery-a13-v2-manifests";
 import {
-  CONTRIBUTIONS_MASTER_ITEMS,
   CONTRIBUTIONS_POLAROID,
   CONTRIBUTIONS_TEXT_CARD_FORMATS,
   type ContributionsFormat,
-  type ContributionsTheme,
   type Zone,
 } from "@/config/contributions-master-measurements";
 import { shapeAt, type GroupShape } from "@/lib/memorial/album/album-group-solver";
@@ -16,11 +14,10 @@ import { v2SlotToA13 } from "@/lib/memorial/gallery/gallery-v2";
  * M4 — Contributions des proches : les FORMES que la fabrique du solveur A13
  * partagé (`AlbumSolverProfile.shapeFor`) produit pour la rubrique.
  *
- * - CARTE (condoléance, récit haut, récit large) : papier de taille FIXE,
- *   relevée sur le Master du thème (`CONTRIBUTIONS_MASTER_ITEMS`), sans
- *   moyenne Light / Dark ; jamais mise à l'échelle (une condoléance a donc
- *   les mêmes dimensions partout dans une scène) ; ancrée en son centre et
- *   inclinée comme sur le Master. Sa zone PROTÉGÉE (`photo0`, le rôle que
+ * - CARTE (condoléance, récit haut, récit large) : papier de taille FIXE, au
+ *   format COMMUN Light / Dark (M4.2, `CONTRIBUTIONS_COMMON_FORMATS`) ;
+ *   jamais mise à l'échelle (une condoléance a les mêmes dimensions partout) ;
+ *   ancrée en son centre, inclinée selon son ancrage. Sa zone PROTÉGÉE (`photo0`, le rôle que
  *   tient la photographie pour un Polaroid) est l'enveloppe du corps, de la
  *   signature et de l'en-tête fixe : avec `minima.photo = 1`, aucun objet
  *   peint au-dessus ne peut en couvrir un seul pixel.
@@ -50,16 +47,14 @@ export interface CardLayout {
 
 export type ContributionShapeLayout = { kind: "card"; card: CardLayout } | { kind: "polaroid"; polaroid: PolaroidLayout };
 
-/** Format du papier d'un emplacement de Master : R1 = récit haut, R2 = récit large, C1 = condoléance. */
-const FORMAT_SOURCE_SLOT = { "story-tall": "R1", "story-wide": "R2", condolence: "C1" } as const;
-
 /**
- * Papier d'un format pour un Master (frame × thème). Une seule valeur par
- * format et par Master : toutes les cartes d'un même format sont identiques.
+ * Papier d'un format pour un repère (Desktop ou Mobile). M4.2 : format COMMUN
+ * aux thèmes Light et Dark (décision PO) — toutes les cartes d'un même format
+ * sont identiques, dans une scène comme d'un thème à l'autre.
  */
-export function cardPaperSize(format: ContributionTextFormat, frame: ContributionsFormat, theme: ContributionsTheme) {
-  const item = CONTRIBUTIONS_MASTER_ITEMS[frame][theme][FORMAT_SOURCE_SLOT[format]];
-  return { width: item.size.width, height: item.size.height };
+export function cardPaperSize(format: ContributionTextFormat, frame: ContributionsFormat) {
+  const { width, height } = CONTRIBUTIONS_TEXT_CARD_FORMATS[format].paper[frame];
+  return { width, height };
 }
 
 const zoneRect = (z: Zone, w: number, h: number): Rect => ({ x: z.x0 * w, y: z.y0 * h, width: (z.x1 - z.x0) * w, height: (z.y1 - z.y0) * h });
@@ -99,8 +94,8 @@ function polygonBox(poly: Point[]): [number, number, number, number] {
 }
 
 /** Forme CARTE au centre témoin du slot. `s` est ignoré : une carte n'est jamais mise à l'échelle. */
-export function cardShape(v: V2Slot, format: ContributionTextFormat, frame: ContributionsFormat, theme: ContributionsTheme): GroupShape<ContributionShapeLayout> {
-  const card = cardLayout(format, cardPaperSize(format, frame, theme));
+export function cardShape(v: V2Slot, format: ContributionTextFormat, frame: ContributionsFormat): GroupShape<ContributionShapeLayout> {
+  const card = cardLayout(format, cardPaperSize(format, frame));
   const slot = v2SlotToA13(v);
   const outer0 = slotRectToCanvas(slot, card.paper);
   const photo0 = slotRectToCanvas(slot, paperToLocal(card, card.protectedText));
