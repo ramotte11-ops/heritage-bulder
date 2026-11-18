@@ -50,6 +50,10 @@ export const STEP_IDS = [
   "A11",
   "A12",
   "A13",
+  // M7 — A15 « Contributions des proches », après la Galerie (ordre des
+  // rubriques : Galerie → Offrandes, sans étape → Contributions). Ajoutée
+  // en fin de section : l'ordre des étapes existantes est inchangé.
+  "A15",
   // Tronc final commun
   "P01",
   "P04",
@@ -185,6 +189,7 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "A11", group: "announcement", required: false, skippable: true },
   { id: "A12", group: "announcement", required: false, skippable: true },
   { id: "A13", group: "announcement", required: false, skippable: true },
+  { id: "A15", group: "announcement", required: false, skippable: true },
 
   // --- Tronc final commun ---
   { id: "P01", group: "final", required: false, skippable: true },
