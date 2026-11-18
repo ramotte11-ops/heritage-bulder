@@ -42,6 +42,8 @@ export interface ContributionsSceneDesktopProps {
   subtitle: string;
   closing: string;
   labels?: { leaveMessage: string; viewAll: string; readMore: string; close: string; condolenceOverline: string };
+  /** M6 — « Voir tous les messages » ouvre l'Album complet (l'hôte) ; absent = bouton inerte, comme en M5-A. */
+  onViewAll?: (trigger: HTMLElement) => void;
 }
 
 const FR_LABELS = {
@@ -60,7 +62,7 @@ const TYPE = CONTRIBUTIONS_TYPOGRAPHY.sizesSourcePx.desktop;
 const u = (v: number) => `calc(var(--u) * ${Math.round(v * 100) / 100})`;
 const box = (r: Rect): CSSProperties => ({ left: u(r.x), top: u(r.y), width: u(r.width), height: u(r.height) });
 
-export function ContributionsSceneDesktop({ theme, placements, contents, viewAll, title, subtitle, closing, labels = FR_LABELS }: ContributionsSceneDesktopProps) {
+export function ContributionsSceneDesktop({ theme, placements, contents, viewAll, title, subtitle, closing, labels = FR_LABELS, onViewAll }: ContributionsSceneDesktopProps) {
   const chrome = CONTRIBUTIONS_CHROME["with-contributions"].desktop[theme];
   const palette = CONTRIBUTIONS_PALETTE[theme];
   const [reading, setReading] = useState<{ author: string; text: string } | null>(null);
@@ -118,7 +120,7 @@ export function ContributionsSceneDesktop({ theme, placements, contents, viewAll
           <span>{labels.leaveMessage}</span>
         </button>
         {viewAll && chrome.viewAllButton ? (
-          <button type="button" className={styles.secondaryAction} style={{ ...fromBox(chrome.viewAllButton), fontSize: u(TYPE.viewAll) }}>
+          <button type="button" className={styles.secondaryAction} style={{ ...fromBox(chrome.viewAllButton), fontSize: u(TYPE.viewAll) }} onClick={onViewAll ? (e) => onViewAll(e.currentTarget) : undefined}>
             <span>{labels.viewAll}</span>
             <span aria-hidden="true">→</span>
           </button>

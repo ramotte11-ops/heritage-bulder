@@ -25,6 +25,13 @@ const CONDOLENCES: DemoContributionContent[] = [
   { author: "La famille Durand", text: "De tout cœur avec vous dans cette épreuve. Nos pensées vous accompagnent.", caption: null, photo: null },
   { author: "Hélène et Jacques", text: "Avec toute notre affection, nous partageons votre peine.", caption: null, photo: null },
   { author: "Les voisins du Clos", text: "Élise était une lumière pour tout le quartier. Sincères condoléances.", caption: null, photo: null },
+  // M6 — suite de la démonstration (Album complet) ; les quatre premières sont inchangées.
+  { author: "Isabelle", text: "Je garde le souvenir de son accueil chaleureux et de son rire. Toutes mes pensées vous accompagnent.", caption: null, photo: null },
+  { author: "La chorale Saint-Jean", text: "Sa voix nous manquera à chaque répétition. Nous chanterons pour elle dimanche.", caption: null, photo: null },
+  { author: "Nadia et Karim", text: "Avec tout notre soutien dans ce moment si difficile.", caption: null, photo: null },
+  { author: "Le club de lecture", text: "Merci, Élise, pour vingt ans de livres partagés, de débats et de gâteaux au citron.", caption: null, photo: null },
+  { author: "Thomas", text: "Une pensée émue pour une femme d’exception, généreuse et toujours attentive aux autres.", caption: null, photo: null },
+  { author: "Famille Moreau", text: "Nous partageons votre chagrin et vous embrassons tous très fort.", caption: null, photo: null },
 ];
 
 const STORIES: DemoContributionContent[] = [
@@ -42,6 +49,13 @@ const STORIES: DemoContributionContent[] = [
     photo: null,
   },
   { author: "Camille", text: "Ses dimanches au jardin, son thé à la menthe et sa patience infinie. Merci pour tout.", caption: null, photo: null },
+  {
+    author: "Lucie",
+    text: "Elle m’a appris à tricoter un hiver où je ne savais pas quoi faire de mes mains. Je porte encore l’écharpe bleue que nous avions commencée ensemble, et chaque maille me ramène à sa cuisine.",
+    caption: null,
+    photo: null,
+  },
+  { author: "Bernard", text: "Quarante ans de voisinage, pas une dispute, mille services rendus. Au revoir, chère amie.", caption: null, photo: null },
 ];
 
 const PHOTOS: DemoContributionContent[] = [

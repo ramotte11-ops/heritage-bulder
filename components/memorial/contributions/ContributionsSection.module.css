@@ -1,0 +1,52 @@
+/*
+ * M6 — chrome propre à l'hôte des Contributions : la barre « Retour » de
+ * l'Album et la scène garée. Même parti que l'hôte de la Galerie A13
+ * (`GalleryIntemporel.module.css`) : sobre, focus visible, cible ≥ 44 px.
+ */
+
+/* Collante : « Retour » reste à portée sur toute la longueur de l'Album. */
+.albumBar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 12px 16px;
+  box-sizing: border-box;
+}
+
+.theme-light .albumBar {
+  background: #efe6d6;
+  color: #2f2924;
+}
+
+.theme-dark .albumBar {
+  background: #14110e;
+  color: #f1e5cc;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: 17px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.back:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+/* La scène pendant l'Album : montée, mise en page à sa largeur, sans hauteur ni peinture. */
+.parked {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
