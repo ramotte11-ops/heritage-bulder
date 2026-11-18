@@ -1,0 +1,332 @@
+/*
+ * M5-A — scène Desktop des Contributions des proches.
+ * Repère des Masters : 1671 × 941 px source ; --u = 1 px source en CSS.
+ * Polices (variables posées par l'hôte) : EB Garamond 400 / 500, La Belle
+ * Aurore (légendes), Allura (signatures).
+ */
+
+.frame {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.stage {
+  --u: calc(100cqw / 1671);
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  color: var(--text);
+}
+
+.ornament {
+  position: absolute;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.title {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--title);
+}
+
+.subtitle {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-wrap: pretty;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.rule {
+  position: absolute;
+  height: max(1px, calc(var(--u) * 1.2));
+  background: var(--rule);
+  opacity: 0.85;
+}
+
+.cards {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cardSlot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cardShadow {
+  position: absolute;
+  filter: var(--card-shadow);
+  pointer-events: auto;
+}
+
+.card {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  background-size: calc(var(--u) * 1100) auto;
+  background-position: center;
+}
+
+.condolence {
+  border-radius: calc(var(--u) * 2);
+}
+
+.frameSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cardOrnament {
+  position: absolute;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.overline {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #e8dcc4;
+  white-space: nowrap;
+}
+
+.body {
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.bodyMeasure {
+  position: absolute;
+  inset: 0 0 auto 0;
+  margin: 0;
+  visibility: hidden;
+  pointer-events: none;
+  text-wrap: pretty;
+}
+
+.bodyText {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: pretty;
+  hyphens: manual;
+}
+
+.readMore {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--font-heritage-recit-serif-italic), "EB Garamond", Georgia, serif;
+  font-style: italic;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, calc(var(--u) * 1));
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+  line-height: inherit;
+}
+
+.readMore:focus-visible,
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+  outline: max(2px, calc(var(--u) * 2)) solid var(--gold);
+  outline-offset: max(2px, calc(var(--u) * 3));
+}
+
+.signatureRule {
+  position: absolute;
+  height: max(1px, calc(var(--u) * 1.4));
+  background: #3a3029;
+  opacity: 0.75;
+}
+
+.signature {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-family: var(--font-heritage-contributions-signature), "Brush Script MT", cursive;
+  line-height: 1;
+  color: #2b241e;
+}
+
+.signatureGold {
+  color: #dcb56b;
+}
+
+.polaroid {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  background-size: calc(var(--u) * 512) auto;
+  border-radius: calc(var(--u) * 1.5);
+}
+
+.polaroidWindow {
+  position: absolute;
+  overflow: hidden;
+  background: #efe7d8;
+  box-shadow: inset 0 0 calc(var(--u) * 2) rgba(0, 0, 0, 0.25);
+}
+
+.polaroidPhoto {
+  position: absolute;
+  display: block;
+}
+
+.tape {
+  position: absolute;
+  left: 34%;
+  top: calc(var(--u) * -12);
+  width: 32%;
+  height: calc(var(--u) * 34);
+  background: linear-gradient(180deg, rgba(232, 214, 178, 0.78), rgba(220, 198, 160, 0.72));
+  clip-path: polygon(0 4%, 6% 0, 12% 6%, 20% 1%, 30% 5%, 42% 0, 55% 4%, 68% 0, 80% 5%, 92% 1%, 100% 5%, 98% 50%, 100% 96%, 90% 100%, 78% 95%, 64% 100%, 50% 96%, 36% 100%, 22% 95%, 10% 100%, 0 95%, 2% 50%);
+  transform: rotate(-2deg);
+  box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 2) rgba(60, 40, 20, 0.15);
+}
+
+.caption {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1em;
+  font-family: var(--font-heritage-hero-script), cursive;
+  line-height: 1.15;
+  color: #2b2622;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.primaryAction,
+.secondaryAction {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.primaryAction {
+  background: var(--button-fill);
+  color: var(--button-text);
+  border: max(1px, calc(var(--u) * 2)) solid var(--button-border);
+  box-shadow: 0 calc(var(--u) * 4) calc(var(--u) * 10) rgba(0, 0, 0, 0.22), inset 0 0 0 calc(var(--u) * 1) rgba(255, 240, 210, 0.12);
+}
+
+.secondaryAction {
+  background: transparent;
+  color: var(--outline-text);
+  border: max(1px, calc(var(--u) * 1.4)) solid var(--outline-border);
+}
+
+.quill {
+  width: 1.6em;
+  height: 1.6em;
+  color: var(--button-border);
+}
+
+.closing {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.reading {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  max-width: min(36rem, calc(100vw - 2rem));
+  padding: 2rem 2.25rem 1.5rem;
+  border: 1px solid #c9a35f;
+  border-radius: 6px;
+  background: #fbf3e6;
+  color: #2b241e;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.reading::backdrop {
+  background: rgba(20, 14, 8, 0.55);
+}
+
+.readingText {
+  margin: 0 0 1rem;
+}
+
+.readingAuthor {
+  margin: 0 0 1.25rem;
+  font-family: var(--font-heritage-contributions-signature), cursive;
+  font-size: 1.9rem;
+  text-align: right;
+}
+
+.readingClose {
+  font: inherit;
+  padding: 0.4rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid #8d7d6a;
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading {
+    transition: none;
+  }
+}

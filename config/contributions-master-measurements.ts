@@ -491,7 +491,8 @@ export const CONTRIBUTIONS_TYPOGRAPHY = {
     polaroidCaption: "La Belle Aurore (probable)",
   },
   sizesSourcePx: {
-    desktop: { title: 88, subtitle: 24, storyBody: 24, condolenceBody: 22, overline: 18, signature: 34, caption: 26, button: 26, viewAll: 22, closing: 22, welcome: 34, invitation: 30 },
+    // M5-A : titre ramené de 88 à 83 par comparaison des captures au Master (largeur 856 px).
+    desktop: { title: 83, subtitle: 24, storyBody: 24, condolenceBody: 22, overline: 18, signature: 34, caption: 26, button: 26, viewAll: 22, closing: 22, welcome: 34, invitation: 30 },
     mobile: { title: 62, subtitle: 22, storyBody: 22.5, condolenceBody: 20, overline: 17, signature: 30, caption: 24, button: 28, viewAll: 24, closing: 22, welcome: 36, invitation: 32 },
   },
 } as const;
