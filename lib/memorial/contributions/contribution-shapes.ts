@@ -94,8 +94,9 @@ function polygonBox(poly: Point[]): [number, number, number, number] {
 }
 
 /** Forme CARTE au centre témoin du slot. `s` est ignoré : une carte n'est jamais mise à l'échelle. */
-export function cardShape(v: V2Slot, format: ContributionTextFormat, frame: ContributionsFormat): GroupShape<ContributionShapeLayout> {
-  const card = cardLayout(format, cardPaperSize(format, frame));
+export function cardShape(v: V2Slot, format: ContributionTextFormat, frameOrSize: ContributionsFormat | { width: number; height: number }): GroupShape<ContributionShapeLayout> {
+  // Repère (format commun M4.2) ou taille explicite (géométrie exploratoire M5-B).
+  const card = cardLayout(format, typeof frameOrSize === "string" ? cardPaperSize(format, frameOrSize) : frameOrSize);
   const slot = v2SlotToA13(v);
   const outer0 = slotRectToCanvas(slot, card.paper);
   const photo0 = slotRectToCanvas(slot, paperToLocal(card, card.protectedText));

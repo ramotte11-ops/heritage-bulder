@@ -175,20 +175,88 @@ const boxPoly = (b: Box): Point[] => [
   { x: b.x0, y: b.y1 },
 ];
 
-/** Zones interdites (convexes) : zones protégées du Master + extérieur de la bande des contributions. */
-export function contributionsForbiddenZones(frame: ContributionsFormat): Point[][] {
-  const band = CONTRIBUTIONS_CARD_BAND[frame];
+/**
+ * M5-B — GÉOMÉTRIE d'une scène : tout ce que la composition lit du Master.
+ * `masterGeometry` reproduit, valeur pour valeur, la géométrie des Masters
+ * (Desktop, Mobile 2 × 2) utilisée jusqu'ici ; une géométrie exploratoire
+ * (Mobile M5-B) peut être passée à `solveContributionsScene` sans rien changer
+ * aux scènes des Masters.
+ */
+export interface ContributionsGeometry {
+  /** Préfixe des identifiants de slot (`contrib-${id}-${ancrage}`). */
+  id: string;
+  /** Ancrages : centre, inclinaison, profondeur (repère source). */
+  anchors: Readonly<Record<ContributionsSlotId, { center: Point; rotationDeg: number; zIndex: number }>>;
+  /** Ordre de lecture des ancrages. */
+  order: readonly ContributionsSlotId[];
+  /** Rangées (ordre de lecture), pour l'écartement selon les formes réelles. */
+  rows: readonly (readonly ContributionsSlotId[])[];
+  /** Formats : papier fixe des cartes, témoin du Polaroid. */
+  formats: Readonly<Record<ContributionFormat, { width: number; height: number }>>;
+  /** Zones que nul papier ne touche (titres, actions, pied, sceau). */
+  protectedZones: readonly Box[];
+  /** Bande des contributions : la scène ne grandit jamais. */
+  band: Box;
+  safeX: readonly [number, number];
+  hitTargetPx: number;
+}
+
+const MASTER_GEOMETRY = new Map<string, ContributionsGeometry>();
+
+/** Géométrie des Masters (M4.2), inchangée. */
+export function masterGeometry(frame: ContributionsFormat, theme: ContributionsTheme): ContributionsGeometry {
+  const key = `${frame}-${theme}`;
+  let g = MASTER_GEOMETRY.get(key);
+  if (!g) {
+    const items = CONTRIBUTIONS_MASTER_ITEMS[frame][theme];
+    const contract = CONTRIBUTIONS_A13_REUSE_CONTRACT.solverProfile[frame];
+    const anchor = (id: ContributionsSlotId) => ({ center: items[id].center, rotationDeg: items[id].rotationDeg, zIndex: items[id].zIndex });
+    g = {
+      id: key,
+      anchors: { R1: anchor("R1"), C1: anchor("C1"), R2: anchor("R2"), P1: anchor("P1") },
+      order: CONTRIBUTIONS_ANCHOR_ORDER[frame],
+      rows: MASTER_ROWS[frame],
+      formats: {
+        condolence: cardPaperSize("condolence", frame),
+        "story-tall": cardPaperSize("story-tall", frame),
+        "story-wide": cardPaperSize("story-wide", frame),
+        polaroid: CONTRIBUTIONS_POLAROID.witness[frame],
+      },
+      protectedZones: CONTRIBUTIONS_PROTECTED_ZONES[frame],
+      band: CONTRIBUTIONS_CARD_BAND[frame],
+      safeX: [contract.safeX[0], contract.safeX[1]],
+      hitTargetPx: contract.hitTargetSourcePx,
+    };
+    MASTER_GEOMETRY.set(key, g);
+  }
+  return g;
+}
+
+/** Rangées du Master (ordre de lecture). */
+const MASTER_ROWS: Record<ContributionsFormat, readonly (readonly ContributionsSlotId[])[]> = {
+  desktop: [["R1", "C1", "R2", "P1"]],
+  mobile: [
+    ["R1", "R2"],
+    ["C1", "P1"],
+  ],
+};
+
+/** Zones interdites (convexes) d'une géométrie : zones protégées + extérieur de la bande. */
+export function forbiddenZonesOf(g: ContributionsGeometry): Point[][] {
+  const band = g.band;
   const outside: Box[] = [
     { x0: -BIG, y0: -BIG, x1: BIG, y1: band.y0 },
     { x0: -BIG, y0: band.y1, x1: BIG, y1: BIG },
     { x0: -BIG, y0: band.y0, x1: band.x0, y1: band.y1 },
     { x0: band.x1, y0: band.y0, x1: BIG, y1: band.y1 },
   ];
-  return [...CONTRIBUTIONS_PROTECTED_ZONES[frame], ...outside].map(boxPoly);
+  return [...g.protectedZones, ...outside].map(boxPoly);
 }
 
-/** Polaroid témoin : format commun Light / Dark (M4.2) ; sa surface est celle de toute photographie. */
-const polaroidWitness = (frame: ContributionsFormat) => CONTRIBUTIONS_POLAROID.witness[frame];
+/** Zones interdites (convexes) : zones protégées du Master + extérieur de la bande des contributions. */
+export function contributionsForbiddenZones(frame: ContributionsFormat): Point[][] {
+  return forbiddenZonesOf(masterGeometry(frame, "light"));
+}
 
 /**
  * Une contribution posée sur un ancrage du Master, au format V2 du solveur
@@ -207,14 +275,27 @@ export function contributionAnchorSlot(
   search: Readonly<ContributionsSceneSearch> = CONTRIBUTIONS_SCENE_SEARCH,
   cardsFixed = false,
 ): V2Slot {
+  return anchorSlotIn(masterGeometry(frame, theme), anchorId, format, center, zIndex, mediaIndex, search, cardsFixed);
+}
+
+function anchorSlotIn(
+  g: ContributionsGeometry,
+  anchorId: ContributionsSlotId,
+  format: ContributionFormat,
+  center: Point,
+  zIndex: number,
+  mediaIndex: number,
+  search: Readonly<ContributionsSceneSearch>,
+  cardsFixed: boolean,
+): V2Slot {
   const isPolaroid = format === "polaroid";
   const t = cardsFixed && !isPolaroid ? 0 : search.territoryPx;
-  const { width, height } = isPolaroid ? polaroidWitness(frame) : cardPaperSize(format, frame);
+  const { width, height } = g.formats[format];
   return {
-    slotId: `contrib-${frame}-${theme}-${anchorId}`,
+    slotId: `contrib-${g.id}-${anchorId}`,
     mediaIndex,
     role: format,
-    witness: { center: { x: center.x, y: center.y }, outerSize: { width, height }, outerArea: width * height, rotationDeg: contributionTilt(frame, theme, anchorId, format) },
+    witness: { center: { x: center.x, y: center.y }, outerSize: { width, height }, outerArea: width * height, rotationDeg: tiltIn(g, anchorId, format) },
     // `0 - t`, jamais `-t` : un territoire nul doit valoir +0 (sinon -0 dans les placements).
     territory: { xMin: 0 - t, xMax: t, yMin: 0 - t, yMax: t },
     scaleBounds: isPolaroid ? { preferred: [...search.polaroidScale.preferred], hard: [...search.polaroidScale.hard] } : { preferred: [1, 1], hard: [1, 1] },
@@ -232,8 +313,11 @@ export function contributionAnchorSlot(
  * d'inclinaisons des cartes du Master.
  */
 export function contributionTilt(frame: ContributionsFormat, theme: ContributionsTheme, anchorId: ContributionsSlotId, format: ContributionFormat): number {
-  const anchors = CONTRIBUTIONS_MASTER_ITEMS[frame][theme];
-  return format !== "polaroid" && anchorId === "P1" ? anchors.C1.rotationDeg : anchors[anchorId].rotationDeg;
+  return tiltIn(masterGeometry(frame, theme), anchorId, format);
+}
+
+function tiltIn(g: ContributionsGeometry, anchorId: ContributionsSlotId, format: ContributionFormat): number {
+  return format !== "polaroid" && anchorId === "P1" ? g.anchors.C1.rotationDeg : g.anchors[anchorId].rotationDeg;
 }
 
 const centroid = (pts: readonly Point[]) => ({ x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length });
@@ -247,8 +331,12 @@ const round2 = (v: number) => Math.round(v * 2) / 2 + 0;
  * du Master), puis par ordre de lecture.
  */
 export function contributionAnchorRuns(frame: ContributionsFormat, theme: ContributionsTheme, n: number) {
-  const order = CONTRIBUTIONS_ANCHOR_ORDER[frame];
-  const items = CONTRIBUTIONS_MASTER_ITEMS[frame][theme];
+  return anchorRunsIn(masterGeometry(frame, theme), n);
+}
+
+function anchorRunsIn(g: ContributionsGeometry, n: number) {
+  const order = g.order;
+  const items = g.anchors;
   const all = centroid(order.map((id) => items[id].center));
   const runs: { ids: ContributionsSlotId[]; offset: Point; contiguous: boolean; key: string }[] = [];
   const pick = (from: number, chosen: number[]) => {
@@ -273,33 +361,28 @@ export function contributionsSolverProfile(
   formats: readonly ContributionFormat[],
   search: Readonly<ContributionsSceneSearch> = CONTRIBUTIONS_SCENE_SEARCH,
 ): AlbumSolverProfile<ContributionShapeLayout> {
-  const contract = CONTRIBUTIONS_A13_REUSE_CONTRACT.solverProfile[frame];
+  return profileIn(masterGeometry(frame, theme), formats, search);
+}
+
+function profileIn(g: ContributionsGeometry, formats: readonly ContributionFormat[], search: Readonly<ContributionsSceneSearch>): AlbumSolverProfile<ContributionShapeLayout> {
   return {
-    id: `contributions-${frame}-${theme}`,
-    safeX: [contract.safeX[0], contract.safeX[1]],
+    id: `contributions-${g.id}`,
+    safeX: [g.safeX[0], g.safeX[1]],
     firstGroupMinY: -BIG,
     firstGroupZone: null,
-    hitTargetPx: contract.hitTargetSourcePx,
+    hitTargetPx: g.hitTargetPx,
     minima: (slots) => slots.map(() => ({ photo: 1, outer: search.minVisiblePaper })),
     shapeFor: (v, source, s, i) => {
       const f = formats[i];
-      return f === "polaroid" ? polaroidShape(v, source, s) : cardShape(v, f, frame);
+      return f === "polaroid" ? polaroidShape(v, source, s) : cardShape(v, f, g.formats[f]);
     },
-    forbiddenZones: contributionsForbiddenZones(frame),
+    forbiddenZones: forbiddenZonesOf(g),
   };
 }
 
 const CARD_SOURCE: PhotoSource = { width: 1, height: 1 };
 const KINDS: ReadonlySet<string> = new Set<ContributionKind>(["condolence", "story", "photo"]);
 
-/** Rangées du Master (ordre de lecture). */
-const MASTER_ROWS: Record<ContributionsFormat, readonly (readonly ContributionsSlotId[])[]> = {
-  desktop: [["R1", "C1", "R2", "P1"]],
-  mobile: [
-    ["R1", "R2"],
-    ["C1", "P1"],
-  ],
-};
 
 /** Budget de recherche par essai (le solveur A13 garde ses budgets par défaut). */
 export const CONTRIBUTIONS_SEARCH_BUDGET = { maxJoint: 4000, repairBudget: 4000 } as const;
@@ -318,8 +401,8 @@ export interface ContributionsSeed {
 const rad = (d: number) => (d * Math.PI) / 180;
 
 /** Largeur horizontale du papier incliné (boîte englobante). */
-function tiltedWidth(frame: ContributionsFormat, theme: ContributionsTheme, f: ContributionFormat, rotationDeg: number) {
-  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame) : cardPaperSize(f, frame);
+function tiltedWidth(g: ContributionsGeometry, f: ContributionFormat, rotationDeg: number) {
+  const { width: w, height: h } = g.formats[f];
   const a = rad(rotationDeg);
   return w * Math.abs(Math.cos(a)) + h * Math.abs(Math.sin(a));
 }
@@ -330,27 +413,26 @@ function tiltedWidth(frame: ContributionsFormat, theme: ContributionsTheme, f: C
  * papier qui peut être couverte (1 − papier visible minimal).
  */
 function coverAllowance(
-  frame: ContributionsFormat,
-  theme: ContributionsTheme,
+  g: ContributionsGeometry,
   f: ContributionFormat,
   side: "left" | "right" | "top" | "bottom",
   paperSlack: number,
 ): number {
   if (f === "polaroid") {
-    const { width, height } = polaroidWitness(frame);
+    const { width, height } = g.formats.polaroid;
     // Photo : légère couverture permise ; légende (bas) : jamais.
     if (side === "bottom") return 0;
     return paperSlack * (side === "top" ? height : width);
   }
-  const size = cardPaperSize(f, frame);
+  const size = g.formats[f];
   const hull = cardLayout(f, size).protectedText;
   const text = { left: hull.x, right: size.width - (hull.x + hull.width), top: hull.y, bottom: size.height - (hull.y + hull.height) }[side];
   return Math.min(text, paperSlack * (side === "left" || side === "right" ? size.width : size.height));
 }
 
 /** Hauteur verticale du papier incliné (boîte englobante). */
-function tiltedHeight(frame: ContributionsFormat, theme: ContributionsTheme, f: ContributionFormat, rotationDeg: number) {
-  const { width: w, height: h } = f === "polaroid" ? polaroidWitness(frame) : cardPaperSize(f, frame);
+function tiltedHeight(g: ContributionsGeometry, f: ContributionFormat, rotationDeg: number) {
+  const { width: w, height: h } = g.formats[f];
   const a = rad(rotationDeg);
   return h * Math.abs(Math.cos(a)) + w * Math.abs(Math.sin(a));
 }
@@ -364,19 +446,19 @@ function tiltedHeight(frame: ContributionsFormat, theme: ContributionsTheme, f: 
  * Master plus larges que nécessaire, puis sur les 20 % de marge restants ;
  * le barycentre de la rangée est conservé autant que la bande le permet.
  */
-function spreadRows(frame: ContributionsFormat, theme: ContributionsTheme, seed: ContributionsSeed, paperSlack: number): Point[] {
+function spreadRows(g: ContributionsGeometry, seed: ContributionsSeed, paperSlack: number): Point[] {
   const centers = seed.centers.map((c) => ({ ...c }));
-  const band = CONTRIBUTIONS_CARD_BAND[frame];
+  const band = g.band;
   const [b0, b1] = [band.x0 + 2, band.x1 - 2];
-  for (const row of MASTER_ROWS[frame]) {
+  for (const row of g.rows) {
     const idx = seed.ids.map((id, i) => (row.includes(id) ? i : -1)).filter((i) => i >= 0).sort((a, b) => centers[a].x - centers[b].x);
     if (!idx.length) continue;
-    const w = idx.map((i) => tiltedWidth(frame, theme, seed.formats[i], contributionTilt(frame, theme, seed.ids[i], seed.formats[i])));
+    const w = idx.map((i) => tiltedWidth(g, seed.formats[i], tiltIn(g, seed.ids[i], seed.formats[i])));
     const gaps: { d: number; need: number; hard: number }[] = [];
     for (let k = 1; k < idx.length; k++) {
       const [a, b] = [idx[k - 1], idx[k]];
       const lower = seed.z[a] < seed.z[b] ? { i: a, side: "right" as const } : { i: b, side: "left" as const };
-      const margin = coverAllowance(frame, theme, seed.formats[lower.i], lower.side, paperSlack);
+      const margin = coverAllowance(g, seed.formats[lower.i], lower.side, paperSlack);
       const half = (w[k - 1] + w[k]) / 2;
       const need = half - 0.8 * margin;
       gaps.push({ d: Math.max(centers[b].x - centers[a].x, need), need, hard: half - margin });
@@ -400,7 +482,7 @@ function spreadRows(frame: ContributionsFormat, theme: ContributionsTheme, seed:
     const start = lo <= hi ? Math.min(hi, Math.max(lo, target)) : lo;
     idx.forEach((i, k) => (centers[i].x = round2(start + xs[k])));
   }
-  return spreadRowsVertically(frame, theme, seed, centers, paperSlack);
+  return spreadRowsVertically(g, seed, centers, paperSlack);
 }
 
 /**
@@ -409,18 +491,18 @@ function spreadRows(frame: ContributionsFormat, theme: ContributionsTheme, seed:
  * le dessous peut céder (marge hors texte ou hors légende, part de papier),
  * dans la limite de la bande. Sans effet quand une seule rangée est occupée.
  */
-function spreadRowsVertically(frame: ContributionsFormat, theme: ContributionsTheme, seed: ContributionsSeed, centers: Point[], paperSlack: number): Point[] {
-  const rows = MASTER_ROWS[frame].map((row) => seed.ids.map((id, i) => (row.includes(id) ? i : -1)).filter((i) => i >= 0)).filter((r) => r.length);
+function spreadRowsVertically(g: ContributionsGeometry, seed: ContributionsSeed, centers: Point[], paperSlack: number): Point[] {
+  const rows = g.rows.map((row) => seed.ids.map((id, i) => (row.includes(id) ? i : -1)).filter((i) => i >= 0)).filter((r) => r.length);
   if (rows.length < 2) return centers;
-  const band = CONTRIBUTIONS_CARD_BAND[frame];
+  const band = g.band;
   const out = centers.map((c) => ({ ...c }));
   for (let r = 1; r < rows.length; r++) {
     const [top, bottom] = [rows[r - 1], rows[r]];
-    const h = (i: number) => tiltedHeight(frame, theme, seed.formats[i], contributionTilt(frame, theme, seed.ids[i], seed.formats[i]));
+    const h = (i: number) => tiltedHeight(g, seed.formats[i], tiltIn(g, seed.ids[i], seed.formats[i]));
     let need = 0;
     for (const a of top)
       for (const b of bottom) {
-        const allow = seed.z[a] < seed.z[b] ? coverAllowance(frame, theme, seed.formats[a], "bottom", paperSlack) : coverAllowance(frame, theme, seed.formats[b], "top", paperSlack);
+        const allow = seed.z[a] < seed.z[b] ? coverAllowance(g, seed.formats[a], "bottom", paperSlack) : coverAllowance(g, seed.formats[b], "top", paperSlack);
         need = Math.max(need, (h(a) + h(b)) / 2 - 0.8 * allow);
       }
     const yTop = top.reduce((s, i) => s + out[i].y, 0) / top.length;
@@ -456,9 +538,18 @@ export function contributionsSeeds(
   settle: (anchorId: ContributionsSlotId, format: ContributionFormat, center: Point) => Point | null,
   search: Readonly<ContributionsSceneSearch> = CONTRIBUTIONS_SCENE_SEARCH,
 ): ContributionsSeed[] {
+  return seedsIn(masterGeometry(frame, theme), kinds, settle, search);
+}
+
+function seedsIn(
+  g: ContributionsGeometry,
+  kinds: readonly ContributionKind[],
+  settle: (anchorId: ContributionsSlotId, format: ContributionFormat, center: Point) => Point | null,
+  search: Readonly<ContributionsSceneSearch>,
+): ContributionsSeed[] {
   const fits = (id: ContributionsSlotId, f: ContributionFormat, c: Point) => settle(id, f, c) !== null;
-  const anchors = CONTRIBUTIONS_MASTER_ITEMS[frame][theme];
-  const order = CONTRIBUTIONS_ANCHOR_ORDER[frame];
+  const anchors = g.anchors;
+  const order = g.order;
   const paperSlack = 1 - search.minVisiblePaper;
   const seeds: ContributionsSeed[] = [];
   const seen = new Set<string>();
@@ -470,7 +561,7 @@ export function contributionsSeeds(
   });
   for (const perm of perms) {
     const ks = perm.map((j) => kinds[j]);
-    for (const run of contributionAnchorRuns(frame, theme, ks.length)) {
+    for (const run of anchorRunsIn(g, ks.length)) {
       for (const k of [1, 0.5, 0]) {
         const offset = { x: round2(run.offset.x * k), y: round2(run.offset.y * k) };
         const base = run.ids.map((id) => ({ x: anchors[id].center.x + offset.x, y: anchors[id].center.y + offset.y }));
@@ -486,7 +577,7 @@ export function contributionsSeeds(
           const seed: ContributionsSeed = { perm, ids: run.ids, centers: base, z, formats, label: `${run.ids.join("+")} ×${k} z:${zMode}${perm.some((j, i) => j !== i) ? ` ordre:${perm.join("")}` : ""}` };
           // Écarter les rangées, puis installer chaque CARTE seule, verticalement,
           // à sa position valide la plus proche (le Polaroid reste libre en passe A).
-          seed.centers = spreadRows(frame, theme, seed, paperSlack).map((c, i) => {
+          seed.centers = spreadRows(g, seed, paperSlack).map((c, i) => {
             if (seed.formats[i] === "polaroid") return c;
             const d = settle(seed.ids[i], seed.formats[i], c);
             return d ? { x: c.x + d.x, y: c.y + d.y } : c;
@@ -515,10 +606,17 @@ function permutations(n: number): number[][] {
 
 export function solveContributionsScene(
   items: readonly ContributionSceneItem[],
-  options: { frame: ContributionsFormat; theme: ContributionsTheme; search?: Readonly<ContributionsSceneSearch> },
+  options: {
+    frame: ContributionsFormat;
+    theme: ContributionsTheme;
+    search?: Readonly<ContributionsSceneSearch>;
+    /** M5-B : géométrie exploratoire ; absente = celle du Master (M4.2). */
+    geometry?: ContributionsGeometry;
+  },
 ): ContributionsSceneResult {
   const { frame, theme } = options;
   const search = options.search ?? CONTRIBUTIONS_SCENE_SEARCH;
+  const g = options.geometry ?? masterGeometry(frame, theme);
   const vis = contributionsSceneVisibility(items.length);
   const head = { ...vis, frame, theme, provisional: frame === "mobile", total: items.length };
   const none = { placements: [], anchors: null, stats: null };
@@ -536,18 +634,17 @@ export function solveContributionsScene(
     const key = `${anchorId}|${format}|${center.x}|${center.y}`;
     if (!settleCache.has(key)) {
       // Installation VERTICALE seulement : l'espacement horizontal appartient à `spreadRows`.
-      const slot = { ...contributionAnchorSlot(frame, theme, anchorId, format, center, 0, 0, search), territory: { xMin: 0, xMax: 0, yMin: 0 - search.territoryPx, yMax: search.territoryPx } };
+      const slot = { ...anchorSlotIn(g, anchorId, format, center, 0, 0, search, false), territory: { xMin: 0, xMax: 0, yMin: 0 - search.territoryPx, yMax: search.territoryPx } };
       const one = new GroupSession<{ slots: readonly V2Slot[] }, ContributionShapeLayout>({ slots: [slot] }, [CARD_SOURCE], false, {
-        profile: { ...contributionsSolverProfile(frame, theme, [format], search), ...budget },
+        profile: { ...profileIn(g, [format], search), ...budget },
       });
       const c = one.structuralStop ? null : one.candidate(0);
       settleCache.set(key, c ? { ...c.placements[0].d } : null);
     }
     return settleCache.get(key)!;
   };
-  const seeds = contributionsSeeds(
-    frame,
-    theme,
+  const seeds = seedsIn(
+    g,
     visible.map((it) => it.kind),
     settle,
     search,
@@ -558,8 +655,8 @@ export function solveContributionsScene(
   const searchC: ContributionsSceneSearch = { ...search, polaroidScale: { preferred: [...search.polaroidScale.hard], hard: [...search.polaroidScale.hard] } };
   const attempt = (seed: ContributionsSeed, pass: ContributionsPass) => {
     const s = pass === "C" ? searchC : search;
-    const slots = seed.ids.map((id, i) => contributionAnchorSlot(frame, theme, id, seed.formats[i], seed.centers[i], seed.z[i], i, s, pass === "A"));
-    const profile = pass === "C" ? contributionsSolverProfile(frame, theme, seed.formats, s) : { ...contributionsSolverProfile(frame, theme, seed.formats, s), ...budget };
+    const slots = seed.ids.map((id, i) => anchorSlotIn(g, id, seed.formats[i], seed.centers[i], seed.z[i], i, s, pass === "A"));
+    const profile = pass === "C" ? profileIn(g, seed.formats, s) : { ...profileIn(g, seed.formats, s), ...budget };
     const session = new GroupSession<{ slots: readonly V2Slot[] }, ContributionShapeLayout>({ slots }, seed.perm.map((j) => sources[j]), false, { profile });
     const best = session.structuralStop ? null : session.candidate(0);
     evaluated += session.evaluated + session.repairEvaluated;
