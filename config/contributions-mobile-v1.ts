@@ -71,8 +71,9 @@ const FOOTER = 840;
 function chromeFor(H: number): ContributionsMobileChrome {
   return {
     emblem: { x0: 435, y0: 40, x1: 506, y1: 110 },
-    title: { x0: 60, y0: 125, x1: 881, y1: 315 },
-    subtitle: { x0: 80, y0: 325, x1: 861, y1: 500 },
+    // M5-C : 2 lignes de titre à 30 px tiennent dès 320 px (204 px source = 69 px CSS).
+    title: { x0: 60, y0: 118, x1: 881, y1: 322 },
+    subtitle: { x0: 80, y0: 328, x1: 861, y1: 502 },
     leafDivider: { x0: 435, y0: 510, x1: 506, y1: 552 },
     // 140 / 130 px source : ≥ 44 px CSS dès 320 px de large.
     leaveMessageButton: { x0: 160, y0: H - 810, x1: 781, y1: H - 670 },

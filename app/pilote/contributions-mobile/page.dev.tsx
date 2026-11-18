@@ -5,6 +5,7 @@ import { ebGaramond, ebGaramondItalic, laBelleAurore, offeringsMediumSerif } fro
 import { MemorialCards } from "@/components/memorial/assembly/MemorialCards";
 import { contributionsSignatureScript } from "@/components/memorial/contributions/contribution-fonts";
 import { ContributionsSceneMobile } from "@/components/memorial/contributions/ContributionsSceneMobile";
+import { ContributionsSceneMobileP1 } from "@/components/memorial/contributions/ContributionsSceneMobileP1";
 import type { ContributionContent } from "@/components/memorial/contributions/ContributionsSceneDesktop";
 import { solveContributionsScene } from "@/lib/memorial/contributions/contributions-scene";
 import { DEMO_CLOSING, DEMO_SUBTITLE, DEMO_TITLE, demoContributions } from "@/lib/memorial/contributions/demo-contributions";
@@ -18,6 +19,7 @@ import { DEMO_CLOSING, DEMO_SUBTITLE, DEMO_TITLE, demoContributions } from "@/li
  * Page de DÉVELOPPEMENT (`page.dev.tsx`, routée par `next dev` seulement) ;
  * `notFound()` en production reste une seconde barrière.
  *
+ *   /pilote/contributions-mobile?theme=light&combo=RCRP        (P1 interactif, M5-C)
  *   /pilote/contributions-mobile?layout=colonne&theme=light&combo=RCRP
  *   /pilote/contributions-mobile?layout=grille-2x2&theme=dark&combo=CCCC
  *   /pilote/contributions-mobile?layout=colonne&combo=RCRP&stack=1
@@ -36,8 +38,9 @@ export default async function ContributionsMobilePilotPage({
   const params = await searchParams;
   const one = (key: string) => (typeof params[key] === "string" ? (params[key] as string) : undefined);
   const theme: ContributionsTheme = one("theme") === "dark" ? "dark" : "light";
-  const layoutId = (one("layout") ?? "colonne") as ContributionsMobileLayoutId;
-  const layout = CONTRIBUTIONS_MOBILE_LAYOUTS[layoutId] ?? CONTRIBUTIONS_MOBILE_LAYOUTS.colonne;
+  // M5-C : P1 (grille 2 × 2, cartes interactives) est la base retenue par la PO ; P3 / P4 restent consultables.
+  const layoutId = (one("layout") ?? "grille-2x2") as ContributionsMobileLayoutId;
+  const layout = CONTRIBUTIONS_MOBILE_LAYOUTS[layoutId] ?? CONTRIBUTIONS_MOBILE_LAYOUTS["grille-2x2"];
   const combo = (one("combo") ?? "RCRP").replace(/[^CRPcrp]/g, "").slice(0, 12) || "RCRP";
   const stack = one("stack") === "1";
 
@@ -52,7 +55,11 @@ export default async function ContributionsMobilePilotPage({
 
   const sceneNode =
     scene.status === "PASS" ? (
-      <ContributionsSceneMobile theme={theme} layout={layout} placements={scene.placements} contents={contents} viewAll={viewAll} title={DEMO_TITLE} subtitle={DEMO_SUBTITLE} closing={DEMO_CLOSING} />
+      layout.id === "grille-2x2" ? (
+        <ContributionsSceneMobileP1 theme={theme} layout={layout} placements={scene.placements} contents={contents} viewAll={viewAll} title={DEMO_TITLE} subtitle={DEMO_SUBTITLE} closing={DEMO_CLOSING} />
+      ) : (
+        <ContributionsSceneMobile theme={theme} layout={layout} placements={scene.placements} contents={contents} viewAll={viewAll} title={DEMO_TITLE} subtitle={DEMO_SUBTITLE} closing={DEMO_CLOSING} />
+      )
     ) : (
       <p style={{ padding: 24, fontFamily: "system-ui", color: ink }}>
         {layout.label} — {combo} : {scene.status} — {scene.detail}
