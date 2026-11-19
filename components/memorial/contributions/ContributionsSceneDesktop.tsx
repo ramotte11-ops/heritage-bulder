@@ -12,6 +12,7 @@ import {
 import type { Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { ContributionScenePlacement } from "@/lib/memorial/contributions/contributions-scene";
 import type { CardLayout } from "@/lib/memorial/contributions/contribution-shapes";
+import { useContributionsLabels } from "./contributions-labels-context";
 import styles from "./ContributionsSceneDesktop.module.css";
 
 /**
@@ -62,7 +63,9 @@ const TYPE = CONTRIBUTIONS_TYPOGRAPHY.sizesSourcePx.desktop;
 const u = (v: number) => `calc(var(--u) * ${Math.round(v * 100) / 100})`;
 const box = (r: Rect): CSSProperties => ({ left: u(r.x), top: u(r.y), width: u(r.width), height: u(r.height) });
 
-export function ContributionsSceneDesktop({ theme, placements, contents, viewAll, title, subtitle, closing, labels = FR_LABELS, onViewAll }: ContributionsSceneDesktopProps) {
+export function ContributionsSceneDesktop({ theme, placements, contents, viewAll, title, subtitle, closing, labels: labelsProp, onViewAll }: ContributionsSceneDesktopProps) {
+  const i18n = useContributionsLabels();
+  const labels = labelsProp ?? { leaveMessage: i18n.leaveMessage, viewAll: i18n.viewAll, readMore: i18n.readMore, close: i18n.close, condolenceOverline: i18n.condolenceOverline };
   const chrome = CONTRIBUTIONS_CHROME["with-contributions"].desktop[theme];
   const palette = CONTRIBUTIONS_PALETTE[theme];
   const [reading, setReading] = useState<{ author: string; text: string } | null>(null);
@@ -130,7 +133,7 @@ export function ContributionsSceneDesktop({ theme, placements, contents, viewAll
           {closing}
         </p>
       </section>
-      <ReadingDialog reading={reading} onClose={() => setReading(null)} closeLabel={labels.close} />
+      <ReadingDialog reading={reading} onClose={() => setReading(null)} closeLabel={labels.close} messageFrom={i18n.messageFrom} />
     </div>
   );
 }
@@ -160,6 +163,7 @@ function TextCard({
   labels: typeof FR_LABELS;
   onRead: (r: { author: string; text: string }) => void;
 }) {
+  const i18n = useContributionsLabels();
   const condolence = card.format === "condolence";
   const tall = card.format === "story-tall";
   const paper = condolence ? ASSETS.paper.petrol : tall ? ASSETS.paper.ivory : ASSETS.paper.peach;
@@ -171,7 +175,7 @@ function TextCard({
       <article
         className={`${styles.card} ${condolence ? styles.condolence : styles.story}`}
         style={{ backgroundImage: `url(${paper})`, ...(condolence ? {} : { clipPath: deckledEdge(placement.itemId, card.paper.width, card.paper.height) }) }}
-        aria-label={content ? `${condolence ? "Condoléances" : "Récit"} de ${content.author}` : undefined}
+        aria-label={content ? (condolence ? i18n.condolenceOf(content.author) : i18n.storyOf(content.author)) : undefined}
       >
         {condolence ? <CondolenceFrame /> : null}
         {condolence && card.ornaments[0] ? <HeartIcon rect={card.ornaments[0]} color={CONTRIBUTIONS_CARD_INK.condolenceSignature} /> : null}
@@ -359,7 +363,7 @@ function QuillIcon() {
   );
 }
 
-function ReadingDialog({ reading, onClose, closeLabel }: { reading: { author: string; text: string } | null; onClose: () => void; closeLabel: string }): ReactNode {
+function ReadingDialog({ reading, onClose, closeLabel, messageFrom }: { reading: { author: string; text: string } | null; onClose: () => void; closeLabel: string; messageFrom: (name: string) => string }): ReactNode {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -368,7 +372,7 @@ function ReadingDialog({ reading, onClose, closeLabel }: { reading: { author: st
     if (!reading && d.open) d.close();
   }, [reading]);
   return (
-    <dialog ref={ref} className={styles.reading} onClose={onClose} aria-label={reading ? `Message de ${reading.author}` : undefined}>
+    <dialog ref={ref} className={styles.reading} onClose={onClose} aria-label={reading ? messageFrom(reading.author) : undefined}>
       {reading ? (
         <>
           <p className={styles.readingText}>{reading.text}</p>

@@ -27,6 +27,7 @@ import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GalleryStep } from "@/components/builder/GalleryStep";
 import { ContributionsStep } from "@/components/builder/ContributionsStep";
+import { updateContributionCategories } from "@/lib/memorial/contributions/family-contribution-actions";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { FirstSaveNotice } from "@/components/builder/FirstSaveNotice";
@@ -740,6 +741,7 @@ export default async function BuilderMemorialPage({
               content={content}
               skinVariant={resumed.memorial.skinVariant ?? "light"}
               persist={saveDraftAction.bind(null, access.memorialId)}
+              applyCategoriesNow={updateContributionCategories.bind(null, access.memorialId)}
             />
           ),
           available: previewAvailable(content),

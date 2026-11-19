@@ -24,6 +24,7 @@ vi.mock("next/navigation", () => ({ useRouter }));
 // Flow screen reaches next/font/google transitively through
 // BuilderScreen.tsx.
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
   // Mission 035 — components/builder/fonts.ts also exports these two now.

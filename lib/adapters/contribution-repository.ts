@@ -1,5 +1,6 @@
 import type { ContributionTextType, ContributionType } from "@/config/contributions";
 
+
 /**
  * M8-E2 — le contrat sur les RPC Contributions de M8-E1
  * (supabase/migrations/20261119090000_m8_e1_contributions.sql) et de
@@ -69,7 +70,15 @@ export interface OwnerContributionSettings {
   contributionsDigest: boolean | null;
 }
 
+/** M8-E3 — vue d'ensemble publique : catégories EN VIGUEUR et nombres publiés. */
+export interface PublicContributionsOverview {
+  categories: ContributionFeatures;
+  published: { condolences: number; stories: number; photos: number };
+}
+
 export interface ContributionRepository {
+  /** M8-E3 : `null` si l'hommage n'est pas public ou si la rubrique est masquée. */
+  readPublicOverview(slug: string): Promise<PublicContributionsOverview | null>;
   /** Hommage public désigné par son slug, sinon `null` (aucune raison donnée). */
   findPublicMemorialId(slug: string): Promise<string | null>;
   submit(input: { slug: string; type: ContributionTextType; authorName: string; content: string; idempotencyKey: string }): Promise<DepositResult>;

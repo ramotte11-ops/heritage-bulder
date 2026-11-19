@@ -1,0 +1,34 @@
+/*
+ * M8-E3 — état vide (Masters M0). Le reste de l'habillage vient des
+ * feuilles des scènes validées (Desktop M5-A, Mobile M5-B/C).
+ */
+
+.stage {
+  /* --u est posé en ligne selon le repère (1671 ou 941 px source). */
+  background-size: 100% 100%;
+}
+
+.wrap {
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  line-height: 1.08;
+}
+
+.welcome,
+.invitation {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-wrap: balance;
+  line-height: 1.22;
+  color: var(--card-title);
+}
+
+.invitation {
+  font-style: italic;
+  color: var(--card-text);
+}

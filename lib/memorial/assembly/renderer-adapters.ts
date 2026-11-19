@@ -14,6 +14,8 @@ import type { RecitDeVieV2Props } from "@/components/memorial/life-story/v2/Reci
 import type { TraditionsV2Props } from "@/components/memorial/traditions/v2/TraditionsV2";
 import type { GalleryIntemporelProps } from "@/components/memorial/gallery/GalleryIntemporel";
 import type { SymbolicOfferingsV1SectionProps } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsV1Section";
+import type { ContributionsV1SectionProps } from "@/components/memorial/contributions/ContributionsV1Section";
+import { inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
 import { inspectHero, isHeroContentComplete } from "@/lib/memorial/hero";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
 import { inspectCeremony } from "@/lib/memorial/ceremony";
@@ -59,6 +61,7 @@ export interface RendererPropsMap {
   TraditionsV2: TraditionsV2Props;
   GalleryIntemporel: GalleryIntemporelProps;
   SymbolicOfferingsV1Section: SymbolicOfferingsV1SectionProps;
+  ContributionsV1Section: ContributionsV1SectionProps;
 }
 
 /** One assembled section: a renderer key and the props for exactly
@@ -381,6 +384,24 @@ export const adaptSymbolicOfferingsV1Section: RendererAdapter<"SymbolicOfferings
   return { ok: true, props: { skinVariant: context.skinVariant, language: context.language } };
 };
 
+/**
+ * M8-E3 — « Contributions des proches ». Seuls les trois choix A15 et le
+ * nom de la personne (sous-titre) viennent du contenu ; les contributions
+ * elles-mêmes ne passent JAMAIS par ici : l'hôte public les lit pour la
+ * visite (catégories EN VIGUEUR, O9), l'hôte du Builder montre la
+ * démonstration M7 (O10). Choix illisibles : pas de rubrique.
+ */
+export const adaptContributionsV1Section: RendererAdapter<"ContributionsV1Section"> = async (context) => {
+  if (context.skin !== "intemporel") return refuse("skinMismatch");
+  if (!isSectionAvailableInLanguage("testimonials", context.language)) return refuse("textUnavailable");
+  const settings = inspectContributionsSettings(context.content);
+  if (settings.status === "corrupted") return refuse("contentUnreadable");
+  const hero = inspectHero(context.content);
+  const name = hero.status === "valid" ? (hero.hero.displayName ?? "").trim() : "";
+  const displayName = name !== "" ? name : null;
+  return { ok: true, props: { skinVariant: context.skinVariant, language: context.language, displayName, features: settings.features } };
+};
+
 /** Exhaustive over `RendererKey`: a key added to `RENDERER_KEYS` without
  * an adapter fails to typecheck. */
 export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K> } = {
@@ -394,4 +415,5 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   TraditionsV2: adaptTraditionsV2,
   GalleryIntemporel: adaptGalleryIntemporel,
   SymbolicOfferingsV1Section: adaptSymbolicOfferingsV1Section,
+  ContributionsV1Section: adaptContributionsV1Section,
 };

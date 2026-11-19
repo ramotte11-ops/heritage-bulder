@@ -165,10 +165,9 @@ describe("M1-B1 publication policy", () => {
     expect(projectedGalleryItems(projection)).toEqual(galleryItems(12));
   });
 
-  it("allows condolences for avis but excludes memorial contributions", () => {
+  it("M8-E3 (D1): avis allows condolences, stories and photos, never the complete-only memory message", () => {
     const projection = successfulProjection({}, "avis");
-    expect(projection.allowedMessageTypes).toEqual(["condolence"]);
-    expect(projection.allowedMessageTypes).not.toContain("testimonial");
+    expect(projection.allowedMessageTypes).toEqual(["condolence", "testimonial", "photo"]);
     expect(projection.allowedMessageTypes).not.toContain("memory_message");
   });
 
@@ -180,7 +179,7 @@ describe("M1-B1 publication policy", () => {
     } as unknown as MemorialContent;
     const projection = successfulProjection(draft, "complet");
 
-    expect(projection.allowedMessageTypes).toEqual(["condolence", "memory_message", "testimonial"]);
+    expect(projection.allowedMessageTypes).toEqual(["condolence", "memory_message", "testimonial", "photo"]);
     expect(projection.content).not.toHaveProperty("condolences");
     expect(projection.content).not.toHaveProperty("testimonials");
     expect(projection.content).not.toHaveProperty("memoryMessage");
@@ -275,7 +274,10 @@ describe("M1-B1 publication policy", () => {
         T08: { status: "completed" },
         A13: { status: "completed" },
       },
-      presentation: { hiddenSections: ["gallery"] },
+      // M8-E3 (D1) : « Contributions des proches » existe dans l'offre gratuite ;
+      // le choix de la famille de la masquer atteint la copie publiée. La
+      // Vidéo, premium, reste écartée.
+      presentation: { hiddenSections: ["gallery", "testimonials"] },
     });
     expect(serialized).not.toContain("indirect-video");
     expect(serialized).not.toContain("private.example");
@@ -332,7 +334,7 @@ describe("M1-B1 publication policy", () => {
 });
 
 describe("QG 008 — the free copy's keys, mirrored by the database", () => {
-  it("AVIS_SNAPSHOT_KEYS equals memorial_access_settings.avis_snapshot_keys in the migration", () => {
+  it("AVIS_SNAPSHOT_KEYS equals memorial_access_settings.avis_snapshot_keys in the migrations (QG 008 + M8-E1)", () => {
     const migration = readFileSync(
       new URL("../../supabase/migrations/20261031120000_qg008_free_offer_v8_alignment.sql", import.meta.url),
       "utf8",
@@ -340,7 +342,33 @@ describe("QG 008 — the free copy's keys, mirrored by the database", () => {
     const literal = migration.match(/avis_snapshot_keys = array\[([\s\S]*?)\]/)?.[1];
     expect(literal).toBeDefined();
     const sqlKeys = [...(literal ?? "").matchAll(/'([A-Za-z]+)'/g)].map((match) => match[1]);
-    expect([...sqlKeys].sort()).toEqual([...AVIS_SNAPSHOT_KEYS].sort());
+    // M8-E1 ajoute `contributions` (D1), sans retirer aucune clé.
+    const e1 = readFileSync(new URL("../../supabase/migrations/20261119090000_m8_e1_contributions.sql", import.meta.url), "utf8");
+    const appended = [...e1.matchAll(/array_append\(avis_snapshot_keys, '([A-Za-z]+)'\)/g)].map((match) => match[1]);
+    expect(appended).toEqual(["contributions"]);
+    expect([...sqlKeys, ...appended].sort()).toEqual([...AVIS_SNAPSHOT_KEYS].sort());
+  });
+
+  it("M8-E3: the A15 choices reach the published copy (three switches only), for both offers", () => {
+    const draft = {
+      contributions: { features: { condolences: true, stories: false, photos: true, futureSwitch: true }, privateNote: "x" },
+    } as unknown as MemorialContent;
+    for (const level of ["avis", "complet"] as const) {
+      expect(successfulProjection(draft, level).content).toEqual({ contributions: { features: { condolences: true, stories: false, photos: true } } });
+    }
+  });
+
+  it("M8-E3: unreadable A15 choices refuse the publication instead of guessing", () => {
+    const result = projectMemorialPublication({ draft: { contributions: "tout" } as unknown as MemorialContent, accessLevel: "avis", skin: "intemporel" });
+    expect(result).toEqual({ ok: false, error: { code: "invalid_section_content", sectionId: "testimonials" } });
+  });
+
+  it("M8-E3: a family that hid the rubrique publishes no choices (the database then reads everything closed)", () => {
+    const draft = {
+      contributions: { features: { condolences: true, stories: true, photos: true } },
+      presentation: { hiddenSections: ["testimonials"] },
+    } as unknown as MemorialContent;
+    expect(successfulProjection(draft, "complet").content).toEqual({ presentation: { hiddenSections: ["testimonials"] } });
   });
 
   it("no avis projection, even from a maximal draft, produces a key outside that list", () => {

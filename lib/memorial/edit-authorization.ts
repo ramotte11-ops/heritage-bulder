@@ -61,6 +61,9 @@ export const MEMORIAL_CONTENT_EDIT_TARGETS = [
   "guidedFlow.A12",
   "guidedFlow.A13",
   "guidedFlow.A14",
+  // M8-E3 : A15 « Contributions des proches » (O9 : modifiable après publication).
+  "contributions.features",
+  "guidedFlow.A15",
 ] as const;
 
 export type MemorialContentEditTarget = (typeof MEMORIAL_CONTENT_EDIT_TARGETS)[number];
@@ -156,7 +159,7 @@ export type MemorialEditDecision =
       mutation?: MemorialMutationClaim;
     };
 
-type ContentDomain = "hero" | "deathNotice" | "deathNoticePresence" | "ceremony" | "story" | "traditions" | "gallery";
+type ContentDomain = "hero" | "deathNotice" | "deathNoticePresence" | "ceremony" | "story" | "traditions" | "gallery" | "contributions";
 
 const CONTENT_DOMAIN: Readonly<Record<MemorialContentEditTarget, ContentDomain>> = {
   "hero.displayName": "hero",
@@ -203,6 +206,8 @@ const CONTENT_DOMAIN: Readonly<Record<MemorialContentEditTarget, ContentDomain>>
   "guidedFlow.A12": "story",
   "guidedFlow.A13": "gallery",
   "guidedFlow.A14": "ceremony",
+  "contributions.features": "contributions",
+  "guidedFlow.A15": "contributions",
 };
 
 const contentTargets = new Set<string>(MEMORIAL_CONTENT_EDIT_TARGETS);

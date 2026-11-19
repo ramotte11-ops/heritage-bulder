@@ -27,13 +27,15 @@ describe("SECTION_RENDERERS", () => {
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
   });
 
-  it("maps the six existing Intemporel renderers and nothing else", () => {
+  it("maps the existing Intemporel renderers and nothing else", () => {
     expect(resolveSectionRenderer("hero", "intemporel")).toBe("HeroIntemporel");
     expect(resolveSectionRenderer("deathNotice", "intemporel")).toBe("DeathNoticeV2");
     expect(resolveSectionRenderer("ceremony", "intemporel")).toBe("CeremonyV2");
     expect(resolveSectionRenderer("traditions", "intemporel")).toBe("TraditionsV2");
     expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
-    for (const section of ["testimonials", "condolences", "video", "memoryMessage"] as const) {
+    // M8-E3 : « Contributions des proches » ; la rubrique héritée `condolences` n'a jamais de renderer (O11).
+    expect(resolveSectionRenderer("testimonials", "intemporel")).toBe("ContributionsV1Section");
+    for (const section of ["condolences", "video", "memoryMessage"] as const) {
       expect(resolveSectionRenderer(section, "intemporel")).toBeNull();
     }
   });
@@ -59,6 +61,7 @@ describe("SECTION_RENDERERS", () => {
       TraditionsV2: "traditions/v2",
       GalleryIntemporel: "gallery",
       SymbolicOfferingsV1Section: "symbolic-offerings/v1",
+      ContributionsV1Section: "contributions",
     };
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);

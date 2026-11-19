@@ -62,6 +62,8 @@ export const RENDERER_KEYS = [
   "TraditionsV2",
   "GalleryIntemporel",
   "SymbolicOfferingsV1Section",
+  // M8-E3 : « Contributions des proches » (scènes M4–M6, état vide M0).
+  "ContributionsV1Section",
 ] as const;
 
 export type RendererKey = (typeof RENDERER_KEYS)[number];
@@ -76,6 +78,7 @@ export const SECTION_RENDERERS: Readonly<
   traditions: { intemporel: "TraditionsV2" },
   gallery: { intemporel: "GalleryIntemporel" },
   symbolicOfferings: { intemporel: "SymbolicOfferingsV1Section" },
+  testimonials: { intemporel: "ContributionsV1Section" },
 };
 
 /** The renderer for this section in this skin, or `null` when none

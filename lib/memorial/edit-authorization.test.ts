@@ -209,3 +209,18 @@ describe("Security V1 edit authorization — fail closed", () => {
     });
   });
 });
+
+describe("M8-E3 — A15 « Contributions des proches » après publication (O9)", () => {
+  it("les choix et l'étape A15 restent modifiables après publication, par le propriétaire seul", () => {
+    const claims = [content("contributions.features"), content("guidedFlow.A15")];
+    for (const status of ["published", "editing"] as const) {
+      expect(authorizeMemorialEdit(context({ status, published: true }), claims)).toEqual({ decision: "ALLOW", reason: "all_mutations_allowed" });
+    }
+    expect(authorizeMemorialEdit(context({ actor: "administrator", status: "published", published: true }), claims).decision).toBe("DENY");
+    expect(authorizeMemorialEdit(context({ status: "archived", published: true }), claims).decision).toBe("DENY");
+  });
+
+  it("une autre clé de contributions n'est jamais une cible connue", () => {
+    expect(authorizeMemorialEdit(context({ status: "published", published: true }), [content("contributions.privateNote")])).toMatchObject({ decision: "DENY", reason: "unknown_mutation_target" });
+  });
+});

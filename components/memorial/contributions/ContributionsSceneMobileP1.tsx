@@ -8,6 +8,7 @@ import type { Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { ContributionScenePlacement } from "@/lib/memorial/contributions/contributions-scene";
 import type { ContributionContent } from "./ContributionsSceneDesktop";
 import { PreviewCard, PreviewPolaroid, ReadingSheet, type OpenedContribution } from "./ContributionCards";
+import { useContributionsLabels } from "./contributions-labels-context";
 import base from "./ContributionsSceneMobile.module.css";
 
 /**
@@ -43,11 +44,6 @@ export interface ContributionsSceneMobileP1Props {
 /** Bornes des aperçus : définies avec les cartes partagées (M6), inchangées. */
 export { P1_PREVIEW_TYPE } from "./ContributionCards";
 
-const LABELS = {
-  leaveMessage: "Laisser un message",
-  viewAll: "Voir tous les messages",
-};
-
 const u = (v: number) => `calc(var(--u) * ${Math.round(v * 100) / 100})`;
 const box = (r: Rect): CSSProperties => ({ left: u(r.x), top: u(r.y), width: u(r.width), height: u(r.height) });
 const fromBox = (b: { x0: number; y0: number; x1: number; y1: number }): CSSProperties => box({ x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 });
@@ -56,6 +52,7 @@ const px = (v: number) => `${v}px`;
 type Opened = OpenedContribution;
 
 export function ContributionsSceneMobileP1({ theme, layout, placements, contents, viewAll, title, subtitle, closing, onViewAll }: ContributionsSceneMobileP1Props) {
+  const LABELS = useContributionsLabels();
   const palette = CONTRIBUTIONS_PALETTE[theme];
   const bg = CONTRIBUTIONS_MOBILE_BACKGROUND[theme];
   const chrome = layout.chrome;

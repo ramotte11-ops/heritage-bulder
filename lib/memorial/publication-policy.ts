@@ -21,6 +21,7 @@ import {
 import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
 import { inspectTraditions } from "@/lib/memorial/traditions";
 import type { GalleryContent, GalleryItem } from "@/types/gallery";
+import { inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
@@ -65,6 +66,9 @@ export const AVIS_SNAPSHOT_KEYS = [
   "gallery",
   "guidedFlow",
   "presentation",
+  // M8-E1/E3 (D1) : les choix A15 des Contributions des proches, dans les
+  // deux offres. Ajouté côté base par 20261119090000_m8_e1_contributions.sql.
+  "contributions",
 ] as const;
 
 type ValidatedAccessLevel = "avis" | "complet";
@@ -92,19 +96,27 @@ const PUBLIC_RENDERERS: ReadonlySet<RendererKey> = new Set([
   "TraditionsV2",
   "GalleryIntemporel",
   "SymbolicOfferingsV1Section",
+  // M8-E3 : « Contributions des proches », réelles sur la page publique.
+  "ContributionsV1Section",
 ]);
 
+/**
+ * M8-E3 (décision PO D1) : `testimonials` (« Contributions des proches »)
+ * n'est plus réservée à l'offre complète. La Vidéo et le Message de
+ * souvenir le restent.
+ */
 export const PREMIUM_SECTION_IDS: ReadonlySet<SectionId> = new Set([
-  "testimonials",
   "video",
   "memoryMessage",
 ]);
 
-const FREE_MESSAGE_TYPES: readonly MessageType[] = ["condolence"];
+/** D1 : condoléances, récits et photos dans les deux offres ; memory_message reste complet. */
+const FREE_MESSAGE_TYPES: readonly MessageType[] = ["condolence", "testimonial", "photo"];
 const COMPLETE_MESSAGE_TYPES: readonly MessageType[] = [
   "condolence",
   "memory_message",
   "testimonial",
+  "photo",
 ];
 
 export interface PublicationProjectionInput {
@@ -390,6 +402,20 @@ export function projectMemorialPublication(
         content.gallery = cloneJsonValue(gallery.gallery);
       }
     }
+  }
+
+  // M8-E3 — les choix A15 (O9) : seulement les trois interrupteurs,
+  // jamais une autre clé du brouillon. C'est cette copie que lit le
+  // déclencheur de publication M8-E1 pour initialiser les catégories en
+  // vigueur. Des choix illisibles refusent la publication, comme toute
+  // autre rubrique corrompue (A15 affiche alors son message calme).
+  if (sectionMayEnterSnapshot("testimonials", accessLevel, skin, hidden) && hasOwn(input.draft, "contributions")) {
+    const contributions = inspectContributionsSettings(input.draft);
+    if (contributions.status === "corrupted") {
+      return { ok: false, error: { code: "invalid_section_content", sectionId: "testimonials" } };
+    }
+    const f = contributions.features;
+    content.contributions = { features: { condolences: f.condolences, stories: f.stories, photos: f.photos } };
   }
 
   addGuidedFlowProjection(input.draft, content);

@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("server-only", () => ({}));
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isValidElement, type ReactElement } from "react";
@@ -41,6 +43,13 @@ const { PublicOfferingsProvider } = vi.hoisted(() => ({
   PublicOfferingsProvider: function PublicOfferingsProvider() { return null; },
 }));
 vi.mock("@/components/memorial/symbolic-offerings/v1/offerings-public", () => ({ PublicOfferingsProvider }));
+const { PublicContributionsProvider, loadPublicContributionsInitial } = vi.hoisted(() => ({
+  PublicContributionsProvider: function PublicContributionsProvider() { return null; },
+  loadPublicContributionsInitial: vi.fn(),
+}));
+vi.mock("@/components/memorial/contributions/contributions-host", () => ({ PublicContributionsProvider }));
+vi.mock("@/lib/memorial/contributions/visitor-contributions", () => ({ loadPublicContributionsInitial }));
+vi.mock("@/lib/memorial/contributions/server-contributions", () => ({ createVisitorContributionDeps: () => ({ fake: "visitor-deps" }) }));
 const { depositSymbolicOffering } = vi.hoisted(() => ({ depositSymbolicOffering: vi.fn() }));
 vi.mock("./actions", () => ({ depositSymbolicOffering }));
 
@@ -67,9 +76,34 @@ describe("/hommage/[slug]", () => {
     expect(element.props.lang).toBe("fr");
     const host = element.props.children as ReactElement<{ slug: string; deposit: unknown; children: ReactElement }>;
     expect(host.type).toBe(PublicOfferingsProvider);
-    const child = host.props.children;
+    // M8-E3 : l'hôte public des Contributions, entre les Offrandes et l'assemblage.
+    const contributions = host.props.children as ReactElement<{ initial: unknown; children: ReactElement }>;
+    expect(contributions.type).toBe(PublicContributionsProvider);
+    // Aucune rubrique Contributions dans cette copie : rien n'est lu, l'hôte reçoit null.
+    expect(contributions.props.initial).toBeNull();
+    expect(loadPublicContributionsInitial).not.toHaveBeenCalled();
+    const child = contributions.props.children;
     expect(child.type).toBe(MemorialAssembly);
     expect((child.props as { assembled: unknown }).assembled).toBe(ASSEMBLED);
+  });
+
+  it("M8-E3 — a copy carrying the rubrique reads the visit's real contributions for the public host", async () => {
+    const assembled = { ...ASSEMBLED, sections: [...((ASSEMBLED as { sections?: unknown[] }).sections ?? []), { sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    const initial = { categories: { condolences: true, stories: true, photos: true }, total: 0, items: [], complete: true, nextCursor: null };
+    loadPublicContributionsInitial.mockResolvedValueOnce(initial);
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown }> }> }>;
+    expect(loadPublicContributionsInitial).toHaveBeenCalledWith({ fake: "visitor-deps" }, "95bd2601eac8");
+    expect(element.props.children.props.children.props.initial).toBe(initial);
+  });
+
+  it("M8-E3 — a failed contributions read never breaks the page nor shows a demonstration", async () => {
+    const assembled = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    loadPublicContributionsInitial.mockRejectedValueOnce(new Error("db"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown }> }> }>;
+    expect(element.props.children.props.children.props.initial).toBeNull();
   });
 
   it("QG 016 — the public Offrandes host gets the validated slug and the page's own Server Action", async () => {

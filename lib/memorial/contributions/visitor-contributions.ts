@@ -26,6 +26,9 @@ import {
   type FormTokenSecrets,
 } from "./form-token";
 import type { processContributionPhoto } from "./photo-processing";
+import type { PublicContribution, PublicContributionsInitial } from "./public-contribution-types";
+
+export type { PublicContribution, PublicContributionsInitial } from "./public-contribution-types";
 
 /**
  * M8-E2 — le moteur serveur des dépôts de visiteurs.
@@ -245,16 +248,6 @@ export async function finishContributionPhoto(
   }
 }
 
-export interface PublicContribution {
-  id: string;
-  type: ContributionType;
-  authorName: string;
-  text: string | null;
-  caption: string | null;
-  publishedAt: string;
-  photo: { url: string; width: number | null; height: number | null } | null;
-}
-
 export interface PublicContributionsPage {
   items: PublicContribution[];
   /** Curseur opaque pour la page suivante de l'Album (P1), ou `null`. */
@@ -295,22 +288,61 @@ export async function readPublicContributions(
   const limit = typeof input.limit === "number" && Number.isInteger(input.limit) ? Math.min(Math.max(input.limit, 1), CONTRIBUTION_PAGE_SIZE_MAX) : CONTRIBUTION_PAGE_SIZE;
   try {
     const rows = await deps.repository.readPublic({ slug: input.slug, limit, before });
+    // Les URL signées en parallèle : une page d'Album ne doit pas attendre
+    // ses photographies l'une après l'autre.
+    const signed = await Promise.all(
+      rows.map((row) =>
+        row.type === "photo" && row.media
+          ? deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS })
+          : Promise.resolve(null),
+      ),
+    );
     const items: PublicContribution[] = [];
-    for (const row of rows) {
-      let photo: PublicContribution["photo"] = null;
-      if (row.type === "photo") {
-        if (!row.media) continue;
-        photo = {
-          url: await deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS }),
-          width: row.media.width,
-          height: row.media.height,
-        };
-      }
+    rows.forEach((row, i) => {
+      if (row.type === "photo" && (!row.media || signed[i] === null)) return;
+      const photo = row.type === "photo" && row.media ? { url: signed[i] as string, width: row.media.width, height: row.media.height } : null;
       items.push({ id: row.id, type: row.type, authorName: row.authorName, text: row.content, caption: row.caption, publishedAt: row.publishedAt, photo });
-    }
+    });
     const last = rows[rows.length - 1];
     return { items, nextCursor: rows.length === limit && last ? encodeCursor({ publishedAt: last.publishedAt, id: last.id }) : null };
   } catch {
     return UNAVAILABLE;
   }
+}
+
+/** M8-E3 — au plus 500 contributions chargées avec la page (5 pages de 100). */
+export const PUBLIC_CONTRIBUTIONS_PRELOAD_MAX = 500;
+const PRELOAD_PAGE = 100;
+
+
+/**
+ * M8-E3 — ce que la page publique lit pour la rubrique : la vue d'ensemble
+ * (catégories en vigueur, nombres) puis les contributions publiées, page par
+ * page, jusqu'à 500. `null` : rubrique non publique (hommage non public,
+ * rubrique masquée) ou indisponible — la rubrique n'est alors pas dessinée.
+ */
+export async function loadPublicContributionsInitial(
+  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  slug: unknown,
+): Promise<PublicContributionsInitial | null> {
+  if (!isPublicSlugShape(slug)) return null;
+  let overview;
+  try {
+    overview = await deps.repository.readPublicOverview(slug);
+  } catch {
+    return null;
+  }
+  if (overview === null) return null;
+  const total = overview.published.condolences + overview.published.stories + overview.published.photos;
+  const items: PublicContribution[] = [];
+  let cursor: string | null = null;
+  if (total > 0) {
+    do {
+      const page = await readPublicContributions(deps, { slug, limit: PRELOAD_PAGE, cursor });
+      if (!("items" in page)) return null;
+      items.push(...page.items);
+      cursor = page.nextCursor;
+    } while (cursor !== null && items.length < PUBLIC_CONTRIBUTIONS_PRELOAD_MAX);
+  }
+  return { categories: overview.categories, total, items, complete: cursor === null, nextCursor: cursor };
 }

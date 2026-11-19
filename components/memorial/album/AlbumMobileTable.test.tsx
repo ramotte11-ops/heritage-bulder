@@ -14,6 +14,7 @@ import { A13_ALBUM_MOBILE_DARK_MATERIALS as DARK } from "@/config/album-a13-mobi
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
   La_Belle_Aurore: () => ({ variable: "v-aurore", className: "" }),
   Playfair_Display: () => ({ variable: "v-playfair", className: "" }),

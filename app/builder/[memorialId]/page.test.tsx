@@ -184,6 +184,9 @@ vi.mock("@/components/builder/GalleryStep", () => ({ GalleryStep }));
 // M7 — A15 « Contributions des proches », même convention : ce que la route rend, jamais le DOM de l'écran.
 const { ContributionsStep } = vi.hoisted(() => ({ ContributionsStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/ContributionsStep", () => ({ ContributionsStep }));
+// M8-E3 : l'application immédiate des catégories (O9), Server Action familiale.
+const { updateContributionCategories } = vi.hoisted(() => ({ updateContributionCategories: vi.fn(async () => ({ status: "ok" })) }));
+vi.mock("@/lib/memorial/contributions/family-contribution-actions", () => ({ updateContributionCategories }));
 const { resolveGalleryStepData } = vi.hoisted(() => ({
   resolveGalleryStepData: vi.fn(
     (): Promise<{ status: "ready"; thumbnails: Record<string, string | null> } | { status: "corrupted" }> =>
@@ -3040,6 +3043,9 @@ describe("BuilderMemorialPage — granted access", () => {
             expect(result.props.skinVariant).toBe("dark");
             await result.props.persist({ guidedFlow: {} }, 1);
             expect(saveDraftAction).toHaveBeenLastCalledWith(MEMORIAL_ID, { guidedFlow: {} }, 1);
+            // M8-E3 (O9) : l'application immédiate est liée au MÊME id autorisé.
+            await result.props.applyCategoriesNow({ condolences: true, stories: false, photos: true }, 4);
+            expect(updateContributionCategories).toHaveBeenLastCalledWith(MEMORIAL_ID, { condolences: true, stories: false, photos: true }, 4);
           });
 
           it("« Mon parcours » reopens A15 (?etape=contributions) once resolved, showing the stored choices — never before it is reached", async () => {

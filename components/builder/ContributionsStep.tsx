@@ -30,6 +30,15 @@ interface ContributionsStepProps {
   /** La même Server Action liée que tous les écrans du parcours (ou le brouillon local de l'invité). */
   persist: DraftSaveTransport;
   progress?: number;
+  /**
+   * M8-E3 (O9) — Builder authentifié : après l'enregistrement du brouillon,
+   * applique AUSSITÔT les choix comme catégories EN VIGUEUR (hommage déjà
+   * publié : effet immédiat, sans republication ; sinon, alignement du
+   * brouillon seulement). `expectedRevision` = révision rendue par
+   * l'enregistrement : une modification concurrente (autre onglet) est
+   * refusée au lieu d'être écrasée. Absent (Builder invité) : rien.
+   */
+  applyCategoriesNow?: (features: ContributionsFeatures, expectedRevision: number | null) => Promise<{ status: string }>;
 }
 
 /**
@@ -41,7 +50,7 @@ interface ContributionsStepProps {
  * étape » (comme A04 : pas d'enregistrement intermédiaire), et seuls les
  * trois choix le sont — jamais un exemple.
  */
-export function ContributionsStep({ language, content, skinVariant, persist, progress }: ContributionsStepProps) {
+export function ContributionsStep({ language, content, skinVariant, persist, progress, applyCategoriesNow }: ContributionsStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const read = readContributionsForEditing(content);
@@ -59,7 +68,13 @@ export function ContributionsStep({ language, content, skinVariant, persist, pro
       return;
     }
     try {
-      await saveDraft(result.content);
+      const saved = await saveDraft(result.content);
+      if (applyCategoriesNow) {
+        const applied = readContributionsForEditing(result.content);
+        if (applied.status !== "ready") throw new Error("unreadable choices");
+        const outcome = await applyCategoriesNow(applied.features, saved.revision ?? null);
+        if (outcome.status !== "ok") throw new Error(`categories not applied: ${outcome.status}`);
+      }
     } catch {
       setSubmitError(true);
       setPending(null);

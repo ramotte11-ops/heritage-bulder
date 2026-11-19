@@ -24,6 +24,18 @@ const V1 = "/assets/contributions/v1";
 
 export const CONTRIBUTIONS_RENDER_ASSETS = {
   background: { light: `${V1}/fonds/fond-desktop-light.png`, dark: `${V1}/fonds/fond-desktop-dark.png` },
+  /**
+   * M8-E3 — état public SANS contribution (Masters M0 « état vide ») : les
+   * quatre versions nettoyées remises par la PO (relevé M0 `emptyCleaned`,
+   * empreintes dc7c338987f2, 85f920b3e15c, 325662a4c71d, c78e7a25e670),
+   * converties en WebP (qualité 90) sans retouche. La carte centrale et ses
+   * rameaux font partie du fond ; textes, emblème, filets et bouton sont
+   * posés par le runtime aux boîtes relevées (CONTRIBUTIONS_CHROME.empty).
+   */
+  emptyBackground: {
+    desktop: { light: `${V1}/fonds/fond-vide-desktop-light.webp`, dark: `${V1}/fonds/fond-vide-desktop-dark.webp` },
+    mobile: { light: `${V1}/fonds/fond-vide-mobile-light.webp`, dark: `${V1}/fonds/fond-vide-mobile-dark.webp` },
+  },
   paper: {
     ivory: `${V1}/matieres/papier-ivoire.webp`,
     peach: `${V1}/matieres/papier-peche.webp`,

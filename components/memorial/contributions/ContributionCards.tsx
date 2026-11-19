@@ -8,6 +8,7 @@ import type { ContributionScenePlacement } from "@/lib/memorial/contributions/co
 import type { CardLayout } from "@/lib/memorial/contributions/contribution-shapes";
 import { deckledEdge, type ContributionContent } from "./ContributionsSceneDesktop";
 import base from "./ContributionsSceneMobile.module.css";
+import { useContributionsLabels } from "./contributions-labels-context";
 import styles from "./ContributionsSceneMobileP1.module.css";
 
 /**
@@ -37,11 +38,6 @@ export interface ContributionPreviewType {
   caption: { max: number; min: number };
 }
 
-const LABELS = {
-  close: "Fermer",
-  condolenceOverline: "Pour la famille",
-  open: { condolence: "Lire les condoléances de", story: "Lire le récit de", photo: "Voir la photographie de" },
-};
 
 const u = (v: number) => `calc(var(--u) * ${Math.round(v * 100) / 100})`;
 const box = (r: Rect): CSSProperties => ({ left: u(r.x), top: u(r.y), width: u(r.width), height: u(r.height) });
@@ -175,6 +171,7 @@ export function PreviewCard({
   onOpen: (trigger: HTMLElement) => void;
   type?: ContributionPreviewType;
 }) {
+  const LABELS = useContributionsLabels();
   const condolence = card.format === "condolence";
   const paper = condolence ? ASSETS.paper.petrol : card.format === "story-tall" ? ASSETS.paper.ivory : ASSETS.paper.peach;
   const ornament = card.ornaments[condolence ? 1 : 0];
@@ -214,7 +211,7 @@ export function PreviewCard({
         ) : null}
         <ExpandGlyph rect={{ x: w - glyph * 1.55, y: condolence ? h * 0.1 : glyph * 0.6, width: glyph, height: glyph }} dark={!condolence} />
       </article>
-      {content ? <CardButton label={`${LABELS.open[condolence ? "condolence" : "story"]} ${content.author}`} onOpen={onOpen} /> : null}
+      {content ? <CardButton label={condolence ? LABELS.openCondolence(content.author) : LABELS.openStory(content.author)} onOpen={onOpen} /> : null}
     </div>
   );
 }
@@ -233,6 +230,7 @@ export function PreviewPolaroid({
   /** Album : la photographie se charge à l'approche de l'écran, décodée hors du fil principal. */
   lazy?: boolean;
 }) {
+  const LABELS = useContributionsLabels();
   if (placement.layout.kind !== "polaroid") return null;
   const l = placement.layout.polaroid;
   const photo = content?.photo;
@@ -258,7 +256,7 @@ export function PreviewPolaroid({
         ) : null}
         <ExpandGlyph rect={{ x: l.window.x + l.window.width - glyph * 1.35, y: l.window.y + glyph * 0.35, width: glyph, height: glyph }} dark={false} />
       </figure>
-      {content ? <CardButton label={`${LABELS.open.photo} ${content.author}${content.caption ? ` : ${content.caption}` : ""}`} onOpen={onOpen} /> : null}
+      {content ? <CardButton label={`${LABELS.openPhoto(content.author)}${content.caption ? ` : ${content.caption}` : ""}`} onOpen={onOpen} /> : null}
     </div>
   );
 }
@@ -272,6 +270,7 @@ export function PreviewPolaroid({
 const INHERITED_VARS = ["--font-heritage-ceremony-serif", "--font-heritage-contributions-signature", "--font-heritage-hero-script", "--gold"] as const;
 
 export function ReadingSheet({ opened, onClose }: { opened: Opened; onClose: () => void }) {
+  const LABELS = useContributionsLabels();
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -296,7 +295,7 @@ export function ReadingSheet({ opened, onClose }: { opened: Opened; onClose: () 
   let sheet: ReactNode = null;
   if (p && c) {
     const kind = p.kind;
-    const heading = kind === "condolence" ? `Condoléances de ${c.author}` : kind === "story" ? `Récit de ${c.author}` : `Photographie partagée par ${c.author}`;
+    const heading = kind === "condolence" ? LABELS.condolenceOf(c.author) : kind === "story" ? LABELS.storyOf(c.author) : LABELS.photoBy(c.author);
     if (p.layout.kind === "polaroid" && c.photo) {
       sheet = (
         <figure className={`${styles.sheet} ${styles.sheetPolaroid}`} style={{ backgroundImage: `url(${ASSETS.paper.polaroid})` }}>

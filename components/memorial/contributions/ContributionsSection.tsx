@@ -11,6 +11,7 @@ import { createContributionsAlbumComposer, type ContributionsAlbumComposer, type
 import { ContributionsSceneDesktop, type ContributionContent } from "./ContributionsSceneDesktop";
 import { ContributionsSceneMobileP1 } from "./ContributionsSceneMobileP1";
 import { ContributionsAlbum } from "./ContributionsAlbum";
+import { ContributionsSceneEmpty } from "./ContributionsSceneEmpty";
 import styles from "./ContributionsSection.module.css";
 
 /**
@@ -50,6 +51,13 @@ export interface ContributionsSectionProps {
   subtitle: string;
   closing: string;
   language?: Language;
+  /**
+   * M8-E3 — la scène principale (sélection O8, au plus 4). Absente : les 4
+   * premiers de `items`, comme en M6. `items` reste l'Album complet (P1).
+   */
+  sceneItems?: readonly ContributionSceneItem[];
+  /** M8-E3 — phrase finale de l'état vide (Master M0) ; sans elle, `closing`. */
+  closingEmpty?: string;
 }
 
 type View = "scene" | "album";
@@ -68,7 +76,7 @@ const ALBUM_FIRST_BUDGET_MS = 24;
 const ALBUM_SLICE_BUDGET_MS = 8;
 const ALBUM_SLICE_MAX_PLATES = 3;
 
-export function ContributionsSection({ theme, items, contents, title, subtitle, closing, language = "fr" }: ContributionsSectionProps) {
+export function ContributionsSection({ theme, items, contents, title, subtitle, closing, language = "fr", sceneItems, closingEmpty }: ContributionsSectionProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -91,11 +99,12 @@ export function ContributionsSection({ theme, items, contents, title, subtitle, 
 
   const scene = useMemo(() => {
     if (!frame) return null;
-    const visible = items.slice(0, 4);
+    const visible = (sceneItems ?? items).slice(0, 4);
+    if (visible.length === 0) return null;
     return frame === "desktop"
       ? solveContributionsScene(visible, { frame: "desktop", theme })
       : solveContributionsScene(visible, { frame: "mobile", theme, geometry: CONTRIBUTIONS_MOBILE_LAYOUTS["grille-2x2"].geometry[theme] });
-  }, [frame, items, theme]);
+  }, [frame, items, sceneItems, theme]);
   // « Voir tous » suit la règle PO sur le TOTAL (dès 4), pas sur la tranche visible.
   const viewAll = items.length >= 4;
 
@@ -194,7 +203,10 @@ export function ContributionsSection({ theme, items, contents, title, subtitle, 
   const back = translate(language, "common.back");
   return (
     <div ref={rootRef} data-contributions-section="" data-contributions-view={view} data-contributions-frame={frame ?? "pending"}>
-      {frame && scene ? (
+      {frame && items.length === 0 ? (
+        // M8-E3 — aucune contribution publiée : le Master M0 de l'état vide.
+        <ContributionsSceneEmpty frame={frame} theme={theme} title={title} subtitle={subtitle} closing={closingEmpty ?? closing} />
+      ) : frame && scene ? (
         <>
           <div className={view === "album" ? styles.parked : undefined} data-contributions-scene-host={view === "album" ? "parked" : "shown"}>
             {scene.status !== "PASS" ? null : frame === "desktop" ? (

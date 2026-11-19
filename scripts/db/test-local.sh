@@ -5446,6 +5446,50 @@ check "M8-E2 rollback removes the function, then the migration re-applies" "0|ab
   "$($PSQL -d m8e2_down -f "$E2_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e2_down -f "$E2_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")"
 $PSQL -d postgres -c "drop database m8e2_down;" >/dev/null
 
+echo ""
+echo "== M8-E3: public overview of the Contributions (20261121090000, NOT applied to any project) =="
+E3_FN="public.read_public_contributions_overview_v1(text)"
+E3_MIG="$MIGRATIONS_DIR/20261121090000_m8_e3_public_contributions_overview.sql"
+E3_DOWN="$REPO_ROOT/supabase/rollbacks/20261121090000_m8_e3_public_contributions_overview.down.sql"
+e3_over() { svc "select coalesce((select condolences || '|' || stories || '|' || photos || '|' || published_condolences || '|' || published_stories || '|' || published_photos from read_public_contributions_overview_v1('$1')), 'none');"; }
+check "M8-E3: the overview is executable by service_role only, SECURITY DEFINER, empty search_path, STABLE" "false|false|true|true|true|s" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$E3_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$E3_FN','EXECUTE') || '|' || has_function_privilege('service_role','$E3_FN','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) || '|' || p.provolatile::text from pg_proc p where p.oid = '$E3_FN'::regprocedure;")"
+E3_MEM=$(e1_complet "$E1_OWNER" m8e3-overview "$E1_ALL")
+check "M8-E3: categories open, nothing published yet -> open, zero counts (empty state M0)" "true|true|true|0|0|0" "$(e3_over m8e3-overview)"
+e1_submit m8e3-overview condolence 'A' 'Pensées' "$(e1_key)" >/dev/null
+e1_submit m8e3-overview testimonial 'B' 'Récit en attente' "$(e1_key)" >/dev/null
+E3_PH=$(e1_photo m8e3-overview "$E3_MEM")
+check "M8-E3: only PUBLISHED contributions are counted (story and photo still pending)" "true|true|true|1|0|0" "$(e3_over m8e3-overview)"
+e1_moderate "$E1_OWNER" "$E3_PH" approve >/dev/null
+check "M8-E3: an approved photo (ready media) is counted" "true|true|true|1|0|1" "$(e3_over m8e3-overview)"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,false,null);" >/dev/null
+check "M8-E3 (O9): photos switched off -> the overview says so at once and stops counting them" "true|true|false|1|0|0" "$(e3_over m8e3-overview)"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,true,null);" >/dev/null
+check "M8-E3 (O9): switched on again -> the published photo is back" "true|true|true|1|0|1" "$(e3_over m8e3-overview)"
+check "M8-E3: a hidden rubrique, a non-published memorial, an unknown slug -> no row at all" "none|none|none" \
+  "$(e3_over m8e1-hidden)|$(e3_over m8e1-draft)|$(e3_over m8e3-nope)"
+check "M8-E3: an expired free offer -> no row" "none" \
+  "$($DB -t -A -c "begin;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id='$E1_AVIS';" -c "set role service_role;" -c "select coalesce((select 'row' from read_public_contributions_overview_v1('$E1_AVIS_SLUG')), 'none');" -c "rollback;" | tail -1)"
+
+# --- O9 while a visitor's photo deposit is in flight -------------------------
+E3_FLY=$(e1_key); E3_FLY_KEY=$(e1_key)
+check "M8-E3: a visitor reserves a photo" "reserved" "$(e1_reserve m8e3-overview "$E3_MEM" "$E3_FLY")"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,false,null);" >/dev/null
+check "M8-E3 (O9): the family switches photos off mid-deposit -> finalisation refused, no message, media stays pending for cleanup" "refused|-|0|pending" \
+  "$(e1_finalize m8e3-overview "$E3_FLY" "$E3_FLY_KEY")|$($DB -t -A -c "select count(*) from messages where media_id='$E3_FLY';")|$($DB -t -A -c "select status from media where id='$E3_FLY';")"
+check "M8-E3 (O9): ... and a new reservation is refused too" "refused" "$(e1_reserve m8e3-overview "$E3_MEM" "$(e1_key)")"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,true,null);" >/dev/null
+E3_FLY2=$(e1_key)
+check "M8-E3 (O9): switched on again -> a new deposit goes through (pending, D2)" "reserved|pending|pending" \
+  "$(e1_reserve m8e3-overview "$E3_MEM" "$E3_FLY2")|$(e1_finalize m8e3-overview "$E3_FLY2" "$(e1_key)")"
+check "M8-E3 (O9): a text deposit in flight while condolences close -> refused, nothing stored" "refused|-|1" \
+  "$($DB -t -A -c "begin;" -c "set role service_role;" -c "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',false,true,true,null);" -c "select outcome || '|' || coalesce(contribution_status,'-') from submit_contribution_v1('m8e3-overview','condolence','C','Encore',gen_random_uuid());" -c "rollback;" | tail -1)|$($DB -t -A -c "select count(*) from messages where memorial_id='$E3_MEM' and message_type='condolence';")"
+
+$PSQL -d postgres -c "create database m8e3_down template $DB_NAME;" >/dev/null
+check "M8-E3 rollback removes the function, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e3_down -f "$E3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e3_down -f "$E3_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database m8e3_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

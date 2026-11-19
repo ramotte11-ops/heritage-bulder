@@ -8,6 +8,7 @@ import { A13_DESKTOP_G6_SLOTS } from "@/config/gallery-a13-desktop-manifest";
 import { layoutDynamicPolaroid } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
   La_Belle_Aurore: () => ({ variable: "v-aurore", className: "" }),
   Playfair_Display: () => ({ variable: "v-playfair", className: "" }),

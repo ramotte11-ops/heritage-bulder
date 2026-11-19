@@ -1435,7 +1435,11 @@ describe("GuestBuilderRuntime", () => {
       await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") });
       const sections = [...resumed.container.querySelectorAll("[data-memorial-preview] [data-memorial-section]")].map((n) => n.getAttribute("data-memorial-section"));
       expect(sections).toContain("symbolicOfferings");
-      expect(sections).not.toContain("testimonials");
+      // M8-E3 : la rubrique est dans l'Aperçu, après les Offrandes, avec la seule
+      // démonstration M7 (hôte « preview ») — jamais une contribution réelle.
+      expect(sections.indexOf("testimonials")).toBeGreaterThan(sections.indexOf("symbolicOfferings"));
+      expect(resumed.container.querySelector('[data-memorial-preview] [data-contributions-host="preview"]')).not.toBeNull();
+      expect(resumed.container.querySelector('[data-contributions-host="public"]')).toBeNull();
       expect((store.value!.content as unknown as Record<string, unknown>).contributions).toEqual({ features: { condolences: true, stories: false, photos: true } });
       expect(fetchSpy).not.toHaveBeenCalled();
     });

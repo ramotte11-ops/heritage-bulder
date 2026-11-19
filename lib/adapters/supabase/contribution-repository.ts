@@ -13,6 +13,7 @@ import type {
   PendingCount,
   PhotoReservationOutcome,
   PublicContributionRow,
+  PublicContributionsOverview,
 } from "@/lib/adapters/contribution-repository";
 
 /**
@@ -57,6 +58,23 @@ function toDeposit(data: unknown): DepositResult {
 
 export class SupabaseContributionRepository implements ContributionRepository {
   constructor(private readonly client: SupabaseClient) {}
+
+  async readPublicOverview(slug: string): Promise<PublicContributionsOverview | null> {
+    const { data, error } = await this.client.rpc("read_public_contributions_overview_v1", { p_slug: slug });
+    if (error) throw error;
+    const row = rowsOf<Record<string, unknown>>(data)[0];
+    if (!row) return null;
+    const count = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : 0);
+    const categories = { condolences: row.condolences === true, stories: row.stories === true, photos: row.photos === true };
+    return {
+      categories,
+      published: {
+        condolences: categories.condolences ? count(row.published_condolences) : 0,
+        stories: categories.stories ? count(row.published_stories) : 0,
+        photos: categories.photos ? count(row.published_photos) : 0,
+      },
+    };
+  }
 
   async findPublicMemorialId(slug: string): Promise<string | null> {
     const { data, error } = await this.client.rpc("read_public_memorial_v1", { p_slug: slug }).select("memorial_id");

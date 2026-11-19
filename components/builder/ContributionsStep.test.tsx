@@ -89,4 +89,49 @@ describe("M7 — ContributionsStep (A15)", () => {
     expect((sw("photos") as HTMLInputElement).checked).toBe(true);
     expect(routerRefresh).not.toHaveBeenCalled();
   });
+
+  describe("M8-E3 — hommage publié : effet immédiat (O9)", () => {
+    it("après l'enregistrement, applique les choix avec la révision rendue (aucune republication)", async () => {
+      const persist = vi.fn(async () => ({ status: "saved" as const, updatedAt: "2026-11-21T10:00:00.000Z", revision: 12 }));
+      const applyCategoriesNow = vi.fn(async () => ({ status: "ok" }));
+      render(<ContributionsStep language="fr" content={DRAFT} skinVariant="light" persist={persist} applyCategoriesNow={applyCategoriesNow} />);
+      fireEvent.click(sw("photos"));
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+      await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+      expect(applyCategoriesNow).toHaveBeenCalledWith({ condolences: false, stories: false, photos: true }, 12);
+      expect(persist.mock.invocationCallOrder[0]).toBeLessThan(applyCategoriesNow.mock.invocationCallOrder[0]);
+    });
+
+    it("désactiver : l'interrupteur coupé est appliqué tel quel", async () => {
+      const opened = { ...DRAFT, contributions: { features: { condolences: true, stories: true, photos: true } } } as unknown as MemorialContent;
+      const persist = vi.fn(async () => ({ status: "saved" as const, updatedAt: "2026-11-21T10:00:00.000Z", revision: 3 }));
+      const applyCategoriesNow = vi.fn(async () => ({ status: "ok" }));
+      render(<ContributionsStep language="fr" content={opened} skinVariant="dark" persist={persist} applyCategoriesNow={applyCategoriesNow} />);
+      fireEvent.click(sw("photos"));
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+      await waitFor(() => expect(applyCategoriesNow).toHaveBeenCalledWith({ condolences: true, stories: true, photos: false }, 3));
+    });
+
+    it("« Passer » réapplique les choix déjà enregistrés (rattrapage idempotent)", async () => {
+      const opened = { ...DRAFT, contributions: { features: { condolences: true, stories: false, photos: false } } } as unknown as MemorialContent;
+      const persist = vi.fn(async () => ({ status: "saved" as const, updatedAt: "2026-11-21T10:00:00.000Z", revision: 5 }));
+      const applyCategoriesNow = vi.fn(async () => ({ status: "ok" }));
+      render(<ContributionsStep language="fr" content={opened} skinVariant="light" persist={persist} applyCategoriesNow={applyCategoriesNow} />);
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.skip") }));
+      await waitFor(() => expect(applyCategoriesNow).toHaveBeenCalledWith({ condolences: true, stories: false, photos: false }, 5));
+    });
+
+    it("révision périmée (autre onglet) ou refus : la famille reste sur l'écran, rien n'est écrasé", async () => {
+      for (const status of ["stale_revision", "denied", "unavailable"]) {
+        const persist = vi.fn(async () => ({ status: "saved" as const, updatedAt: "2026-11-21T10:00:00.000Z", revision: 7 }));
+        const applyCategoriesNow = vi.fn(async () => ({ status }));
+        render(<ContributionsStep language="fr" content={DRAFT} skinVariant="light" persist={persist} applyCategoriesNow={applyCategoriesNow} />);
+        fireEvent.click(sw("condolences"));
+        fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+        expect(await screen.findByRole("alert")).toBeTruthy();
+        expect(routerRefresh).not.toHaveBeenCalled();
+        cleanup();
+      }
+    });
+  });
 });

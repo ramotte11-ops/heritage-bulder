@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
 import { PublicOfferingsProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-public";
+import { PublicContributionsProvider } from "@/components/memorial/contributions/contributions-host";
+import { loadPublicContributionsInitial } from "@/lib/memorial/contributions/visitor-contributions";
+import { createVisitorContributionDeps } from "@/lib/memorial/contributions/server-contributions";
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 import { depositSymbolicOffering } from "./actions";
@@ -40,6 +43,15 @@ export const metadata: Metadata = {
   },
 };
 
+async function loadContributionsForVisit(slug: string) {
+  try {
+    return await loadPublicContributionsInitial(createVisitorContributionDeps(), slug);
+  } catch {
+    console.error("Contributions: public read unavailable");
+    return null;
+  }
+}
+
 export default async function PublicMemorialPage({ params }: { params: Promise<{ slug: string }> }) {
   await connection();
   const { slug } = await params;
@@ -47,12 +59,22 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   const view = await loadPublicMemorial(slug, { client: createServiceRoleSupabaseClient() });
   if (view.status !== "ready") notFound();
 
+  // M8-E3 — Contributions des proches : les contributions RÉELLES de cette
+  // visite, filtrées par les catégories EN VIGUEUR (O9). Lues seulement si
+  // la copie publiée porte la rubrique ; un échec de lecture n'affiche
+  // jamais la démonstration du Builder : la rubrique est simplement absente.
+  const contributions = view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
+    ? await loadContributionsForVisit(slug)
+    : null;
+
   return (
     <main className={styles.page} lang={view.assembled.language} data-public-memorial="">
       {/* QG 016 — Offrandes symboliques : l'hôte public enregistre réellement
           le geste du visiteur (le serveur décide seul de son acceptation). */}
       <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering}>
-        <MemorialAssembly assembled={view.assembled} />
+        <PublicContributionsProvider initial={contributions}>
+          <MemorialAssembly assembled={view.assembled} />
+        </PublicContributionsProvider>
       </PublicOfferingsProvider>
     </main>
   );
