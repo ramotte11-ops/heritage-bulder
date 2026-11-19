@@ -92,6 +92,41 @@ s'exécute dès son déploiement, ce qui serait un nettoyage automatique en
 production. Il demande un **GO QG** distinct (opération de production) ;
 ce n'est pas un changement d'environnement.
 
+### Préparé en M8-E3 (suite), toujours inactif
+
+- `lib/media/scheduled-media-sweep.ts` porte la logique de la tâche (`runScheduledMediaSweep`), testée. Trois modes :
+  - **`off`** (défaut) : rien n'est lu ;
+  - **`dry-run`** : compte les réservations expirées, sans rien supprimer ;
+  - **`apply`** : lance le balayage existant.
+- Deux barrières indépendantes :
+  1. **aucune** fonction planifiée n'existe dans `netlify/functions/`, et un test le vérifie ;
+  2. même déployée, la tâche ne supprime rien sans `HERITAGE_MEDIA_SWEEP_MODE=apply`.
+
+Gabarit à ajouter **seulement au GO QG** (`netlify/functions/media-sweep.mts`) :
+
+```ts
+import type { Config } from "@netlify/functions";
+import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
+import { formatMediaSweepReport, readMediaSweepMode, runScheduledMediaSweep } from "@/lib/media/scheduled-media-sweep";
+
+export default async () => {
+  const report = await runScheduledMediaSweep(createServerMediaEngineDeps(), { mode: readMediaSweepMode(), limit: 100 });
+  console.log(formatMediaSweepReport(report));
+};
+
+export const config: Config = { schedule: "@hourly" };
+```
+
+Mise en service recommandée :
+
+1. déployer la fonction avec `HERITAGE_MEDIA_SWEEP_MODE=dry-run` pendant 24 h, puis lire les comptages ;
+2. passer à `apply` sur décision du QG.
+
+Il faudra vérifier au moment du GO :
+
+- la résolution de l'alias `@/` par l'empaquetage des fonctions Netlify ;
+- la présence de `@netlify/functions`, qui ne sert qu'aux types.
+
 ## 5. Points réservés au QG
 
 - **GO du raccordement du balayage (§ 4).** Recommandé avant l'ouverture

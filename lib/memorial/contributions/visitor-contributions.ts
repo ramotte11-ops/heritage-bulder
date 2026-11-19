@@ -26,9 +26,9 @@ import {
   type FormTokenSecrets,
 } from "./form-token";
 import type { processContributionPhoto } from "./photo-processing";
-import type { PublicContribution, PublicContributionsInitial } from "./public-contribution-types";
+import type { PublicContribution, PublicContributionsInitial, PublicContributionsPage, RenewPhotosResult } from "./public-contribution-types";
 
-export type { PublicContribution, PublicContributionsInitial } from "./public-contribution-types";
+export type { PublicContribution, PublicContributionsInitial, PublicContributionsPage, RenewPhotosResult } from "./public-contribution-types";
 
 /**
  * M8-E2 — le moteur serveur des dépôts de visiteurs.
@@ -248,11 +248,6 @@ export async function finishContributionPhoto(
   }
 }
 
-export interface PublicContributionsPage {
-  items: PublicContribution[];
-  /** Curseur opaque pour la page suivante de l'Album (P1), ou `null`. */
-  nextCursor: string | null;
-}
 
 export function encodeCursor(cursor: ContributionCursor): string {
   return Buffer.from(JSON.stringify([cursor.publishedAt, cursor.id]), "utf8").toString("base64url");
@@ -345,4 +340,46 @@ export async function loadPublicContributionsInitial(
     } while (cursor !== null && items.length < PUBLIC_CONTRIBUTIONS_PRELOAD_MAX);
   }
   return { categories: overview.categories, total, items, complete: cursor === null, nextCursor: cursor };
+}
+
+/** M8-E3 — au plus 100 photos renouvelées par appel ; au plus 3 000 contributions parcourues. */
+export const RENEW_PHOTOS_MAX_IDS = 100;
+const RENEW_SCAN_MAX = 3000;
+
+
+/**
+ * M8-E3 — renouvellement sécurisé d'un lien photographique expiré (5 min).
+ *
+ * Le navigateur ne donne que des identifiants de contributions déjà reçus.
+ * Le serveur relit la lecture PUBLIQUE en vigueur (hommage public, rubrique
+ * non masquée, catégories en vigueur, contribution publiée, média `ready`) et
+ * ne signe un nouveau lien que pour une photo qui y figure toujours. Une photo
+ * masquée, refusée, supprimée ou d'une catégorie désactivée entre-temps est
+ * rendue dans `gone` : aucun lien, et l'hôte la retire de l'affichage.
+ * Aucun chemin de stockage ne quitte le serveur.
+ */
+export async function renewPublicContributionPhotos(
+  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  input: { slug: unknown; ids: unknown },
+): Promise<RenewPhotosResult> {
+  if (!isPublicSlugShape(input.slug)) return REFUSED;
+  if (!Array.isArray(input.ids) || input.ids.length === 0 || input.ids.length > RENEW_PHOTOS_MAX_IDS || !input.ids.every(isMediaIdentifier)) return REFUSED;
+  const wanted = new Set((input.ids as string[]).map((id) => id.toLowerCase()));
+  const renewed: Record<string, string> = {};
+  let cursor: string | null = null;
+  let scanned = 0;
+  try {
+    do {
+      const page = await readPublicContributions(deps, { slug: input.slug, limit: PRELOAD_PAGE, cursor });
+      if (!("items" in page)) return page;
+      for (const item of page.items) {
+        if (wanted.has(item.id) && item.type === "photo" && item.photo) renewed[item.id] = item.photo.url;
+      }
+      scanned += page.items.length;
+      cursor = page.nextCursor;
+    } while (cursor !== null && scanned < RENEW_SCAN_MAX && Object.keys(renewed).length < wanted.size);
+  } catch {
+    return UNAVAILABLE;
+  }
+  return { status: "ok", renewed, gone: [...wanted].filter((id) => !(id in renewed)) };
 }

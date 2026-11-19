@@ -9,6 +9,7 @@ import type { CardLayout } from "@/lib/memorial/contributions/contribution-shape
 import { deckledEdge, type ContributionContent } from "./ContributionsSceneDesktop";
 import base from "./ContributionsSceneMobile.module.css";
 import { useContributionsLabels } from "./contributions-labels-context";
+import { useContributionsPhotoRecovery } from "./contributions-photo-recovery";
 import styles from "./ContributionsSceneMobileP1.module.css";
 
 /**
@@ -231,6 +232,7 @@ export function PreviewPolaroid({
   lazy?: boolean;
 }) {
   const LABELS = useContributionsLabels();
+  const recoverPhoto = useContributionsPhotoRecovery();
   if (placement.layout.kind !== "polaroid") return null;
   const l = placement.layout.polaroid;
   const photo = content?.photo;
@@ -241,7 +243,7 @@ export function PreviewPolaroid({
         <div className={base.polaroidWindow} style={box(l.window)}>
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element -- photo de démonstration, cadre calculé par le moteur A13
-            <img className={base.polaroidPhoto} src={photo.src} alt="" style={box(l.photo)} {...(lazy ? { loading: "lazy" as const, decoding: "async" as const } : {})} />
+            <img className={base.polaroidPhoto} src={photo.src} alt="" style={box(l.photo)} onError={() => recoverPhoto(placement.itemId)} {...(lazy ? { loading: "lazy" as const, decoding: "async" as const } : {})} />
           ) : null}
         </div>
         <span className={base.tape} aria-hidden="true" />
@@ -271,6 +273,7 @@ const INHERITED_VARS = ["--font-heritage-ceremony-serif", "--font-heritage-contr
 
 export function ReadingSheet({ opened, onClose }: { opened: Opened; onClose: () => void }) {
   const LABELS = useContributionsLabels();
+  const recoverPhoto = useContributionsPhotoRecovery();
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -304,7 +307,7 @@ export function ReadingSheet({ opened, onClose }: { opened: Opened; onClose: () 
           </h3>
           <span className={styles.sheetTape} aria-hidden="true" />
           {/* eslint-disable-next-line @next/next/no-img-element -- photographie entière, jamais recadrée */}
-          <img className={styles.sheetPhoto} src={c.photo.src} alt={c.caption ?? heading} width={c.photo.width} height={c.photo.height} />
+          <img className={styles.sheetPhoto} src={c.photo.src} alt={c.caption ?? heading} width={c.photo.width} height={c.photo.height} onError={() => recoverPhoto(opened.placement.itemId)} />
           <figcaption className={styles.sheetCaption}>
             {c.caption ? <span>{c.caption}</span> : null}
             <span>{c.author}</span>

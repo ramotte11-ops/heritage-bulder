@@ -13,6 +13,7 @@ import type { Rect } from "@/lib/memorial/gallery/dynamic-polaroid-layout";
 import type { ContributionScenePlacement } from "@/lib/memorial/contributions/contributions-scene";
 import type { CardLayout } from "@/lib/memorial/contributions/contribution-shapes";
 import { useContributionsLabels } from "./contributions-labels-context";
+import { useContributionsPhotoRecovery } from "./contributions-photo-recovery";
 import styles from "./ContributionsSceneDesktop.module.css";
 
 /**
@@ -47,13 +48,8 @@ export interface ContributionsSceneDesktopProps {
   onViewAll?: (trigger: HTMLElement) => void;
 }
 
-const FR_LABELS = {
-  leaveMessage: "Laisser un message",
-  viewAll: "Voir tous les messages",
-  readMore: "Lire plus",
-  close: "Fermer",
-  condolenceOverline: "Pour la famille",
-};
+/** Libellés de la scène (FR des Masters par défaut, fournis par l'hôte en M8-E3). */
+type SceneLabels = { leaveMessage: string; viewAll: string; readMore: string; close: string; condolenceOverline: string };
 
 const W = CONTRIBUTIONS_FRAMES.desktop.width;
 const H = CONTRIBUTIONS_FRAMES.desktop.height;
@@ -160,7 +156,7 @@ function TextCard({
   placement: ContributionScenePlacement;
   card: CardLayout;
   content: ContributionContent | undefined;
-  labels: typeof FR_LABELS;
+  labels: SceneLabels;
   onRead: (r: { author: string; text: string }) => void;
 }) {
   const i18n = useContributionsLabels();
@@ -254,7 +250,7 @@ function ClampedBody({
   fontSize: number;
   text: string;
   author: string;
-  labels: typeof FR_LABELS;
+  labels: SceneLabels;
   onRead: (r: { author: string; text: string }) => void;
   condolence: boolean;
 }) {
@@ -296,6 +292,7 @@ function ClampedBody({
 }
 
 function PolaroidCard({ placement, content }: { placement: ContributionScenePlacement; content: ContributionContent | undefined }) {
+  const recoverPhoto = useContributionsPhotoRecovery();
   if (placement.layout.kind !== "polaroid") return null;
   const l = placement.layout.polaroid;
   const photo = content?.photo;
@@ -305,7 +302,7 @@ function PolaroidCard({ placement, content }: { placement: ContributionScenePlac
         <div className={styles.polaroidWindow} style={box(l.window)}>
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element -- photo de démonstration, cadre calculé par le moteur A13
-            <img className={styles.polaroidPhoto} src={photo.src} alt={content?.caption ?? ""} style={box(l.photo)} />
+            <img className={styles.polaroidPhoto} src={photo.src} alt={content?.caption ?? ""} style={box(l.photo)} onError={() => recoverPhoto(placement.itemId)} />
           ) : null}
         </div>
         <span className={styles.tape} aria-hidden="true" />

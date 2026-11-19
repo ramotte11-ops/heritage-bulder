@@ -85,6 +85,8 @@ export function ContributionsSection({ theme, items, contents, title, subtitle, 
   const [width, setWidth] = useState<number | null>(null);
   const [view, setView] = useState<View>("scene");
   const [album, setAlbum] = useState<ContributionsAlbumResult | null>(null);
+  /** La liste dont l'Album affiché est issu (M8-E3 : recomposé si elle change). */
+  const [albumSource, setAlbumSource] = useState<readonly ContributionSceneItem[]>(items);
 
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -132,23 +134,27 @@ export function ContributionsSection({ theme, items, contents, title, subtitle, 
         return;
       }
       triggerRef.current = trigger;
+      setAlbumSource(items);
       sceneScrollY.current = window.scrollY;
       setAlbum(first);
       setView("album");
     },
-    [frame, startComposer],
+    [frame, items, startComposer],
   );
   const closeAlbum = useCallback(() => setView("scene"), []);
 
   // Le repère change (rotation, redimensionnement) pendant la consultation : l'Album est recomposé pour lui.
+  // M8-E3 : de même quand de nouvelles contributions arrivent (pagination progressive) ou qu'une photo
+  // retirée disparaît : l'Album suit toujours la liste courante, dans l'ordre P1.
   useEffect(() => {
-    if (view !== "album" || !frame || album?.frame === frame) return;
+    if (view !== "album" || !frame || (album?.frame === frame && albumSource === items)) return;
     const first = startComposer(frame);
-    // Effet de synchronisation avec la largeur mesurée (source externe) : une seule mise à jour.
+    // Effet de synchronisation avec la largeur mesurée et la liste reçue (sources externes) : une seule mise à jour.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAlbumSource(items);
     if (first.status === "PASS") setAlbum(first);
     else setView("scene");
-  }, [view, frame, album, startComposer]);
+  }, [view, frame, album, albumSource, items, startComposer]);
 
   // Suite de la composition, tranche par tranche, tant que l'Album est ouvert.
   useEffect(() => {

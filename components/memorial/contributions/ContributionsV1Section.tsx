@@ -15,7 +15,8 @@ import { ContributionsBuilderPreview } from "./ContributionsBuilderPreview";
 import { ContributionsSection } from "./ContributionsSection";
 import type { ContributionContent } from "./ContributionsSceneDesktop";
 import { ContributionsLabelsProvider } from "./contributions-labels-context";
-import { useContributionsHost } from "./contributions-host";
+import { useContributionsHost, useLivePublicContributions } from "./contributions-host";
+import { ContributionsPhotoRecoveryProvider } from "./contributions-photo-recovery";
 
 /** Les polices des Masters, posées par la rubrique elle-même (même liste que l'aperçu M7). */
 const SCENE_FONTS = [ebGaramond, ebGaramondItalic, offeringsMediumSerif, laBelleAurore, contributionsSignatureScript].map((f) => f.variable).join(" ");
@@ -64,9 +65,11 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
   const labels = useMemo(() => contributionsLabels(language), [language]);
   const texts = useMemo(() => contributionsTexts(language, displayName), [language, displayName]);
 
+  const live = useLivePublicContributions(host);
   const publicView = useMemo(() => {
-    if (host.mode !== "public" || host.initial === null) return null;
-    const { categories, items } = host.initial;
+    if (host.mode !== "public" || live.initial === null) return null;
+    const { categories } = live.initial;
+    const items = live.items;
     const album = albumOrder(items, categories);
     const mapped = album.map(toScene).filter((x): x is NonNullable<typeof x> => x !== null);
     const contents = Object.fromEntries(mapped.map((m) => [m.item.id, m.content]));
@@ -76,7 +79,7 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
       categories,
     ).map((c) => byId.get(c.id)!);
     return { state: contributionsPublicState(categories, mapped.length), items: mapped.map((m) => m.item), scene, contents };
-  }, [host]);
+  }, [host.mode, live.initial, live.items]);
 
   if (host.mode === "preview") {
     return (
@@ -100,6 +103,7 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
   return (
     <div className={SCENE_FONTS} data-contributions-host="public" data-contributions-state={publicView.state.kind}>
       <ContributionsLabelsProvider value={labels}>
+        <ContributionsPhotoRecoveryProvider value={live.recoverPhoto}>
         <ContributionsSection
           theme={skinVariant}
           items={publicView.items}
@@ -111,6 +115,7 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
           closingEmpty={texts.closingEmpty}
           language={language}
         />
+        </ContributionsPhotoRecoveryProvider>
       </ContributionsLabelsProvider>
     </div>
   );

@@ -5,11 +5,13 @@ import {
   finishContributionPhoto,
   openContributionForm,
   readPublicContributions,
+  renewPublicContributionPhotos,
   startContributionPhoto,
   submitContributionText,
   type PhotoFinishResult,
   type PhotoStartResult,
   type PublicContributionsPage,
+  type RenewPhotosResult,
   type VisitorDepositResult,
 } from "@/lib/memorial/contributions/visitor-contributions";
 
@@ -88,4 +90,9 @@ export async function completeContributionPhoto(input: {
 /** Pages suivantes de l'Album (P1) ; la page initiale est lue côté serveur par l'hôte public (E3). */
 export async function loadContributions(slug: unknown, cursor: unknown): Promise<PublicContributionsPage | { status: "refused" | "unavailable" }> {
   return withDeps((deps) => readPublicContributions(deps, { slug, cursor }));
+}
+
+/** M8-E3 — renouvelle les liens expirés de photos encore publiées (voir renewPublicContributionPhotos). */
+export async function renewContributionPhotos(slug: unknown, ids: unknown): Promise<RenewPhotosResult | { status: "unavailable" }> {
+  return withDeps((deps) => renewPublicContributionPhotos(deps, { slug, ids }));
 }

@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
@@ -42,8 +42,13 @@ function initial(items: PublicContribution[], categories = ALL): PublicContribut
   return { categories, total: items.length, items, complete: true, nextCursor: null };
 }
 
-function renderPublic(init: PublicContributionsInitial | null, { language = "fr", theme = "light" }: { language?: Language; theme?: SkinVariant } = {}) {
-  const wrap = ({ children }: { children: ReactNode }) => <PublicContributionsProvider initial={init}>{children}</PublicContributionsProvider>;
+type Fns = { loadMore?: Parameters<typeof PublicContributionsProvider>[0]["loadMore"]; renewPhotos?: Parameters<typeof PublicContributionsProvider>[0]["renewPhotos"] };
+function renderPublic(init: PublicContributionsInitial | null, { language = "fr", theme = "light", loadMore, renewPhotos }: { language?: Language; theme?: SkinVariant } & Fns = {}) {
+  const wrap = ({ children }: { children: ReactNode }) => (
+    <PublicContributionsProvider initial={init} loadMore={loadMore} renewPhotos={renewPhotos}>
+      {children}
+    </PublicContributionsProvider>
+  );
   return render(<ContributionsV1Section skinVariant={theme} language={language} displayName="Élise Martin" features={ALL} />, { wrapper: wrap });
 }
 
@@ -141,3 +146,48 @@ describe("M8-E3 — Aperçu du Builder : démonstration seulement (O10)", () => 
   });
 });
 
+
+describe("M8-E3 — pagination progressive et liens expirés", () => {
+  it("au-delà de la première page : les suivantes arrivent en arrière-plan, dans l'ordre P1", async () => {
+    const first = [cond("k1", 20), story("s1", 19), cond("k2", 18), cond("k3", 17)];
+    const loadMore = vi.fn(async (cursor: string) =>
+      cursor === "c1" ? { items: [cond("k4", 10)], nextCursor: "c2" } : { items: [cond("k5", 9)], nextCursor: null },
+    );
+    renderPublic({ categories: ALL, total: 6, items: first, complete: false, nextCursor: "c1" }, { loadMore });
+    await waitFor(() => expect(loadMore).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(["c1", "c2"]);
+    fireEvent.click(screen.getByRole("button", { name: /Voir tous les messages/ }));
+    await waitFor(() => expect(document.querySelectorAll("[data-contributions-album] [data-item-id]").length).toBe(6));
+    expect([...document.querySelectorAll<HTMLElement>("[data-contributions-album] [data-item-id]")].map((n) => n.dataset.itemId)).toEqual(["k1", "s1", "k2", "k3", "k4", "k5"]);
+  });
+
+  it("une liste complète ne déclenche aucun chargement", async () => {
+    const loadMore = vi.fn();
+    renderPublic(initial([cond("a", 1)]), { loadMore });
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(loadMore).not.toHaveBeenCalled();
+  });
+
+  it("une photo dont le lien a expiré redemande un lien (demandes regroupées) ; une photo retirée disparaît", async () => {
+    const renewPhotos = vi.fn(async (ids: string[]) => ({ status: "ok" as const, renewed: ids.includes("p1") ? { p1: "https://storage.test/renewed/p1" } : {}, gone: ids.filter((i) => i !== "p1") }));
+    const view = renderPublic(initial([photo("p1", 3), photo("p2", 2), cond("k", 1)]), { renewPhotos });
+    const imgs = () => [...view.container.querySelectorAll<HTMLImageElement>("img")].filter((i) => i.src.includes("storage.test"));
+    for (const img of imgs()) fireEvent.error(img);
+    await waitFor(() => expect(renewPhotos).toHaveBeenCalledTimes(1));
+    expect(new Set(renewPhotos.mock.calls[0][0])).toEqual(new Set(["p1", "p2"]));
+    await waitFor(() => expect(view.container.innerHTML).toContain("https://storage.test/renewed/p1"));
+    expect(view.container.innerHTML).not.toContain("https://storage.test/signed/p2");
+    expect(view.container.querySelectorAll('[data-contribution="photo"]')).toHaveLength(1);
+  });
+
+  it("jamais plus de deux demandes pour une même photo illisible (pas de boucle)", async () => {
+    const renewPhotos = vi.fn(async () => ({ status: "ok" as const, renewed: { p1: "https://storage.test/still-broken/p1" }, gone: [] }));
+    const view = renderPublic(initial([photo("p1", 3)]), { renewPhotos });
+    for (let i = 0; i < 4; i++) {
+      const img = [...view.container.querySelectorAll<HTMLImageElement>("img")].find((x) => x.src.includes("storage.test"))!;
+      fireEvent.error(img);
+      await act(async () => new Promise((r) => setTimeout(r, 300)));
+    }
+    expect(renewPhotos).toHaveBeenCalledTimes(2);
+  });
+});

@@ -50,6 +50,8 @@ const { PublicContributionsProvider, loadPublicContributionsInitial } = vi.hoist
 vi.mock("@/components/memorial/contributions/contributions-host", () => ({ PublicContributionsProvider }));
 vi.mock("@/lib/memorial/contributions/visitor-contributions", () => ({ loadPublicContributionsInitial }));
 vi.mock("@/lib/memorial/contributions/server-contributions", () => ({ createVisitorContributionDeps: () => ({ fake: "visitor-deps" }) }));
+const { loadContributions, renewContributionPhotos } = vi.hoisted(() => ({ loadContributions: vi.fn(), renewContributionPhotos: vi.fn() }));
+vi.mock("./contribution-actions", () => ({ loadContributions, renewContributionPhotos }));
 const { depositSymbolicOffering } = vi.hoisted(() => ({ depositSymbolicOffering: vi.fn() }));
 vi.mock("./actions", () => ({ depositSymbolicOffering }));
 
@@ -95,6 +97,12 @@ describe("/hommage/[slug]", () => {
     const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown }> }> }>;
     expect(loadPublicContributionsInitial).toHaveBeenCalledWith({ fake: "visitor-deps" }, "95bd2601eac8");
     expect(element.props.children.props.children.props.initial).toBe(initial);
+    // Les Server Actions de pagination et de renouvellement sont liées au slug validé.
+    const host = element.props.children.props.children.props as unknown as { loadMore: (c: string) => unknown; renewPhotos: (ids: string[]) => unknown };
+    host.loadMore("cursor-1");
+    host.renewPhotos(["id-1"]);
+    expect(loadContributions).toHaveBeenCalledWith("95bd2601eac8", "cursor-1");
+    expect(renewContributionPhotos).toHaveBeenCalledWith("95bd2601eac8", ["id-1"]);
   });
 
   it("M8-E3 — a failed contributions read never breaks the page nor shows a demonstration", async () => {

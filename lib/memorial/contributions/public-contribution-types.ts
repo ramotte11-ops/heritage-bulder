@@ -28,3 +28,12 @@ export interface PublicContributionsInitial {
   complete: boolean;
   nextCursor: string | null;
 }
+
+export interface PublicContributionsPage {
+  items: PublicContribution[];
+  /** Curseur opaque pour la page suivante de l'Album (P1), ou `null`. */
+  nextCursor: string | null;
+}
+
+/** Renouvellement des liens photo (renewPublicContributionPhotos). */
+export type RenewPhotosResult = { status: "ok"; renewed: Record<string, string>; gone: string[] } | { status: "refused" | "unavailable" };

@@ -12,6 +12,7 @@ import {
   finishContributionPhoto,
   openContributionForm,
   readPublicContributions,
+  renewPublicContributionPhotos,
   startContributionPhoto,
   submitContributionText,
   type VisitorContributionDeps,
@@ -363,5 +364,46 @@ describe("M8-E2 — lecture publique et Album (P1)", () => {
       expect(await readPublicContributions(deps, { slug: SLUG, cursor })).toEqual({ status: "refused" });
     }
     expect(await readPublicContributions(deps, { slug: "nope" })).toEqual({ status: "refused" });
+  });
+});
+
+describe("M8-E3 — renouvellement des liens photo expirés", () => {
+  const ID_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const ID_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const ID_GONE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const photoRow = (id: string, d: number): PublicContributionRow => ({
+    id, type: "photo", authorName: "A", content: null, caption: null, publishedAt: `2026-11-${String(d).padStart(2, "0")}T10:00:00Z`,
+    media: { mediaId: MEDIA, storagePath: `${MEM}/${id}/original.webp`, width: 10, height: 10 },
+  });
+
+  it("un nouveau lien seulement pour une photo toujours publiée ; les autres sont rendues « gone »", async () => {
+    const { deps } = setup({ repo: { readPublic: vi.fn(async () => [photoRow(ID_A, 3), photoRow(ID_B, 2)]) } });
+    const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_A, ID_GONE] });
+    expect(r).toEqual({ status: "ok", renewed: { [ID_A]: `https://storage.test/signed/${MEM}/${ID_A}/original.webp?ttl=300` }, gone: [ID_GONE] });
+  });
+
+  it("parcourt les pages jusqu'à trouver toutes les photos demandées", async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => photoRow(`dddddddd-dddd-4ddd-8ddd-${String(i).padStart(12, "0")}`, 20));
+    const readPublic = vi.fn().mockResolvedValueOnce(page1).mockResolvedValueOnce([photoRow(ID_B, 1)]);
+    const { deps } = setup({ repo: { readPublic } });
+    const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_B] });
+    expect(r).toMatchObject({ status: "ok", gone: [] });
+    expect(readPublic).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifiants forgés, liste vide ou trop longue, slug forgé : refusé sans lecture", async () => {
+    const readPublic = vi.fn(async () => []);
+    const { deps } = setup({ repo: { readPublic } });
+    for (const ids of [[], ["../x"], "abc", Array.from({ length: 101 }, () => ID_A)]) {
+      expect(await renewPublicContributionPhotos(deps, { slug: SLUG, ids })).toEqual({ status: "refused" });
+    }
+    expect(await renewPublicContributionPhotos(deps, { slug: "nope", ids: [ID_A] })).toEqual({ status: "refused" });
+    expect(readPublic).not.toHaveBeenCalled();
+  });
+
+  it("jamais un chemin de stockage dans la réponse", async () => {
+    const { deps } = setup({ repo: { readPublic: vi.fn(async () => [photoRow(ID_A, 3)]) } });
+    const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_A] });
+    expect(JSON.stringify(r)).not.toMatch(/storagePath|original\.webp"/);
   });
 });

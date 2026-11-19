@@ -48,6 +48,36 @@ export const CONTRIBUTIONS_RENDER_ASSETS = {
   condolenceSprig: `${V1}/ornements/rameau-condoleance-or.png`,
 } as const;
 
+/**
+ * M8-E3 (directive PO) — ornements de la carte centrale de l'état vide, PROPRES
+ * à chaque Master M0 (texte identique en Light et Dark, composition
+ * graphique indépendante). Relevés au pixel sur les Masters (filets sombres,
+ * luminance < 150), en pixels source :
+ *  - Desktop Light : filets au cœur entre l'accueil et l'invitation ;
+ *  - Desktop Dark  : un court filet simple entre l'accueil et l'invitation ;
+ *  - Mobile Light  : filets au cœur entre l'accueil et l'invitation ;
+ *  - Mobile Dark   : un filet simple sous l'invitation. Le Master place aussi
+ *    un cœur entre deux filets AU-DESSUS de l'accueil, mais le fond nettoyé
+ *    remis pour ce Master (c78e7a25e670) porte à cet endroit précis un rameau :
+ *    le support d'exécution fait foi, le cœur n'est pas dessiné par-dessus
+ *    (écart Master / support signalé à la PO, M8-E3).
+ * Les rameaux et la carte font partie des fonds nettoyés.
+ */
+export type ContributionsEmptyCardOrnament =
+  | { kind: "heart"; y: number; left: [number, number]; right: [number, number] }
+  | { kind: "rule"; y: number; x0: number; x1: number };
+
+export const CONTRIBUTIONS_EMPTY_CARD_ORNAMENTS: Record<"desktop" | "mobile", Record<"light" | "dark", readonly ContributionsEmptyCardOrnament[]>> = {
+  desktop: {
+    light: [{ kind: "heart", y: 539.5, left: [717, 805], right: [865, 956] }],
+    dark: [{ kind: "rule", y: 507.5, x0: 783, x1: 888 }],
+  },
+  mobile: {
+    light: [{ kind: "heart", y: 850, left: [349, 437], right: [507, 594] }],
+    dark: [{ kind: "rule", y: 976, x0: 429, x1: 546 }],
+  },
+};
+
 /** Couleurs relevées sur les Masters (encre, or, boutons), par thème. */
 export interface ContributionsPalette {
   title: string;

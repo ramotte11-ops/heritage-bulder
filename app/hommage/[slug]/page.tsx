@@ -9,6 +9,7 @@ import { createVisitorContributionDeps } from "@/lib/memorial/contributions/serv
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 import { depositSymbolicOffering } from "./actions";
+import { loadContributions, renewContributionPhotos } from "./contribution-actions";
 import styles from "./page.module.css";
 
 /**
@@ -72,7 +73,9 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
       {/* QG 016 — Offrandes symboliques : l'hôte public enregistre réellement
           le geste du visiteur (le serveur décide seul de son acceptation). */}
       <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering}>
-        <PublicContributionsProvider initial={contributions}>
+        {/* M8-E3 — pages suivantes de l'Album et liens photo renouvelés : Server Actions liées
+            à CE slug ; le navigateur ne choisit ni l'hommage ni ce qui est lisible. */}
+        <PublicContributionsProvider initial={contributions} loadMore={loadContributions.bind(null, slug)} renewPhotos={renewContributionPhotos.bind(null, slug)}>
           <MemorialAssembly assembled={view.assembled} />
         </PublicContributionsProvider>
       </PublicOfferingsProvider>
