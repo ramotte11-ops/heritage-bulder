@@ -5016,7 +5016,8 @@ E1_PRE="$REPO_ROOT/supabase/verifications/m8_e1_preflight.sql"
 E1_POST="$REPO_ROOT/supabase/verifications/m8_e1_postflight.sql"
 $PSQL -d postgres -c "create database m8e1_fresh template $STANDINS_DB;" >/dev/null
 for f in "$MIGRATIONS_DIR"/*.sql; do
-  [ "$f" = "$E1_MIG" ] && continue
+  # Stop at the QG 017 A2 state: E1 and every later migration (E2) excluded.
+  [[ "$(basename "$f")" < "$(basename "$E1_MIG")" ]] || continue
   $PSQL -d m8e1_fresh -f "$f" >/dev/null 2>&1
 done
 E1F="$PSQL -d m8e1_fresh"
@@ -5418,6 +5419,32 @@ E1_GUARD_BEFORE=$($PSQL -d m8e1_guard -t -A -c "select count(*) from messages wh
 check "M8-E1 rollback refuses when real contributions exist, and changes nothing" "1|$E1_GUARD_BEFORE|present" \
   "$($PSQL -d m8e1_guard -f "$E1_DOWN" 2>&1 | grep -c 'rollback refused: real contributions exist' || true)|$($PSQL -d m8e1_guard -t -A -c "select count(*) from messages where status is not null;")|$($PSQL -d m8e1_guard -t -A -c "select case when to_regprocedure('public.submit_contribution_v1(text,text,text,text,uuid)') is null then 'absent' else 'present' end;")"
 $PSQL -d postgres -c "drop database m8e1_guard;" >/dev/null
+
+echo ""
+echo "== M8-E2: family read of the Contributions settings (20261120090000, NOT applied to any project) =="
+E2_FN="public.read_owner_contribution_settings_v1(uuid,uuid)"
+E2_MIG="$MIGRATIONS_DIR/20261120090000_m8_e2_owner_contribution_settings.sql"
+E2_DOWN="$REPO_ROOT/supabase/rollbacks/20261120090000_m8_e2_owner_contribution_settings.down.sql"
+e2_read() { svc "select outcome || '|' || coalesce(condolences::text,'-') || '|' || coalesce(stories::text,'-') || '|' || coalesce(photos::text,'-') || '|' || coalesce(first_published::text,'-') || '|' || coalesce(contributions_digest::text,'-') from read_owner_contribution_settings_v1('$1','$2');"; }
+check "M8-E2: the read is executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$E2_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$E2_FN','EXECUTE') || '|' || has_function_privilege('service_role','$E2_FN','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$E2_FN'::regprocedure;")"
+check "M8-E2: published memorial -> the categories IN EFFECT (O9), not the published copy" "ok|$(e1_cats "$E1_O9" | tr '|' '\n' | paste -sd'|')|true|false" \
+  "$(e2_read "$E1_OWNER" "$E1_O9")"
+check "M8-E2: never-published memorial -> the draft's A15 choices" "ok|false|true|false|false|false" "$(e2_read "$E1_OWNER" "$E1_DRAFT_MEM")"
+check "M8-E2: the digest preference is read (enabled for this owner), false by default elsewhere" "true|false" \
+  "$(e2_read "$E1_DG_OWNER" "$E1_DG" | cut -d'|' -f6)|$(e2_read "$E1_OWNER" "$E1_O9" | cut -d'|' -f6)"
+check "M8-E2: another owner's memorial is refused, with no data" "refused|-|-|-|-|-" "$(e2_read "$E1_OTHER" "$E1_O9")"
+check "M8-E2: an unknown memorial is refused like another owner's" "refused|-|-|-|-|-" "$(e2_read "$E1_OWNER" "$(e1_key)")"
+check "M8-E2: malformed draft choices are reported as corrupted (all closed)" "corrupted|false|false|false|false|false" \
+  "$($DB -t -A -c "begin;" -c "update memorial_drafts set content = jsonb_set(content, '{contributions}', '\"tout\"') where memorial_id='$E1_DRAFT_MEM';" -c "set role service_role;" -c "select outcome || '|' || condolences || '|' || stories || '|' || photos || '|' || first_published || '|' || contributions_digest from read_owner_contribution_settings_v1('$E1_OWNER','$E1_DRAFT_MEM');" -c "rollback;" | tail -1)"
+check "M8-E2: the draft revision is returned for the Builder's expected revision" "$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$E1_O9';")" \
+  "$(svc "select draft_revision from read_owner_contribution_settings_v1('$E1_OWNER','$E1_O9');")"
+svc_expect_error "M8-E2: a request without owner is refused" "select * from read_owner_contribution_settings_v1(null, '$E1_O9');" "invalid contribution settings request"
+check "M8-E2: the read writes nothing (STABLE)" "s" "$($DB -t -A -c "select provolatile from pg_proc where oid = '$E2_FN'::regprocedure;")"
+$PSQL -d postgres -c "create database m8e2_down template $DB_NAME;" >/dev/null
+check "M8-E2 rollback removes the function, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e2_down -f "$E2_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e2_down -f "$E2_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database m8e2_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
