@@ -68,18 +68,22 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
   const live = useLivePublicContributions(host);
   const publicView = useMemo(() => {
     if (host.mode !== "public" || live.initial === null) return null;
-    const { categories } = live.initial;
-    const items = live.items;
-    const album = albumOrder(items, categories);
+    const { categories, total } = live.initial;
+    // L'Album : les pages lues, continues, ordre P1. La scène O8 y ajoute les
+    // plus récentes des catégories absentes de ces pages.
+    const album = albumOrder(live.items, categories);
     const mapped = album.map(toScene).filter((x): x is NonNullable<typeof x> => x !== null);
-    const contents = Object.fromEntries(mapped.map((m) => [m.item.id, m.content]));
-    const byId = new Map(mapped.map((m) => [m.item.id, m.item]));
+    const extras = albumOrder(live.sceneExtras, categories).map(toScene).filter((x): x is NonNullable<typeof x> => x !== null);
+    const contents = Object.fromEntries([...mapped, ...extras].map((m) => [m.item.id, m.content]));
+    const byId = new Map([...mapped, ...extras].map((m) => [m.item.id, m.item]));
     const scene = selectSceneContributions(
-      album.filter((c) => byId.has(c.id)),
+      [...album, ...live.sceneExtras].filter((c) => byId.has(c.id)),
       categories,
     ).map((c) => byId.get(c.id)!);
-    return { state: contributionsPublicState(categories, mapped.length), items: mapped.map((m) => m.item), scene, contents };
-  }, [host.mode, live.initial, live.items]);
+    // « Voir tous » et l'état vide suivent le TOTAL publié (vue d'ensemble), pas les pages déjà lues.
+    const count = Math.max(total, mapped.length + extras.length);
+    return { state: contributionsPublicState(categories, mapped.length + extras.length === 0 ? 0 : count), items: mapped.map((m) => m.item), scene, contents };
+  }, [host.mode, live.initial, live.items, live.sceneExtras]);
 
   if (host.mode === "preview") {
     return (
@@ -114,6 +118,8 @@ export function ContributionsV1Section({ skinVariant, language, displayName, fea
           closing={texts.closing}
           closingEmpty={texts.closingEmpty}
           language={language}
+          albumHasMore={live.hasMore}
+          onAlbumEndReached={live.loadNextPage}
         />
         </ContributionsPhotoRecoveryProvider>
       </ContributionsLabelsProvider>

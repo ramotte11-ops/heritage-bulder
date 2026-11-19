@@ -39,7 +39,7 @@ const story = (id: string, d: number): PublicContribution => ({ id, type: "testi
 const photo = (id: string, d: number): PublicContribution => ({ id, type: "photo", authorName: `Auteur ${id}`, text: null, caption: `Légende ${id}`, publishedAt: at(d), photo: { url: `https://storage.test/signed/${id}`, width: 2000, height: 1500 } });
 
 function initial(items: PublicContribution[], categories = ALL): PublicContributionsInitial {
-  return { categories, total: items.length, items, complete: true, nextCursor: null };
+  return { categories, total: items.length, items, sceneExtras: [], complete: true, nextCursor: null };
 }
 
 type Fns = { loadMore?: Parameters<typeof PublicContributionsProvider>[0]["loadMore"]; renewPhotos?: Parameters<typeof PublicContributionsProvider>[0]["renewPhotos"] };
@@ -148,17 +148,31 @@ describe("M8-E3 — Aperçu du Builder : démonstration seulement (O10)", () => 
 
 
 describe("M8-E3 — pagination progressive et liens expirés", () => {
-  it("au-delà de la première page : les suivantes arrivent en arrière-plan, dans l'ordre P1", async () => {
+  it("pagination réelle : rien n'est lu d'avance ; les pages suivantes arrivent quand l'Album ouvert approche de sa fin, ordre P1", async () => {
     const first = [cond("k1", 20), story("s1", 19), cond("k2", 18), cond("k3", 17)];
     const loadMore = vi.fn(async (cursor: string) =>
       cursor === "c1" ? { items: [cond("k4", 10)], nextCursor: "c2" } : { items: [cond("k5", 9)], nextCursor: null },
     );
-    renderPublic({ categories: ALL, total: 6, items: first, complete: false, nextCursor: "c1" }, { loadMore });
-    await waitFor(() => expect(loadMore).toHaveBeenCalledTimes(2), { timeout: 2000 });
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(["c1", "c2"]);
+    renderPublic({ categories: ALL, total: 6, items: first, sceneExtras: [], complete: false, nextCursor: "c1" }, { loadMore });
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(loadMore).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Voir tous les messages/ }));
+    await waitFor(() => expect(loadMore).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(["c1", "c2"]);
     await waitFor(() => expect(document.querySelectorAll("[data-contributions-album] [data-item-id]").length).toBe(6));
     expect([...document.querySelectorAll<HTMLElement>("[data-contributions-album] [data-item-id]")].map((n) => n.dataset.itemId)).toEqual(["k1", "s1", "k2", "k3", "k4", "k5"]);
+    // Dernière page lue : plus de repère, plus de requête.
+    expect(document.querySelector("[data-album-more]")).toBeNull();
+  });
+
+  it("scène O8 sans tout charger : une catégorie absente de la première page est représentée par sa plus récente, hors Album", async () => {
+    const first = [cond("k1", 20), cond("k2", 19), cond("k3", 18), cond("k4", 17)];
+    renderPublic({ categories: ALL, total: 200, items: first, sceneExtras: [photo("p-old", 1)], complete: false, nextCursor: "c1" }, { loadMore: vi.fn(async () => ({ items: [], nextCursor: null })) });
+    expect(document.querySelectorAll('[data-contribution="photo"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /Voir tous les messages/ }));
+    await waitFor(() => expect(document.querySelector("[data-contributions-album]")).not.toBeNull());
+    // L'Album reste continu (P1) : la photo ancienne n'y entre qu'avec sa page.
+    expect([...document.querySelectorAll<HTMLElement>("[data-contributions-album] [data-item-id]")].map((n) => n.dataset.itemId)).not.toContain("p-old");
   });
 
   it("une liste complète ne déclenche aucun chargement", async () => {

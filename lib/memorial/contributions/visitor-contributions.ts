@@ -10,7 +10,7 @@ import {
 } from "@/config/contributions";
 import { MEDIA_READ_URL_TTL_SECONDS } from "@/config/media";
 import type { ContributionPhotoStore } from "@/lib/adapters/contribution-photo-store";
-import type { ContributionCursor, ContributionRepository, DepositResult } from "@/lib/adapters/contribution-repository";
+import type { ContributionCursor, ContributionRepository, DepositResult, PublicContributionRow } from "@/lib/adapters/contribution-repository";
 import type { MediaObjectStore } from "@/lib/adapters/media-object-store";
 import type { MediaRepository } from "@/lib/adapters/media-repository";
 import { isAllowedImageMimeType } from "@/lib/media/image-signature";
@@ -273,31 +273,38 @@ export function decodeCursor(value: unknown): ContributionCursor | null | "inval
  * published_at desc, id desc), page par page. Les photos sont servies par
  * des URL signées courtes (5 min), jamais par un chemin de stockage.
  */
+/** Rows → contributions publiques ; liens signés en parallèle (une page n'attend pas ses photos une à une). */
+async function toPublicContributions(
+  deps: Pick<VisitorContributionDeps, "objectStore">,
+  rows: PublicContributionRow[],
+): Promise<PublicContribution[]> {
+  const signed = await Promise.all(
+    rows.map((row) =>
+      row.type === "photo" && row.media
+        ? deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS })
+        : Promise.resolve(null),
+    ),
+  );
+  const items: PublicContribution[] = [];
+  rows.forEach((row, i) => {
+    if (row.type === "photo" && (!row.media || signed[i] === null)) return;
+    const photo = row.type === "photo" && row.media ? { url: signed[i] as string, width: row.media.width, height: row.media.height } : null;
+    items.push({ id: row.id, type: row.type, authorName: row.authorName, text: row.content, caption: row.caption, publishedAt: row.publishedAt, photo });
+  });
+  return items;
+}
+
 export async function readPublicContributions(
   deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
-  input: { slug: unknown; limit?: unknown; cursor?: unknown },
+  input: { slug: unknown; limit?: unknown; cursor?: unknown; types?: readonly ContributionType[] },
 ): Promise<PublicContributionsPage | { status: "refused" | "unavailable" }> {
   if (!isPublicSlugShape(input.slug)) return REFUSED;
   const before = decodeCursor(input.cursor);
   if (before === "invalid") return REFUSED;
   const limit = typeof input.limit === "number" && Number.isInteger(input.limit) ? Math.min(Math.max(input.limit, 1), CONTRIBUTION_PAGE_SIZE_MAX) : CONTRIBUTION_PAGE_SIZE;
   try {
-    const rows = await deps.repository.readPublic({ slug: input.slug, limit, before });
-    // Les URL signées en parallèle : une page d'Album ne doit pas attendre
-    // ses photographies l'une après l'autre.
-    const signed = await Promise.all(
-      rows.map((row) =>
-        row.type === "photo" && row.media
-          ? deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS })
-          : Promise.resolve(null),
-      ),
-    );
-    const items: PublicContribution[] = [];
-    rows.forEach((row, i) => {
-      if (row.type === "photo" && (!row.media || signed[i] === null)) return;
-      const photo = row.type === "photo" && row.media ? { url: signed[i] as string, width: row.media.width, height: row.media.height } : null;
-      items.push({ id: row.id, type: row.type, authorName: row.authorName, text: row.content, caption: row.caption, publishedAt: row.publishedAt, photo });
-    });
+    const rows = await deps.repository.readPublic({ slug: input.slug, limit, before, ...(input.types ? { types: input.types } : {}) });
+    const items = await toPublicContributions(deps, rows);
     const last = rows[rows.length - 1];
     return { items, nextCursor: rows.length === limit && last ? encodeCursor({ publishedAt: last.publishedAt, id: last.id }) : null };
   } catch {
@@ -305,16 +312,20 @@ export async function readPublicContributions(
   }
 }
 
-/** M8-E3 — au plus 500 contributions chargées avec la page (5 pages de 100). */
-export const PUBLIC_CONTRIBUTIONS_PRELOAD_MAX = 500;
-const PRELOAD_PAGE = 100;
+/** M8-E4 — la première page de l'Album lue avec la page ; les suivantes à la demande, sans plafond. */
+export const PUBLIC_CONTRIBUTIONS_FIRST_PAGE = 100;
 
+const TYPE_OF_CATEGORY = { condolences: "condolence", stories: "testimonial", photos: "photo" } as const;
 
 /**
- * M8-E3 — ce que la page publique lit pour la rubrique : la vue d'ensemble
- * (catégories en vigueur, nombres) puis les contributions publiées, page par
- * page, jusqu'à 500. `null` : rubrique non publique (hommage non public,
- * rubrique masquée) ou indisponible — la rubrique n'est alors pas dessinée.
+ * Ce que la page publique lit pour la rubrique (M8-E3, M8-E4) :
+ *  1. la vue d'ensemble : catégories EN VIGUEUR et nombres publiés ;
+ *  2. la PREMIÈRE page de l'Album (P1) — les suivantes sont lues à la
+ *     demande par l'hôte (loadContributions), sans aucun plafond global ;
+ *  3. pour chaque catégorie disponible absente de cette page, sa
+ *     contribution la plus récente (`sceneExtras`) : la scène O8 représente
+ *     ainsi chaque catégorie sans charger l'Album entier.
+ * `null` : rubrique non publique ou indisponible — pas de rubrique.
  */
 export async function loadPublicContributionsInitial(
   deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
@@ -329,34 +340,34 @@ export async function loadPublicContributionsInitial(
   }
   if (overview === null) return null;
   const total = overview.published.condolences + overview.published.stories + overview.published.photos;
-  const items: PublicContribution[] = [];
-  let cursor: string | null = null;
-  if (total > 0) {
-    do {
-      const page = await readPublicContributions(deps, { slug, limit: PRELOAD_PAGE, cursor });
-      if (!("items" in page)) return null;
-      items.push(...page.items);
-      cursor = page.nextCursor;
-    } while (cursor !== null && items.length < PUBLIC_CONTRIBUTIONS_PRELOAD_MAX);
+  if (total === 0) return { categories: overview.categories, total, items: [], sceneExtras: [], complete: true, nextCursor: null };
+  const first = await readPublicContributions(deps, { slug, limit: PUBLIC_CONTRIBUTIONS_FIRST_PAGE });
+  if (!("items" in first)) return null;
+  const missing = (Object.keys(TYPE_OF_CATEGORY) as (keyof typeof TYPE_OF_CATEGORY)[])
+    .filter((c) => overview.published[c] > 0 && !first.items.some((it) => it.type === TYPE_OF_CATEGORY[c]))
+    .map((c) => TYPE_OF_CATEGORY[c]);
+  const sceneExtras: PublicContribution[] = [];
+  for (const type of missing) {
+    const page = await readPublicContributions(deps, { slug, limit: 1, types: [type] });
+    if ("items" in page) sceneExtras.push(...page.items);
   }
-  return { categories: overview.categories, total, items, complete: cursor === null, nextCursor: cursor };
+  return { categories: overview.categories, total, items: first.items, sceneExtras, complete: first.nextCursor === null, nextCursor: first.nextCursor };
 }
 
-/** M8-E3 — au plus 100 photos renouvelées par appel ; au plus 3 000 contributions parcourues. */
+/** M8-E3 — au plus 100 photos renouvelées par appel. */
 export const RENEW_PHOTOS_MAX_IDS = 100;
-const RENEW_SCAN_MAX = 3000;
-
 
 /**
- * M8-E3 — renouvellement sécurisé d'un lien photographique expiré (5 min).
+ * M8-E3/E4 — renouvellement sécurisé d'un lien photographique expiré (5 min).
  *
  * Le navigateur ne donne que des identifiants de contributions déjà reçus.
- * Le serveur relit la lecture PUBLIQUE en vigueur (hommage public, rubrique
- * non masquée, catégories en vigueur, contribution publiée, média `ready`) et
- * ne signe un nouveau lien que pour une photo qui y figure toujours. Une photo
- * masquée, refusée, supprimée ou d'une catégorie désactivée entre-temps est
- * rendue dans `gone` : aucun lien, et l'hôte la retire de l'affichage.
- * Aucun chemin de stockage ne quitte le serveur.
+ * Le serveur les RELIT un par un, aux règles de la lecture publique en
+ * vigueur (read_public_contributions_by_ids_v1 : hommage public, rubrique non
+ * masquée, catégories en vigueur, contribution publiée, média `ready`), où
+ * qu'elles soient dans l'Album, et ne signe un nouveau lien que pour une
+ * photo qui y figure toujours. Une photo masquée, refusée, supprimée ou d'une
+ * catégorie désactivée entre-temps est rendue dans `gone` : aucun lien, et
+ * l'hôte la retire de l'affichage. Aucun chemin de stockage ne quitte le serveur.
  */
 export async function renewPublicContributionPhotos(
   deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
@@ -364,22 +375,14 @@ export async function renewPublicContributionPhotos(
 ): Promise<RenewPhotosResult> {
   if (!isPublicSlugShape(input.slug)) return REFUSED;
   if (!Array.isArray(input.ids) || input.ids.length === 0 || input.ids.length > RENEW_PHOTOS_MAX_IDS || !input.ids.every(isMediaIdentifier)) return REFUSED;
-  const wanted = new Set((input.ids as string[]).map((id) => id.toLowerCase()));
-  const renewed: Record<string, string> = {};
-  let cursor: string | null = null;
-  let scanned = 0;
+  const wanted = [...new Set((input.ids as string[]).map((id) => id.toLowerCase()))];
   try {
-    do {
-      const page = await readPublicContributions(deps, { slug: input.slug, limit: PRELOAD_PAGE, cursor });
-      if (!("items" in page)) return page;
-      for (const item of page.items) {
-        if (wanted.has(item.id) && item.type === "photo" && item.photo) renewed[item.id] = item.photo.url;
-      }
-      scanned += page.items.length;
-      cursor = page.nextCursor;
-    } while (cursor !== null && scanned < RENEW_SCAN_MAX && Object.keys(renewed).length < wanted.size);
+    const rows = await deps.repository.readPublicByIds({ slug: input.slug, ids: wanted });
+    const items = await toPublicContributions(deps, rows.filter((r) => r.type === "photo"));
+    const renewed: Record<string, string> = {};
+    for (const item of items) if (item.photo) renewed[item.id] = item.photo.url;
+    return { status: "ok", renewed, gone: wanted.filter((id) => !(id in renewed)) };
   } catch {
     return UNAVAILABLE;
   }
-  return { status: "ok", renewed, gone: [...wanted].filter((id) => !(id in renewed)) };
 }

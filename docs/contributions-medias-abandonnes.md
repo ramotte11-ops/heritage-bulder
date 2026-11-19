@@ -74,35 +74,41 @@ La compatibilité est vérifiée par les tests :
 4. La permission d'envoi remise au visiteur n'autorise qu'**une écriture**,
    sur **un chemin**, sans écrasement et sans lecture.
 
-## 4. Raccordement proposé (à autoriser par le QG)
+## 4. Dossier de mise en service (autorité : QG)
 
-Le mécanisme existant, sans second moteur :
+### 4.1 Ce qui est prêt, et inactif
 
-- une **fonction planifiée Netlify** (par exemple
-  `netlify/functions/media-sweep.mts`, `schedule: "@hourly"`), qui appelle
-  `sweepAbandonedUploads(createServerMediaEngineDeps(), { limit: 100 })` et
-  ne journalise que des nombres (`examined`, `reclaimed`) ;
-- **aucune nouvelle variable d'environnement** : elle utilise la clé
-  service_role déjà présente côté serveur ;
-- **moment recommandé :** avec l'application des migrations M8 (E6), et
-  avant l'ouverture réelle des dépôts de photos.
-
-Ce raccordement **n'est pas réalisé dans E3**. Une fonction planifiée
-s'exécute dès son déploiement, ce qui serait un nettoyage automatique en
-production. Il demande un **GO QG** distinct (opération de production) ;
-ce n'est pas un changement d'environnement.
-
-### Préparé en M8-E3 (suite), toujours inactif
-
-- `lib/media/scheduled-media-sweep.ts` porte la logique de la tâche (`runScheduledMediaSweep`), testée. Trois modes :
-  - **`off`** (défaut) : rien n'est lu ;
-  - **`dry-run`** : compte les réservations expirées, sans rien supprimer ;
-  - **`apply`** : lance le balayage existant.
+- `lib/media/scheduled-media-sweep.ts`, testé (`scheduled-media-sweep.test.ts`). Trois modes :
+  - **`off`** (défaut, variable absente) : rien n'est lu ;
+  - **`dry-run`** : lit, classe et compte, sans rien supprimer ;
+  - **`apply`** : nettoie les seules lignes classées récupérables, avec la primitive existante (`cleanupPendingMedia`, celle du balayage).
 - Deux barrières indépendantes :
-  1. **aucune** fonction planifiée n'existe dans `netlify/functions/`, et un test le vérifie ;
-  2. même déployée, la tâche ne supprime rien sans `HERITAGE_MEDIA_SWEEP_MODE=apply`.
+  1. **aucune** fonction planifiée dans `netlify/functions/`, ce qu'un test vérifie ;
+  2. même déployée, rien n'est supprimé sans `HERITAGE_MEDIA_SWEEP_MODE=apply`.
 
-Gabarit à ajouter **seulement au GO QG** (`netlify/functions/media-sweep.mts`) :
+### 4.2 Revue de sécurité (M8-E4)
+
+| Risque | Protection | Preuve |
+|---|---|---|
+| Supprimer une photo publiée ou en cours d'examen | Seules les lignes `pending` sont lues. Une photo de proche est `ready` dès sa finalisation, avant même d'exister pour la famille | test « un média prêt n'est jamais vu » |
+| Supprimer une réservation en cours d'envoi | Plus de 3 h seulement (la permission d'envoi dure 2 h), avec une **marge d'horloge de 15 min** entre le serveur applicatif et la base | test « au-delà de 3 h + 15 min seulement » |
+| Course avec une finalisation | La réclamation et la finalisation s'excluent côté base (`40001`) : une ligne réclamée ne peut plus devenir `ready` | migrations Security V1 et M8-E1 |
+| Hommage archivé | **Jamais** nettoyé, même en `apply` : la ligne est comptée dans `blocked`, pour décision QG | test « hommage archivé » |
+| Hero d'un hommage publié, état incohérent | Même règle que la base (`reserve_pending_media_cleanup_v1`) : compté dans `blocked`, rien n'est soumis | test « règle du cycle de vie » |
+| Chemin corrompu, hors de son hommage | Ignoré, compté dans `skipped`, jamais supprimé | test « chemin hors de son hommage » |
+| Photo retirée par la famille (réclamation déjà ouverte par E2) | La réclamation existante est reprise et close ; les octets sont déjà supprimés | `remove_contribution_v1`, réservation idempotente |
+| Charge | Au plus 100 lignes par passage (plafond dur 500), une ligne à la fois | `limit` |
+| Fuite dans les journaux | Une ligne de nombres : `examined`, `reclaimable`, `blocked`, `skipped`, `reclaimed` | test « journal » |
+
+### 4.3 Procédure proposée (chaque étape sur GO QG)
+
+1. **Préalables** : migrations M8 appliquées (E6) et migrations Security V1 présentes. Ce sont elles qui fournissent les réclamations et la règle du cycle de vie.
+2. **Ajout de la fonction**, gabarit ci-dessous (`netlify/functions/media-sweep.mts`), avec `HERITAGE_MEDIA_SWEEP_MODE=dry-run` sur le site de production. C'est un changement d'environnement Netlify : **GO QG**.
+3. **Observation pendant 24 h en `dry-run`** : lire les journaux (des nombres seulement). Attendu : `blocked` stable, `skipped` à 0.
+4. **Bascule en `apply`** sur décision QG. Ensuite, `examined` doit décroître vers 0 en quelques passages.
+5. **Retour arrière immédiat** : remettre la variable à `off`, ou la supprimer ; retirer la fonction si besoin. Aucune donnée n'est à restaurer, puisque seules des réservations abandonnées ont été nettoyées.
+
+Gabarit (à ne déposer qu'au GO) :
 
 ```ts
 import type { Config } from "@netlify/functions";
@@ -117,15 +123,20 @@ export default async () => {
 export const config: Config = { schedule: "@hourly" };
 ```
 
-Mise en service recommandée :
-
-1. déployer la fonction avec `HERITAGE_MEDIA_SWEEP_MODE=dry-run` pendant 24 h, puis lire les comptages ;
-2. passer à `apply` sur décision du QG.
-
-Il faudra vérifier au moment du GO :
+À vérifier au moment du GO :
 
 - la résolution de l'alias `@/` par l'empaquetage des fonctions Netlify ;
-- la présence de `@netlify/functions`, qui ne sert qu'aux types.
+- la présence de `@netlify/functions`, qui ne sert qu'aux types ;
+- que le client service_role lit bien `memorial_drafts`. La lecture du cycle de vie passe par `SupabaseMediaSecurityRepository.load`, la même que le moteur média utilise déjà.
+
+Contrôle en lecture seule, à exécuter avant puis après (aucune donnée personnelle) :
+
+```sql
+select count(*) filter (where m.status <> 'archived') as nettoyables_ou_hero,
+       count(*) filter (where m.status = 'archived')  as bloques_archives
+  from public.media md join public.memorials m on m.id = md.memorial_id
+ where md.status = 'pending' and md.created_at < now() - interval '3 hours 15 minutes';
+```
 
 ## 5. Points réservés au QG
 

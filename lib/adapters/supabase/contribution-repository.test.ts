@@ -64,7 +64,16 @@ describe("M8-E2 — SupabaseContributionRepository", () => {
     });
     const rows = await new SupabaseContributionRepository(b.client).readPublic({ slug: "s", limit: 24, before: { publishedAt: "2026-11-02T00:00:00Z", id: "z" } });
     expect(rows.map((r) => r.id)).toEqual(["1", "4"]);
-    expect(b.rpc).toHaveBeenCalledWith("read_public_contributions_v1", { p_slug: "s", p_limit: 24, p_before_published_at: "2026-11-02T00:00:00Z", p_before_id: "z" });
+    expect(b.rpc).toHaveBeenCalledWith("read_public_contributions_v2", { p_slug: "s", p_limit: 24, p_before_published_at: "2026-11-02T00:00:00Z", p_before_id: "z", p_types: null });
+  });
+
+  it("M8-E4 : filtre de types (scène O8) et relecture par identifiants", async () => {
+    const a = fakeRpc({ data: [], error: null });
+    const repo = new SupabaseContributionRepository(a.client);
+    await repo.readPublic({ slug: "s", limit: 1, before: null, types: ["photo"] });
+    expect(a.rpc).toHaveBeenLastCalledWith("read_public_contributions_v2", { p_slug: "s", p_limit: 1, p_before_published_at: null, p_before_id: null, p_types: ["photo"] });
+    await repo.readPublicByIds({ slug: "s", ids: ["a", "b"] });
+    expect(a.rpc).toHaveBeenLastCalledWith("read_public_contributions_by_ids_v1", { p_slug: "s", p_ids: ["a", "b"] });
   });
 
   it("opérations familiales : p_owner_id transmis tel que vérifié par le serveur", async () => {

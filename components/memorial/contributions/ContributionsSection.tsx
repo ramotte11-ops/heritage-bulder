@@ -58,6 +58,14 @@ export interface ContributionsSectionProps {
   sceneItems?: readonly ContributionSceneItem[];
   /** M8-E3 — phrase finale de l'état vide (Master M0) ; sans elle, `closing`. */
   closingEmpty?: string;
+  /**
+   * M8-E4 — pagination réelle de l'Album : d'autres pages existent ; à
+   * l'approche de la fin de l'Album ouvert, `onAlbumEndReached` demande la
+   * suivante (l'hôte n'en lit qu'une à la fois). L'Album se recompose avec la
+   * liste allongée, ordre P1 conservé. Absents : Album fermé sur `items`.
+   */
+  albumHasMore?: boolean;
+  onAlbumEndReached?: () => void;
 }
 
 type View = "scene" | "album";
@@ -76,7 +84,7 @@ const ALBUM_FIRST_BUDGET_MS = 24;
 const ALBUM_SLICE_BUDGET_MS = 8;
 const ALBUM_SLICE_MAX_PLATES = 3;
 
-export function ContributionsSection({ theme, items, contents, title, subtitle, closing, language = "fr", sceneItems, closingEmpty }: ContributionsSectionProps) {
+export function ContributionsSection({ theme, items, contents, title, subtitle, closing, language = "fr", sceneItems, closingEmpty, albumHasMore = false, onAlbumEndReached }: ContributionsSectionProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -240,10 +248,35 @@ export function ContributionsSection({ theme, items, contents, title, subtitle, 
                 </button>
               </div>
               <ContributionsAlbum frame={album.frame} theme={theme} items={items} contents={contents} title={title} subtitle={subtitle} album={album} />
+              {albumHasMore && album.complete && onAlbumEndReached ? <AlbumEndSentinel onReached={onAlbumEndReached} /> : null}
             </div>
           ) : null}
         </>
       ) : null}
     </div>
   );
+}
+
+/**
+ * M8-E4 — repère invisible posé sous la dernière planche composée : quand il
+ * approche de l'écran (une marge d'environ deux écrans), la page suivante est
+ * demandée. Sans IntersectionObserver (navigateur ancien), demande immédiate :
+ * l'hôte limite de toute façon à une requête à la fois.
+ */
+function AlbumEndSentinel({ onReached }: { onReached: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver !== "function") {
+      onReached();
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) onReached();
+    }, { rootMargin: "200% 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onReached]);
+  return <div ref={ref} aria-hidden="true" data-album-more="" style={{ height: 1 }} />;
 }

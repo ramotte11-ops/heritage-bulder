@@ -22,9 +22,15 @@ export interface PublicContributionsInitial {
   categories: { condolences: boolean; stories: boolean; photos: boolean };
   /** Contributions publiées lisibles des catégories en vigueur (vue d'ensemble). */
   total: number;
-  /** Ordre P1 (la base les rend ainsi). */
+  /** La première page de l'Album, ordre P1 (la base les rend ainsi). */
   items: PublicContribution[];
-  /** `false` : plus de PUBLIC_CONTRIBUTIONS_PRELOAD_MAX ; les suivantes restent à charger. */
+  /**
+   * M8-E4 — pour la scène O8 seulement : la plus récente de chaque catégorie
+   * disponible absente de `items`. Jamais mêlée à l'Album avant que sa page
+   * n'y arrive (l'ordre P1 de l'Album reste continu).
+   */
+  sceneExtras: PublicContribution[];
+  /** `false` : d'autres pages existent ; l'hôte les lit à la demande (`nextCursor`). */
   complete: boolean;
   nextCursor: string | null;
 }

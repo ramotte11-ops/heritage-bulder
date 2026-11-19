@@ -5490,6 +5490,43 @@ check "M8-E3 rollback removes the function, then the migration re-applies" "0|ab
   "$($PSQL -d m8e3_down -f "$E3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e3_down -f "$E3_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")"
 $PSQL -d postgres -c "drop database m8e3_down;" >/dev/null
 
+echo ""
+echo "== M8-E4: targeted public reads (20261122090000, NOT applied to any project) =="
+E4_V2="public.read_public_contributions_v2(text,integer,timestamptz,uuid,text[])"
+E4_IDS="public.read_public_contributions_by_ids_v1(text,uuid[])"
+E4_MIG="$MIGRATIONS_DIR/20261122090000_m8_e4_public_contributions_reads.sql"
+E4_DOWN="$REPO_ROOT/supabase/rollbacks/20261122090000_m8_e4_public_contributions_reads.down.sql"
+for fn in "$E4_V2" "$E4_IDS"; do
+  check "M8-E4: $fn executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+    "$($DB -t -A -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$fn'::regprocedure;")"
+done
+check "M8-E4: v2 without types = v1 exactly (same rows, same P1 order)" \
+  "$(svc "select string_agg(contribution_id::text, ',' order by n) from (select contribution_id, row_number() over () n from read_public_contributions_v1('m8e1-p1', 24, null, null)) x;")" \
+  "$(svc "select string_agg(contribution_id::text, ',' order by n) from (select contribution_id, row_number() over () n from read_public_contributions_v2('m8e1-p1', 24, null, null, null)) x;")"
+check "M8-E4: v2 with types=testimonial returns the most recent story only (O8 representative)" "B" \
+  "$(svc "select string_agg(author_name, ',') from read_public_contributions_v2('m8e1-p1', 1, null, null, array['testimonial']);")"
+check "M8-E4: v2 refuses an unknown or empty type filter (no row)" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_v2('m8e1-p1', 24, null, null, array['memory_message']);")|$(svc "select count(*) from read_public_contributions_v2('m8e1-p1', 24, null, null, array[]::text[]);")"
+check "M8-E4: v2 still honours the categories in effect (photos off -> no photo even when asked)" "0" \
+  "$($DB -t -A -c "begin;" -c "set role service_role;" -c "select outcome from set_contribution_categories_v1('$E1_OWNER','$E1_MEM',true,true,false,null);" -c "select count(*) from read_public_contributions_v2('m8e1-complet', 24, null, null, array['photo']);" -c "rollback;" | tail -1)"
+E4_PUB=$($DB -t -A -c "select string_agg(quote_literal(id::text) || '::uuid', ',') from messages where memorial_id='$E1_P1' and status='published';")
+E4_HIDDEN=$($DB -t -A -c "select id from messages where memorial_id='$E1_P1' and status='hidden' limit 1;")
+E4_OTHER=$($DB -t -A -c "select id from messages where memorial_id='$E1_O9' and status='published' limit 1;")
+check "M8-E4: by-ids returns the published contributions asked, in P1 order" "4" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array[$E4_PUB]);")"
+check "M8-E4: by-ids never returns a hidden contribution nor another memorial's" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array['$E4_HIDDEN'::uuid]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array['$E4_OTHER'::uuid]);")"
+check "M8-E4: by-ids refuses an empty list and more than 100 ids" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array[]::uuid[]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', (select array_agg(gen_random_uuid()) from generate_series(1,101)));")"
+check "M8-E4: by-ids on a hidden rubrique or an unknown slug returns nothing" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-hidden', array[$E4_PUB]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e4-nope', array[$E4_PUB]);")"
+check "M8-E4: neither read ever exposes idempotency_key (exact column sets)" "contribution_id,message_type,author_name,content,caption,published_at,media|contribution_id,message_type,author_name,content,caption,published_at,media" \
+  "$($DB -t -A -c "select string_agg(a, ',' order by o) from unnest((select proargnames from pg_proc where oid='$E4_V2'::regprocedure)[6:]) with ordinality as t(a, o);")|$($DB -t -A -c "select string_agg(a, ',' order by o) from unnest((select proargnames from pg_proc where oid='$E4_IDS'::regprocedure)[3:]) with ordinality as t(a, o);")"
+$PSQL -d postgres -c "create database m8e4_down template $DB_NAME;" >/dev/null
+check "M8-E4 rollback removes both functions, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e4_down -f "$E4_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is null and to_regprocedure('$E4_IDS') is null then 'absent' else 'present' end;")|$($PSQL -d m8e4_down -f "$E4_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is not null and to_regprocedure('$E4_IDS') is not null then 'present' else 'absent' end;")"
+$PSQL -d postgres -c "drop database m8e4_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

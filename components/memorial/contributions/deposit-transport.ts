@@ -65,8 +65,9 @@ export function createContributionDepositTransport(slug: string, actions: Contri
     async depositPhoto({ file, authorName, caption, formToken, website }) {
       let prepared: File;
       try {
-        // Le profil Hero (2 400 px) : le serveur ramène ensuite à 2 000 px (cible PO O5).
-        prepared = await prepareChosenPhoto(file, "hero");
+        // M8-E4 : le profil dédié `contribution` (2 000 px, cible PO O5) ; le
+        // serveur Sharp revalide, réoriente, ré-encode et nettoie de toute façon.
+        prepared = await prepareChosenPhoto(file, "contribution");
       } catch {
         return { status: "invalid", field: "photo" };
       }

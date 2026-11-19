@@ -1,10 +1,11 @@
-import { MAX_MEDIA_BYTES, type MediaPurpose } from "@/config/media";
+import { MAX_MEDIA_BYTES } from "@/config/media";
 import {
   PHOTO_INPUT_MAX_BYTES,
   PHOTO_INPUT_MAX_PIXELS,
   PHOTO_PROFILES,
   PHOTO_QUALITY_STEP,
   PHOTO_SCALE_STEPS,
+  type PhotoProfileKey,
 } from "@/config/photo-profiles";
 import { IMAGE_HEADER_BYTES, readImageDimensions } from "./image-dimensions";
 import { isImageComplete } from "./image-integrity";
@@ -74,7 +75,7 @@ export interface PhotoPreparationEnv {
 }
 
 export interface PhotoPreparationReport {
-  purpose: MediaPurpose;
+  purpose: PhotoProfileKey;
   inputBytes: number;
   inputWidth: number;
   inputHeight: number;
@@ -119,7 +120,7 @@ function fail(code: MediaErrorCode): PhotoPreparationResult {
 
 export async function preparePhotoForUpload(
   file: File,
-  purpose: MediaPurpose,
+  purpose: PhotoProfileKey,
   env: PhotoPreparationEnv = browserPhotoPreparationEnv,
 ): Promise<PhotoPreparationResult> {
   const started = env.now();

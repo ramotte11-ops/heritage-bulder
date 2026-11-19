@@ -1,0 +1,27 @@
+/**
+ * M8-E4 — verrou de publication du dépôt public des contributions.
+ *
+ * Le moteur (`useContributionDeposit`) et le transport réel sont prêts et
+ * testés, mais la fenêtre ne doit PAS être raccordée à l'hommage public tant
+ * que chacune des réserves ci-dessous n'est pas levée par son autorité.
+ * Un test vérifie qu'aucune page de `app/hommage/` ne l'importe tant que ce
+ * verrou est fermé.
+ *
+ * En particulier, la mention de confidentialité affichée par le prototype
+ * (`contributionsDeposit.privacy`, FR/EN/ES) est PROVISOIRE : elle n'est pas
+ * autorisée pour publication avant la validation juridique Q6 et la
+ * désignation d'un contact de retrait.
+ */
+export const CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = false as const;
+
+export const CONTRIBUTIONS_DEPOSIT_BLOCKERS = [
+  { id: "Q6-legal", authority: "Juridique / PO", detail: "Validation juridique de la mention de confidentialité (FR/EN/ES)." },
+  { id: "Q6-withdrawal-contact", authority: "PO", detail: "Contact de retrait d'une contribution, à citer dans la mention." },
+  { id: "E4-design", authority: "PO", detail: "Direction artistique de la fenêtre : le prototype actuel n'est pas validé." },
+  { id: "E6-migrations", authority: "QG", detail: "Migrations M8 E1 à E4 appliquées sur le projet de production." },
+  { id: "E6-form-secret", authority: "QG", detail: "CONTRIBUTIONS_FORM_TOKEN_SECRET posé dans l'environnement de production." },
+  { id: "media-sweep", authority: "QG", detail: "GO du nettoyage des photos abandonnées, recommandé avant l'ouverture des photos." },
+] as const;
+
+/** Clés de texte provisoires : jamais publiables tant que le verrou est fermé. */
+export const CONTRIBUTIONS_DEPOSIT_PROVISIONAL_KEYS = ["contributionsDeposit.privacy"] as const;

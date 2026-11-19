@@ -94,7 +94,10 @@ export interface ContributionRepository {
     width: number;
     height: number;
   }): Promise<DepositResult>;
-  readPublic(input: { slug: string; limit: number; before: ContributionCursor | null }): Promise<PublicContributionRow[]>;
+  /** M8-E4 : `types` (facultatif) restreint aux catégories demandées (scène O8). */
+  readPublic(input: { slug: string; limit: number; before: ContributionCursor | null; types?: readonly ContributionType[] }): Promise<PublicContributionRow[]>;
+  /** M8-E4 : relecture de 1 à 100 contributions précises, aux règles de la lecture publique. */
+  readPublicByIds(input: { slug: string; ids: readonly string[] }): Promise<PublicContributionRow[]>;
 
   moderate(input: { ownerId: string; contributionId: string; action: ModerationAction }): Promise<{ outcome: ModerationOutcome; status: ContributionStatus | null }>;
   remove(input: { ownerId: string; contributionId: string }): Promise<{

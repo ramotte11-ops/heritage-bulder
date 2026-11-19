@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { CONTRIBUTION_TEXT_LIMITS } from "@/config/contributions";
 import type { Language } from "@/config/languages";
@@ -9,7 +9,8 @@ import { CONTRIBUTIONS_RENDER_ASSETS as ASSETS } from "@/config/contributions-re
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { countVisibleCharacters, normalizeContributionText } from "@/lib/memorial/contributions/contribution-text";
 import type { ContributionsFeatures } from "@/lib/memorial/contributions/contributions-settings";
-import type { ContributionDepositTransport, DepositStatus } from "./deposit-transport";
+import type { ContributionDepositTransport } from "./deposit-transport";
+import { useContributionDeposit, type ContributionDepositEngine, type DepositKind as Kind } from "./use-contribution-deposit";
 import styles from "./ContributionDepositWindow.module.css";
 
 /**
@@ -33,21 +34,13 @@ import styles from "./ContributionDepositWindow.module.css";
  *  3. Confirmer — publiée ou en attente selon le serveur, puis « Souhaitez-
  *     vous partager un autre souvenir ? » avec les catégories restantes, ou
  *     le message R5 si un plafond est atteint.
+ *
+ * M8-E4 (consolidation) : cette fenêtre n'est que la PRÉSENTATION, un
+ * prototype provisoire. Toute la mécanique (étapes, jeton, envoi, réponses du
+ * serveur, « un autre souvenir ») est dans `useContributionDeposit`, testée
+ * sans interface. La mention de confidentialité affichée est PROVISOIRE (Q6) :
+ * voir config/contributions-deposit-readiness.ts.
  */
-
-type Kind = "condolence" | "testimonial" | "photo";
-const KINDS: readonly { kind: Kind; feature: keyof ContributionsFeatures }[] = [
-  { kind: "condolence", feature: "condolences" },
-  { kind: "testimonial", feature: "stories" },
-  { kind: "photo", feature: "photos" },
-];
-
-type Step =
-  | { name: "choose" }
-  | { name: "write"; kind: Kind }
-  | { name: "done"; kind: Kind; status: "published" | "pending" }
-  | { name: "busy" }
-  | { name: "closed" };
 
 export interface ContributionDepositWindowProps {
   language: Language;
@@ -66,31 +59,8 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
   const t = useCallback((k: Parameters<typeof translate>[1]) => translate(language, k), [language]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [used, setUsed] = useState<ReadonlySet<Kind>>(() => new Set());
-  const available = useMemo(() => KINDS.filter((k) => categories[k.feature] && !used.has(k.kind)).map((k) => k.kind), [categories, used]);
-  const [step, setStep] = useState<Step>(() => {
-    const open = KINDS.filter((k) => categories[k.feature]).map((k) => k.kind);
-    if (open.length === 0) return { name: "closed" };
-    return open.length === 1 ? { name: "write", kind: open[0] } : { name: "choose" };
-  });
-  const [token, setToken] = useState<string | null>(null);
-
-  // Un jeton par dépôt (son nonce est la clé d'idempotence) : demandé à
-  // l'ouverture, puis renouvelé après chaque dépôt.
-  const refreshToken = useCallback(async () => {
-    try {
-      const r = await transport.open();
-      if (r.status === "ready" && "formToken" in r) setToken(r.formToken);
-      else setStep({ name: "closed" });
-    } catch {
-      setStep({ name: "closed" });
-    }
-  }, [transport]);
-  useEffect(() => {
-    // Synchronisation avec le serveur (source externe) : le jeton arrive après la réponse.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refreshToken();
-  }, [refreshToken]);
+  const engine = useContributionDeposit(categories, transport);
+  const { step, available, remaining } = engine;
 
   useEffect(() => {
     const d = dialogRef.current;
@@ -100,15 +70,6 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
       target?.current?.focus({ preventScroll: true });
     };
   }, [returnFocusRef]);
-
-  const finish = (kind: Kind, status: "published" | "pending") => {
-    setUsed((u) => new Set([...u, kind]));
-    setStep({ name: "done", kind, status });
-    setToken(null);
-    void refreshToken();
-  };
-
-  const remaining = available.filter((k) => step.name !== "done" || k !== step.kind);
 
   return createPortal(
     <dialog
@@ -130,7 +91,7 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
           <ul className={styles.choices}>
             {available.map((kind) => (
               <li key={kind}>
-                <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => setStep({ name: "write", kind })} data-choice={kind}>
+                <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => engine.choose(kind)} data-choice={kind}>
                   <span className={styles.choiceTitle}>{t(kindTitle(kind))}</span>
                   <span className={styles.choiceHint}>{t(kindHint(kind))}</span>
                 </button>
@@ -140,22 +101,7 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
         ) : null}
 
         {step.name === "write" ? (
-          <DepositForm
-            key={`${step.kind}-${used.size}`}
-            kind={step.kind}
-            language={language}
-            token={token}
-            transport={transport}
-            canGoBack={available.length > 1}
-            onBack={() => setStep({ name: "choose" })}
-            onDone={(status) => finish(step.kind, status)}
-            onBusy={() => setStep({ name: "busy" })}
-            onClosed={() => setStep({ name: "closed" })}
-            onExpired={() => {
-            setToken(null);
-            void refreshToken();
-          }}
-          />
+          <DepositForm key={`${step.kind}-${available.length}`} kind={step.kind} language={language} engine={engine} canGoBack={available.length > 1} />
         ) : null}
 
         {step.name === "done" ? (
@@ -167,7 +113,7 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
                 <ul className={styles.choices}>
                   {remaining.map((kind) => (
                     <li key={kind}>
-                      <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => setStep({ name: "write", kind })} data-choice={kind}>
+                      <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => engine.choose(kind)} data-choice={kind}>
                         <span className={styles.choiceTitle}>{t(kindTitle(kind))}</span>
                       </button>
                     </li>
@@ -213,31 +159,7 @@ function paperStyle(kind: Kind) {
   return { backgroundImage: `url(${url})` };
 }
 
-type FieldError = "authorName" | "text" | "caption" | "photo" | "photoMissing" | "generic" | null;
-
-function DepositForm({
-  kind,
-  language,
-  token,
-  transport,
-  canGoBack,
-  onBack,
-  onDone,
-  onBusy,
-  onClosed,
-  onExpired,
-}: {
-  kind: Kind;
-  language: Language;
-  token: string | null;
-  transport: ContributionDepositTransport;
-  canGoBack: boolean;
-  onBack: () => void;
-  onDone: (status: "published" | "pending") => void;
-  onBusy: () => void;
-  onClosed: () => void;
-  onExpired: () => void;
-}) {
+function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; language: Language; engine: ContributionDepositEngine; canGoBack: boolean }) {
   const t = (k: Parameters<typeof translate>[1]) => translate(language, k);
   const ids = { name: useId(), text: useId(), caption: useId(), photo: useId(), error: useId() };
   const [name, setName] = useState("");
@@ -246,8 +168,7 @@ function DepositForm({
   const [website, setWebsite] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [error, setError] = useState<FieldError>(null);
-  const [sending, setSending] = useState(false);
+  const { error, sending, ready } = engine;
   const firstField = useRef<HTMLInputElement>(null);
   useEffect(() => firstField.current?.focus({ preventScroll: true }), []);
   useEffect(() => () => {
@@ -257,38 +178,9 @@ function DepositForm({
   const textLimit = kind === "condolence" ? CONTRIBUTION_TEXT_LIMITS.condolence : CONTRIBUTION_TEXT_LIMITS.story;
   const count = (v: string) => countVisibleCharacters(normalizeContributionText(v));
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
-    if (!token || sending) return;
-    if (kind === "photo" && !file) return setError("photoMissing");
-    setError(null);
-    setSending(true);
-    let r: DepositStatus;
-    try {
-      r =
-        kind === "photo"
-          ? await transport.depositPhoto({ file: file as File, authorName: name, caption, formToken: token, website })
-          : await transport.depositText({ type: kind, authorName: name, text, formToken: token, website });
-    } catch {
-      r = { status: "unavailable" };
-    }
-    setSending(false);
-    switch (r.status) {
-      case "published":
-      case "pending":
-        return onDone(r.status);
-      case "busy":
-        return onBusy();
-      case "refused":
-        return onClosed();
-      case "expired":
-        onExpired();
-        return setError("generic");
-      case "invalid":
-        return setError(r.field === "request" ? "generic" : r.field);
-      default:
-        return setError("generic");
-    }
+    void engine.submit(kind, { authorName: name, text, caption, file, website });
   }
 
   const errorKey =
@@ -322,7 +214,7 @@ function DepositForm({
               const f = e.currentTarget.files?.[0] ?? null;
               setFile(f);
               setPreview(f ? URL.createObjectURL(f) : null);
-              setError(null);
+              engine.clearError();
             }}
             aria-describedby={error === "photo" || error === "photoMissing" ? ids.error : undefined}
           />
@@ -378,11 +270,11 @@ function DepositForm({
 
       <div className={styles.actions}>
         {canGoBack ? (
-          <button type="button" className={styles.secondary} onClick={onBack} disabled={sending}>
+          <button type="button" className={styles.secondary} onClick={engine.back} disabled={sending}>
             {t("contributionsDeposit.back")}
           </button>
         ) : null}
-        <button type="submit" className={styles.primary} disabled={sending || !token} aria-busy={sending || undefined}>
+        <button type="submit" className={styles.primary} disabled={sending || !ready} aria-busy={sending || undefined}>
           {sending ? t("contributionsDeposit.sending") : t("contributionsDeposit.send")}
         </button>
       </div>

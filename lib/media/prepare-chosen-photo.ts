@@ -1,4 +1,4 @@
-import type { MediaPurpose } from "@/config/media";
+import type { PhotoProfileKey } from "@/config/photo-profiles";
 import { MediaActionError } from "./media-error-copy";
 import { preparePhotoForUpload } from "./photo-preparation";
 import type { PhotoPreparationReport } from "./photo-preparation";
@@ -21,7 +21,7 @@ export interface PreparedChosenPhoto {
   report: PhotoPreparationReport;
 }
 
-export async function prepareChosenPhotoWithReport(file: File, purpose: MediaPurpose): Promise<PreparedChosenPhoto> {
+export async function prepareChosenPhotoWithReport(file: File, purpose: PhotoProfileKey): Promise<PreparedChosenPhoto> {
   let prepared: Awaited<ReturnType<typeof preparePhotoForUpload>>;
   try {
     prepared = await preparePhotoForUpload(file, purpose);
@@ -36,6 +36,6 @@ export async function prepareChosenPhotoWithReport(file: File, purpose: MediaPur
   return prepared;
 }
 
-export async function prepareChosenPhoto(file: File, purpose: MediaPurpose): Promise<File> {
+export async function prepareChosenPhoto(file: File, purpose: PhotoProfileKey): Promise<File> {
   return (await prepareChosenPhotoWithReport(file, purpose)).file;
 }

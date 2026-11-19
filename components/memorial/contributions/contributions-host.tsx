@@ -50,69 +50,63 @@ export function useContributionsHost(): ContributionsHostValue {
   return useContext(ContributionsHostContext);
 }
 
-/** Plafond absolu de l'Album dans une page (au-delà : l'hommage reste lisible, l'Album s'arrête). */
-export const PUBLIC_ALBUM_HARD_CAP = 5000;
-/** Délai entre deux pages chargées en arrière-plan : la page reste fluide. */
-const PAGE_PAUSE_MS = 150;
 /** Regroupement des demandes de renouvellement (plusieurs photos expirent ensemble). */
 const RENEW_DEBOUNCE_MS = 250;
 /** Une même photo n'est jamais redemandée plus de deux fois : un fichier réellement illisible n'entraîne pas de boucle. */
 const RENEW_MAX_ATTEMPTS = 2;
 
-/**
- * M8-E3 — l'état vivant des contributions publiques d'une visite.
- *
- *  - Pagination progressive (P1) : au-delà des 500 premières, les pages
- *    suivantes sont lues en arrière-plan, une à une, et ajoutées à la fin
- *    (ordre P1 conservé) jusqu'à la dernière ou au plafond.
- *  - Liens expirés : une photo qui ne se charge plus est signalée
- *    (`recoverPhoto`) ; les demandes sont regroupées, le serveur ne rend un
- *    nouveau lien que pour une photo toujours publiée et autorisée. Une photo
- *    retirée entre-temps (`gone`) disparaît de l'affichage. Les photos déjà
- *    affichées gardent leur lien : rien ne se recharge inutilement.
- */
-export function useLivePublicContributions(host: ContributionsHostValue): {
+export interface LivePublicContributions {
   initial: PublicContributionsInitial | null;
+  /** L'Album déjà lu, continu, ordre P1. */
   items: PublicContribution[];
-  complete: boolean;
+  /** Pour la scène O8 : les plus récentes des catégories absentes des pages lues. */
+  sceneExtras: PublicContribution[];
+  /** D'autres pages existent. */
+  hasMore: boolean;
+  /** Lit la page suivante (une seule requête à la fois ; sans effet s'il n'y en a plus). */
+  loadNextPage: () => void;
   recoverPhoto: (contributionId: string) => void;
-} {
+}
+
+/**
+ * M8-E3/E4 — l'état vivant des contributions publiques d'une visite.
+ *
+ *  - Pagination réelle, SANS plafond (P1) : la première page arrive avec la
+ *    page ; chaque page suivante (100) n'est lue que lorsque le visiteur
+ *    approche de la fin de l'Album (`loadNextPage`, une requête à la fois).
+ *    Mémoire et requêtes suivent donc ce qui est réellement consulté, jamais
+ *    le nombre total de contributions ; les photographies se chargent à
+ *    l'approche de l'écran (`loading="lazy"`).
+ *  - Liens expirés : une photo qui ne se charge plus est signalée
+ *    (`recoverPhoto`) ; les demandes sont regroupées, le serveur relit ces
+ *    contributions précises et ne rend un lien que pour une photo toujours
+ *    publiée et autorisée. Une photo retirée entre-temps (`gone`) disparaît.
+ */
+export function useLivePublicContributions(host: ContributionsHostValue): LivePublicContributions {
   const initial = host.mode === "public" ? host.initial : null;
   const loadMore = host.mode === "public" ? host.loadMore : undefined;
   const renewPhotos = host.mode === "public" ? host.renewPhotos : undefined;
-  const [extra, setExtra] = useState<PublicContribution[]>([]);
-  const [complete, setComplete] = useState(initial?.complete ?? true);
+  const [pages, setPages] = useState<PublicContribution[]>([]);
+  const [cursor, setCursor] = useState<string | null>(initial && !initial.complete ? initial.nextCursor : null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
+  const inFlight = useRef(false);
 
-  // Pagination progressive.
-  useEffect(() => {
-    if (!initial || initial.complete || !initial.nextCursor || !loadMore) return;
-    let cancelled = false;
-    let cursor: string | null = initial.nextCursor;
-    let count = initial.items.length;
-    const step = async () => {
-      while (!cancelled && cursor !== null && count < PUBLIC_ALBUM_HARD_CAP) {
-        let page: PublicContributionsPage | { status: string };
-        try {
-          page = await loadMore(cursor);
-        } catch {
-          return;
-        }
-        if (cancelled || !("items" in page)) return;
-        count += page.items.length;
-        const items = page.items;
-        setExtra((previous) => [...previous, ...items]);
-        cursor = page.nextCursor;
-        if (cursor === null) setComplete(true);
-        await new Promise((r) => setTimeout(r, PAGE_PAUSE_MS));
-      }
-    };
-    void step();
-    return () => {
-      cancelled = true;
-    };
-  }, [initial, loadMore]);
+  const loadNextPage = useCallback(() => {
+    if (!loadMore || cursor === null || inFlight.current) return;
+    inFlight.current = true;
+    const from = cursor;
+    void loadMore(from)
+      .then((page) => {
+        if (!("items" in page)) return;
+        setPages((previous) => [...previous, ...page.items]);
+        setCursor(page.nextCursor);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        inFlight.current = false;
+      });
+  }, [loadMore, cursor]);
 
   // Renouvellement des liens.
   const pending = useRef(new Set<string>());
@@ -149,13 +143,20 @@ export function useLivePublicContributions(host: ContributionsHostValue): {
     if (timer.current !== null) clearTimeout(timer.current);
   }, []);
 
-  // Identité stable tant que rien ne change : la scène et l'Album ne sont recomposés qu'à bon escient.
-  const items = useMemo(
-    () =>
-      (initial ? [...initial.items, ...extra] : [])
-        .filter((c) => !gone.has(c.id))
-        .map((c) => (c.photo && urls[c.id] ? { ...c, photo: { ...c.photo, url: urls[c.id] } } : c)),
-    [initial, extra, urls, gone],
+  // Identités stables tant que rien ne change : la scène et l'Album ne sont recomposés qu'à bon escient.
+  const live = useCallback(
+    (c: PublicContribution) => (c.photo && urls[c.id] ? { ...c, photo: { ...c.photo, url: urls[c.id] } } : c),
+    [urls],
   );
-  return { initial, items, complete, recoverPhoto };
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    return (initial ? [...initial.items, ...pages] : [])
+      .filter((c) => !gone.has(c.id) && !seen.has(c.id) && (seen.add(c.id), true))
+      .map(live);
+  }, [initial, pages, gone, live]);
+  const sceneExtras = useMemo(() => {
+    const inAlbum = new Set(items.map((c) => c.id));
+    return (initial?.sceneExtras ?? []).filter((c) => !gone.has(c.id) && !inAlbum.has(c.id)).map(live);
+  }, [initial, items, gone, live]);
+  return { initial, items, sceneExtras, hasMore: cursor !== null, loadNextPage, recoverPhoto };
 }

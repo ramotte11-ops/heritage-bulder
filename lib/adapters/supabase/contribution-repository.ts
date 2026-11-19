@@ -56,6 +56,34 @@ function toDeposit(data: unknown): DepositResult {
   };
 }
 
+function toPublicRows(data: unknown): PublicContributionRow[] {
+  const out: PublicContributionRow[] = [];
+  for (const row of rowsOf<Record<string, unknown>>(data)) {
+    const type = CONTRIBUTION_TYPES.find((t) => t === row.message_type);
+    if (!type || typeof row.contribution_id !== "string" || typeof row.author_name !== "string" || typeof row.published_at !== "string") continue;
+    const media = row.media as Record<string, unknown> | null;
+    if (type === "photo" && (!media || typeof media.storage_path !== "string" || typeof media.media_id !== "string")) continue;
+    out.push({
+      id: row.contribution_id,
+      type: type as ContributionType,
+      authorName: row.author_name,
+      content: typeof row.content === "string" ? row.content : null,
+      caption: typeof row.caption === "string" ? row.caption : null,
+      publishedAt: row.published_at,
+      media:
+        type === "photo" && media
+          ? {
+              mediaId: media.media_id as string,
+              storagePath: media.storage_path as string,
+              width: typeof media.width === "number" ? media.width : null,
+              height: typeof media.height === "number" ? media.height : null,
+            }
+          : null,
+    });
+  }
+  return out;
+}
+
 export class SupabaseContributionRepository implements ContributionRepository {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -132,39 +160,22 @@ export class SupabaseContributionRepository implements ContributionRepository {
     return toDeposit(data);
   }
 
-  async readPublic(input: { slug: string; limit: number; before: { publishedAt: string; id: string } | null }): Promise<PublicContributionRow[]> {
-    const { data, error } = await this.client.rpc("read_public_contributions_v1", {
+  async readPublic(input: { slug: string; limit: number; before: { publishedAt: string; id: string } | null; types?: readonly string[] }): Promise<PublicContributionRow[]> {
+    const { data, error } = await this.client.rpc("read_public_contributions_v2", {
       p_slug: input.slug,
       p_limit: input.limit,
       p_before_published_at: input.before?.publishedAt ?? null,
       p_before_id: input.before?.id ?? null,
+      p_types: input.types && input.types.length > 0 ? [...input.types] : null,
     });
     if (error) throw error;
-    const out: PublicContributionRow[] = [];
-    for (const row of rowsOf<Record<string, unknown>>(data)) {
-      const type = CONTRIBUTION_TYPES.find((t) => t === row.message_type);
-      if (!type || typeof row.contribution_id !== "string" || typeof row.author_name !== "string" || typeof row.published_at !== "string") continue;
-      const media = row.media as Record<string, unknown> | null;
-      if (type === "photo" && (!media || typeof media.storage_path !== "string" || typeof media.media_id !== "string")) continue;
-      out.push({
-        id: row.contribution_id,
-        type: type as ContributionType,
-        authorName: row.author_name,
-        content: typeof row.content === "string" ? row.content : null,
-        caption: typeof row.caption === "string" ? row.caption : null,
-        publishedAt: row.published_at,
-        media:
-          type === "photo" && media
-            ? {
-                mediaId: media.media_id as string,
-                storagePath: media.storage_path as string,
-                width: typeof media.width === "number" ? media.width : null,
-                height: typeof media.height === "number" ? media.height : null,
-              }
-            : null,
-      });
-    }
-    return out;
+    return toPublicRows(data);
+  }
+
+  async readPublicByIds(input: { slug: string; ids: readonly string[] }): Promise<PublicContributionRow[]> {
+    const { data, error } = await this.client.rpc("read_public_contributions_by_ids_v1", { p_slug: input.slug, p_ids: [...input.ids] });
+    if (error) throw error;
+    return toPublicRows(data);
   }
 
   async moderate(input: { ownerId: string; contributionId: string; action: string }): Promise<{ outcome: ModerationOutcome; status: ContributionStatus | null }> {

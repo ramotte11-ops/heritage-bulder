@@ -11,6 +11,7 @@ import {
   encodeCursor,
   finishContributionPhoto,
   openContributionForm,
+  loadPublicContributionsInitial,
   readPublicContributions,
   renewPublicContributionPhotos,
   startContributionPhoto,
@@ -377,33 +378,59 @@ describe("M8-E3 — renouvellement des liens photo expirés", () => {
   });
 
   it("un nouveau lien seulement pour une photo toujours publiée ; les autres sont rendues « gone »", async () => {
-    const { deps } = setup({ repo: { readPublic: vi.fn(async () => [photoRow(ID_A, 3), photoRow(ID_B, 2)]) } });
+    const readPublicByIds = vi.fn(async () => [photoRow(ID_A, 3)]);
+    const { deps } = setup({ repo: { readPublicByIds } });
     const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_A, ID_GONE] });
     expect(r).toEqual({ status: "ok", renewed: { [ID_A]: `https://storage.test/signed/${MEM}/${ID_A}/original.webp?ttl=300` }, gone: [ID_GONE] });
+    // Relecture exacte des contributions demandées, où qu'elles soient dans l'Album (aucun parcours plafonné).
+    expect(readPublicByIds).toHaveBeenCalledWith({ slug: SLUG, ids: [ID_A, ID_GONE] });
   });
 
-  it("parcourt les pages jusqu'à trouver toutes les photos demandées", async () => {
-    const page1 = Array.from({ length: 100 }, (_, i) => photoRow(`dddddddd-dddd-4ddd-8ddd-${String(i).padStart(12, "0")}`, 20));
-    const readPublic = vi.fn().mockResolvedValueOnce(page1).mockResolvedValueOnce([photoRow(ID_B, 1)]);
-    const { deps } = setup({ repo: { readPublic } });
-    const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_B] });
-    expect(r).toMatchObject({ status: "ok", gone: [] });
-    expect(readPublic).toHaveBeenCalledTimes(2);
+  it("une contribution relue qui n'est plus une photo ne reçoit aucun lien", async () => {
+    const { deps } = setup({ repo: { readPublicByIds: vi.fn(async () => [{ ...photoRow(ID_B, 2), type: "condolence" as const, media: null, content: "x" }]) } });
+    expect(await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_B] })).toEqual({ status: "ok", renewed: {}, gone: [ID_B] });
   });
 
   it("identifiants forgés, liste vide ou trop longue, slug forgé : refusé sans lecture", async () => {
-    const readPublic = vi.fn(async () => []);
-    const { deps } = setup({ repo: { readPublic } });
+    const readPublicByIds = vi.fn(async () => []);
+    const { deps } = setup({ repo: { readPublicByIds } });
     for (const ids of [[], ["../x"], "abc", Array.from({ length: 101 }, () => ID_A)]) {
       expect(await renewPublicContributionPhotos(deps, { slug: SLUG, ids })).toEqual({ status: "refused" });
     }
     expect(await renewPublicContributionPhotos(deps, { slug: "nope", ids: [ID_A] })).toEqual({ status: "refused" });
-    expect(readPublic).not.toHaveBeenCalled();
+    expect(readPublicByIds).not.toHaveBeenCalled();
   });
 
   it("jamais un chemin de stockage dans la réponse", async () => {
-    const { deps } = setup({ repo: { readPublic: vi.fn(async () => [photoRow(ID_A, 3)]) } });
+    const { deps } = setup({ repo: { readPublicByIds: vi.fn(async () => [photoRow(ID_A, 3)]) } });
     const r = await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_A] });
     expect(JSON.stringify(r)).not.toMatch(/storagePath|original\.webp"/);
+  });
+});
+
+describe("M8-E4 — chargement initial sans plafond", () => {
+  const row = (id: string, type: "condolence" | "testimonial" | "photo", d: number): PublicContributionRow => ({
+    id, type, authorName: "A", content: type === "photo" ? null : "t", caption: null, publishedAt: `2026-11-${String(d).padStart(2, "0")}T10:00:00Z`,
+    media: type === "photo" ? { mediaId: MEDIA, storagePath: `${MEM}/${id}/original.webp`, width: 10, height: 10 } : null,
+  });
+  const ID = (n: number) => `eeeeeeee-eeee-4eee-8eee-${String(n).padStart(12, "0")}`;
+
+  it("une seule page lue avec la page ; la plus récente de chaque catégorie absente, pour la scène O8", async () => {
+    const page = Array.from({ length: 100 }, (_, i) => row(ID(i), "condolence", 28));
+    const readPublic = vi.fn(async (i: { types?: readonly string[] }) => (i.types?.[0] === "photo" ? [row(ID(900), "photo", 1)] : i.types ? [] : page));
+    const { deps } = setup({ repo: { readPublic, readPublicOverview: vi.fn(async () => ({ categories: { condolences: true, stories: true, photos: true }, published: { condolences: 4000, stories: 0, photos: 3 } })) } });
+    const r = await loadPublicContributionsInitial(deps, SLUG);
+    expect(r).toMatchObject({ total: 4003, complete: false, items: expect.any(Array), sceneExtras: [expect.objectContaining({ id: ID(900), type: "photo" })] });
+    expect(r!.items).toHaveLength(100);
+    // 1 page + 1 lecture ciblée (photo) ; les récits n'ont rien de publié : aucune lecture.
+    expect(readPublic).toHaveBeenCalledTimes(2);
+    expect(readPublic).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 1, types: ["photo"] }));
+  });
+
+  it("aucune contribution publiée : aucune lecture de page", async () => {
+    const readPublic = vi.fn();
+    const { deps } = setup({ repo: { readPublic, readPublicOverview: vi.fn(async () => ({ categories: { condolences: true, stories: false, photos: false }, published: { condolences: 0, stories: 0, photos: 0 } })) } });
+    expect(await loadPublicContributionsInitial(deps, SLUG)).toEqual({ categories: { condolences: true, stories: false, photos: false }, total: 0, items: [], sceneExtras: [], complete: true, nextCursor: null });
+    expect(readPublic).not.toHaveBeenCalled();
   });
 });

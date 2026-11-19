@@ -36,7 +36,7 @@ export default async function ContributionsPublicPilotPage({ searchParams }: { s
     publishedAt: new Date(Date.UTC(2026, 10, 20, 12) - i * 3600_000).toISOString(),
     photo: d.content.photo ? { url: d.content.photo.src, width: d.content.photo.width, height: d.content.photo.height } : null,
   }));
-  const initial = { categories, total: items.length, items, complete: true, nextCursor: null };
+  const initial = { categories, total: items.length, items, sceneExtras: [], complete: true, nextCursor: null };
   return (
     <main style={{ background: theme === "dark" ? "#1d1b19" : "#f3ece0", minHeight: "100vh", padding: "24px 0" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
