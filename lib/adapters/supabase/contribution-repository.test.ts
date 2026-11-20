@@ -88,7 +88,7 @@ describe("M8-E2 — SupabaseFamilyContributionReader (session, RLS)", () => {
   it("ne demande jamais idempotency_key ; filtre l'hommage, le statut et la page", async () => {
     const calls: [string, ...unknown[]][] = [];
     const builder: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "lt", "order", "limit"]) {
+    for (const m of ["select", "eq", "lt", "or", "order", "limit"]) {
       builder[m] = (...args: unknown[]) => {
         calls.push([m, ...args]);
         return m === "limit" ? Promise.resolve({ data: [{ id: "1", message_type: "photo", status: "pending", author_name: "A", content: null, caption: null, media_id: "m", created_at: "2026-11-01T00:00:00Z", published_at: null, moderated_at: null }], error: null }) : builder;
@@ -102,5 +102,9 @@ describe("M8-E2 — SupabaseFamilyContributionReader (session, RLS)", () => {
     expect(calls).toContainEqual(["eq", "memorial_id", "mem"]);
     expect(calls).toContainEqual(["eq", "status", "pending"]);
     expect(calls).toContainEqual(["lt", "created_at", "2026-11-02T00:00:00Z"]);
+    calls.length = 0;
+    await new SupabaseFamilyContributionReader(client).list({ memorialId: "mem", status: null, limit: 50, beforeCreatedAt: "2026-11-02T00:00:00.123+00:00", beforeId: "0b0b0b0b-0000-4000-8000-000000000001" });
+    expect(calls).toContainEqual(["or", 'created_at.lt."2026-11-02T00:00:00.123+00:00",and(created_at.eq."2026-11-02T00:00:00.123+00:00",id.lt.0b0b0b0b-0000-4000-8000-000000000001)']);
+    expect(calls.some((c) => c[0] === "lt")).toBe(false);
   });
 });

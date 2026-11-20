@@ -272,10 +272,15 @@ const FAMILY_COLUMNS = "id, message_type, status, author_name, content, caption,
 export class SupabaseFamilyContributionReader implements FamilyContributionReader {
   constructor(private readonly sessionClient: SupabaseClient) {}
 
-  async list(input: { memorialId: string; status: ContributionStatus | null; limit: number; beforeCreatedAt: string | null }): Promise<FamilyContributionRow[]> {
+  async list(input: { memorialId: string; status: ContributionStatus | null; limit: number; beforeCreatedAt: string | null; beforeId?: string | null }): Promise<FamilyContributionRow[]> {
     let query = this.sessionClient.from("messages").select(FAMILY_COLUMNS).eq("memorial_id", input.memorialId);
     if (input.status !== null) query = query.eq("status", input.status);
-    if (input.beforeCreatedAt !== null) query = query.lt("created_at", input.beforeCreatedAt);
+    if (input.beforeCreatedAt !== null) {
+      // Valeurs déjà validées par le service (date ISO, uuid) ; la date est
+      // citée car elle contient « : » et « . », réservés par PostgREST.
+      const ts = `"${input.beforeCreatedAt}"`;
+      query = input.beforeId ? query.or(`created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${input.beforeId})`) : query.lt("created_at", input.beforeCreatedAt);
+    }
     const { data, error } = await query.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(input.limit);
     if (error) throw error;
     const out: FamilyContributionRow[] = [];

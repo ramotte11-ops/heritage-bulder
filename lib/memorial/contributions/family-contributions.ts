@@ -83,27 +83,45 @@ export interface FamilyContribution extends Omit<FamilyContributionRow, "mediaId
   photo: { url: string; width: number | null; height: number | null } | null;
 }
 
+/** Curseur de la page suivante : le dernier élément reçu. */
+export interface FamilyContributionsCursor {
+  createdAt: string;
+  id: string;
+}
+
+function readCursor(before: unknown): { createdAt: string | null; id: string | null } | undefined {
+  if (before === undefined || before === null) return { createdAt: null, id: null };
+  const isDate = (v: unknown): v is string => typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v));
+  // Forme historique E2 (createdAt seul), conservée pour compatibilité.
+  if (isDate(before)) return { createdAt: before, id: null };
+  const c = before as Record<string, unknown>;
+  if (typeof before === "object" && isDate(c.createdAt) && isMediaIdentifier(c.id)) return { createdAt: c.createdAt, id: c.id };
+  return undefined;
+}
+
 /**
  * Liste d'un hommage pour la famille (par défaut : à examiner), du plus
- * récent au plus ancien, page par page (`before` = createdAt du dernier
- * élément reçu). Les photos en attente sont visibles de la famille seule,
- * par URL signée courte ; uniquement des médias `ready`, donc traités.
+ * récent au plus ancien, page par page. M8-E5 : passer `before = nextCursor`
+ * de la page précédente ({ createdAt, id }) ; `nextCursor` vaut `null` quand
+ * il n'y a plus rien. Les photos en attente sont visibles de la famille
+ * seule, par URL signée courte (5 min : relire la page pour la renouveler) ;
+ * uniquement des médias `ready`, donc traités.
  */
 export async function listFamilyContributions(
   deps: FamilyContributionDeps,
   input: { memorialId: unknown; status?: unknown; limit?: unknown; before?: unknown },
-): Promise<{ status: "ok"; items: FamilyContribution[] } | FamilyFailure> {
+): Promise<{ status: "ok"; items: FamilyContribution[]; nextCursor: FamilyContributionsCursor | null } | FamilyFailure> {
   if (!isMediaIdentifier(input.memorialId)) return DENIED;
   const memorialId = input.memorialId;
   const status = input.status === undefined ? "pending" : input.status === null ? null : STATUSES.find((s) => s === input.status);
   if (status === undefined) return INVALID;
-  const before = input.before === undefined || input.before === null ? null : typeof input.before === "string" && !Number.isNaN(Date.parse(input.before)) ? input.before : undefined;
-  if (before === undefined) return INVALID;
+  const cursor = readCursor(input.before);
+  if (cursor === undefined) return INVALID;
   const limit = typeof input.limit === "number" && Number.isInteger(input.limit) ? Math.min(Math.max(input.limit, 1), 100) : 50;
   try {
     if ((await deps.authorizeMemorial(memorialId)) === null) return DENIED;
     const reader = await deps.createReader();
-    const rows = await reader.list({ memorialId, status, limit, beforeCreatedAt: before });
+    const rows = await reader.list({ memorialId, status, limit, beforeCreatedAt: cursor.createdAt, beforeId: cursor.id });
     const items: FamilyContribution[] = [];
     for (const { mediaId, ...row } of rows) {
       let photo: FamilyContribution["photo"] = null;
@@ -119,7 +137,8 @@ export async function listFamilyContributions(
       }
       items.push({ ...row, photo });
     }
-    return { status: "ok", items };
+    const last = rows.at(-1);
+    return { status: "ok", items, nextCursor: rows.length === limit && last ? { createdAt: last.createdAt, id: last.id } : null };
   } catch {
     return UNAVAILABLE;
   }

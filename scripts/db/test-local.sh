@@ -5527,6 +5527,41 @@ check "M8-E4 rollback removes both functions, then the migration re-applies" "0|
   "$($PSQL -d m8e4_down -f "$E4_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is null and to_regprocedure('$E4_IDS') is null then 'absent' else 'present' end;")|$($PSQL -d m8e4_down -f "$E4_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is not null and to_regprocedure('$E4_IDS') is not null then 'present' else 'absent' end;")"
 $PSQL -d postgres -c "drop database m8e4_down;" >/dev/null
 
+echo "== M8-E5: family list under the session (RLS), composite cursor — no new migration =="
+# The family list (SupabaseFamilyContributionReader) reads messages with the
+# FAMILY'S OWN session (messages_select_own), ordered created_at desc, id desc.
+# M8-E5: the next page uses the composite cursor (created_at, id), the exact
+# predicate the adapter sends to PostgREST:
+#   created_at < ts OR (created_at = ts AND id < id)
+E5_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$E1_OWNER';")
+E5_MEM=$(e1_complet "$E1_OWNER" m8e5-family "$E1_ALL")
+$DB -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, created_at) select '$E5_MEM','testimonial','T'||g,'r'||g,'pending',false,'2026-11-10 10:00:00.123456+00' from generate_series(1,5) g;" >/dev/null
+$DB -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, created_at) values ('$E5_MEM','testimonial','Older','r0','pending',false,'2026-11-09 10:00+00');" >/dev/null
+E5_ORDER="order by created_at desc, id desc"
+E5_ALL=$(as_owner "$E5_AUTH" "select string_agg(id::text, ',' $E5_ORDER) from messages where memorial_id='$E5_MEM' and status='pending';")
+E5_P1=$(as_owner "$E5_AUTH" "select string_agg(id::text, ',' $E5_ORDER) from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' $E5_ORDER limit 2) x;")
+E5_LAST=$(as_owner "$E5_AUTH" "select created_at || '|' || id from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' $E5_ORDER limit 2) x $E5_ORDER offset 1 limit 1;")
+e5_page() { # $1 cursor "ts|id" -> next 2 ids
+  as_owner "$E5_AUTH" "select coalesce(string_agg(id::text, ',' $E5_ORDER), '') from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' and (created_at < '${1%%|*}' or (created_at = '${1%%|*}' and id < '${1##*|}')) $E5_ORDER limit 2) x;"
+}
+E5_P2=$(e5_page "$E5_LAST")
+E5_LAST2=$(as_owner "$E5_AUTH" "select created_at || '|' || id from messages where id = '${E5_P2##*,}';")
+E5_P3=$(e5_page "$E5_LAST2")
+check "M8-E5: six pending stories, five sharing one created_at: three pages of 2 return all six, in order, none repeated" \
+  "$E5_ALL" "$E5_P1,$E5_P2,$E5_P3"
+check "M8-E5: the former single-key cursor (created_at < ts) would have skipped the ties (regression proof)" "1" \
+  "$(as_owner "$E5_AUTH" "select count(*) from messages where memorial_id='$E5_MEM' and status='pending' and created_at < '${E5_LAST%%|*}';")"
+check "M8-E5: created_at round-trips at microsecond precision (cursor equality holds)" "1" \
+  "$(as_owner "$E5_AUTH" "select count(*) from messages where id='${E5_LAST##*|}' and created_at = '${E5_LAST%%|*}';")"
+E5_OTHER_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$(e1_owner m8e5-other)';")
+check "M8-E5: another family's session reads none of these contributions (RLS)" "0" \
+  "$(as_owner "$E5_OTHER_AUTH" "select count(*) from messages where memorial_id='$E5_MEM';")"
+# Column privileges (never idempotency_key, anon reads nothing) are proven by
+# M8-E1 on the migrations-only database ($E1F): this database carries the
+# test-only grants of the RLS section, so it cannot measure them.
+check "M8-E5: the family sees its own pending count through the counter RPC (6 stories)" "6|6" \
+  "$(svc "select pending_stories || '|' || pending_total from count_pending_contributions_v1('$E1_OWNER', '$E5_MEM');")"
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

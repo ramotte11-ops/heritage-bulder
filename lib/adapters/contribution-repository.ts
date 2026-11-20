@@ -130,5 +130,10 @@ export interface FamilyContributionRow {
 }
 
 export interface FamilyContributionReader {
-  list(input: { memorialId: string; status: ContributionStatus | null; limit: number; beforeCreatedAt: string | null }): Promise<FamilyContributionRow[]>;
+  /**
+   * Du plus récent au plus ancien (created_at desc, id desc). Curseur composé
+   * (M8-E5) : `beforeId` départage les contributions de même `created_at`,
+   * pour qu'aucune ne soit sautée en bordure de page.
+   */
+  list(input: { memorialId: string; status: ContributionStatus | null; limit: number; beforeCreatedAt: string | null; beforeId?: string | null }): Promise<FamilyContributionRow[]>;
 }

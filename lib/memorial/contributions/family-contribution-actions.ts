@@ -40,7 +40,7 @@ export async function getPendingContributionCounts(memorialId?: unknown) {
   return run((deps) => countPendingContributions(deps, { memorialId }));
 }
 
-/** Liste d'un hommage (par défaut les contributions à examiner). */
+/** Liste d'un hommage (par défaut les contributions à examiner). `before` : le `nextCursor` reçu. */
 export async function getFamilyContributions(input: { memorialId: unknown; status?: unknown; limit?: unknown; before?: unknown }) {
   const i = (input ?? {}) as Record<string, unknown>;
   return run((deps) => listFamilyContributions(deps, { memorialId: i.memorialId, status: i.status, limit: i.limit, before: i.before }));

@@ -20,6 +20,7 @@ const OWNER = "33333333-3333-4333-8333-333333333333";
 const MEM = "11111111-1111-4111-8111-111111111111";
 const OTHER_MEM = "99999999-9999-4999-8999-999999999999";
 const C1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const C2 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const MEDIA = "22222222-2222-4222-8222-222222222222";
 const NOW = new Date("2026-11-20T10:00:00Z");
 
@@ -89,7 +90,7 @@ describe("M8-E2 — liste familiale", () => {
   it("à examiner par défaut ; photo en attente visible de la famille par URL signée", async () => {
     const { deps, reader } = setup({ rows: [row({})] });
     const r = await listFamilyContributions(deps, { memorialId: MEM });
-    expect(reader.list).toHaveBeenCalledWith({ memorialId: MEM, status: "pending", limit: 50, beforeCreatedAt: null });
+    expect(reader.list).toHaveBeenCalledWith({ memorialId: MEM, status: "pending", limit: 50, beforeCreatedAt: null, beforeId: null });
     expect(r).toMatchObject({ status: "ok", items: [{ id: C1, photo: { url: `https://storage.test/signed/${MEM}/${MEDIA}/original.webp`, width: 2000, height: 1500 } }] });
     expect(JSON.stringify(r)).not.toContain("mediaId");
   });
@@ -112,6 +113,20 @@ describe("M8-E2 — liste familiale", () => {
     const { deps } = setup();
     expect(await listFamilyContributions(deps, { memorialId: MEM, status: "deleted" })).toEqual({ status: "invalid" });
     expect(await listFamilyContributions(deps, { memorialId: MEM, before: "hier" })).toEqual({ status: "invalid" });
+    expect(await listFamilyContributions(deps, { memorialId: MEM, before: { createdAt: "2026-11-20T09:00:00Z", id: "x),id.gt.0" } })).toEqual({ status: "invalid" });
+  });
+
+  it("M8-E5 — curseur composé : aucune contribution sautée à created_at égal", async () => {
+    const { deps, reader } = setup({ rows: [row({}), row({ id: C2 })] });
+    const r = await listFamilyContributions(deps, { memorialId: MEM, limit: 2 });
+    expect(r).toMatchObject({ status: "ok", nextCursor: { createdAt: "2026-11-20T09:00:00Z", id: C2 } });
+    if (r.status !== "ok") throw new Error();
+    await listFamilyContributions(deps, { memorialId: MEM, limit: 2, before: r.nextCursor });
+    expect(reader.list).toHaveBeenLastCalledWith({ memorialId: MEM, status: "pending", limit: 2, beforeCreatedAt: "2026-11-20T09:00:00Z", beforeId: C2 });
+    // Dernière page : plus de curseur. Forme historique (date seule) toujours acceptée.
+    expect(await listFamilyContributions(deps, { memorialId: MEM, limit: 3 })).toMatchObject({ nextCursor: null });
+    await listFamilyContributions(deps, { memorialId: MEM, before: "2026-11-20T09:00:00Z" });
+    expect(reader.list).toHaveBeenLastCalledWith(expect.objectContaining({ beforeCreatedAt: "2026-11-20T09:00:00Z", beforeId: null }));
   });
 });
 
