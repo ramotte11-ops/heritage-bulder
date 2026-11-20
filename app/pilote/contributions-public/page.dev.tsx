@@ -4,6 +4,13 @@ import { PublicContributionsProvider } from "@/components/memorial/contributions
 import { ContributionsV1Section } from "@/components/memorial/contributions/ContributionsV1Section";
 import type { PublicContribution } from "@/lib/memorial/contributions/public-contribution-types";
 import { demoContributions } from "@/lib/memorial/contributions/demo-contributions";
+import {
+  pilotBeginContributionPhoto,
+  pilotCompleteContributionPhoto,
+  pilotDepositContributionText,
+  pilotLoadContributions,
+  pilotOpenContributionWindow,
+} from "./pilot-deposit-actions";
 
 /**
  * M8-E3 — banc d'essai de la rubrique PUBLIQUE (hôte `public`), avec des
@@ -15,6 +22,7 @@ import { demoContributions } from "@/lib/memorial/contributions/demo-contributio
  *   /pilote/contributions-public?n=3&combo=CRP&theme=dark
  *   /pilote/contributions-public?n=9&combo=PPPPPPRC          (O8 : chaque catégorie représentée)
  *   /pilote/contributions-public?off=photos&lang=en
+ *   /pilote/contributions-public?n=0&depot=1                 (M8-E6-F : « Laisser un message », dépôt SIMULÉ)
  */
 export default async function ContributionsPublicPilotPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   if (process.env.NODE_ENV === "production") notFound();
@@ -37,10 +45,22 @@ export default async function ContributionsPublicPilotPage({ searchParams }: { s
     photo: d.content.photo ? { url: d.content.photo.src, width: d.content.photo.width, height: d.content.photo.height } : null,
   }));
   const initial = { categories, total: items.length, items, sceneExtras: [], complete: true, nextCursor: null };
+  const deposit =
+    one("depot") === "1"
+      ? {
+          slug: "pilote",
+          actions: {
+            openContributionWindow: pilotOpenContributionWindow,
+            depositContributionText: pilotDepositContributionText,
+            beginContributionPhoto: pilotBeginContributionPhoto,
+            completeContributionPhoto: pilotCompleteContributionPhoto,
+          },
+        }
+      : undefined;
   return (
     <main style={{ background: theme === "dark" ? "#1d1b19" : "#f3ece0", minHeight: "100vh", padding: "24px 0" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-        <PublicContributionsProvider initial={initial}>
+        <PublicContributionsProvider initial={initial} deposit={deposit} loadMore={deposit ? pilotLoadContributions : undefined}>
           <ContributionsV1Section skinVariant={theme} language={language} displayName="Élise Martin" features={categories} />
         </PublicContributionsProvider>
       </div>

@@ -48,3 +48,44 @@
 5. **Nettoyage des médias abandonnés** : il reste sur `off`. La mise en service suit `docs/contributions-medias-abandonnes.md` § 4 (24 h en `dry-run`, puis `apply`, sur GO QG).
 6. **Raccordement de la fenêtre** sur la page publique et ouverture du verrou, **avec l'habillage définitif** seulement. Le prototype ne sert pas de référence de production.
 7. **Recette réelle** des lignes 🔒 et des colonnes « Reste ».
+
+## Mise à jour M8-E6-F : essais restants et séquence reproductible
+
+### Ce qui reste à éprouver hors local (exclusivement)
+
+| Dépend de | Essais |
+|---|---|
+| **Supabase réel + Storage** | Envoi direct de la photo (URL signée d'écriture), traitement Sharp et remplacement, suppression des octets à la suppression ; requête PostgREST du curseur familial ; liens signés de 5 min et leur renouvellement ; Album > 100 éléments |
+| **Migrations E1 à E4** | Tous les dépôts réels (RPC `service_role`) ; O9 immédiat ; plafonds R2/R3 en vrai ; offre gratuite (copie « avis ») |
+| **Secret anti-robots** | Jeton de formulaire réel (≥ 3 s, ≤ 2 h), rotation `…_PREVIOUS` |
+| **Photographies réelles** | Poids et qualité du profil `contribution` (téléphones récents, portrait/paysage, HEIC converti) |
+| **Écrans de modération (Lot 3)** | Approuver, refuser, masquer, réafficher, supprimer, compteur |
+| **Validation Q6** | Mentions définitives, contact de retrait, procédure support |
+
+Tout le reste est prouvé localement (§ précédents et `docs/contributions-e6f-finalisation.md`).
+
+### Séquence de recette (environnement réel, après E6, verrou ouvert sur un déploiement de recette uniquement)
+
+**Préparation :**
+- un hommage de recette **complet** et un **gratuit** ;
+- A15 avec les trois catégories ouvertes ;
+- un compte famille de test ;
+- 5 photos réelles ;
+- un deuxième navigateur pour le « visiteur ».
+
+| # | Action | Attendu | Contrôle |
+|---|---|---|---|
+| 1 | Visiteur : « Laisser un message » → Condoléances | Lettre ouverte ; envoi ; « désormais visible » | La carte apparaît sans recharger ; en base, `status = published` |
+| 2 | Même visiteur : « autre souvenir » → Récit | « visible dès que la famille l'aura validé » | Absent de la page ; compteur famille + 1 |
+| 3 | Photo réelle de 12 Mpx avec GPS | En attente | Fichier stocké en WebP, ≤ 2000 px, **sans EXIF** (télécharger et inspecter) |
+| 4 | Famille : approuver le récit et la photo | Publiés, dans l'ordre P1 | Visibles à la visite suivante |
+| 5 | Famille : masquer, puis réafficher la condoléance | Disparaît, puis revient à **sa place** | `published_at` inchangé |
+| 6 | Famille : supprimer la photo | Disparaît | Octets absents du bucket |
+| 7 | Famille : fermer « Photographies » (A15) | Rubrique sans photos ; dépôt photo refusé | Données conservées ; rouvrir → la photo revient |
+| 8 | Visiteur : 3 condoléances rapides (avec une limite abaissée sur l'hommage de recette) | Message de patience R5 | Rien d'enregistré au-delà |
+| 9 | Laisser la lettre ouverte plus de 2 h | Message de réessai, saisie conservée | Nouveau jeton, envoi possible |
+| 10 | Offre gratuite (« avis ») | Rubrique et dépôts actifs pendant la période publique | Refus après `free_public_until` |
+| 11 | Mobile réel (iOS, Android) : clavier, rotation, Échap | Champ visible, focus rendu | — |
+| 12 | Revue visuelle de l'hommage complet | Offrandes, Vidéo, A13 et empilement inchangés | Comparaison avec la référence E6-I |
+
+**Après la recette :** remettre le verrou fermé sur le déploiement de recette, jusqu'à la décision d'ouverture.

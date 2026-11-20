@@ -41,11 +41,13 @@ export interface ContributionDepositWindowProps {
   returnFocusRef?: RefObject<HTMLElement | null>;
   /** Classes des polices de la scène (la fenêtre est rendue hors de l'arbre, comme M5-C). */
   fontsClassName?: string;
+  /** M8-E6-F — un dépôt a abouti (publié ou en attente) : l'hôte peut rafraîchir la rubrique. */
+  onDeposited?: (kind: Kind, status: "published" | "pending") => void;
 }
 
 type T = (k: Parameters<typeof translate>[1]) => string;
 
-export function ContributionDepositWindow({ language, theme, categories, transport, onClose, returnFocusRef, fontsClassName = "" }: ContributionDepositWindowProps) {
+export function ContributionDepositWindow({ language, theme, categories, transport, onClose, returnFocusRef, fontsClassName = "", onDeposited }: ContributionDepositWindowProps) {
   const t = useCallback<T>((k) => translate(language, k), [language]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -60,6 +62,20 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
       target?.current?.focus({ preventScroll: true });
     };
   }, [returnFocusRef]);
+
+  const doneKind = step.name === "done" ? step.kind : null;
+  const doneStatus = step.name === "done" ? step.status : null;
+  const notified = useRef<string | null>(null);
+  useEffect(() => {
+    if (!doneKind || !doneStatus) {
+      notified.current = null;
+      return;
+    }
+    const key = `${doneKind}-${doneStatus}-${available.length}`;
+    if (notified.current === key) return;
+    notified.current = key;
+    onDeposited?.(doneKind, doneStatus);
+  }, [doneKind, doneStatus, available.length, onDeposited]);
 
   // Mobile, clavier ouvert : la zone visible rétrécit ; le champ en cours de
   // saisie est ramené au centre (la fenêtre défile), jamais caché sous le clavier.

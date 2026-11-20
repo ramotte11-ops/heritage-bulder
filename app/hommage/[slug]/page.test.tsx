@@ -50,8 +50,18 @@ const { PublicContributionsProvider, loadPublicContributionsInitial } = vi.hoist
 vi.mock("@/components/memorial/contributions/contributions-host", () => ({ PublicContributionsProvider }));
 vi.mock("@/lib/memorial/contributions/visitor-contributions", () => ({ loadPublicContributionsInitial }));
 vi.mock("@/lib/memorial/contributions/server-contributions", () => ({ createVisitorContributionDeps: () => ({ fake: "visitor-deps" }) }));
-const { loadContributions, renewContributionPhotos } = vi.hoisted(() => ({ loadContributions: vi.fn(), renewContributionPhotos: vi.fn() }));
-vi.mock("./contribution-actions", () => ({ loadContributions, renewContributionPhotos }));
+const { loadContributions, renewContributionPhotos, openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto } = vi.hoisted(() => ({
+  loadContributions: vi.fn(),
+  renewContributionPhotos: vi.fn(),
+  openContributionWindow: vi.fn(),
+  depositContributionText: vi.fn(),
+  beginContributionPhoto: vi.fn(),
+  completeContributionPhoto: vi.fn(),
+}));
+vi.mock("./contribution-actions", () => ({ loadContributions, renewContributionPhotos, openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto }));
+// M8-E6-F — le verrou de publication : fermé en réalité ; chaque test choisit son état.
+const readiness = vi.hoisted(() => ({ CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: false }));
+vi.mock("@/config/contributions-deposit-readiness", () => readiness);
 const { depositSymbolicOffering } = vi.hoisted(() => ({ depositSymbolicOffering: vi.fn() }));
 vi.mock("./actions", () => ({ depositSymbolicOffering }));
 
@@ -65,6 +75,7 @@ function call(slug: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true;
 });
 
 describe("/hommage/[slug]", () => {
@@ -103,6 +114,27 @@ describe("/hommage/[slug]", () => {
     host.renewPhotos(["id-1"]);
     expect(loadContributions).toHaveBeenCalledWith("95bd2601eac8", "cursor-1");
     expect(renewContributionPhotos).toHaveBeenCalledWith("95bd2601eac8", ["id-1"]);
+  });
+
+  it("M8-E6-F — verrou fermé : la rubrique n'est ni lue ni dessinée, et aucun dépôt n'est transmis", async () => {
+    readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = false;
+    const assembled = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown; deposit: unknown }> }> }>;
+    expect(loadPublicContributionsInitial).not.toHaveBeenCalled();
+    expect(element.props.children.props.children.props.initial).toBeNull();
+    expect(element.props.children.props.children.props.deposit).toBeUndefined();
+  });
+
+  it("M8-E6-F — verrou ouvert : les quatre actions de dépôt E2 sont transmises, avec le slug validé", async () => {
+    const assembled = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    loadPublicContributionsInitial.mockResolvedValue({ categories: { condolences: true, stories: true, photos: true }, total: 0, items: [], sceneExtras: [], complete: true, nextCursor: null });
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ deposit: { slug: string; actions: Record<string, unknown> } }> }> }>;
+    expect(element.props.children.props.children.props.deposit).toEqual({
+      slug: "95bd2601eac8",
+      actions: { openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto },
+    });
   });
 
   it("M8-E3 — a failed contributions read never breaks the page nor shows a demonstration", async () => {

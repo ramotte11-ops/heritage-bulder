@@ -7,6 +7,7 @@ import type {
   PublicContributionsPage,
   RenewPhotosResult,
 } from "@/lib/memorial/contributions/public-contribution-types";
+import type { ContributionDepositActions } from "./deposit-transport";
 
 /**
  * M8-E3 — O10 : l'hôte de la rubrique « Contributions des proches » a deux
@@ -26,9 +27,15 @@ import type {
 export type LoadMoreContributions = (cursor: string) => Promise<PublicContributionsPage | { status: string }>;
 export type RenewContributionPhotos = (ids: string[]) => Promise<RenewPhotosResult | { status: string }>;
 
+/** M8-E6-F — le dépôt, transmis par la page SEULEMENT quand le verrou de publication est ouvert. */
+export interface PublicContributionDeposit {
+  slug: string;
+  actions: ContributionDepositActions;
+}
+
 export type ContributionsHostValue =
   | { mode: "preview" }
-  | { mode: "public"; initial: PublicContributionsInitial | null; loadMore?: LoadMoreContributions; renewPhotos?: RenewContributionPhotos };
+  | { mode: "public"; initial: PublicContributionsInitial | null; loadMore?: LoadMoreContributions; renewPhotos?: RenewContributionPhotos; deposit?: PublicContributionDeposit };
 
 const ContributionsHostContext = createContext<ContributionsHostValue>({ mode: "preview" });
 
@@ -36,14 +43,16 @@ export function PublicContributionsProvider({
   initial,
   loadMore,
   renewPhotos,
+  deposit,
   children,
 }: {
   initial: PublicContributionsInitial | null;
   loadMore?: LoadMoreContributions;
   renewPhotos?: RenewContributionPhotos;
+  deposit?: PublicContributionDeposit;
   children: ReactNode;
 }) {
-  return <ContributionsHostContext.Provider value={{ mode: "public", initial, loadMore, renewPhotos }}>{children}</ContributionsHostContext.Provider>;
+  return <ContributionsHostContext.Provider value={{ mode: "public", initial, loadMore, renewPhotos, deposit }}>{children}</ContributionsHostContext.Provider>;
 }
 
 export function useContributionsHost(): ContributionsHostValue {
@@ -66,6 +75,11 @@ export interface LivePublicContributions {
   /** Lit la page suivante (une seule requête à la fois ; sans effet s'il n'y en a plus). */
   loadNextPage: () => void;
   recoverPhoto: (contributionId: string) => void;
+  /**
+   * M8-E6-F — relit la première page (après une condoléance publiée par le
+   * visiteur) : la nouvelle contribution apparaît aussitôt, en tête (P1).
+   */
+  refresh: () => void;
 }
 
 /**
@@ -87,6 +101,7 @@ export function useLivePublicContributions(host: ContributionsHostValue): LivePu
   const loadMore = host.mode === "public" ? host.loadMore : undefined;
   const renewPhotos = host.mode === "public" ? host.renewPhotos : undefined;
   const [pages, setPages] = useState<PublicContribution[]>([]);
+  const [fresh, setFresh] = useState<PublicContribution[]>([]);
   const [cursor, setCursor] = useState<string | null>(initial && !initial.complete ? initial.nextCursor : null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
@@ -107,6 +122,15 @@ export function useLivePublicContributions(host: ContributionsHostValue): LivePu
         inFlight.current = false;
       });
   }, [loadMore, cursor]);
+
+  const refresh = useCallback(() => {
+    if (!loadMore) return;
+    void loadMore("")
+      .then((page) => {
+        if ("items" in page) setFresh(page.items);
+      })
+      .catch(() => undefined);
+  }, [loadMore]);
 
   // Renouvellement des liens.
   const pending = useRef(new Set<string>());
@@ -150,13 +174,13 @@ export function useLivePublicContributions(host: ContributionsHostValue): LivePu
   );
   const items = useMemo(() => {
     const seen = new Set<string>();
-    return (initial ? [...initial.items, ...pages] : [])
+    return (initial ? [...fresh, ...initial.items, ...pages] : [])
       .filter((c) => !gone.has(c.id) && !seen.has(c.id) && (seen.add(c.id), true))
       .map(live);
-  }, [initial, pages, gone, live]);
+  }, [initial, fresh, pages, gone, live]);
   const sceneExtras = useMemo(() => {
     const inAlbum = new Set(items.map((c) => c.id));
     return (initial?.sceneExtras ?? []).filter((c) => !gone.has(c.id) && !inAlbum.has(c.id)).map(live);
   }, [initial, items, gone, live]);
-  return { initial, items, sceneExtras, hasMore: cursor !== null, loadNextPage, recoverPhoto };
+  return { initial, items, sceneExtras, hasMore: cursor !== null, loadNextPage, recoverPhoto, refresh };
 }

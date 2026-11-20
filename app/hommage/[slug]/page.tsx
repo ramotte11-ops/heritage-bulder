@@ -9,7 +9,15 @@ import { createVisitorContributionDeps } from "@/lib/memorial/contributions/serv
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 import { depositSymbolicOffering } from "./actions";
-import { loadContributions, renewContributionPhotos } from "./contribution-actions";
+import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "@/config/contributions-deposit-readiness";
+import {
+  beginContributionPhoto,
+  completeContributionPhoto,
+  depositContributionText,
+  loadContributions,
+  openContributionWindow,
+  renewContributionPhotos,
+} from "./contribution-actions";
 import styles from "./page.module.css";
 
 /**
@@ -64,9 +72,18 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   // visite, filtrées par les catégories EN VIGUEUR (O9). Lues seulement si
   // la copie publiée porte la rubrique ; un échec de lecture n'affiche
   // jamais la démonstration du Builder : la rubrique est simplement absente.
-  const contributions = view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
-    ? await loadContributionsForVisit(slug)
-    : null;
+  //
+  // M8-E6-F — VERROU DE PUBLICATION. Tant qu'il est fermé (Q6, modération
+  // familiale, E6), la rubrique n'est ni lue ni dessinée en public : elle
+  // inviterait à « laisser un message » sans le permettre. Aucune requête
+  // n'est faite. Ouvert : la lecture, puis le dépôt (Server Actions E2).
+  const contributions =
+    CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
+      ? await loadContributionsForVisit(slug)
+      : null;
+  const deposit = CONTRIBUTIONS_DEPOSIT_PUBLIC_READY
+    ? { slug, actions: { openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto } }
+    : undefined;
 
   return (
     <main className={styles.page} lang={view.assembled.language} data-public-memorial="">
@@ -75,7 +92,7 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
       <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering}>
         {/* M8-E3 — pages suivantes de l'Album et liens photo renouvelés : Server Actions liées
             à CE slug ; le navigateur ne choisit ni l'hommage ni ce qui est lisible. */}
-        <PublicContributionsProvider initial={contributions} loadMore={loadContributions.bind(null, slug)} renewPhotos={renewContributionPhotos.bind(null, slug)}>
+        <PublicContributionsProvider initial={contributions} loadMore={loadContributions.bind(null, slug)} renewPhotos={renewContributionPhotos.bind(null, slug)} deposit={deposit}>
           <MemorialAssembly assembled={view.assembled} />
         </PublicContributionsProvider>
       </PublicOfferingsProvider>

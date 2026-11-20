@@ -114,7 +114,7 @@ export function ContributionsSceneDesktop({ theme, placements, contents, viewAll
         </ul>
 
         {/* Actions et pied */}
-        <button type="button" className={styles.primaryAction} style={{ ...fromBox(chrome.leaveMessageButton), fontSize: u(TYPE.button) }}>
+        <button type="button" className={styles.primaryAction} style={{ ...fromBox(chrome.leaveMessageButton), fontSize: u(TYPE.button) }} data-action="leave-message">
           <QuillIcon />
           <span>{labels.leaveMessage}</span>
         </button>

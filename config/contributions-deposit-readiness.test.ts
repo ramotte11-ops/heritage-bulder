@@ -28,6 +28,12 @@ describe("M8-E4 — verrou du dépôt public (Q6, design, E6)", () => {
     expect(src).toContain("if (!CONTRIBUTIONS_DEPOSIT_PUBLIC_READY) return");
   });
 
+  it("M8-E6-F — la page publique ne lit la rubrique et ne transmet le dépôt que verrou ouvert", () => {
+    const page = readFileSync(path.resolve(import.meta.dirname, "..", "app", "hommage", "[slug]", "page.tsx"), "utf8");
+    expect(page).toMatch(/CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && view\.assembled\.sections/);
+    expect(page).toMatch(/const deposit = CONTRIBUTIONS_DEPOSIT_PUBLIC_READY\s*\?/);
+  });
+
   it("verrou fermé : aucune page publique n'importe la fenêtre ni le transport réel", () => {
     const root = path.resolve(import.meta.dirname, "..", "app", "hommage");
     const offenders = filesUnder(root).filter((f) => /ContributionDepositWindow|use-contribution-deposit|createContributionDepositTransport/.test(readFileSync(f, "utf8")));
