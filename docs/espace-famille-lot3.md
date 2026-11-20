@@ -72,7 +72,14 @@ Captures : `docs/validation/espace-famille-lot3/` (données de test locales).
 
 ## Dépendances avec la PR #105
 
-La PR #105 n'est pas fusionnée et n'est pas intégrée ici. Fichiers touchés par les deux branches : `components/owner/FamilyFeatures.tsx`, `app/owner/page.test.tsx`, dictionnaires et clés i18n. Résultat de la fusion simulée : voir le rapport de mission ; l'ordre E6 reste `main` → PR #105 → Contributions → Lot 3.
+La PR #105 n'est pas fusionnée et n'est pas intégrée ici.
+
+Fusion simulée de la PR #105 (`88f288a`) dans cette branche (copie de travail temporaire, rien poussé) :
+
+- **Aucun conflit dans les fichiers du Lot 3.** `components/owner/FamilyFeatures.tsx`, `app/owner/page.test.tsx`, les dictionnaires et les clés i18n fusionnent automatiquement, en gardant les deux lots : signatures du Carnet (Lot 2) et carte des contributions (Lot 3).
+- Les seuls conflits sont les trois déjà connus entre la branche Contributions et la PR #105 : `app/hommage/[slug]/page.tsx`, son test, `scripts/db/test-local.sh`. Ils sont résolus et justifiés dans `docs/contributions-e6i-integration.md`.
+
+L'ordre E6 reste `main` → PR #105 → Contributions → Lot 3.
 
 ## Point soumis à la PO
 

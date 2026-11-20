@@ -42,4 +42,4 @@ Détail du lot : `docs/espace-famille-lot3.md`.
 
 `main` → PR #105 → branche Contributions → Lot 3.
 
-Conflits attendus avec la PR #105 : voir le rapport de mission. Ils restent limités aux fichiers de l'Espace famille et aux dictionnaires.
+Fusion simulée avec la PR #105 : aucun conflit propre au Lot 3. Seuls subsistent les trois conflits déjà connus de la branche Contributions (`docs/contributions-e6i-integration.md`).
