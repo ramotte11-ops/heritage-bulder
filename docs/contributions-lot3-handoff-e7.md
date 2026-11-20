@@ -36,7 +36,48 @@ Détail du lot : `docs/espace-famille-lot3.md`.
 7. Un second compte famille ne peut ni ouvrir la page du premier (404), ni agir sur ses contributions.
 8. Laisser l'onglet ouvert plus de 5 minutes : une photo qui ne charge plus est relue automatiquement.
 
-**Scénario déjà exécuté sur Supabase local** : 27 contrôles sur 27, avec le kit `scripts/local-e2e/lot3-contributions/`. Il peut être rejoué presque tel quel contre un projet de **recette** (jamais la production), en adaptant le garde-fou d'URL.
+## Résultat final de la recette LOCALE (fait)
+
+Le 20/11/2026, sur la branche `opus/lot3-family-contributions`, scénario complet `scripts/local-e2e/lot3-contributions/e2e-2.js` : **29 contrôles, 29 réussis, 0 échec**.
+
+**Environnement : Supabase local isolé**
+- Composants : Postgres, Auth, PostgREST et Storage, issus des images officielles.
+- Les 48 migrations du dépôt, dont M8-E1 à E4, sont appliquées telles quelles.
+- Application lancée en `next dev`.
+- Connexion réelle des familles.
+- Dépôts faits par le moteur visiteur réel : jetons anti-robots, envoi signé vers Storage, traitement Sharp.
+
+**Données préparées avant le passage**
+- 66 contributions en attente, dont 2 photographies.
+- 37 récits au même horodatage, répartis sur plusieurs limites de page.
+- 33 contributions publiées, dont 2 messages historiques (`memory_message`).
+- Une seconde famille, pour les contrôles de sécurité.
+
+**Ce qui a été vérifié dans la base**
+- Pagination complète sans doublon : 63 sur 63.
+- Approbation ; refus avec confirmation, annulation sans effet puis refus confirmé.
+- Masquage et réaffichage : sortie de la lecture publique, puis retour avec le `published_at` d'origine.
+- Messages historiques en lecture seule **après pagination** : vue « Publiées » chargée en entier (33 éléments, 2 pages), 2 messages historiques, aucun bouton.
+- Renouvellement d'une URL photo expirée.
+- Suppression confirmée, fichier Storage compris.
+- Concurrence entre deux onglets.
+- Catégories, avec effet immédiat et `stale_revision`.
+- Sécurité :
+  - page d'une autre famille → 404 ;
+  - action serveur rejouée avec l'id d'une contribution d'une autre famille → `denied` ;
+  - même action sans session → `denied` ;
+  - visiteur non connecté → `/login`.
+- Compteur du tableau de bord égal à la base.
+
+Les passages précédents avaient échoué par **hypothèses du script** (une seule page chargée par vue), jamais par l'application. Le kit charge désormais chaque vue en entier avant d'agir.
+
+## Recette sur le projet B (À FAIRE, après E6 et sur GO QG)
+
+Rien n'a été exécuté sur le projet B. Les migrations M8-E1 à E4 n'y sont pas appliquées : aujourd'hui, chaque action répond `unavailable`.
+
+La recette réelle reste celle de la section précédente (étapes 1 à 8). Le kit peut être rejoué contre un projet de **recette** :
+- en adaptant le garde-fou d'URL `127.0.0.1` ;
+- jamais contre la production avec des données réelles de familles.
 
 ## Ordre d'intégration recommandé (inchangé)
 

@@ -11,6 +11,15 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`); };
 const pagePath = (m, vue) => `${BASE}/owner/hommages/${m}/contributions${vue ? '?vue=' + vue : ''}`;
 async function settle(page) { await page.waitForLoadState('networkidle'); await page.waitForTimeout(300); }
+/** « plus anciennes » until the server's cursor says there is nothing left. */
+async function loadAll(page) {
+  while ((await page.locator('[data-contributions-more]').count()) > 0) {
+    const before = await page.locator('[data-contribution-id]').count();
+    await page.locator('[data-contributions-more]').click();
+    await page.waitForFunction((n) => document.querySelectorAll('[data-contribution-id]').length > n || !document.querySelector('[data-contributions-more]'), before);
+    await settle(page);
+  }
+}
 async function statusText(page) { return (await page.locator('[data-contributions-view] [role=status]').first().innerText()).trim(); }
 
 (async () => {
@@ -60,27 +69,26 @@ async function statusText(page) { return (await page.locator('[data-contribution
   await page.waitForSelector(`[data-contribution-id="${photo}"]`, { state: 'detached' });
   const condo = sql(`select id from messages where memorial_id='${MA}' and message_type='condolence' order by created_at limit 1`);
   const pubAt = sql(`select published_at from messages where id='${condo}'`);
-  await page.goto(pagePath(MA, 'published')); await settle(page);
+  await page.goto(pagePath(MA, 'published')); await settle(page); await loadAll(page);
   const publicBefore = sql(`select count(*) from read_public_contributions_v1('a1b2c3d4e5f6', 100, null, null) where contribution_id='${condo}'`);
   await page.locator(`[data-contribution-id="${condo}"] [data-contribution-action=hide]`).click();
   await page.waitForSelector(`[data-contribution-id="${condo}"]`, { state: 'detached' });
   const publicAfter = sql(`select count(*) from read_public_contributions_v1('a1b2c3d4e5f6', 100, null, null) where contribution_id='${condo}'`);
   check('hide: DB hidden, gone from the public read', sql(`select status from messages where id='${condo}'`) === 'hidden' && publicBefore === '1' && publicAfter === '0', `${publicBefore}->${publicAfter}`);
-  await page.goto(pagePath(MA, 'hidden')); await settle(page);
+  await page.goto(pagePath(MA, 'hidden')); await settle(page); await loadAll(page);
   await page.locator(`[data-contribution-id="${condo}"] [data-contribution-action=unhide]`).click();
   await page.waitForSelector(`[data-contribution-id="${condo}"]`, { state: 'detached' });
   check('unhide: DB published, original published_at kept (P1)', sql(`select status from messages where id='${condo}'`) === 'published' && sql(`select published_at from messages where id='${condo}'`) === pubAt);
 
   // 5. memory_message read-only in « Publiées »; rejected shows no action.
-  await page.goto(pagePath(MA, 'published')); await settle(page);
-  while ((await page.locator('[data-contributions-more]').count()) > 0) { await page.locator('[data-contributions-more]').click(); await settle(page); }
+  await page.goto(pagePath(MA, 'published')); await settle(page); await loadAll(page);
   const mem = await page.locator('[data-type=memory_message]').first();
   check('memory_message: listed, no action', (await mem.count()) === 1 && (await mem.locator('button').count()) === 0);
-  await page.goto(pagePath(MA, 'rejected')); await settle(page);
+  await page.goto(pagePath(MA, 'rejected')); await settle(page); await loadAll(page);
   check('rejected: listed, no action, no re-approval', (await page.locator(`[data-contribution-id="${story2}"]`).count()) === 1 && (await page.locator(`[data-contribution-id="${story2}"] button`).count()) === 0);
 
   // 6. Photo URL renewal: break the signed URL, the screen re-reads once and loads a fresh one.
-  await page.goto(pagePath(MA, 'published')); await settle(page);
+  await page.goto(pagePath(MA, 'published')); await settle(page); await loadAll(page);
   const img = page.locator(`[data-contribution-id="${photo}"] img`);
   const oldSrc = await img.getAttribute('src');
   await img.evaluate((el) => { el.src = el.src.replace(/token=[^&]+/, 'token=expired'); });

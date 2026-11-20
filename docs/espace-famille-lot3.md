@@ -44,9 +44,11 @@ FR / EN / ES, Mobile (320 à 430 px) et Desktop, mêmes jetons visuels que l'Esp
 
 Pile Supabase locale (Postgres + Auth + PostgREST + Storage, images officielles), **les 48 migrations du dépôt** appliquées telles quelles, application en `next dev`, connexion réelle par mot de passe, dépôts par le moteur visiteur réel (jetons, RPC, envoi Storage signé, Sharp). Kit : `scripts/local-e2e/lot3-contributions/`.
 
-Premier passage : 27 contrôles, **27 réussis**, chacun vérifié dans la base.
+Résultat final (20/11/2026, après la confirmation du refus) : **29 contrôles, 29 réussis**, chacun vérifié dans la base.
 
-Après l'ajout de la confirmation du refus, le scénario compte 29 contrôles, et le dernier passage complet en a réussi 28. Le seul échec venait du script : les messages historiques n'étaient plus sur la première page de « Publiées » (24 éléments). Ce contrôle a été corrigé dans le kit (chargement de toute la vue), puis vérifié à part : 2 messages historiques, aucun bouton.
+- Données : 66 contributions en attente, dont 37 au même horodatage, et 33 publiées, dont 2 messages historiques.
+- Messages historiques : en lecture seule après pagination complète de « Publiées ».
+- Détail du passage : `docs/contributions-lot3-handoff-e7.md`.
 
 Le tableau ci-dessous récapitule ce qui a été vérifié :
 
