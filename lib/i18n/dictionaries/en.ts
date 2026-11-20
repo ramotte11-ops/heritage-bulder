@@ -573,6 +573,8 @@ export const en: Record<TranslationKey, string> = {
   "owner.contribUnhide": "Show again",
   "owner.contribDelete": "Delete permanently",
   "owner.contribDeleteConfirm": "Delete this contribution permanently? It cannot be recovered.",
+  "owner.contribRejectConfirm": "Decline this contribution? This decision is final.",
+  "owner.contribRejectYes": "Confirm decline",
   "owner.contribDeleteYes": "Delete",
   "owner.contribDeleteNo": "Cancel",
   "owner.contribDoneApprove": "The contribution is published in the tribute.",

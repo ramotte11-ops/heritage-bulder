@@ -797,6 +797,8 @@ export const TRANSLATION_KEYS = [
   "owner.contribUnhide",
   "owner.contribDelete",
   "owner.contribDeleteConfirm",
+  "owner.contribRejectConfirm",
+  "owner.contribRejectYes",
   "owner.contribDeleteYes",
   "owner.contribDeleteNo",
   "owner.contribDoneApprove",

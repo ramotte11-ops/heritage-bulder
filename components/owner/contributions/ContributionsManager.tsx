@@ -102,7 +102,8 @@ export function ContributionsManager({
   const [available, setAvailable] = useState(initial.status === "ok");
   const [busy, setBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState<"more" | "reload" | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  /** Lot 3 (PO) : refus et suppression sont définitifs — confirmés d'abord. */
+  const [confirming, setConfirming] = useState<{ id: string; kind: "reject" | "delete" } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeRef = useRef<HTMLParagraphElement | null>(null);
   const focusNotice = useRef(false);
@@ -184,6 +185,7 @@ export function ContributionsManager({
     setNotice(null);
     const result = await safely(() => moderateFamilyContribution(item.id, action));
     setBusy(null);
+    setConfirming(null);
     switch (result.status) {
       case "ok":
         reconcile(item.id, result.contributionStatus);
@@ -274,17 +276,27 @@ export function ContributionsManager({
                 language={language}
                 busy={busy === item.id}
                 locked={busy !== null && busy !== item.id}
-                confirming={confirming === item.id}
-                onModerate={(action) => void moderate(item, action)}
+                confirming={confirming?.id === item.id ? confirming.kind : null}
+                onModerate={(action) => {
+                  if (action === "reject") {
+                    // Définitif, sans réapprobation : confirmé d'abord (décision PO).
+                    setConfirming({ id: item.id, kind: "reject" });
+                    restoreFocus.current = `[data-confirm-cancel="${item.id}"]`;
+                    return;
+                  }
+                  void moderate(item, action);
+                }}
                 onAskDelete={() => {
-                  setConfirming(item.id);
+                  setConfirming({ id: item.id, kind: "delete" });
                   restoreFocus.current = `[data-confirm-cancel="${item.id}"]`;
                 }}
-                onCancelDelete={() => {
+                onCancelConfirm={() => {
+                  const kind = confirming?.kind;
                   setConfirming(null);
-                  restoreFocus.current = `[data-contribution-delete="${item.id}"]`;
+                  restoreFocus.current =
+                    kind === "reject" ? `[data-contribution-id="${item.id}"] [data-contribution-action="reject"]` : `[data-contribution-delete="${item.id}"]`;
                 }}
-                onConfirmDelete={() => void remove(item)}
+                onConfirm={() => void (confirming?.kind === "reject" ? moderate(item, "reject") : remove(item))}
                 onPhotoError={onPhotoError}
               />
             </li>
@@ -311,19 +323,20 @@ function ContributionItem({
   confirming,
   onModerate,
   onAskDelete,
-  onCancelDelete,
-  onConfirmDelete,
+  onCancelConfirm,
+  onConfirm,
   onPhotoError,
 }: {
   item: FamilyContributionItem;
   language: Language;
   busy: boolean;
   locked: boolean;
-  confirming: boolean;
+  /** Which definitive action awaits confirmation on this item, if any. */
+  confirming: "reject" | "delete" | null;
   onModerate: (action: ModerationAction) => void;
   onAskDelete: () => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
+  onCancelConfirm: () => void;
+  onConfirm: () => void;
   onPhotoError: () => void;
 }) {
   const { moderate, canDelete } = allowedActions(item);
@@ -382,14 +395,26 @@ function ContributionItem({
         <p className={styles.note}>{translate(language, "owner.contribRejectedNote")}</p>
       ) : null}
 
-      {confirming ? (
-        <div className={styles.confirm} role="group" aria-label={translate(language, "owner.contribDeleteConfirm")} data-confirm-delete={item.id}>
-          <p className={styles.confirmText}>{translate(language, "owner.contribDeleteConfirm")}</p>
+      {confirming !== null ? (
+        <div
+          className={styles.confirm}
+          role="group"
+          aria-label={translate(language, confirming === "reject" ? "owner.contribRejectConfirm" : "owner.contribDeleteConfirm")}
+          data-confirm-delete={confirming === "delete" ? item.id : undefined}
+          data-confirm-reject={confirming === "reject" ? item.id : undefined}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !busy) {
+              event.preventDefault();
+              onCancelConfirm();
+            }
+          }}
+        >
+          <p className={styles.confirmText}>{translate(language, confirming === "reject" ? "owner.contribRejectConfirm" : "owner.contribDeleteConfirm")}</p>
           <div className={styles.actions}>
-            <button type="button" className={`${familyStyles.pill} ${styles.danger}`} onClick={onConfirmDelete} disabled={disabled} aria-busy={busy || undefined} data-confirm-yes={item.id}>
-              {busy ? translate(language, "owner.contribLoading") : translate(language, "owner.contribDeleteYes")}
+            <button type="button" className={`${familyStyles.pill} ${styles.danger}`} onClick={onConfirm} disabled={disabled} aria-busy={busy || undefined} data-confirm-yes={item.id}>
+              {busy ? translate(language, "owner.contribLoading") : translate(language, confirming === "reject" ? "owner.contribRejectYes" : "owner.contribDeleteYes")}
             </button>
-            <button type="button" className={familyStyles.pill} onClick={onCancelDelete} disabled={busy} data-confirm-cancel={item.id}>
+            <button type="button" className={familyStyles.pill} onClick={onCancelConfirm} disabled={busy} data-confirm-cancel={item.id}>
               {translate(language, "owner.contribDeleteNo")}
             </button>
           </div>

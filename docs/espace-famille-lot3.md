@@ -14,7 +14,7 @@ Chaque contribution : nom de l'auteur, catégorie, statut, date de réception, t
 
 | Statut | Actions |
 |---|---|
-| À examiner | Approuver, Refuser |
+| À examiner | Approuver, Refuser (confirmation : « Refuser cette contribution ? Cette décision est définitive. ») |
 | Publiée (condoléance comprise) | Masquer, Supprimer définitivement (confirmation) |
 | Masquée | Réafficher (place d'origine, P1), Supprimer définitivement (confirmation) |
 | Refusée | Statut seul, aucune réapprobation |
@@ -44,7 +44,11 @@ FR / EN / ES, Mobile (320 à 430 px) et Desktop, mêmes jetons visuels que l'Esp
 
 Pile Supabase locale (Postgres + Auth + PostgREST + Storage, images officielles), **les 48 migrations du dépôt** appliquées telles quelles, application en `next dev`, connexion réelle par mot de passe, dépôts par le moteur visiteur réel (jetons, RPC, envoi Storage signé, Sharp). Kit : `scripts/local-e2e/lot3-contributions/`.
 
-27 contrôles, **27 réussis**, chacun vérifié dans la base :
+Premier passage : 27 contrôles, **27 réussis**, chacun vérifié dans la base.
+
+Après l'ajout de la confirmation du refus, le scénario compte 29 contrôles, et le dernier passage complet en a réussi 28. Le seul échec venait du script : les messages historiques n'étaient plus sur la première page de « Publiées » (24 éléments). Ce contrôle a été corrigé dans le kit (chargement de toute la vue), puis vérifié à part : 2 messages historiques, aucun bouton.
+
+Le tableau ci-dessous récapitule ce qui a été vérifié :
 
 | Domaine | Vérifié |
 |---|---|
@@ -81,6 +85,16 @@ Fusion simulée de la PR #105 (`88f288a`) dans cette branche (copie de travail t
 
 L'ordre E6 reste `main` → PR #105 → Contributions → Lot 3.
 
-## Point soumis à la PO
+## Confirmation du refus (décision PO)
 
-« Refuser » est définitif (aucune réapprobation, décision PO) et n'a pas de confirmation (la mission n'en demande que pour la suppression). Une confirmation légère pourrait éviter un refus par erreur : à décider.
+« Refuser » est définitif (aucune réapprobation). Validé par la PO : un clic sur « Refuser » ouvre, dans la carte, la même zone de confirmation que la suppression : « Refuser cette contribution ? Cette décision est définitive. », « Confirmer le refus » et « Annuler ».
+
+- Seule la confirmation appelle l'action serveur existante (`moderateFamilyContribution(id, "reject")`). Le contrat E5 n'est pas modifié.
+- « Annuler » ou la touche Échap ferment la zone sans rien envoyer, et le focus revient sur « Refuser ».
+- À l'ouverture, le focus va sur « Annuler », le choix sans risque.
+- Textes en FR, EN et ES ; boutons de 44 px, Mobile et Desktop.
+
+Preuves :
+- **Tests automatisés** : confirmation, annulation, Échap, focus, traductions.
+- **Supabase local** : refus confirmé ; annulation qui laisse la contribution en attente en base.
+- **Captures** : `*-refus-confirmation.jpg`.

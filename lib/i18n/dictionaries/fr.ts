@@ -559,6 +559,8 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "owner.contribUnhide": "Réafficher",
   "owner.contribDelete": "Supprimer définitivement",
   "owner.contribDeleteConfirm": "Supprimer définitivement cette contribution ? Elle ne pourra pas être récupérée.",
+  "owner.contribRejectConfirm": "Refuser cette contribution ? Cette décision est définitive.",
+  "owner.contribRejectYes": "Confirmer le refus",
   "owner.contribDeleteYes": "Supprimer",
   "owner.contribDeleteNo": "Annuler",
   "owner.contribDoneApprove": "La contribution est publiée dans l’hommage.",

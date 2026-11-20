@@ -123,13 +123,50 @@ describe("ContributionsManager — moderation and reconciliation with the server
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("La contribution est masquée."));
   });
 
-  it("Decline", async () => {
+  it("Decline is CONFIRMED first (PO): the message, « Annuler » and « Confirmer le refus »; only the confirmation calls the server", async () => {
     const a = item();
+    const id = (a as { id: string }).id;
     actions.moderateFamilyContribution.mockResolvedValue({ status: "ok", outcome: "updated", contributionStatus: "rejected" });
     setup("pending", [a]);
-    fireEvent.click(card((a as { id: string }).id).getByRole("button", { name: "Refuser" }));
+    fireEvent.click(card(id).getByRole("button", { name: "Refuser" }));
+    expect(actions.moderateFamilyContribution).not.toHaveBeenCalled();
+    const group = card(id).getByRole("group", { name: "Refuser cette contribution ? Cette décision est définitive." });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Confirmer le refus", "Annuler"]);
+    // Focus on the safe choice.
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-confirm-cancel")).toBe(id));
+    fireEvent.click(within(group).getByRole("button", { name: "Confirmer le refus" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/refusée/));
-    expect(actions.moderateFamilyContribution).toHaveBeenCalledWith((a as { id: string }).id, "reject");
+    expect(actions.moderateFamilyContribution).toHaveBeenCalledTimes(1);
+    expect(actions.moderateFamilyContribution).toHaveBeenCalledWith(id, "reject");
+    expect(document.querySelector(`[data-contribution-id="${id}"]`)).toBeNull();
+  });
+
+  it("Decline cancelled (button or Escape): nothing sent, the contribution unchanged, the focus back on « Refuser »", async () => {
+    const a = item();
+    const id = (a as { id: string }).id;
+    setup("pending", [a]);
+    fireEvent.click(card(id).getByRole("button", { name: "Refuser" }));
+    fireEvent.click(card(id).getByRole("button", { name: "Annuler" }));
+    expect(card(id).queryByRole("group")).toBeNull();
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-contribution-action")).toBe("reject"));
+    fireEvent.click(card(id).getByRole("button", { name: "Refuser" }));
+    fireEvent.keyDown(card(id).getByRole("group"), { key: "Escape" });
+    expect(card(id).queryByRole("group")).toBeNull();
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-contribution-action")).toBe("reject"));
+    expect(actions.moderateFamilyContribution).not.toHaveBeenCalled();
+    expect(card(id).getAllByRole("button").map((b) => b.textContent)).toEqual(["Approuver", "Refuser"]);
+  });
+
+  it.each([
+    ["en", "Decline", "Decline this contribution? This decision is final.", "Confirm decline", "Cancel"],
+    ["es", "Rechazar", "¿Rechazar esta contribución? Esta decisión es definitiva.", "Confirmar el rechazo", "Cancelar"],
+  ] as const)("%s: the decline confirmation is translated", (language, reject, question, yes, no) => {
+    const a = item();
+    render(<ContributionsManager memorialId={MEMORIAL} view="pending" language={language} initial={{ status: "ok", items: [a], nextCursor: null } as never} />);
+    fireEvent.click(card((a as { id: string }).id).getByRole("button", { name: reject }));
+    const group = card((a as { id: string }).id).getByRole("group", { name: question });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual([yes, no]);
+    expect(actions.moderateFamilyContribution).not.toHaveBeenCalled();
   });
 
   it("Show again (hidden → published)", async () => {

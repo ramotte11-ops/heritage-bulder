@@ -20,9 +20,13 @@ async function statusText(page) { return (await page.locator('[data-contribution
   // 1. Pagination over identical timestamps: every pending item exactly once.
   await page.goto(pagePath(MA)); await settle(page);
   const first = await page.locator('[data-contribution-id]').count();
-  await page.locator('[data-contributions-more]').click();
-  await page.waitForFunction(() => document.querySelectorAll('[data-contribution-id]').length > 20);
-  await settle(page);
+  // « plus anciennes » until the server's cursor says there is nothing left.
+  while ((await page.locator('[data-contributions-more]').count()) > 0) {
+    const before = await page.locator('[data-contribution-id]').count();
+    await page.locator('[data-contributions-more]').click();
+    await page.waitForFunction((n) => document.querySelectorAll('[data-contribution-id]').length > n || !document.querySelector('[data-contributions-more]'), before);
+    await settle(page);
+  }
   const ids = await page.$$eval('[data-contribution-id]', (els) => els.map((e) => e.getAttribute('data-contribution-id')));
   const dbIds = sql(`select id from messages where memorial_id='${MA}' and status='pending' order by id`).split('\n');
   check('pagination: page 1 = 20', first === 20, String(first));
@@ -42,6 +46,11 @@ async function statusText(page) { return (await page.locator('[data-contribution
   // 3. Reject another → rejected in DB, invisible.
   const story2 = sql(`select id from messages where memorial_id='${MA}' and status='pending' and message_type='testimonial' order by created_at desc, id desc limit 1`);
   await page.locator(`[data-contribution-id="${story2}"] [data-contribution-action=reject]`).click();
+  check('reject: confirmation shown first, nothing sent yet', (await page.locator(`[data-confirm-reject="${story2}"]`).count()) === 1 && sql(`select status from messages where id='${story2}'`) === 'pending');
+  await page.locator(`[data-confirm-cancel="${story2}"]`).click();
+  check('reject: cancel keeps it pending', sql(`select status from messages where id='${story2}'`) === 'pending');
+  await page.locator(`[data-contribution-id="${story2}"] [data-contribution-action=reject]`).click();
+  await page.locator(`[data-confirm-yes="${story2}"]`).click();
   await page.waitForSelector(`[data-contribution-id="${story2}"]`, { state: 'detached' });
   check('reject: DB rejected, invisible', sql(`select status||'|'||visible from messages where id='${story2}'`) === 'rejected|false');
 
@@ -64,6 +73,7 @@ async function statusText(page) { return (await page.locator('[data-contribution
 
   // 5. memory_message read-only in « Publiées »; rejected shows no action.
   await page.goto(pagePath(MA, 'published')); await settle(page);
+  while ((await page.locator('[data-contributions-more]').count()) > 0) { await page.locator('[data-contributions-more]').click(); await settle(page); }
   const mem = await page.locator('[data-type=memory_message]').first();
   check('memory_message: listed, no action', (await mem.count()) === 1 && (await mem.locator('button').count()) === 0);
   await page.goto(pagePath(MA, 'rejected')); await settle(page);
@@ -97,6 +107,7 @@ async function statusText(page) { return (await page.locator('[data-contribution
   await p2.locator(`[data-contribution-id="${race}"] [data-contribution-action=approve]`).click();
   await p2.waitForSelector(`[data-contribution-id="${race}"]`, { state: 'detached' });
   await page.locator(`[data-contribution-id="${race}"] [data-contribution-action=reject]`).click();
+  await page.locator(`[data-confirm-yes="${race}"]`).click();
   await page.waitForSelector(`[data-contribution-id="${race}"]`, { state: 'detached' });
   check('concurrency: decline after approval elsewhere → « modifiée entre-temps », DB stays published', /modifiée entre-temps/.test(await statusText(page)) && sql(`select status from messages where id='${race}'`) === 'published');
   // Same action twice (unchanged) is a success.
