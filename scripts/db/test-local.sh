@@ -5372,6 +5372,12 @@ svc_expect_error "a photo above the 15 MB ceiling is refused at finalisation" \
 E1_DG_OWNER=$(e1_owner m8e1-digest)
 E1_DG=$(e1_complet "$E1_DG_OWNER" m8e1-digest "$E1_ALL")
 e1_submit m8e1-digest testimonial 'Ami' 'Un souvenir.' "$(e1_key)" >/dev/null
+# M8-E6-I : le dépôt est daté explicitement AVANT le jour 1. Il prenait
+# l'heure réelle (now()) alors que DAY1 est figé : le test échouait dès que
+# l'horloge dépassait le 2026-11-20 07:00 UTC (dépendance à l'heure du
+# passage, pas un défaut du récapitulatif, qui exclut à juste titre ce qui
+# est postérieur à p_now).
+$DB -c "update messages set created_at = '2026-11-19 20:00+01' where memorial_id='$E1_DG';" >/dev/null
 E1_DAY1="'2026-11-20 08:00+01'::timestamptz"
 E1_DAY2="'2026-11-21 08:00+01'::timestamptz"
 check "O12: no preference row means no digest (disabled by default)" "0" \
