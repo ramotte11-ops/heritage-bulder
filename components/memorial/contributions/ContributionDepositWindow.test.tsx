@@ -35,7 +35,9 @@ describe("M8-E4 — fenêtre de dépôt (proposition PO)", () => {
     const t = transport({ status: "published" });
     draw(t);
     expect(state()).toBe("choose");
-    expect(screen.getByRole("heading", { name: "Que souhaitez-vous partager ?" })).toBeTruthy();
+    // M8-E6-A : la lettre garde son titre ; la question vient dessous (planche PO).
+    expect(screen.getByRole("heading", { name: "Laisser un message" })).toBeTruthy();
+    expect(screen.getByText("Que souhaitez-vous partager ?")).toBeTruthy();
     fireEvent.click(document.querySelector('[data-choice="condolence"]')!);
     await waitFor(() => expect((screen.getByRole("button", { name: "Envoyer" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.change(screen.getByLabelText("Votre message"), { target: { value: "Toutes nos pensées." } });

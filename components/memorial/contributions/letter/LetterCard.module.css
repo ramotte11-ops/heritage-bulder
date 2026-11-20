@@ -1,0 +1,94 @@
+/*
+ * M8-E6-A — la lettre : décor (canvas) et zones de lecture sûres, placées en
+ * pixels du Master × échelle (LetterCard.tsx). Aucun parchemin en CSS.
+ */
+
+.card {
+  position: relative;
+  flex: none;
+  margin: 0 auto;
+  opacity: 0;
+}
+
+.ready {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: opacity 180ms ease-out;
+  }
+}
+
+.paper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zoneHeader,
+.zoneBody,
+.zoneFooter,
+.zoneClose {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.zoneHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.zoneBody {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 98, 58, 0.45) transparent;
+  /* Le focus des champs reste visible : un peu d'air sous le contour. */
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+
+/* Quand le contenu défile dans sa zone : un fondu doux sur les bords, jamais une coupe nette. */
+.zoneBody[data-scrolls="true"] {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+.bodyContent {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  justify-content: center;
+}
+
+.zoneFooter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+/* Desktop : « Retour » à côté du bouton, sur une ligne (la zone basse est courte). */
+.frame-desktop .zoneFooter {
+  flex-direction: row-reverse;
+  gap: 1.25rem;
+}
+
+/* Mobile : le bouton se place dans la moitié gauche, à côté du rameau inférieur. */
+.frame-mobile .zoneFooter {
+  justify-content: flex-start;
+  padding-top: 0.6rem;
+}
+
+.zoneClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

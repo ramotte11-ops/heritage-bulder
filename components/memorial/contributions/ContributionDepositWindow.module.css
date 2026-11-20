@@ -1,8 +1,8 @@
 /*
- * M8-E4 — PROPOSITION de fenêtre de dépôt (à valider par la PO).
- * Grammaire de la lecture agrandie M5-C (ContributionsSceneMobileP1.module.css :
- * .reading, .close) : fond assombri, feuille centrée, bouton rond et doré.
- * Mobile : plein écran ; Desktop (≥ 40rem) : feuille centrée de 36rem au plus.
+ * M8-E6-A — « La lettre des proches » (planche validée par la PO).
+ * Le parchemin est le Master du Studio (letter/LetterCard) ; ce fichier ne
+ * dessine que les éléments interactifs posés dessus, et le fond derrière la
+ * lettre (seule différence entre Light et Dark, comme sur la planche).
  */
 
 .window {
@@ -15,10 +15,28 @@
   max-height: none;
   padding: 0;
   border: 0;
-  background: var(--deposit-page);
-  color: var(--deposit-ink);
+  background: transparent;
+  color: var(--letter-ink);
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+
+  --letter-ink: #2c2a22;
+  --letter-ink-soft: #5d5446;
+  --letter-muted: #8c8070;
+  --letter-ornament: #6d6a3e;
+  --letter-accent: #8b3a36;
+  --letter-field: rgba(255, 252, 246, 0.82);
+  --letter-field-border: #d6c4a3;
+  --letter-field-focus: #8a7444;
+  --letter-button: #45532f;
+  --letter-button-hover: #3a4727;
+  --letter-button-ink: #f6efdf;
+  --letter-chip: #f0e3c9;
+  --letter-chip-border: #e2cfa9;
+  --letter-card: rgba(255, 250, 241, 0.78);
+  --letter-card-border: #e5d4b4;
+  --letter-error: #8b2f2b;
 }
 
 .window:not([open]) {
@@ -27,41 +45,34 @@
 
 .window[open] {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1rem 1.5rem;
+  align-items: safe center;
+  justify-content: center;
+  padding: 16px 0;
 }
 
-.window::backdrop {
-  background: rgba(16, 11, 7, 0.68);
+/* Le fond derrière la lettre : la page, voilée et floutée (planche). */
+.theme-light::backdrop {
+  background: rgba(236, 226, 210, 0.62);
+  backdrop-filter: blur(7px) saturate(0.9);
+  -webkit-backdrop-filter: blur(7px) saturate(0.9);
 }
 
-@media (min-width: 40rem) {
-  .window {
-    inset: 0;
-    margin: auto;
-    width: min(36rem, calc(100vw - 2rem));
-    height: fit-content;
-    max-height: calc(100dvh - 2rem);
-    border-radius: 6px;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  }
-  .window[open] {
-    padding: 1.75rem 1.75rem 1.5rem;
-  }
+.theme-dark::backdrop {
+  background: rgba(22, 16, 11, 0.7);
+  backdrop-filter: blur(7px) saturate(0.85);
+  -webkit-backdrop-filter: blur(7px) saturate(0.85);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .window[open] {
-    animation: sheetIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: letterIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 }
 
-@keyframes sheetIn {
+@keyframes letterIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -69,330 +80,420 @@
   }
 }
 
-.theme-light {
-  --deposit-page: #f3ebde;
-  --deposit-ink: #221d19;
-  --deposit-soft: #5c5147;
-  --deposit-gold: #a8783f;
-  --deposit-button: #3c4535;
-  --deposit-button-text: #f3ead8;
-}
-
-.theme-dark {
-  --deposit-page: #1e1915;
-  --deposit-ink: #f1e7d6;
-  --deposit-soft: #cdbfa9;
-  --deposit-gold: #c9a35f;
-  --deposit-button: #3c4535;
-  --deposit-button-text: #f3ead8;
-}
-
-.sheet {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
+/* --- En-tête : titre et filet orné -------------------------------------- */
 
 .title {
   margin: 0;
-  text-align: center;
   font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
-  font-weight: 500;
-  font-size: 1.6rem;
-  line-height: 1.15;
-  color: var(--deposit-ink);
+  font-weight: 600;
+  font-size: clamp(1.1rem, 5.4vw, 1.65rem);
+  line-height: 1.12;
+  color: var(--letter-ink);
+  letter-spacing: 0.005em;
 }
 
+@media (min-width: 760px) {
+  .title {
+    font-size: 2.35rem;
+  }
+  .window {
+    --letter-scale: 1.12;
+  }
+}
+
+.divider {
+  margin-top: 0.4rem;
+  width: 6.2rem;
+  height: auto;
+  color: var(--letter-ornament);
+}
+
+.dividerSmall {
+  width: 5rem;
+  height: auto;
+  color: var(--letter-ornament);
+  margin: 0.2rem auto 0;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--letter-ink);
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: rgba(120, 96, 58, 0.1);
+}
+
+/* --- Corps ---------------------------------------------------------------- */
+
+.stack,
+.form,
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.lead {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
+  font-size: 1.2rem;
+  color: var(--letter-ink);
+}
+
+/* Choix des catégories (planche, « étape A — Choisir ») */
 .choices {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.75rem;
-}
-
-@media (min-width: 40rem) {
-  .choices {
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  }
+  gap: 0.6rem;
 }
 
 .choice {
   width: 100%;
-  min-height: 5.5rem;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  padding: 0.9rem 0.8rem;
-  border: 0;
-  border-radius: 2px;
-  background-size: 900px auto;
-  background-position: center;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  gap: 0.8rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--letter-card-border);
+  border-radius: 8px;
+  background: var(--letter-card);
+  box-shadow: 0 1px 2px rgba(92, 70, 38, 0.1), 0 4px 10px rgba(92, 70, 38, 0.06);
+  color: var(--letter-ink);
+  text-align: left;
   cursor: pointer;
-  text-align: center;
   font: inherit;
 }
 
-.choice:focus-visible,
-.primary:focus-visible,
-.secondary:focus-visible,
-.photoPick:focus-within,
-.close:focus-visible {
-  outline: 2px solid var(--deposit-gold);
-  outline-offset: 3px;
+.choice:hover {
+  background: rgba(255, 252, 246, 0.95);
+  border-color: #d9c39c;
+}
+
+.choiceIcon {
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  color: var(--letter-accent);
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .choiceTitle {
-  font-size: 1.15rem;
-  font-weight: 500;
+  font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
+  font-weight: 600;
+  font-size: calc(1.35rem * var(--letter-scale, 1));
+  line-height: 1.15;
 }
 
 .choiceHint {
-  font-size: 0.875rem;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: calc(0.88rem * var(--letter-scale, 1));
   line-height: 1.3;
-  opacity: 0.85;
+  color: var(--letter-ink-soft);
 }
 
-/* Les trois papiers des cartes de la scène. */
-.paper-condolence {
-  color: #f3ead8;
+.choicesCompact .choice {
+  padding: 0.5rem 0.8rem;
 }
 
-.paper-testimonial,
-.paper-photo {
-  color: #2b2520;
+.choicesCompact .choiceIcon {
+  font-size: 1.5rem;
 }
 
-.paper {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  padding: 1.4rem 1.2rem 1.2rem;
-  border-radius: 2px;
-  background-size: 1100px auto;
-  background-position: center;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
+.choicesCompact .choiceTitle {
+  font-size: 1.15rem;
 }
 
-.paperOverline {
+/* Pastille de la catégorie choisie */
+.chip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.75rem;
-  opacity: 0.85;
+  padding: 0.22rem 1.1rem 0.22rem 0.25rem;
+  border: 1px solid var(--letter-chip-border);
+  border-radius: 999px;
+  background: var(--letter-chip);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-weight: 600;
+  font-size: calc(1.1rem * var(--letter-scale, 1));
+  color: var(--letter-ink);
 }
 
+.chipIcon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #fbf6ec;
+  box-shadow: 0 1px 2px rgba(92, 70, 38, 0.18);
+  font-size: 1.2rem;
+  color: var(--letter-accent);
+}
+
+/* Champs */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-}
-
-.fieldHead {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .label {
-  font-size: 1rem;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-weight: 700;
+  font-size: calc(1.05rem * var(--letter-scale, 1));
+  color: var(--letter-ink);
 }
 
-.counter {
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+/* L'astérisque est décoratif : il n'entre pas dans le nom accessible du champ. */
+.required::after {
+  content: " *";
+  color: var(--letter-ink-soft);
 }
 
-.counterOver {
-  opacity: 1;
-  font-weight: 600;
-  color: #9b2c2c;
-}
-
-.paper-condolence .counterOver {
-  color: #ffb4a8;
-}
-
-.input,
-.textarea {
+.input {
   width: 100%;
-  font: inherit;
-  font-size: 1.05rem;
-  color: inherit;
-  background: rgba(255, 255, 255, 0.35);
-  border: 0;
-  border-bottom: 1px solid currentColor;
-  border-radius: 2px 2px 0 0;
-  padding: 0.45rem 0.55rem;
-}
-
-.paper-condolence .input,
-.paper-condolence .textarea {
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.textarea {
-  resize: vertical;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--letter-field-border);
+  border-radius: 5px;
+  background: var(--letter-field);
+  color: var(--letter-ink);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  /* 16 px au moins : aucun zoom automatique sur iOS. */
+  font-size: max(16px, calc(1.05rem * var(--letter-scale, 1)));
   line-height: 1.4;
 }
 
-.input:focus-visible,
-.textarea:focus-visible {
-  outline: 2px solid var(--deposit-gold);
-  outline-offset: 1px;
+.input::placeholder {
+  color: #9a8e7c;
+  opacity: 1;
 }
 
+.input:focus-visible,
+.input:focus {
+  outline: 2px solid var(--letter-field-focus);
+  outline-offset: 1px;
+  background: #fffdf8;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--letter-error);
+}
+
+.textarea {
+  resize: none;
+  min-height: 5.5rem;
+}
+
+.counter {
+  align-self: flex-end;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: calc(0.8rem * var(--letter-scale, 1));
+  color: var(--letter-muted);
+}
+
+.counterOver {
+  color: var(--letter-error);
+  font-weight: 600;
+}
+
+/* Photographie */
 .photoField {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.55rem;
 }
 
 .photoPreview {
   max-width: 100%;
-  max-height: 16rem;
+  max-height: 11rem;
   object-fit: contain;
-  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.25);
+  border: 6px solid #fffdf8;
+  border-bottom-width: 18px;
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(70, 52, 28, 0.25);
+  transform: rotate(-1.2deg);
 }
 
 .photoPick {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  padding: 0.5rem 1.2rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.trap {
-  position: absolute;
-  left: -10000px;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
-
-.privacy {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.35;
-  opacity: 0.85;
-}
-
-.error {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #9b2c2c;
-}
-
-.paper-condolence .error {
-  color: #ffd2c9;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-}
-
-.primary,
-.secondary {
-  min-height: 44px;
-  padding: 0.55rem 1.6rem;
-  border-radius: 999px;
-  font: inherit;
-  font-size: 1.05rem;
-  cursor: pointer;
-}
-
-.primary {
-  border: 1px solid #b8915a;
-  background: var(--deposit-button);
-  color: var(--deposit-button-text);
-}
-
-.primary:disabled,
-.secondary:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.secondary {
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-}
-
-.result {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-  text-align: center;
-}
-
-.resultText {
-  margin: 0;
-  font-size: 1.1rem;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.another {
-  margin: 0.4rem 0 0;
-  font-style: italic;
-  font-size: 1.1rem;
-  color: var(--deposit-soft);
-}
-
-.busyTitle {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 500;
-  color: var(--deposit-gold);
-}
-
-/* Le bouton de M5-C, à l'identique. */
-.close {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0.55rem 1.4rem;
-  border-radius: 999px;
-  border: 1px solid #c9a35f;
-  background: rgba(30, 24, 18, 0.82);
-  color: #f3e7cf;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  border: 1px dashed #b9a07a;
+  border-radius: 6px;
+  background: var(--letter-field);
+  color: var(--letter-ink);
   font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
-  font-size: 1rem;
+  font-size: 0.92rem;
   cursor: pointer;
 }
 
-.close span:first-child {
-  font-size: 1.35rem;
-  line-height: 1;
+.photoPick svg {
+  font-size: 1.25rem;
+  color: var(--letter-accent);
+}
+
+.photoPick:hover {
+  border-style: solid;
+}
+
+.photoField:focus-within .photoPick {
+  outline: 2px solid var(--letter-field-focus);
+  outline-offset: 2px;
 }
 
 .visuallyHidden {
   position: absolute;
   width: 1px;
   height: 1px;
-  padding: 0;
   margin: -1px;
+  padding: 0;
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+.trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Mention (Q6 : provisoire) */
+.privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.1rem 0 0;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: calc(0.86rem * var(--letter-scale, 1));
+  line-height: 1.35;
+  color: var(--letter-ink-soft);
+}
+
+.privacyIcon {
+  flex: none;
+  font-size: 1.05rem;
+  margin-top: 0.05rem;
+  color: var(--letter-ink);
+}
+
+.error {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-left: 3px solid var(--letter-error);
+  background: rgba(139, 47, 43, 0.07);
+  color: var(--letter-error);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* --- Pied : bouton Envoyer (pilule vert olive) ------------------------------ */
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-width: min(12.5rem, 100%);
+  min-height: 2.9rem;
+  padding: 0.6rem 1.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--letter-button);
+  box-shadow: 0 2px 5px rgba(40, 46, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--letter-button-ink);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-weight: 600;
+  font-size: calc(1.25rem * var(--letter-scale, 1));
+  cursor: pointer;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--letter-button-hover);
+}
+
+.primary:focus-visible,
+.back:focus-visible,
+.choice:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--letter-field-focus);
+  outline-offset: 2px;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.primaryIcon {
+  font-size: 1.1rem;
+}
+
+.back {
+  border: 0;
+  background: none;
+  padding: 0.2rem 0.4rem;
+  color: var(--letter-ink-soft);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* --- Résultats ------------------------------------------------------------- */
+
+.result {
+  text-align: center;
+}
+
+.result:focus {
+  outline: none;
+}
+
+.resultText {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.45;
+  color: var(--letter-ink);
+}
+
+.busyTitle {
+  margin: 0;
+  font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
+  font-size: 1.4rem;
+  color: var(--letter-ink);
+}
+
+/* Mobile (lettre portrait) : le bouton occupe sa zone, à gauche du rameau inférieur (planche). */
+@media (max-width: 759.98px) {
+  .primary {
+    width: 100%;
+  }
 }

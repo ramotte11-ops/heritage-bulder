@@ -1,45 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { CONTRIBUTION_TEXT_LIMITS } from "@/config/contributions";
 import type { Language } from "@/config/languages";
 import type { ContributionsTheme } from "@/config/contributions-master-measurements";
-import { CONTRIBUTIONS_RENDER_ASSETS as ASSETS } from "@/config/contributions-render-v1";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import { countVisibleCharacters, normalizeContributionText } from "@/lib/memorial/contributions/contribution-text";
 import type { ContributionsFeatures } from "@/lib/memorial/contributions/contributions-settings";
 import type { ContributionDepositTransport } from "./deposit-transport";
 import { useContributionDeposit, type ContributionDepositEngine, type DepositKind as Kind } from "./use-contribution-deposit";
+import { LetterCard } from "./letter/LetterCard";
+import { BookIcon, CloseIcon, HeartIcon, ImageIcon, LeafDivider, LockIcon, PlaneIcon } from "./letter/letter-icons";
 import styles from "./ContributionDepositWindow.module.css";
 
 /**
- * M8-E4 — PROPOSITION de fenêtre de dépôt (contrat M8-P § 5), soumise à la
- * PO avant toute validation : ni branchée à l'hommage public, ni réputée
- * validée.
+ * M8-E6-A — « La lettre des proches » : la fenêtre « Laisser un message »,
+ * dans la direction artistique validée par la PO.
  *
- * Une seule fenêtre, au-dessus de l'hommage, dans la grammaire de la lecture
- * agrandie M5-C (fond assombri, feuille centrée sur Desktop, plein écran sur
- * Mobile, bouton rond et doré « × Fermer », polices de la scène, Light et
- * Dark). Rendue hors de la pile des cartes (portail) : le stacking ne bouge
- * pas. Focus piégé par la fenêtre native, rendu à l'élément d'origine.
+ * PRÉSENTATION seulement. Toute la mécanique (étapes, jeton, envoi, réponses
+ * du serveur, « un autre souvenir ») reste dans `useContributionDeposit`
+ * (M8-E4), inchangé. Le décor est le Master du Studio (LetterCard), jamais
+ * un parchemin recréé ; les éléments interactifs sont de vrais contrôles
+ * HTML, dans les zones de lecture sûres de la lettre.
  *
- *  1. Choisir — trois petites cartes dans leur papier (bleu pétrole, ivoire,
- *     Polaroid), limitées aux catégories en vigueur et non encore utilisées
- *     pendant cette ouverture ; sautée s'il n'en reste qu'une.
- *  2. Écrire — sur le papier du type : nom (60), message (500) ou récit
- *     (2000) ou photo et légende facultative (150) ; compteur de caractères
- *     visibles (module partagé Q2, le même que le serveur) ; mention courte ;
- *     champ piège invisible (R4).
- *  3. Confirmer — publiée ou en attente selon le serveur, puis « Souhaitez-
- *     vous partager un autre souvenir ? » avec les catégories restantes, ou
- *     le message R5 si un plafond est atteint.
- *
- * M8-E4 (consolidation) : cette fenêtre n'est que la PRÉSENTATION, un
- * prototype provisoire. Toute la mécanique (étapes, jeton, envoi, réponses du
- * serveur, « un autre souvenir ») est dans `useContributionDeposit`, testée
- * sans interface. La mention de confidentialité affichée est PROVISOIRE (Q6) :
- * voir config/contributions-deposit-readiness.ts.
+ * Rendue hors de la pile des cartes (portail) : le stacking ne bouge pas.
+ * Focus piégé par la fenêtre native, rendu à l'élément d'origine.
+ * Verrou de publication : config/contributions-deposit-readiness.ts (fermé) ;
+ * la mention de confidentialité affichée reste PROVISOIRE (Q6).
  */
 
 export interface ContributionDepositWindowProps {
@@ -55,8 +43,10 @@ export interface ContributionDepositWindowProps {
   fontsClassName?: string;
 }
 
+type T = (k: Parameters<typeof translate>[1]) => string;
+
 export function ContributionDepositWindow({ language, theme, categories, transport, onClose, returnFocusRef, fontsClassName = "" }: ContributionDepositWindowProps) {
-  const t = useCallback((k: Parameters<typeof translate>[1]) => translate(language, k), [language]);
+  const t = useCallback<T>((k) => translate(language, k), [language]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const engine = useContributionDeposit(categories, transport);
@@ -71,6 +61,127 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
     };
   }, [returnFocusRef]);
 
+  // Mobile, clavier ouvert : la zone visible rétrécit ; le champ en cours de
+  // saisie est ramené au centre (la fenêtre défile), jamais caché sous le clavier.
+  useEffect(() => {
+    const follow = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active && dialogRef.current?.contains(active) && active.matches("input, textarea")) active.scrollIntoView({ block: "center", inline: "nearest" });
+    };
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", follow);
+    window.addEventListener("resize", follow);
+    return () => {
+      vv?.removeEventListener("resize", follow);
+      window.removeEventListener("resize", follow);
+    };
+  }, []);
+
+  // Focus à chaque étape : le premier choix, ou le message de résultat ; il
+  // n'est jamais laissé sur un élément qui vient de disparaître.
+  const stepName = step.name;
+  useEffect(() => {
+    if (stepName === "write") return; // le formulaire place lui-même le focus
+    const d = dialogRef.current;
+    const target = d?.querySelector<HTMLElement>(stepName === "choose" ? "[data-choice]" : "[data-step-focus]");
+    target?.focus({ preventScroll: true });
+  }, [stepName]);
+
+  const header = (
+    <>
+      <h2 id={titleId} className={styles.title}>
+        {t("contributionsDeposit.title")}
+      </h2>
+      <LeafDivider className={styles.divider} />
+    </>
+  );
+  const close = (
+    <button type="button" className={styles.close} onClick={onClose} data-deposit-close="" aria-label={t("contributionsDeposit.close")}>
+      <CloseIcon />
+    </button>
+  );
+
+  let content: ReactNode;
+  if (step.name === "choose") {
+    content = (
+      <LetterCard
+        stepKey="choose"
+        header={header}
+        close={close}
+        footer={null}
+        body={
+          <div className={styles.stack}>
+            <p className={styles.lead}>{t("contributionsDeposit.choose")}</p>
+            <ChoiceList kinds={available} t={t} onChoose={engine.choose} />
+          </div>
+        }
+      />
+    );
+  } else if (step.name === "write") {
+    content = (
+      <DepositForm
+        key={`${step.kind}-${available.length}`}
+        kind={step.kind}
+        language={language}
+        engine={engine}
+        canGoBack={available.length > 1}
+        header={header}
+        close={close}
+      />
+    );
+  } else if (step.name === "done") {
+    content = (
+      <LetterCard
+        stepKey={`done-${step.kind}`}
+        header={header}
+        close={close}
+        footer={null}
+        body={
+          <div className={styles.result} role="status" tabIndex={-1} data-step-focus="">
+            <p className={styles.resultText}>{t(step.status === "published" ? "contributionsDeposit.published" : "contributionsDeposit.pending")}</p>
+            {remaining.length > 0 ? (
+              <>
+                <LeafDivider className={styles.dividerSmall} />
+                <p className={styles.lead}>{t("contributionsDeposit.another")}</p>
+                <ChoiceList kinds={remaining} t={t} onChoose={engine.choose} compact />
+              </>
+            ) : null}
+          </div>
+        }
+      />
+    );
+  } else if (step.name === "busy") {
+    content = (
+      <LetterCard
+        stepKey="busy"
+        header={header}
+        close={close}
+        footer={null}
+        body={
+          <div className={styles.result} role="status" data-deposit-busy="" tabIndex={-1} data-step-focus="">
+            <p className={styles.busyTitle}>{t("contributionsDeposit.busyTitle")}</p>
+            <p className={styles.resultText}>{t("contributionsDeposit.busyBody")}</p>
+            <p className={styles.resultText}>{t("contributionsDeposit.busyRetry")}</p>
+          </div>
+        }
+      />
+    );
+  } else {
+    content = (
+      <LetterCard
+        stepKey="closed"
+        header={header}
+        close={close}
+        footer={null}
+        body={
+          <p className={`${styles.result} ${styles.resultText}`} role="status" tabIndex={-1} data-step-focus="">
+            {t("contributionsDeposit.closed")}
+          </p>
+        }
+      />
+    );
+  }
+
   return createPortal(
     <dialog
       ref={dialogRef}
@@ -82,67 +193,7 @@ export function ContributionDepositWindow({ language, theme, categories, transpo
       }}
       data-contribution-deposit={step.name}
     >
-      <div className={styles.sheet}>
-        <h2 id={titleId} className={styles.title}>
-          {step.name === "choose" ? t("contributionsDeposit.choose") : t("contributionsDeposit.title")}
-        </h2>
-
-        {step.name === "choose" ? (
-          <ul className={styles.choices}>
-            {available.map((kind) => (
-              <li key={kind}>
-                <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => engine.choose(kind)} data-choice={kind}>
-                  <span className={styles.choiceTitle}>{t(kindTitle(kind))}</span>
-                  <span className={styles.choiceHint}>{t(kindHint(kind))}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {step.name === "write" ? (
-          <DepositForm key={`${step.kind}-${available.length}`} kind={step.kind} language={language} engine={engine} canGoBack={available.length > 1} />
-        ) : null}
-
-        {step.name === "done" ? (
-          <div className={styles.result} role="status">
-            <p className={styles.resultText}>{t(step.status === "published" ? "contributionsDeposit.published" : "contributionsDeposit.pending")}</p>
-            {remaining.length > 0 ? (
-              <>
-                <p className={styles.another}>{t("contributionsDeposit.another")}</p>
-                <ul className={styles.choices}>
-                  {remaining.map((kind) => (
-                    <li key={kind}>
-                      <button type="button" className={`${styles.choice} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onClick={() => engine.choose(kind)} data-choice={kind}>
-                        <span className={styles.choiceTitle}>{t(kindTitle(kind))}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
-        {step.name === "busy" ? (
-          <div className={styles.result} role="status" data-deposit-busy="">
-            <p className={styles.busyTitle}>{t("contributionsDeposit.busyTitle")}</p>
-            <p className={styles.resultText}>{t("contributionsDeposit.busyBody")}</p>
-            <p className={styles.resultText}>{t("contributionsDeposit.busyRetry")}</p>
-          </div>
-        ) : null}
-
-        {step.name === "closed" ? (
-          <p className={styles.resultText} role="status">
-            {t("contributionsDeposit.closed")}
-          </p>
-        ) : null}
-      </div>
-
-      <button type="button" className={styles.close} onClick={onClose} data-deposit-close="">
-        <span aria-hidden="true">×</span>
-        <span>{t("contributionsDeposit.close")}</span>
-      </button>
+      {content}
     </dialog>,
     document.body,
   );
@@ -154,14 +205,47 @@ function kindTitle(kind: Kind) {
 function kindHint(kind: Kind) {
   return kind === "condolence" ? "contributionsDeposit.typeCondolenceHint" : kind === "testimonial" ? "contributionsDeposit.typeStoryHint" : "contributionsDeposit.typePhotoHint";
 }
-function paperStyle(kind: Kind) {
-  const url = kind === "condolence" ? ASSETS.paper.petrol : kind === "testimonial" ? ASSETS.paper.ivory : ASSETS.paper.polaroid;
-  return { backgroundImage: `url(${url})` };
+function KindIcon({ kind }: { kind: Kind }) {
+  return kind === "condolence" ? <HeartIcon /> : kind === "testimonial" ? <BookIcon /> : <ImageIcon />;
 }
 
-function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; language: Language; engine: ContributionDepositEngine; canGoBack: boolean }) {
-  const t = (k: Parameters<typeof translate>[1]) => translate(language, k);
-  const ids = { name: useId(), text: useId(), caption: useId(), photo: useId(), error: useId() };
+function ChoiceList({ kinds, t, onChoose, compact = false }: { kinds: readonly Kind[]; t: T; onChoose: (k: Kind) => void; compact?: boolean }) {
+  return (
+    <ul className={`${styles.choices} ${compact ? styles.choicesCompact : ""}`}>
+      {kinds.map((kind) => (
+        <li key={kind}>
+          <button type="button" className={styles.choice} onClick={() => onChoose(kind)} data-choice={kind}>
+            <span className={styles.choiceIcon} aria-hidden="true">
+              <KindIcon kind={kind} />
+            </span>
+            <span className={styles.choiceText}>
+              <span className={styles.choiceTitle}>{t(kindTitle(kind))}</span>
+              {compact ? null : <span className={styles.choiceHint}>{t(kindHint(kind))}</span>}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DepositForm({
+  kind,
+  language,
+  engine,
+  canGoBack,
+  header,
+  close,
+}: {
+  kind: Kind;
+  language: Language;
+  engine: ContributionDepositEngine;
+  canGoBack: boolean;
+  header: ReactNode;
+  close: ReactNode;
+}) {
+  const t: T = (k) => translate(language, k);
+  const ids = { form: useId(), name: useId(), text: useId(), caption: useId(), photo: useId(), error: useId() };
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [caption, setCaption] = useState("");
@@ -169,11 +253,22 @@ function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; langua
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const { error, sending, ready } = engine;
-  const firstField = useRef<HTMLInputElement>(null);
-  useEffect(() => firstField.current?.focus({ preventScroll: true }), []);
+  const firstField = useRef<HTMLTextAreaElement>(null);
+  const photoPick = useRef<HTMLInputElement>(null);
+  useEffect(() => (firstField.current ?? photoPick.current)?.focus({ preventScroll: true }), []);
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
   }, [preview]);
+
+  // Après un refus, le focus va au champ en cause (ou au message) : il n'est
+  // jamais perdu, même si le bouton a été désactivé pendant l'envoi.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!error) return;
+    const form = formRef.current;
+    const target = form?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? (error === "photoMissing" || error === "photo" ? photoPick.current : null) ?? form?.querySelector<HTMLElement>("[role=alert]");
+    target?.focus({ preventScroll: false });
+  }, [error]);
 
   const textLimit = kind === "condolence" ? CONTRIBUTION_TEXT_LIMITS.condolence : CONTRIBUTION_TEXT_LIMITS.story;
   const count = (v: string) => countVisibleCharacters(normalizeContributionText(v));
@@ -192,20 +287,27 @@ function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; langua
     : error === "generic" ? "contributionsDeposit.errorGeneric"
     : null;
 
-  return (
-    <form className={`${styles.paper} ${styles[`paper-${kind}`]}`} style={paperStyle(kind)} onSubmit={submit} noValidate data-deposit-form={kind}>
-      <p className={styles.paperOverline}>{t(kindTitle(kind))}</p>
+  const body = (
+    <form ref={formRef} id={ids.form} className={styles.form} onSubmit={submit} noValidate data-deposit-form={kind}>
+      <p className={styles.chip}>
+        <span className={styles.chipIcon} aria-hidden="true">
+          <KindIcon kind={kind} />
+        </span>
+        {t(kindTitle(kind))}
+      </p>
 
       {kind === "photo" ? (
         <div className={styles.photoField}>
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- aperçu local de la photo choisie, jamais envoyé tel quel
-            <img className={styles.photoPreview} src={preview} alt="" />
+            <img className={styles.photoPreview} src={preview} alt="" data-deposit-preview="" />
           ) : null}
           <label className={styles.photoPick} htmlFor={ids.photo}>
-            {t(file ? "contributionsDeposit.photoChange" : "contributionsDeposit.photoPick")}
+            <ImageIcon />
+            <span>{t(file ? "contributionsDeposit.photoChange" : "contributionsDeposit.photoPick")}</span>
           </label>
           <input
+            ref={photoPick}
             id={ids.photo}
             className={styles.visuallyHidden}
             type="file"
@@ -220,13 +322,16 @@ function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; langua
           />
         </div>
       ) : (
-        <Field label={kind === "condolence" ? t("contributionsDeposit.message") : t("contributionsDeposit.story")} id={ids.text} count={count(text)} max={textLimit} language={language}>
+        <Field label={kind === "condolence" ? t("contributionsDeposit.message") : t("contributionsDeposit.story")} required id={ids.text} count={count(text)} max={textLimit} language={language}>
           <textarea
+            ref={firstField}
             id={ids.text}
-            className={styles.textarea}
-            rows={kind === "condolence" ? 5 : 8}
+            className={`${styles.input} ${styles.textarea}`}
+            rows={kind === "condolence" ? 4 : 7}
             value={text}
+            placeholder={t(kind === "condolence" ? "contributionsDeposit.placeholderCondolence" : "contributionsDeposit.placeholderStory")}
             onChange={(e) => setText(e.currentTarget.value)}
+            aria-required="true"
             aria-invalid={error === "text" || undefined}
             aria-describedby={error === "text" ? ids.error : undefined}
           />
@@ -235,18 +340,27 @@ function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; langua
 
       {kind === "photo" ? (
         <Field label={t("contributionsDeposit.caption")} id={ids.caption} count={count(caption)} max={CONTRIBUTION_TEXT_LIMITS.caption} language={language}>
-          <input id={ids.caption} className={styles.input} value={caption} onChange={(e) => setCaption(e.currentTarget.value)} aria-invalid={error === "caption" || undefined} />
+          <input
+            id={ids.caption}
+            className={styles.input}
+            value={caption}
+            placeholder={t("contributionsDeposit.placeholderCaption")}
+            onChange={(e) => setCaption(e.currentTarget.value)}
+            aria-invalid={error === "caption" || undefined}
+            aria-describedby={error === "caption" ? ids.error : undefined}
+          />
         </Field>
       ) : null}
 
-      <Field label={t("contributionsDeposit.name")} id={ids.name} count={count(name)} max={CONTRIBUTION_TEXT_LIMITS.authorName} language={language}>
+      <Field label={t("contributionsDeposit.name")} required id={ids.name} count={count(name)} max={CONTRIBUTION_TEXT_LIMITS.authorName} language={language}>
         <input
-          ref={kind === "photo" ? undefined : firstField}
           id={ids.name}
           className={styles.input}
           value={name}
           autoComplete="name"
+          placeholder={t("contributionsDeposit.placeholderName")}
           onChange={(e) => setName(e.currentTarget.value)}
+          aria-required="true"
           aria-invalid={error === "authorName" || undefined}
           aria-describedby={error === "authorName" ? ids.error : undefined}
         />
@@ -260,41 +374,47 @@ function DepositForm({ kind, language, engine, canGoBack }: { kind: Kind; langua
         </label>
       </div>
 
-      <p className={styles.privacy}>{t("contributionsDeposit.privacy")}</p>
+      <p className={styles.privacy}>
+        <LockIcon className={styles.privacyIcon} />
+        <span>{t("contributionsDeposit.privacy")}</span>
+      </p>
 
       {errorKey ? (
-        <p id={ids.error} className={styles.error} role="alert">
+        <p id={ids.error} className={styles.error} role="alert" tabIndex={-1}>
           {t(errorKey)}
         </p>
       ) : null}
-
-      <div className={styles.actions}>
-        {canGoBack ? (
-          <button type="button" className={styles.secondary} onClick={engine.back} disabled={sending}>
-            {t("contributionsDeposit.back")}
-          </button>
-        ) : null}
-        <button type="submit" className={styles.primary} disabled={sending || !ready} aria-busy={sending || undefined}>
-          {sending ? t("contributionsDeposit.sending") : t("contributionsDeposit.send")}
-        </button>
-      </div>
     </form>
   );
+
+  const footer = (
+    <>
+      <button type="submit" form={ids.form} className={styles.primary} disabled={sending || !ready} aria-busy={sending || undefined}>
+        <PlaneIcon className={styles.primaryIcon} />
+        <span>{sending ? t("contributionsDeposit.sending") : t("contributionsDeposit.send")}</span>
+      </button>
+      {canGoBack ? (
+        <button type="button" className={styles.back} onClick={engine.back} disabled={sending}>
+          {t("contributionsDeposit.back")}
+        </button>
+      ) : null}
+    </>
+  );
+
+  return <LetterCard stepKey={`write-${kind}-${preview ? "p" : ""}-${errorKey ?? ""}`} header={header} close={close} body={body} footer={footer} />;
 }
 
-function Field({ label, id, count, max, language, children }: { label: string; id: string; count: number; max: number; language: Language; children: React.ReactNode }) {
+function Field({ label, id, count, max, language, required = false, children }: { label: string; id: string; count: number; max: number; language: Language; required?: boolean; children: React.ReactNode }) {
   const over = count > max;
   return (
     <div className={styles.field}>
-      <div className={styles.fieldHead}>
-        <label htmlFor={id} className={styles.label}>
-          {label}
-        </label>
-        <span className={`${styles.counter} ${over ? styles.counterOver : ""}`} aria-live="polite">
-          {translateWith(language, "contributionsDeposit.counter", { count, max })}
-        </span>
-      </div>
+      <label htmlFor={id} className={`${styles.label} ${required ? styles.required : ""}`}>
+        {label}
+      </label>
       {children}
+      <span className={`${styles.counter} ${over ? styles.counterOver : ""}`} aria-live="polite">
+        {translateWith(language, "contributionsDeposit.counter", { count, max })}
+      </span>
     </div>
   );
 }
