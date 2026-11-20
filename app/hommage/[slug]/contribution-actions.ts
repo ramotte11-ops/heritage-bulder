@@ -1,5 +1,6 @@
 "use server";
 
+import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "@/config/contributions-deposit-readiness";
 import { createVisitorContributionDeps } from "@/lib/memorial/contributions/server-contributions";
 import {
   finishContributionPhoto,
@@ -28,6 +29,13 @@ import {
  *
  * Parcours photo : beginContributionPhoto → envoi direct du fichier par le
  * navigateur (uploadToSignedUrl) → completeContributionPhoto.
+ *
+ * M8-E6-P — VERROU SERVEUR DU DÉPÔT. Ces actions sont des points d'entrée
+ * réels de la page publique dès le build, même sans fenêtre affichée.
+ * Tant que CONTRIBUTIONS_DEPOSIT_PUBLIC_READY est fermé (Q6, design, E6),
+ * les quatre actions de DÉPÔT répondent `unavailable` sans rien lire ni
+ * écrire, même si les migrations et le secret anti-robots sont en place.
+ * La lecture (Album, liens photo) n'est pas concernée.
  */
 
 function withDeps<T>(run: (deps: ReturnType<typeof createVisitorContributionDeps>) => Promise<T> | T): Promise<T | { status: "unavailable" }> {
@@ -41,8 +49,14 @@ function withDeps<T>(run: (deps: ReturnType<typeof createVisitorContributionDeps
   return Promise.resolve(run(deps));
 }
 
+/** Dépôt : verrou de publication d'abord, configuration ensuite. */
+function withDepositDeps<T>(run: (deps: ReturnType<typeof createVisitorContributionDeps>) => Promise<T> | T): Promise<T | { status: "unavailable" }> {
+  if (!CONTRIBUTIONS_DEPOSIT_PUBLIC_READY) return Promise.resolve({ status: "unavailable" } as const);
+  return withDeps(run);
+}
+
 export async function openContributionWindow(slug: unknown) {
-  return withDeps((deps) => openContributionForm(deps, slug));
+  return withDepositDeps((deps) => openContributionForm(deps, slug));
 }
 
 export async function depositContributionText(input: {
@@ -54,14 +68,14 @@ export async function depositContributionText(input: {
   website?: unknown;
 }): Promise<VisitorDepositResult> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return withDeps((deps) =>
+  return withDepositDeps((deps) =>
     submitContributionText(deps, { slug: i.slug, type: i.type, authorName: i.authorName, text: i.text, formToken: i.formToken, honeypot: i.website }),
   );
 }
 
 export async function beginContributionPhoto(input: { slug: unknown; declaredMimeType: unknown; formToken: unknown; website?: unknown }): Promise<PhotoStartResult> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return withDeps((deps) => startContributionPhoto(deps, { slug: i.slug, declaredMimeType: i.declaredMimeType, formToken: i.formToken, honeypot: i.website }));
+  return withDepositDeps((deps) => startContributionPhoto(deps, { slug: i.slug, declaredMimeType: i.declaredMimeType, formToken: i.formToken, honeypot: i.website }));
 }
 
 export async function completeContributionPhoto(input: {
@@ -74,7 +88,7 @@ export async function completeContributionPhoto(input: {
   website?: unknown;
 }): Promise<PhotoFinishResult> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return withDeps((deps) =>
+  return withDepositDeps((deps) =>
     finishContributionPhoto(deps, {
       slug: i.slug,
       mediaId: i.mediaId,

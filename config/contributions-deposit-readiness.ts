@@ -4,8 +4,11 @@
  * Le moteur (`useContributionDeposit`) et le transport réel sont prêts et
  * testés, mais la fenêtre ne doit PAS être raccordée à l'hommage public tant
  * que chacune des réserves ci-dessous n'est pas levée par son autorité.
- * Un test vérifie qu'aucune page de `app/hommage/` ne l'importe tant que ce
- * verrou est fermé.
+ * Deux barrières tant que ce verrou est fermé :
+ *  - interface : aucune page de `app/hommage/` n'importe la fenêtre (test) ;
+ *  - serveur (M8-E6-P) : les Server Actions de dépôt répondent `unavailable`
+ *    sans rien lire ni écrire (app/hommage/[slug]/contribution-actions.ts),
+ *    même une fois les migrations et le secret anti-robots en place.
  *
  * En particulier, la mention de confidentialité affichée par le prototype
  * (`contributionsDeposit.privacy`, FR/EN/ES) est PROVISOIRE : elle n'est pas

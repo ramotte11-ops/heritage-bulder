@@ -7,6 +7,9 @@ const { createVisitorContributionDeps, createFamilyContributionDeps } = vi.hoist
   createFamilyContributionDeps: vi.fn(),
 }));
 vi.mock("@/lib/memorial/contributions/server-contributions", () => ({ createVisitorContributionDeps, createFamilyContributionDeps }));
+// Le verrou de publication est fermé en production ; les tests du moteur l'ouvrent explicitement.
+const readiness = vi.hoisted(() => ({ CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: true }));
+vi.mock("@/config/contributions-deposit-readiness", () => readiness);
 
 const visitor = await import("./contribution-actions");
 const family = await import("@/lib/memorial/contributions/family-contribution-actions");
@@ -21,6 +24,37 @@ beforeEach(() => {
   createVisitorContributionDeps.mockReset();
   createFamilyContributionDeps.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+describe("M8-E6-P — verrou serveur du dépôt", () => {
+  it("verrou fermé : les quatre actions de dépôt répondent unavailable sans rien construire ni écrire, secret et base en place", async () => {
+    readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = false;
+    try {
+      const submit = vi.fn();
+      createVisitorContributionDeps.mockReturnValue({ secrets: { current: "s".repeat(40), previous: null }, now: () => new Date(), repository: { submit } });
+      expect(await visitor.openContributionWindow("a1b2c3d4e5f6")).toEqual({ status: "unavailable" });
+      expect(await visitor.depositContributionText({ slug: "a1b2c3d4e5f6", type: "condolence", authorName: "A", text: "B", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(await visitor.beginContributionPhoto({ slug: "a1b2c3d4e5f6", declaredMimeType: "image/jpeg", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(await visitor.completeContributionPhoto({ slug: "a1b2c3d4e5f6", mediaId: "m", photoTicket: "t", authorName: "A", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(createVisitorContributionDeps).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true;
+    }
+  });
+
+  it("verrou fermé : la lecture (Album, liens photo) reste servie", async () => {
+    readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = false;
+    try {
+      createVisitorContributionDeps.mockImplementation(() => {
+        throw new Error("no config");
+      });
+      await visitor.loadContributions("a1b2c3d4e5f6", null);
+      expect(createVisitorContributionDeps).toHaveBeenCalled();
+    } finally {
+      readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true;
+    }
+  });
 });
 
 describe("M8-E2 — Server Actions publiques", () => {

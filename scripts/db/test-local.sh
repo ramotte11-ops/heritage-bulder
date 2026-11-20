@@ -5527,6 +5527,16 @@ check "M8-E4 rollback removes both functions, then the migration re-applies" "0|
   "$($PSQL -d m8e4_down -f "$E4_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is null and to_regprocedure('$E4_IDS') is null then 'absent' else 'present' end;")|$($PSQL -d m8e4_down -f "$E4_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is not null and to_regprocedure('$E4_IDS') is not null then 'present' else 'absent' end;")"
 $PSQL -d postgres -c "drop database m8e4_down;" >/dev/null
 
+echo "== M8-E6-P: read-only postflight of E2 to E4 (supabase/verifications/m8_e2_e4_postflight.sql) =="
+E24_POST="$REPO_ROOT/supabase/verifications/m8_e2_e4_postflight.sql"
+E24_OUT=$($DB -t -A -f "$E24_POST" 2>&1)
+check "M8-E6-P: E2-E4 postflight after the migrations: zero ECHEC, 16 OK" "0|16" \
+  "$(echo "$E24_OUT" | grep -c 'ECHEC' || true)|$(echo "$E24_OUT" | grep -c '|OK$' || true)"
+check "M8-E6-P: E2-E4 postflight turns red if a client role may execute a read" "1" \
+  "$($DB -t -A -c "begin;" -c "grant execute on function public.read_public_contributions_v2(text,integer,timestamptz,uuid,text[]) to anon;" -f "$E24_POST" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+check "M8-E6-P: E2-E4 postflight is a read-only transaction (writes nothing)" "1" \
+  "$(grep -c '^begin transaction read only;' "$E24_POST")"
+
 echo "== M8-E5: family list under the session (RLS), composite cursor — no new migration =="
 # The family list (SupabaseFamilyContributionReader) reads messages with the
 # FAMILY'S OWN session (messages_select_own), ordered created_at desc, id desc.
