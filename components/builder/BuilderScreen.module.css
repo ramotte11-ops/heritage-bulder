@@ -22,6 +22,14 @@
   color: var(--heritage-text-primary);
 }
 
+/* UX-A15 — même découpe que `hidden`, sans conteneur de défilement : un
+ * descendant collant suit la fenêtre. Navigateur ancien : repli sur `hidden`
+ * (la barre reste simplement au-dessus du Master). */
+.pageAllowsSticky {
+  overflow: hidden;
+  overflow: clip;
+}
+
 @media (min-width: 40rem) {
   .page {
     background-image: url("/assets/builder/backgrounds/heritage-builder-background-desktop.png");

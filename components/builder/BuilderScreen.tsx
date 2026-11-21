@@ -12,6 +12,13 @@ interface BuilderScreenProps {
    * (`AutosaveIndicator`), shown right under the progress bar. Absent on
    * screens that do not autosave: nothing changes for them. */
   status?: ReactNode;
+  /**
+   * UX-A15 — permet à un écran d'avoir un élément collant (`position:
+   * sticky`) : la page découpe son contenu avec `overflow: clip`, identique
+   * visuellement à `hidden` mais sans créer de conteneur de défilement (qui
+   * neutraliserait le collant). Absent : rien ne change pour l'écran.
+   */
+  allowSticky?: boolean;
   children: ReactNode;
 }
 
@@ -39,9 +46,9 @@ interface BuilderScreenProps {
  * (title, copy, options, CTA, form) is entirely its own concern,
  * composed as `children`.
  */
-export function BuilderScreen({ progress, status, children }: BuilderScreenProps) {
+export function BuilderScreen({ progress, status, allowSticky = false, children }: BuilderScreenProps) {
   return (
-    <main className={`${styles.page} ${playfairDisplay.variable} ${inter.variable}`}>
+    <main className={`${styles.page} ${allowSticky ? styles.pageAllowsSticky : ""} ${playfairDisplay.variable} ${inter.variable}`}>
       <p className={styles.signature}>
         Stories
         <br />
