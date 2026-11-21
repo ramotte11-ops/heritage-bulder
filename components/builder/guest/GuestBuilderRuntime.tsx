@@ -66,7 +66,12 @@ import {
   resolveGuestReviewingSection,
   resolveGuestRevisionTarget,
 } from "@/lib/guest-draft/guest-journey";
-import { journeySectionForScreen, type JourneyScreenId, type JourneySection } from "@/lib/builder/guided-flow/journey";
+import {
+  REVISION_SECTION_ALIASES,
+  journeySectionForScreen,
+  type JourneyScreenId,
+  type JourneySection,
+} from "@/lib/builder/guided-flow/journey";
 import type { LocalPhotoSnapshot } from "@/lib/media/local-photo";
 import { createUuidV4 } from "@/lib/browser/uuid-v4";
 import { GuestDurableSaveEntry } from "./GuestDurableSaveEntry";
@@ -113,10 +118,22 @@ function validView(draft: GuestDraftV3, view: JourneyView): JourneyView {
   const revising = resolveGuestRevisionTarget(draft, view.revising);
   return {
     revising,
-    reviewingSection: resolveGuestReviewingSection(draft, view.reviewingSection),
+    // While a screen is revised, its rubrique is the route's own rule
+    // (`resolveRevisionContext`): the screen's own, or an accepted alias —
+    // A00 reopened from « L'annonce de décès » (Chef 03 / O04).
+    reviewingSection:
+      revising === null
+        ? resolveGuestReviewingSection(draft, view.reviewingSection)
+        : revisionSection(revising, view.reviewingSection),
     returnToPreview: revising !== null && view.returnToPreview,
     reopenPreview: view.reopenPreview,
   };
+}
+
+function revisionSection(revising: JourneyScreenId, claimed: JourneySection | null): JourneySection {
+  const own = journeySectionForScreen(revising);
+  if (claimed === null || claimed === own) return own;
+  return REVISION_SECTION_ALIASES[revising]?.includes(claimed) ? claimed : own;
 }
 
 /** The catalog screen shown: the revised one, else where the family stopped. */
@@ -325,9 +342,9 @@ export function GuestBuilderRuntime({
   }, [show]);
 
   const journeyMoves = useMemo<GuestJourneyMoves>(() => ({
-    openScreen: (id, returnToPreview) => show(() => ({
+    openScreen: (id, returnToPreview, section) => show(() => ({
       revising: id,
-      reviewingSection: journeySectionForScreen(id),
+      reviewingSection: section ?? journeySectionForScreen(id),
       returnToPreview,
       reopenPreview: false,
     })),

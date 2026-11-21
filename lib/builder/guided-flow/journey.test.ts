@@ -22,6 +22,7 @@ import {
   isJourneyScreenId,
   resolveJourney,
   resolveJourneyScreens,
+  REVISION_SECTION_ALIASES,
   resolveRevisionContext,
   resolveRevisionTarget,
   resolveReviewingSection,
@@ -419,6 +420,101 @@ describe("Chef 03 / O03 — « À compléter » for repères not confirmed yet (
     const confirmed = ok(commitA09(pending));
     expect(currentJourneyScreen(pending)).toBe(currentJourneyScreen(confirmed));
     for (const screen of JOURNEY_SCREENS) expect(screen.needs(pending)).toBe(screen.needs(confirmed));
+  });
+});
+
+describe("Chef 03 / O04 — the ceremony: « Pas encore décidé » is not « Non »", () => {
+  const atA04 = () => ok(commitA00(throughA03(), "yes"));
+  const DETAILS = ["ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyProgramme", "ceremonyNote"] as const;
+
+  it("undecided: details « À décider » (never « Non concernée »), the block « À décider », A04 reopenable", () => {
+    const content = ok(commitA04(atA04(), "undecided"));
+    for (const id of DETAILS) expect(statuses(content)[id]).toBe("deferred");
+    expect(resolveJourney(content).sections.find((x) => x.id === "ceremony")?.status).toBe("deferred");
+    expect(resolveJourneyScreens(content).find((s) => s.id === "ceremonyMoment")).toMatchObject({ status: "done", accessible: true });
+    expect(resolveRevisionTarget(content, "ceremonyMoment")).toBe("ceremonyMoment");
+  });
+
+  it("no: details « Non concernée », the block « Terminée » — unchanged", () => {
+    const content = ok(commitA04(atA04(), "no"));
+    for (const id of DETAILS) expect(statuses(content)[id]).toBe("hidden");
+    expect(resolveJourney(content).sections.find((x) => x.id === "ceremony")?.status).toBe("done");
+  });
+
+  it("the route is the same for « Non » and « Pas encore décidé » — only the display differs", () => {
+    expect(currentJourneyScreen(ok(commitA04(atA04(), "undecided")))).toBe(currentJourneyScreen(ok(commitA04(atA04(), "no"))));
+  });
+
+  it("changing the answer keeps what was entered: undecided → yes brings the details back as they were", () => {
+    const yes = fullAnnouncement(); // A04 = yes, details resolved
+    const undecided = ok(commitA04(yes, "undecided"));
+    expect((undecided as { ceremony: unknown }).ceremony).toEqual((yes as { ceremony: unknown }).ceremony);
+    const back = ok(commitA04(undecided, "yes"));
+    for (const id of DETAILS) expect(statuses(back)[id]).toBe("done");
+  });
+});
+
+describe("Chef 03 / O04 — locks: a screen the server would refuse is never offered for revision", () => {
+  const LOCKS = ["identity", "announcementChoice", "phrase", "photo", "crop", "reveal", "ceremonyMoment"] as const;
+
+  it("locked done screens: not accessible, flagged; the others untouched; the current screen unchanged", () => {
+    const content = fullAnnouncement();
+    const screens = resolveJourneyScreens(content, undefined, LOCKS);
+    for (const id of LOCKS) {
+      expect(screens.find((s) => s.id === id)).toMatchObject({ status: "done", accessible: false, locked: true });
+    }
+    expect(screens.find((s) => s.id === "traditions")).toMatchObject({ accessible: true, locked: false });
+    expect(screens.find((s) => s.id === "announcementText")).toMatchObject({ accessible: true, locked: false });
+    expect(resolveJourney(content, null, null, undefined, LOCKS).current).toBe(resolveJourney(content).current);
+  });
+
+  it("a locked current screen stays current (locks never move the route)", () => {
+    const content = throughA03(); // A04 current
+    const state = resolveJourneyScreens(content, undefined, ["ceremonyMoment"]).find((s) => s.id === "ceremonyMoment");
+    expect(state).toMatchObject({ status: "current", accessible: true, locked: false });
+  });
+
+  it("?etape= and ?rubrique= naming a locked screen are ignored", () => {
+    const content = fullAnnouncement();
+    expect(resolveRevisionTarget(content, "identity", LOCKS)).toBeNull();
+    expect(resolveRevisionContext(content, "reveal", "person", LOCKS)).toBeNull();
+    expect(resolveRevisionTarget(content, "traditions", LOCKS)).toBe("traditions");
+    expect(resolveReviewingSection(content, "person", LOCKS)).toBeNull();
+    expect(resolveReviewingSection(content, "traditions", LOCKS)).toBe("traditions");
+  });
+});
+
+describe("Chef 03 / O04 — « Modifier mon choix »: A00 reopened from the death notice's block", () => {
+  it("accepts A00 with rubrique=deathNotice, and only that alias", () => {
+    expect(REVISION_SECTION_ALIASES).toEqual({ announcementChoice: ["deathNotice"] });
+    const no = ok(commitA00(throughA03(), "no"));
+    expect(resolveRevisionContext(no, "announcementChoice", "deathNotice")).toEqual({
+      screen: "announcementChoice",
+      section: "deathNotice",
+    });
+    expect(resolveRevisionContext(no, "announcementChoice", "person")).toEqual({ screen: "announcementChoice", section: "person" });
+    expect(resolveRevisionContext(no, "announcementChoice", "ceremony")).toBeNull();
+    expect(resolveRevisionContext(no, "identity", "deathNotice")).toBeNull();
+  });
+
+  it("refused once A00 is locked (after publication)", () => {
+    const no = ok(commitA00(throughA03(), "no"));
+    expect(resolveRevisionContext(no, "announcementChoice", "deathNotice", ["announcementChoice"])).toBeNull();
+  });
+
+  it("back on the block afterwards: kept when the notice applies again (yes), ignored while it does not", () => {
+    const no = ok(commitA00(throughA03(), "no"));
+    expect(resolveReviewingSection(no, "deathNotice")).toBeNull();
+    expect(resolveReviewingSection(ok(commitA00(no, "yes")), "deathNotice")).toBe("deathNotice");
+  });
+
+  it("is pure: opening A00 writes nothing, and every notice record and text stay", () => {
+    const no = ok(commitA00(throughA03(), "no"));
+    const before = JSON.stringify(no);
+    resolveRevisionContext(no, "announcementChoice", "deathNotice");
+    resolveJourney(no, "announcementChoice", "deathNotice");
+    expect(JSON.stringify(no)).toBe(before);
+    expect(readGuidedFlowState(no).A01).toEqual(readGuidedFlowState(throughA03()).A01);
   });
 });
 

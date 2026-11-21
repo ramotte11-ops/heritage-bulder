@@ -148,7 +148,12 @@ const announcement = (content: MemorialContent) => {
 };
 const ceremonyPlanned = (content: MemorialContent) => {
   const answer = readCeremonyMomentAnswer(content);
-  return answer === null ? "undecided" : answer === "yes";
+  if (answer === null) return "undecided";
+  // Chef 03 / O04 — A04 « Pas encore décidé » is not « Non »: the detail
+  // screens read « À décider », never « Non concernée ». The route itself
+  // is unchanged (A05-A08 and A14 still apply only to « Oui »).
+  if (answer === "undecided") return "deferred";
+  return answer === "yes";
 };
 const recordResolved = (stepId: "A05" | "A06" | "A07" | "A08") => (content: MemorialContent) => {
   const status = readGuidedFlowState(content)[stepId]?.status;
@@ -243,8 +248,9 @@ export function currentJourneyScreenAfter(
  * - `toComplete`: reached but not (or no longer) done — e.g. the
  *   announcement preview after the text was edited;
  * - `upcoming`: not reached yet — never reopenable;
- * - `deferred`: depends on A00 answered « Plus tard » — « À décider »,
- *   never reopenable from here (the family changes A00 instead);
+ * - `deferred`: depends on a question answered « Plus tard » (A00) or
+ *   « Pas encore décidé » (A04) — « À décider », never reopenable from
+ *   here (the family changes that answer instead);
  * - `hidden`: not part of the route given the current answers — its
  *   content is kept, never presented as a required step.
  */
@@ -259,6 +265,10 @@ export interface JourneyScreenState {
   /** Chef 03 / O03 — holds matter not confirmed yet (Traditions without a
    * death notice): « Mon parcours » says it is not in the memorial yet. */
   pendingConfirmation: boolean;
+  /** Chef 03 / O04 — already treated, but no longer editable (the server's
+   * post-publication locks, `journey-locks.ts`): never offered for
+   * revision, so no « Revoir » can end in a refused save. */
+  locked: boolean;
 }
 
 export type JourneySectionStatus = "done" | "inProgress" | "upcoming" | "deferred" | "hidden";
@@ -292,7 +302,18 @@ export interface JourneyOverrides {
   resolved?: Partial<Record<JourneyScreenId, boolean>>;
 }
 
-export function resolveJourneyScreens(content: MemorialContent, overrides?: JourneyOverrides): JourneyScreenState[] {
+/**
+ * Chef 03 / O04 — screens the server would refuse to save right now
+ * (`lockedJourneyScreens`, journey-locks.ts — the Security V1 policy, read,
+ * never relaxed). Absent or empty → nothing locked (a draft, the guest).
+ */
+export type JourneyLocks = readonly JourneyScreenId[];
+
+export function resolveJourneyScreens(
+  content: MemorialContent,
+  overrides?: JourneyOverrides,
+  locks: JourneyLocks = [],
+): JourneyScreenState[] {
   const current = overrides === undefined ? currentJourneyScreen(content) : overrides.current;
   const currentIndex = current === null ? JOURNEY_SCREENS.length : JOURNEY_SCREENS.findIndex((s) => s.id === current);
 
@@ -310,21 +331,28 @@ export function resolveJourneyScreens(content: MemorialContent, overrides?: Jour
       // stands in the route (never a forced return: `needs` is untouched).
       status = pending ? "toComplete" : "done";
     } else status = index < currentIndex ? "toComplete" : "upcoming";
-    const accessible = status === "done" || status === "current" || status === "toComplete";
+    // A locked screen is never reopened for revision. The current screen
+    // stays what the route shows: locks never change the progression.
+    const locked = locks.includes(screen.id) && (status === "done" || status === "toComplete");
+    const accessible = !locked && (status === "done" || status === "current" || status === "toComplete");
     return {
       id: screen.id,
       section: screen.section,
       status,
       accessible,
       pendingConfirmation: pending && status !== "hidden" && status !== "deferred" && status !== "upcoming",
+      locked,
     };
   });
 }
 
 function sectionStatus(screens: JourneyScreenState[]): JourneySectionStatus {
   const visible = screens.filter((s) => s.status !== "hidden" && s.status !== "deferred");
-  if (visible.length === 0) return screens.some((s) => s.status === "deferred") ? "deferred" : "hidden";
-  if (visible.every((s) => s.status === "done")) return "done";
+  const deferred = screens.some((s) => s.status === "deferred");
+  if (visible.length === 0) return deferred ? "deferred" : "hidden";
+  // Chef 03 / O04 — the ceremony after « Pas encore décidé »: its question
+  // is answered, its details still « À décider ».
+  if (visible.every((s) => s.status === "done")) return deferred ? "deferred" : "done";
   if (visible.every((s) => s.status === "upcoming")) return "upcoming";
   return "inProgress";
 }
@@ -338,8 +366,9 @@ export function resolveJourney(
   revising: JourneyScreenId | null = null,
   reviewingSection: JourneySection | null = revising === null ? null : journeySectionForScreen(revising),
   overrides?: JourneyOverrides,
+  locks: JourneyLocks = [],
 ): JourneySnapshot {
-  const screens = resolveJourneyScreens(content, overrides);
+  const screens = resolveJourneyScreens(content, overrides, locks);
   const sections = JOURNEY_SECTIONS.map((id): JourneySectionState => {
     const own = screens.filter((s) => s.section === id);
     return { id, status: sectionStatus(own), screens: own };
@@ -353,10 +382,14 @@ export function resolveJourney(
  * names a known rubrique that still contains at least one server-resolved
  * accessible screen; otherwise ignore it.
  */
-export function resolveReviewingSection(content: MemorialContent, raw: unknown): JourneySection | null {
+export function resolveReviewingSection(
+  content: MemorialContent,
+  raw: unknown,
+  locks: JourneyLocks = [],
+): JourneySection | null {
   if (typeof raw !== "string" || !JOURNEY_SECTIONS.includes(raw as JourneySection)) return null;
   const section = raw as JourneySection;
-  return resolveJourneyScreens(content).some((screen) => screen.section === section && screen.accessible)
+  return resolveJourneyScreens(content, undefined, locks).some((screen) => screen.section === section && screen.accessible)
     ? section
     : null;
 }
@@ -368,24 +401,41 @@ export function resolveReviewingSection(content: MemorialContent, raw: unknown):
  * screen (which the route shows anyway). Anything else → `null`, and
  * the route simply shows the current screen.
  */
-export function resolveRevisionTarget(content: MemorialContent, raw: unknown): JourneyScreenId | null {
+export function resolveRevisionTarget(
+  content: MemorialContent,
+  raw: unknown,
+  locks: JourneyLocks = [],
+): JourneyScreenId | null {
   if (!isJourneyScreenId(raw)) return null;
-  const state = resolveJourneyScreens(content).find((s) => s.id === raw);
+  const state = resolveJourneyScreens(content, undefined, locks).find((s) => s.id === raw);
   if (state === undefined || !state.accessible || state.status === "current") return null;
   return raw;
 }
 
+/**
+ * Chef 03 / O04 — a question reopened from ANOTHER rubrique's block: A00
+ * (« Votre proche ») from « L'annonce de décès » (« Modifier mon choix »),
+ * so that once answered the family comes back to the announcement's list.
+ * The only pairs ever accepted besides a screen's own rubrique.
+ */
+export const REVISION_SECTION_ALIASES: Readonly<Partial<Record<JourneyScreenId, readonly JourneySection[]>>> = {
+  announcementChoice: ["deathNotice"],
+};
+
 /** Validates the pair supplied by the browser and derives the rubrique
  * from the fixed catalog. A mismatched `?rubrique=` can never move a
- * screen into another rubrique. Legacy `?etape=` links remain valid. */
+ * screen into another rubrique (beyond `REVISION_SECTION_ALIASES`).
+ * Legacy `?etape=` links remain valid. */
 export function resolveRevisionContext(
   content: MemorialContent,
   rawScreen: unknown,
   rawSection: unknown,
+  locks: JourneyLocks = [],
 ): { screen: JourneyScreenId; section: JourneySection } | null {
-  const screen = resolveRevisionTarget(content, rawScreen);
+  const screen = resolveRevisionTarget(content, rawScreen, locks);
   if (screen === null) return null;
   const section = journeySectionForScreen(screen);
-  if (rawSection !== undefined && rawSection !== section) return null;
-  return { screen, section };
+  if (rawSection === undefined || rawSection === section) return { screen, section };
+  const alias = REVISION_SECTION_ALIASES[screen]?.find((candidate) => candidate === rawSection);
+  return alias === undefined ? null : { screen, section: alias };
 }

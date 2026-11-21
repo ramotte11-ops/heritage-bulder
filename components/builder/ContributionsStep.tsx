@@ -2,11 +2,16 @@
 
 import { useState } from "react";
 import { useStepDone } from "./journey/journey-context";
+import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
-import type { ContributionsFeatures } from "@/lib/memorial/contributions/contributions-settings";
+import {
+  CONTRIBUTION_FEATURES,
+  NO_CONTRIBUTION_FEATURES,
+  type ContributionsFeatures,
+} from "@/lib/memorial/contributions/contributions-settings";
 import {
   commitA15,
   contributionsStepProgress,
@@ -54,9 +59,17 @@ export function ContributionsStep({ language, content, skinVariant, persist, pro
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const read = readContributionsForEditing(content);
-  const [features, setFeatures] = useState<ContributionsFeatures>(() => (read.status === "ready" ? read.features : { condolences: false, stories: false, photos: false }));
+  const stored = read.status === "ready" ? read.features : NO_CONTRIBUTION_FEATURES;
+  const [features, setFeatures] = useState<ContributionsFeatures>(() => stored);
   const [pending, setPending] = useState<"continue" | "skip" | null>(null);
   const [submitError, setSubmitError] = useState(false);
+  // Chef 03 / O04 — choices changed on screen are saved only by
+  // « Continuer ». While they differ from the stored ones, leaving the
+  // screen (« Mon parcours », closing the tab) asks first, and « Passer »
+  // offers to save them instead of dropping them silently.
+  const unsaved = CONTRIBUTION_FEATURES.some((feature) => features[feature] !== stored[feature]);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  usePendingInput(unsaved && pending === null);
 
   async function resolveStep(write: (c: MemorialContent) => ContributionsStepWriteResult, action: "continue" | "skip") {
     setSubmitError(false);
@@ -116,12 +129,45 @@ export function ContributionsStep({ language, content, skinVariant, persist, pro
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
-          <button type="button" className={styles.skipLink} disabled={busy} aria-busy={pending === "skip" || undefined} onClick={() => void resolveStep(skipA15, "skip")}>
+          <button
+            type="button"
+            className={styles.skipLink}
+            disabled={busy}
+            aria-busy={pending === "skip" || undefined}
+            onClick={() => {
+              if (unsaved) setConfirmSkip(true);
+              else void resolveStep(skipA15, "skip");
+            }}
+          >
             <PendingActionLabel pending={pending === "skip"} pendingLabel={translate(language, "common.pleaseWait")}>
               {translate(language, "contributionsStep.skip")}
             </PendingActionLabel>
           </button>
         </div>
+
+        {confirmSkip && unsaved && (
+          <div role="alert" className={styles.unsaved}>
+            <p className={styles.unsavedText}>{translate(language, "contributionsStep.unsavedChoices")}</p>
+            <div className={styles.unsavedActions}>
+              <button
+                type="button"
+                className={styles.skipLink}
+                disabled={busy}
+                onClick={() => void resolveStep((c) => commitA15(c, features), "continue")}
+              >
+                {translate(language, "contributionsStep.unsavedSave")}
+              </button>
+              <button
+                type="button"
+                className={styles.skipLink}
+                disabled={busy}
+                onClick={() => void resolveStep(skipA15, "skip")}
+              >
+                {translate(language, "contributionsStep.unsavedSkip")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {submitError && (
           <p role="alert" className={styles.error}>

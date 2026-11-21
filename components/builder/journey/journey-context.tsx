@@ -68,6 +68,10 @@ export interface JourneyNavigation {
 
 export interface OpenScreenOptions {
   returnToPreview?: boolean;
+  /** Chef 03 / O04 — the rubrique to come back to after the save, when it
+   * is not the screen's own (A00 reopened from « L'annonce de décès »).
+   * Validated server-side (`REVISION_SECTION_ALIASES`). */
+  section?: JourneySection;
   startTransition?: (navigate: () => void) => void;
 }
 
@@ -279,7 +283,7 @@ export function RouteJourneyProvider({
       returnToPreview,
       async openScreen(id, options = {}) {
         if (!(await canLeaveCurrentScreen())) return false;
-        const section = journeySectionForScreen(id);
+        const section = options.section ?? journeySectionForScreen(id);
         const path = `${builderPath}?etape=${id}&rubrique=${section}${options.returnToPreview ? `&${RETURN_TO_PREVIEW_QUERY}` : ""}`;
         const navigate = () => {
           if (snapshot.reviewingSection === null) router.push(path);

@@ -17,11 +17,10 @@ import {
   useRevisionedDraftPersist,
   type DraftSaveTransport,
 } from "@/lib/builder/draft-revision";
-import { commitA13, galleryStepProgress, readGalleryForEditing, skipA13 } from "@/lib/builder/guided-flow/gallery-step";
+import { commitA13, galleryStepProgress, readGalleryForEditing } from "@/lib/builder/guided-flow/gallery-step";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 import { BuilderScreen } from "./BuilderScreen";
 import { GalleryWorkshop } from "./GalleryWorkshop";
-import { PendingActionLabel } from "./PendingActionLabel";
 import { PrimaryButton } from "./PrimaryButton";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./GalleryStep.module.css";
@@ -201,21 +200,10 @@ export function GalleryStep(props: GalleryStepProps) {
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
-
-          <button
-            type="button"
-            className={styles.skipLink}
-            disabled={controlsDisabled}
-            aria-busy={pendingAction === "skip" || undefined}
-            onClick={() => void resolveStep(skipA13, "skip")}
-          >
-            <PendingActionLabel
-              pending={pendingAction === "skip"}
-              pendingLabel={translate(language, "common.pleaseWait")}
-            >
-              {translate(language, "galleryStep.skip")}
-            </PendingActionLabel>
-          </button>
+          {/* Chef 03 / O04 — « Passer cette étape » removed: on A13 it was
+              strictly equivalent to « Continuer » (the same record — skipped
+              without photographs, and nothing reads completed vs skipped
+              with them —, the same kept photographs, the same publication). */}
         </div>
 
         {submitError && (

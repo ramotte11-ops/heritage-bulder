@@ -21,6 +21,7 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { ContributionsStep } = await import("./ContributionsStep");
+const { createPendingInputRegistry, PendingInputRegistryContext } = await import("./journey/pending-input");
 
 const DRAFT = {
   hero: { displayName: "Élise Martin" },
@@ -135,3 +136,73 @@ describe("M7 — ContributionsStep (A15)", () => {
     });
   });
 });
+
+describe("Chef 03 / O04 — « Passer » never drops changed choices silently", () => {
+  const OPENED = { ...DRAFT, contributions: { features: { condolences: true, stories: false, photos: false } } } as unknown as MemorialContent;
+  const savedOf = (persist: ReturnType<typeof vi.fn>) =>
+    (persist.mock.calls.at(-1) as unknown as [MemorialContent])[0] as unknown as Record<string, unknown>;
+
+  it("unchanged choices: « Passer » goes on at once, exactly as before", async () => {
+    const persist = vi.fn(async () => ({ updatedAt: "2026-11-21T10:00:00.000Z" }));
+    render(<ContributionsStep language="fr" content={OPENED} skinVariant="light" persist={persist} />);
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.skip") }));
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(screen.queryByText(translate("fr", "contributionsStep.unsavedChoices"))).toBeNull();
+  });
+
+  it("changed choices: « Passer » asks first and writes nothing", () => {
+    const persist = vi.fn();
+    render(<ContributionsStep language="fr" content={OPENED} skinVariant="light" persist={persist} />);
+    fireEvent.click(sw("photos"));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.skip") }));
+    expect(screen.getByRole("alert").textContent).toContain(translate("fr", "contributionsStep.unsavedChoices"));
+    expect(persist).not.toHaveBeenCalled();
+    expect((sw("photos") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("« Enregistrer mes choix »: saves the changed choices, like « Continuer »", async () => {
+    const persist = vi.fn(async () => ({ updatedAt: "2026-11-21T10:00:00.000Z" }));
+    render(<ContributionsStep language="fr" content={OPENED} skinVariant="light" persist={persist} />);
+    fireEvent.click(sw("photos"));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.skip") }));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.unsavedSave") }));
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(savedOf(persist).contributions).toEqual({ features: { condolences: true, stories: false, photos: true } });
+    expect((savedOf(persist).guidedFlow as Record<string, unknown>).A15).toEqual({ status: "completed" });
+  });
+
+  it("« Passer sans les enregistrer »: an explicit choice — the stored choices stay, untouched", async () => {
+    const persist = vi.fn(async () => ({ updatedAt: "2026-11-21T10:00:00.000Z" }));
+    render(<ContributionsStep language="fr" content={OPENED} skinVariant="light" persist={persist} />);
+    fireEvent.click(sw("photos"));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.skip") }));
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "contributionsStep.unsavedSkip") }));
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(savedOf(persist).contributions).toEqual({ features: { condolences: true, stories: false, photos: false } });
+    expect((savedOf(persist).guidedFlow as Record<string, unknown>).A15).toEqual({ status: "skipped" });
+  });
+
+  it("changed choices are reported as unsaved input (« Mon parcours » and closing the tab ask first); undone, they are not", () => {
+    const registry = createPendingInputRegistry();
+    render(
+      <PendingInputRegistryContext.Provider value={registry}>
+        <ContributionsStep language="fr" content={OPENED} skinVariant="light" persist={vi.fn()} />
+      </PendingInputRegistryContext.Provider>,
+    );
+    expect(registry.hasPending()).toBe(false);
+    fireEvent.click(sw("stories"));
+    expect(registry.hasPending()).toBe(true);
+    fireEvent.click(sw("stories"));
+    expect(registry.hasPending()).toBe(false);
+  });
+
+  it.each(["en", "es"] as const)("is translated (%s)", (language) => {
+    render(<ContributionsStep language={language} content={OPENED} skinVariant="light" persist={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("switch")[2]);
+    fireEvent.click(screen.getByRole("button", { name: translate(language, "contributionsStep.skip") }));
+    expect(screen.getByText(translate(language, "contributionsStep.unsavedChoices"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: translate(language, "contributionsStep.unsavedSave") })).toBeTruthy();
+    expect(screen.getByRole("button", { name: translate(language, "contributionsStep.unsavedSkip") })).toBeTruthy();
+  });
+});
+

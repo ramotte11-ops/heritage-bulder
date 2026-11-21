@@ -69,3 +69,26 @@
   font-size: 0.875rem;
   color: var(--heritage-state-error-text);
 }
+
+/* Chef 03 / O04 — « Passer » with changed, unsaved choices: a calm
+   question, in the step's own type and colours. */
+.unsaved {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-sm);
+  text-align: center;
+}
+
+.unsavedText {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+}
+
+.unsavedActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--heritage-space-md);
+}
