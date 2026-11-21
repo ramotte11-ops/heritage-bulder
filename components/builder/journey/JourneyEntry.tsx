@@ -496,6 +496,15 @@ function VisibilityManager({
 /** T08's row, once T08 is done: the ambiance actually saved
  * (`memorials.skin_variant`), so the family sees which one they chose. */
 function ScreenDetail({ screen, journey }: { screen: JourneyScreenState; journey: JourneyNavigation }) {
+  // Chef 03 / O03 — repères not confirmed yet: say they are not in the
+  // memorial, so « À compléter » is never a mystery.
+  if (screen.pendingConfirmation) {
+    return (
+      <span className={styles.screenDetail} data-pending-confirmation="true">
+        {translate(journey.language, "journey.traditionsUnconfirmed")}
+      </span>
+    );
+  }
   if (screen.id !== "reveal" || screen.status !== "done" || journey.skinVariant === null) return null;
   return (
     <span className={styles.screenDetail} data-ambiance={journey.skinVariant}>

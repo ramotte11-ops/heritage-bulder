@@ -27,7 +27,7 @@ import {
   needsA08,
   needsA14,
 } from "@/lib/builder/guided-flow/ceremony-step";
-import { isA09Resolved } from "@/lib/builder/guided-flow/traditions-step";
+import { isA09Resolved, isTraditionsConfirmed } from "@/lib/builder/guided-flow/traditions-step";
 import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-step";
 import { isA15Resolved } from "@/lib/builder/guided-flow/contributions-step";
 import { hasOpenContributionFeature, inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
@@ -268,11 +268,15 @@ export function composeMemorial(input: MemorialCompositionInput): MemorialCompos
   const flowState = resolveHeroFlowState(content, readHero(content));
   const explicitContentSectionIds = resolveExplicitContentSectionIds(content);
   const hidden = readHiddenSections(content);
+  // Chef 03 / O03 — without a death notice, Traditions enters the memorial
+  // only for repères the family confirmed (fingerprint, as for A03).
+  const traditionsConfirmed = isTraditionsConfirmed(content);
 
   const sections = order.map((sectionId): ComposedSection => {
     const selection = resolveSectionSelectionStatus(sectionId, {
       flowState,
       explicitContentSectionIds,
+      traditionsConfirmed,
     });
     const rule = SECTION_READINESS[sectionId];
     const ready = rule !== undefined && rule(content);

@@ -68,6 +68,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "journey.screen.reveal": "El ambiente del homenaje",
   "journey.ambiance.light": "Ambiente: Claro",
   "journey.ambiance.dark": "Ambiente: Oscuro",
+  "journey.traditionsUnconfirmed": "No se incluye en el homenaje hasta que confirme sus referencias con «Continuar».",
   "journey.manageVisibility": "Gestionar las secciones visibles",
   "journey.hiddenFromMemorial": "Oculta en el homenaje",
   "visibility.title": "Secciones visibles",

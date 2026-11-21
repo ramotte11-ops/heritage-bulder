@@ -173,33 +173,48 @@ describe("no death notice, no explicit A09 confirmation — traditions stays out
 });
 
 describe("Chef 03 / O03 — traditions explicitly confirmed at A09, whatever A00", () => {
-  const CONFIRMED = { A09: { status: "completed", answer: "independent" } } as const;
+  // `traditionsConfirmed` is computed from the content by the caller
+  // (fingerprint match, traditions-step.ts) — the flow state alone never suffices.
+  const CONFIRMED_RECORD = { A09: { status: "completed", answer: "independent:00000000" } } as const;
 
-  it("A00 = no / later / unanswered + confirmation: follows the generic content signal", () => {
+  it("A00 = no / later / unanswered + a matching confirmation: follows the generic content signal", () => {
     for (const a00 of [remembrance().flowState, A00_LATER, {}]) {
-      const flowState = { ...a00, ...CONFIRMED } as HumanFlowState;
-      expect(resolveSectionSelectionStatus("traditions", { flowState })).toBe("optionalAvailable");
-      expect(resolveSectionSelectionStatus("traditions", { flowState, explicitContentSectionIds: ["traditions"] })).toBe(
+      const flowState = { ...a00 } as HumanFlowState;
+      const input = { flowState, traditionsConfirmed: true };
+      expect(resolveSectionSelectionStatus("traditions", input)).toBe("optionalAvailable");
+      expect(resolveSectionSelectionStatus("traditions", { ...input, explicitContentSectionIds: ["traditions"] })).toBe(
         "applicable",
       );
     }
   });
 
-  it("an unmarked or differently-marked A09 record never makes it relevant without a death notice", () => {
-    for (const A09 of [{ status: "completed" }, { status: "skipped" }, { status: "completed", answer: "other" }] as const) {
+  it("without a matching confirmation, no A09 record ever makes it relevant without a death notice", () => {
+    for (const A09 of [
+      { status: "completed" },
+      { status: "skipped" },
+      { status: "completed", answer: "independent" },
+      { ...CONFIRMED_RECORD.A09 },
+    ] as const) {
       const flowState = { ...remembrance().flowState, A09 } as HumanFlowState;
-      expect(resolveSectionSelectionStatus("traditions", { flowState, explicitContentSectionIds: ["traditions"] })).toBe(
-        "notRelevant",
-      );
+      for (const traditionsConfirmed of [undefined, false]) {
+        expect(
+          resolveSectionSelectionStatus("traditions", {
+            flowState,
+            traditionsConfirmed,
+            explicitContentSectionIds: ["traditions"],
+          }),
+        ).toBe("notRelevant");
+      }
     }
   });
 
   it("the death notice and condolences stay conditioned by A00, whatever A09", () => {
-    const flowState = { ...remembrance().flowState, ...CONFIRMED } as HumanFlowState;
-    expect(resolveSectionSelectionStatus("deathNotice", { flowState, explicitContentSectionIds: ["deathNotice"] })).toBe(
+    const flowState = { ...remembrance().flowState, ...CONFIRMED_RECORD } as HumanFlowState;
+    const input = { flowState, traditionsConfirmed: true };
+    expect(resolveSectionSelectionStatus("deathNotice", { ...input, explicitContentSectionIds: ["deathNotice"] })).toBe(
       "notRelevant",
     );
-    expect(resolveSectionSelectionStatus("condolences", { flowState })).toBe("notRelevant");
+    expect(resolveSectionSelectionStatus("condolences", input)).toBe("notRelevant");
   });
 });
 

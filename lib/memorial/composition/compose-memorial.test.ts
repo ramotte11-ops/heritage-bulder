@@ -355,6 +355,35 @@ describe("traditions", () => {
     expect(readTraditions(content).entries).toHaveLength(1);
   });
 
+  it("O03 — A00 = no: confirmed, then a repère changed or added without « Continuer »: not relevant until confirmed again", () => {
+    const confirmed = withA00(withOneEntry(), A00_NO);
+    expect(stateOf(compose(confirmed), "traditions")).toBe("renderable");
+
+    const edited = writeTraditions(confirmed, {
+      entries: readTraditions(confirmed).entries.map((entry) => ({ ...entry, text: "Modifié sans confirmer." })),
+    });
+    const added = addTraditionEntry(readTraditions(confirmed), {
+      id: "t2",
+      origin: "custom",
+      suggestionId: null,
+      title: null,
+      text: "Ajouté sans confirmer.",
+    });
+    if (!added.ok) throw new Error("fixture: tradition entry refused");
+    for (const changed of [edited, writeTraditions(confirmed, added.traditions)]) {
+      const passed = ok(skipA09(changed));
+      expect(stateOf(compose(passed), "traditions")).toBe("notRelevant");
+      expect(readTraditions(passed).entries.length).toBeGreaterThan(0);
+      expect(stateOf(compose(ok(commitA09(passed))), "traditions")).toBe("renderable");
+    }
+  });
+
+  it("O03 — the pre-fingerprint marker value never makes it relevant", () => {
+    const content = withA00(withoutMarker(withOneEntry()), A00_NO) as { guidedFlow: Record<string, unknown> };
+    const old = { ...content, guidedFlow: { ...content.guidedFlow, A09: { status: "completed", answer: "independent" } } };
+    expect(stateOf(compose(old as unknown as MemorialContent), "traditions")).toBe("notRelevant");
+  });
+
   it("O03 — A00 = yes: unchanged, the marker plays no part", () => {
     const yes = { status: "completed", answer: "yes" } as const;
     expect(stateOf(compose(withA00(withoutMarker(withOneEntry()), yes)), "traditions")).toBe("renderable");

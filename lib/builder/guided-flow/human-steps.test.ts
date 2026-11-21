@@ -9,12 +9,10 @@ import {
   stepRuntimeStatus,
 } from "./engine";
 import {
-  A09_CONFIRMED_INDEPENDENTLY,
   STEP_IDS,
   STEPS,
   humanFlowDefinition,
   isAnnouncementVisible,
-  isTraditionsConfirmedIndependently,
   isTraditionsRelevant,
   resolveA00Record,
   type HumanFlowState,
@@ -384,29 +382,22 @@ describe("A09 (Traditions & repères) — independent of A00 (Chef 03 / O03, PO 
 describe("isTraditionsRelevant — may Traditions enter the MEMORIAL (O03 publication guard)", () => {
   const NO = { status: "completed", answer: "no" } as const;
   const LATER = { status: "skipped", answer: "later" } as const;
-  const CONFIRMED = { status: "completed", answer: A09_CONFIRMED_INDEPENDENTLY } as const;
 
-  it("A00 = yes: relevant, with or without the marker (the pre-O03 rule, unchanged)", () => {
-    expect(isTraditionsRelevant(A00_YES)).toBe(true);
-    expect(isTraditionsRelevant({ ...A00_YES, A09: { status: "completed" } })).toBe(true);
-    expect(isTraditionsRelevant({ ...A00_YES, A09: { ...CONFIRMED } })).toBe(true);
+  it("A00 = yes: relevant, confirmed or not (the pre-O03 rule, unchanged)", () => {
+    expect(isTraditionsRelevant(A00_YES, false)).toBe(true);
+    expect(isTraditionsRelevant({ ...A00_YES, A09: { status: "completed" } }, false)).toBe(true);
+    expect(isTraditionsRelevant(A00_YES, true)).toBe(true);
   });
 
   it.each([
     ["no", NO],
     ["later", LATER],
-  ] as const)("A00 = %s: relevant only once A09 carries the explicit confirmation", (_label, a00) => {
-    expect(isTraditionsRelevant({ A00: { ...a00 } })).toBe(false);
-    expect(isTraditionsRelevant({ A00: { ...a00 }, A09: { status: "completed" } })).toBe(false);
-    expect(isTraditionsRelevant({ A00: { ...a00 }, A09: { status: "skipped" } })).toBe(false);
-    expect(isTraditionsRelevant({ A00: { ...a00 }, A09: { status: "completed", answer: "other" } })).toBe(false);
-    expect(isTraditionsConfirmedIndependently({ A00: { ...a00 }, A09: { ...CONFIRMED } })).toBe(true);
-    expect(isTraditionsRelevant({ A00: { ...a00 }, A09: { ...CONFIRMED } })).toBe(true);
-  });
-
-  it("A00 never answered: same guard", () => {
-    expect(isTraditionsRelevant({})).toBe(false);
-    expect(isTraditionsRelevant({ A09: { ...CONFIRMED } })).toBe(true);
+    ["not answered", undefined],
+  ] as const)("A00 = %s: relevant only with a matching confirmation (computed from the content)", (_label, a00) => {
+    const state: HumanFlowState = a00 === undefined ? {} : { A00: { ...a00 } };
+    expect(isTraditionsRelevant(state, false)).toBe(false);
+    expect(isTraditionsRelevant({ ...state, A09: { status: "completed", answer: "independent:00000000" } }, false)).toBe(false);
+    expect(isTraditionsRelevant(state, true)).toBe(true);
   });
 });
 

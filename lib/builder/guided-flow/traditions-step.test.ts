@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import { commitA04, skipA05, skipA06, skipA07, skipA08, skipA14 } from "./ceremony-step";
 import { commitA01 } from "./death-notice-step";
-import { A09_CONFIRMED_INDEPENDENTLY, humanFlowDefinition } from "./human-steps";
+import { A09_CONFIRMATION_PREFIX, humanFlowDefinition } from "./human-steps";
 import { readGuidedFlowState } from "./flow-state";
 import { applicableSteps, firstIncompleteStep } from "./engine";
 import {
@@ -10,6 +10,10 @@ import {
   commitA09,
   hasMovedPastTraditions,
   isA09Resolved,
+  isTraditionsConfirmed,
+  isTraditionsPendingConfirmation,
+  traditionsConfirmationAnswer,
+  traditionsConfirmationFingerprint,
   needsA09,
   readTraditionsForEditing,
   removeTraditionsEntry,
@@ -300,28 +304,72 @@ describe("hasMovedPastTraditions — a pre-O03 draft already past A09's place is
   });
 });
 
-describe("A09 — the independence marker: written by « Continuer » only (O03 publication guard)", () => {
+describe("A09 — the fingerprinted confirmation: written by « Continuer » only (O03 publication guard)", () => {
   const ENTRY = { id: "fixture-marker", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
-  const withEntry = () => requireOk(addTraditionsEntry(a04Answered("no"), { ...ENTRY }));
+  const SECOND = { id: "fixture-marker-2", origin: "custom", suggestionId: null, title: "Titre", text: "Un second repère." } as const;
+  const A00_NO = { guidedFlow: { A00: { status: "completed", answer: "no" } } } as unknown as MemorialContent;
+  const withEntry = () => requireOk(addTraditionsEntry(a04Answered("no", A00_NO), { ...ENTRY }));
   const a09 = (content: MemorialContent) => readGuidedFlowState(content).A09;
 
-  it("commitA09 records the explicit confirmation", () => {
-    expect(a09(requireOk(commitA09(withEntry())))).toEqual({ status: "completed", answer: A09_CONFIRMED_INDEPENDENTLY });
+  it("commitA09 records a confirmation of the repères as they stand", () => {
+    const confirmed = requireOk(commitA09(withEntry()));
+    const answer = a09(confirmed)?.answer ?? "";
+    expect(a09(confirmed)?.status).toBe("completed");
+    expect(answer.startsWith(A09_CONFIRMATION_PREFIX)).toBe(true);
+    expect(answer).toBe(traditionsConfirmationAnswer(withEntry()));
+    expect(isTraditionsConfirmed(confirmed)).toBe(true);
   });
 
-  it("skipA09 never creates it — with or without entries", () => {
+  it("the fingerprint is deterministic and follows every displayed field, in order", () => {
+    const base = withEntry();
+    expect(traditionsConfirmationFingerprint(base)).toBe(traditionsConfirmationFingerprint(structuredClone(base)));
+    const edited = requireOk(updateTraditionsEntry(base, ENTRY.id, { text: "Un autre texte." }));
+    const titled = requireOk(updateTraditionsEntry(base, ENTRY.id, { title: "Un titre" }));
+    const added = requireOk(addTraditionsEntry(base, { ...SECOND }));
+    const fingerprints = new Set([base, edited, titled, added].map(traditionsConfirmationFingerprint));
+    expect(fingerprints.size).toBe(4);
+    expect(traditionsConfirmationFingerprint(CORRUPTED_UNKNOWN_KEY)).toBeNull();
+  });
+
+  it("skipA09 never creates a confirmation — with or without repères", () => {
     expect(a09(requireOk(skipA09(a04Answered("no"))))).toEqual({ status: "skipped" });
     expect(a09(requireOk(skipA09(withEntry())))).toEqual({ status: "skipped" });
+    expect(isTraditionsConfirmed(requireOk(skipA09(withEntry())))).toBe(false);
   });
 
-  it("skipA09 over an old, unmarked record never creates it either", () => {
-    const old = { ...withEntry(), guidedFlow: { ...readGuidedFlowState(withEntry()), A09: { status: "completed" } } } as unknown as MemorialContent;
-    expect(a09(requireOk(skipA09(old)))).toEqual({ status: "skipped" });
+  it("skipA09 over an old, unmarked record — or the pre-fingerprint value — never confirms", () => {
+    for (const record of [{ status: "completed" }, { status: "completed", answer: "independent" }]) {
+      const old = { ...withEntry(), guidedFlow: { ...readGuidedFlowState(withEntry()), A09: record } } as unknown as MemorialContent;
+      expect(isTraditionsConfirmed(old)).toBe(false);
+      expect(isTraditionsConfirmed(requireOk(skipA09(old)))).toBe(false);
+    }
   });
 
-  it("skipA09 keeps a confirmation an earlier « Continuer » recorded — passing never withdraws confirmed repères", () => {
+  it("skipA09 keeps an earlier confirmation verbatim, still valid while nothing changed", () => {
     const confirmed = requireOk(commitA09(withEntry()));
-    expect(a09(requireOk(skipA09(confirmed)))).toEqual({ status: "skipped", answer: A09_CONFIRMED_INDEPENDENTLY });
+    const passed = requireOk(skipA09(confirmed));
+    expect(a09(passed)).toEqual({ status: "skipped", answer: a09(confirmed)?.answer });
+    expect(isTraditionsConfirmed(passed)).toBe(true);
+  });
+
+  it.each([
+    ["added", (c: MemorialContent) => requireOk(addTraditionsEntry(c, { ...SECOND }))],
+    ["edited", (c: MemorialContent) => requireOk(updateTraditionsEntry(c, ENTRY.id, { text: "Modifié sans confirmer." }))],
+    ["removed", (c: MemorialContent) => requireOk(removeTraditionsEntry(c, SECOND.id))],
+  ] as const)("a repère %s after the confirmation, then « Passer »: not confirmed — nothing deleted", (_label, change) => {
+    // Two repères confirmed together, then one change without « Continuer ».
+    const confirmed = requireOk(commitA09(requireOk(addTraditionsEntry(withEntry(), { ...SECOND }))));
+    const changed = _label === "added"
+      ? requireOk(addTraditionsEntry(confirmed, { ...SECOND, id: "fixture-marker-3" }))
+      : change(confirmed);
+    const passed = requireOk(skipA09(changed));
+    expect(isTraditionsConfirmed(passed)).toBe(false);
+    expect(isTraditionsPendingConfirmation(passed)).toBe(true);
+    expect((passed as { traditions: unknown }).traditions).toEqual((changed as { traditions: unknown }).traditions);
+    // « Continuer » confirms the new version.
+    const reconfirmed = requireOk(commitA09(passed));
+    expect(isTraditionsConfirmed(reconfirmed)).toBe(true);
+    expect(isTraditionsPendingConfirmation(reconfirmed)).toBe(false);
   });
 
   it("editing a repère writes nothing on A09's record", () => {
@@ -330,6 +378,36 @@ describe("A09 — the independence marker: written by « Continuer » only (O03 
     expect(a09(edited)).toEqual({ status: "skipped" });
     const removed = requireOk(removeTraditionsEntry(edited, ENTRY.id));
     expect(a09(removed)).toEqual({ status: "skipped" });
+  });
+});
+
+describe("isTraditionsPendingConfirmation — what « Mon parcours » flags (O03)", () => {
+  const ENTRY = { id: "fixture-pending", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
+  const withA00 = (content: MemorialContent, answer: "yes" | "no" | "later") =>
+    ({
+      ...content,
+      guidedFlow: {
+        ...readGuidedFlowState(content),
+        A00: answer === "later" ? { status: "skipped", answer } : { status: "completed", answer },
+      },
+    }) as unknown as MemorialContent;
+
+  it("A00 = no / later with unconfirmed repères: pending; confirmed: not pending", () => {
+    for (const answer of ["no", "later"] as const) {
+      const unconfirmed = withA00(requireOk(skipA09(requireOk(addTraditionsEntry(a04Answered("no"), { ...ENTRY })))), answer);
+      expect(isTraditionsPendingConfirmation(unconfirmed)).toBe(true);
+      expect(isTraditionsPendingConfirmation(requireOk(commitA09(unconfirmed)))).toBe(false);
+    }
+  });
+
+  it("never pending without repères, nor with A00 = yes (the pre-O03 rule shows them)", () => {
+    expect(isTraditionsPendingConfirmation(withA00(requireOk(skipA09(a04Answered("no"))), "no"))).toBe(false);
+    const yes = withA00(requireOk(skipA09(requireOk(addTraditionsEntry(a04Answered("no"), { ...ENTRY })))), "yes");
+    expect(isTraditionsPendingConfirmation(yes)).toBe(false);
+  });
+
+  it("an unreadable Traditions is never flagged (nothing to confirm safely)", () => {
+    expect(isTraditionsPendingConfirmation(CORRUPTED_UNKNOWN_KEY)).toBe(false);
   });
 });
 

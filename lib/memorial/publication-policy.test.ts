@@ -8,6 +8,7 @@ import {
   projectMemorialPublication,
   type PublicationProjection,
 } from "./publication-policy";
+import { traditionsConfirmationAnswer } from "@/lib/builder/guided-flow/traditions-step";
 
 function mediaId(index: number): string {
   return `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`;
@@ -286,26 +287,34 @@ describe("M1-B1 publication policy", () => {
     expect(serialized).not.toContain("indirect-testimonial");
   });
 
-  it("Chef 03 / O03 — keeps A09's exact independence confirmation, and only that value", () => {
-    const confirmed = successfulProjection(
-      { guidedFlow: { A09: { status: "completed", answer: "independent" } } } as unknown as MemorialContent,
-      "avis",
-    );
-    expect(confirmed.content).toEqual({ guidedFlow: { A09: { status: "completed", answer: "independent" } } });
+  it("Chef 03 / O03 — keeps A09's confirmation only when its fingerprint matches the repères published", () => {
+    const ENTRY = { id: "t-pp", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." };
+    const traditions = { entries: [ENTRY] };
+    const answer = traditionsConfirmationAnswer({ traditions } as unknown as MemorialContent)!;
+    expect(answer).toMatch(/^independent:[0-9a-f]{8}$/);
 
-    const keptOnSkip = successfulProjection(
-      { guidedFlow: { A09: { status: "skipped", answer: "independent" } } } as unknown as MemorialContent,
-      "complet",
-    );
-    expect(keptOnSkip.content).toEqual({ guidedFlow: { A09: { status: "skipped", answer: "independent" } } });
-
-    for (const answer of [undefined, "Independent", "independent ", "yes", "https://private.example/x"]) {
-      const record = answer === undefined ? { status: "completed" } : { status: "completed", answer };
+    for (const [status, access] of [["completed", "avis"], ["skipped", "complet"]] as const) {
       const projection = successfulProjection(
-        { guidedFlow: { A09: record } } as unknown as MemorialContent,
-        "avis",
+        { traditions, guidedFlow: { A09: { status, answer } } } as unknown as MemorialContent,
+        access,
       );
-      expect(projection.content).toEqual({ guidedFlow: { A09: { status: "completed" } } });
+      expect((projection.content as { guidedFlow: unknown }).guidedFlow).toEqual({ A09: { status, answer } });
+    }
+
+    // Changed since the confirmation, the pre-fingerprint value, a forged or
+    // foreign answer: the status is kept, the confirmation never is.
+    const changed = { entries: [{ ...ENTRY, text: "Modifié sans confirmer." }] };
+    for (const [content, record] of [
+      [changed, { status: "skipped", answer }],
+      [traditions, { status: "completed", answer: "independent" }],
+      [traditions, { status: "completed", answer: "independent:00000000" }],
+      [traditions, { status: "completed", answer: "https://private.example/x" }],
+      [traditions, { status: "completed" }],
+      [undefined, { status: "completed", answer }],
+    ] as const) {
+      const draft = { ...(content === undefined ? {} : { traditions: content }), guidedFlow: { A09: record } };
+      const projection = successfulProjection(draft as unknown as MemorialContent, "avis");
+      expect((projection.content as { guidedFlow: unknown }).guidedFlow).toEqual({ A09: { status: record.status } });
     }
   });
 

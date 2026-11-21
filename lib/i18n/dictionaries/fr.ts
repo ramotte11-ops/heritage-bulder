@@ -70,6 +70,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "journey.screen.reveal": "L'ambiance de l'hommage",
   "journey.ambiance.light": "Ambiance : Claire",
   "journey.ambiance.dark": "Ambiance : Sombre",
+  "journey.traditionsUnconfirmed": "Non incluse dans l'hommage tant que vous n'avez pas confirmé vos repères avec « Continuer ».",
   "journey.manageVisibility": "Gérer les rubriques visibles",
   "journey.hiddenFromMemorial": "Masquée de l'hommage",
   "visibility.title": "Rubriques visibles",

@@ -7,7 +7,9 @@ const { fullAnnouncementWithTraditions, fullAnnouncementEmptyRecit, FIXTURE_PERS
 const { updateGallery } = await import("@/lib/memorial/gallery-content");
 const { projectMemorialPublication } = await import("@/lib/memorial/publication-policy");
 const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
-const { addTraditionsEntry, commitA09, skipA09 } = await import("@/lib/builder/guided-flow/traditions-step");
+const { addTraditionsEntry, commitA09, skipA09, traditionsConfirmationAnswer, updateTraditionsEntry } = await import(
+  "@/lib/builder/guided-flow/traditions-step"
+);
 
 /**
  * QG 016 / M2 — the public page's single server step: M1 read → public
@@ -303,10 +305,16 @@ describe("Chef 03 / O03 — no retroactive Traditions on an already published me
   });
 
   it("a snapshot published after an explicit O03 confirmation shows Traditions, whatever A00", async () => {
-    const ids = await sectionIds(
-      publishedSnapshot({ status: "completed", answer: "no" }, { status: "completed", answer: "independent" }),
-    );
+    const answer = traditionsConfirmationAnswer(snapshot());
+    const ids = await sectionIds(publishedSnapshot({ status: "completed", answer: "no" }, { status: "completed", answer }));
     expect(ids).toContain("traditions");
+  });
+
+  it("a snapshot whose confirmation does not match its repères (forged or stale) shows no Traditions", async () => {
+    for (const answer of ["independent", "independent:00000000"]) {
+      const ids = await sectionIds(publishedSnapshot({ status: "completed", answer: "no" }, { status: "completed", answer }));
+      expect(ids).not.toContain("traditions");
+    }
   });
 });
 
@@ -348,9 +356,43 @@ describe("Chef 03 / O03 — draft → publication → public page, end to end", 
     expect(await publishedSections(draft)).toContain("traditions");
   });
 
-  it("A00 = later, confirmed, then passed during a later revision: the confirmation is kept", async () => {
+  it("A00 = later, confirmed, then passed during a later revision without changes: the confirmation is kept", async () => {
     const confirmed = okc(commitA09(okc(addTraditionsEntry(unconfirmed("later"), { ...ENTRY }))));
     expect(await publishedSections(okc(skipA09(confirmed)))).toContain("traditions");
+  });
+
+  it.each(["added", "edited"] as const)(
+    "A00 = no, confirmed, then a repère %s and « Passer »: a NEW publication excludes Traditions; « Continuer » brings it back",
+    async (change) => {
+      const confirmed = okc(commitA09(okc(addTraditionsEntry(unconfirmed("no"), { ...ENTRY }))));
+      const changed =
+        change === "added"
+          ? okc(addTraditionsEntry(confirmed, { ...ENTRY, id: "t-e2e-2", text: "Un repère ajouté sans confirmer." }))
+          : okc(updateTraditionsEntry(confirmed, ENTRY.id, { text: "Modifié sans confirmer." }));
+      const passed = okc(skipA09(changed));
+      expect(await publishedSections(passed)).not.toContain("traditions");
+      expect(await publishedSections(okc(commitA09(passed)))).toContain("traditions");
+    },
+  );
+
+  it("an already published page keeps its confirmed Traditions while the draft changes unconfirmed — until an explicit republication", async () => {
+    const confirmed = okc(commitA09(okc(addTraditionsEntry(unconfirmed("no"), { ...ENTRY }))));
+    const projection = projectMemorialPublication({ draft: confirmed, accessLevel: "complet", skin: "intemporel" });
+    if (!projection.ok) throw new Error("projection refused");
+    const publishedContent = projection.projection.content;
+
+    // The family then changes a repère and passes, without confirming.
+    const draftAfter = okc(skipA09(okc(updateTraditionsEntry(confirmed, ENTRY.id, { text: "Modifié sans confirmer." }))));
+    expect(draftAfter).not.toEqual(confirmed);
+
+    // The public page reads only its snapshot: Traditions is still there, unchanged.
+    const view = await loadPublicMemorial(SLUG, deps([row({ content: publishedContent, access_level: "complet" })]).deps);
+    expect(view.status).toBe("ready");
+    if (view.status !== "ready") return;
+    const traditionsSection = view.assembled.sections.find((section) => section.sectionId === "traditions");
+    expect(traditionsSection).toBeDefined();
+    expect(JSON.stringify(traditionsSection)).toContain(ENTRY.text);
+    expect(JSON.stringify(traditionsSection)).not.toContain("Modifié sans confirmer.");
   });
 });
 

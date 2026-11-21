@@ -10,7 +10,7 @@ import { commitA00 } from "./announcement-choice-step";
 import { commitA04 } from "./ceremony-step";
 import { skipA13 } from "./gallery-step";
 import { skipA15 } from "./contributions-step";
-import { addTraditionsEntry } from "./traditions-step";
+import { addTraditionsEntry, commitA09, skipA09, updateTraditionsEntry } from "./traditions-step";
 import { readGuidedFlowState } from "./flow-state";
 import {
   JOURNEY_SCREEN_IDS,
@@ -361,6 +361,64 @@ describe("Chef 03 / O03 — « Traditions & repères » independent of A00", () 
       expect(readGuidedFlowState(changed).A09).toEqual(readGuidedFlowState(base).A09);
       expect((changed as { traditions: unknown }).traditions).toEqual((base as { traditions: unknown }).traditions);
     }
+  });
+});
+
+describe("Chef 03 / O03 — « À compléter » for repères not confirmed yet (display only)", () => {
+  const ENTRY = { id: "t-pending", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
+  const filled = () => ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))); // A09 confirmed, A00 derived yes
+  const traditions = (content: MemorialContent) => resolveJourneyScreens(content).find((s) => s.id === "traditions")!;
+  /** A pre-fingerprint draft: repères, A09 resolved without any confirmation. */
+  const legacy = (a00: "no" | "later", a09: object = { status: "completed" }) => {
+    const base = ok(commitA00(filled(), a00));
+    return JSON.parse(
+      JSON.stringify({ ...base, guidedFlow: { ...readGuidedFlowState(base), A09: a09 } }),
+    ) as MemorialContent;
+  };
+
+  it.each(["no", "later"] as const)("A00 = %s, old draft with unconfirmed repères: « À compléter », reopenable, no route change", (a00) => {
+    for (const a09 of [{ status: "completed" }, { status: "skipped" }, { status: "completed", answer: "independent" }]) {
+      const content = legacy(a00, a09);
+      expect(traditions(content)).toMatchObject({ status: "toComplete", accessible: true, pendingConfirmation: true });
+      expect(resolveRevisionTarget(content, "traditions")).toBe("traditions");
+      expect(currentJourneyScreen(content)).toBeNull();
+      expect(resolveJourney(content).sections.find((x) => x.id === "traditions")?.status).toBe("inProgress");
+    }
+  });
+
+  it("confirming them with « Continuer » turns it back to « Terminée »", () => {
+    const confirmed = ok(commitA09(legacy("no")));
+    expect(traditions(confirmed)).toMatchObject({ status: "done", accessible: true, pendingConfirmation: false });
+  });
+
+  it("A00 = yes (repères shown by the pre-O03 rule) or no repère at all: « Terminée »", () => {
+    expect(traditions(ok(commitA00(legacy("no"), "yes")))).toMatchObject({ status: "done", pendingConfirmation: false });
+    const empty = ok(skipA15(ok(skipA13(fullAnnouncement()))));
+    expect(traditions(ok(commitA00(empty, "no")))).toMatchObject({ status: "done", pendingConfirmation: false });
+  });
+
+  it("confirmed, then a repère changed and « Passer »: « À compléter » again", () => {
+    const confirmed = ok(commitA09(legacy("no")));
+    const added = ok(skipA09(ok(addTraditionsEntry(confirmed, { ...ENTRY }))));
+    expect(traditions(added)).toMatchObject({ status: "toComplete", pendingConfirmation: true });
+    const entryId = (confirmed as { traditions: { entries: { id: string }[] } }).traditions.entries[0].id;
+    const edited = ok(skipA09(ok(updateTraditionsEntry(confirmed, entryId, { text: "Modifié sans confirmer." }))));
+    expect(traditions(edited)).toMatchObject({ status: "toComplete", pendingConfirmation: true });
+  });
+
+  it("stays reopenable even when the current screen sits before it in the route (never « À venir »)", () => {
+    // A05 is open again (e.g. the family reopened A04 and answered « Oui »).
+    const base = legacy("no");
+    const content = { ...base, guidedFlow: { ...readGuidedFlowState(base), A05: undefined } } as unknown as MemorialContent;
+    expect(currentJourneyScreen(content)).toBe("ceremonyDateTime");
+    expect(traditions(content)).toMatchObject({ status: "toComplete", accessible: true, pendingConfirmation: true });
+  });
+
+  it("never changes what the route shows: needs and the current screen are those of the unflagged draft", () => {
+    const pending = legacy("no");
+    const confirmed = ok(commitA09(pending));
+    expect(currentJourneyScreen(pending)).toBe(currentJourneyScreen(confirmed));
+    for (const screen of JOURNEY_SCREENS) expect(screen.needs(pending)).toBe(screen.needs(confirmed));
   });
 });
 

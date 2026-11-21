@@ -316,8 +316,10 @@ export function skipA02(content: MemorialContent): DeathNoticeFieldWriteResult {
 
 /** A small, deterministic, non-cryptographic string hash (FNV-1a,
  * 32-bit) — an equality fingerprint, not a security boundary. Returns a
- * fixed-width lowercase hex string. */
-function fnv1aHash(input: string): string {
+ * fixed-width lowercase hex string. Exported so A09's confirmation
+ * (traditions-step.ts, Chef 03 / O03) reuses this exact, proven
+ * mechanism rather than a second hash. */
+export function fnv1aHash(input: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i += 1) {
     hash ^= input.charCodeAt(i);

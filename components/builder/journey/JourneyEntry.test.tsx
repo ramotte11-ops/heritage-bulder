@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 import { resolveJourney } from "@/lib/builder/guided-flow/journey";
-import { throughA02 } from "@/lib/memorial/assembly/test-fixtures";
+import { fullAnnouncementWithTraditions, throughA02 } from "@/lib/memorial/assembly/test-fixtures";
+import { commitA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
+import { commitA09 } from "@/lib/builder/guided-flow/traditions-step";
+import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { DraftRevisionProvider, useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
 import { DraftConflictNotice } from "@/components/builder/DraftConflictNotice";
@@ -935,3 +938,52 @@ describe("recette Builder V1 — T08 opened from the Preview: the way back is th
     expect(screen.getByRole("button", { name: label })).toBeTruthy();
   });
 });
+
+describe("Chef 03 / O03 — Traditions with repères not confirmed yet", () => {
+  /** A00 = no, repères present, A09 resolved without a matching confirmation. */
+  function unconfirmed(): MemorialContent {
+    const no = commitA00(fullAnnouncementWithTraditions(), "no");
+    if (!no.ok) throw new Error("fixture");
+    return JSON.parse(
+      JSON.stringify({ ...no.content, guidedFlow: { ...readGuidedFlowState(no.content), A09: { status: "completed" } } }),
+    ) as MemorialContent;
+  }
+  function renderPanel(content: MemorialContent, language: "fr" | "en" | "es" = "fr") {
+    render(
+      <RouteJourneyProvider language={language} snapshot={resolveJourney(content)} builderPath="/builder/m-1">
+        <BuilderScreenNav />
+      </RouteJourneyProvider>,
+    );
+  }
+  const row = () => document.querySelector('[data-screen="traditions"]') as HTMLElement;
+
+  it("reads « À compléter », says why, and keeps « Revoir »", () => {
+    renderPanel(unconfirmed());
+    openPanel();
+    openBlock("Traditions & repères");
+    expect(row().dataset.status).toBe("toComplete");
+    expect(row().textContent).toContain("À compléter");
+    expect(row().textContent).toContain("Non incluse dans l'hommage tant que vous n'avez pas confirmé vos repères avec « Continuer ».");
+    expect(within(row()).getByRole("button", { name: /Revoir/ })).toBeTruthy();
+  });
+
+  it("once confirmed: « Terminée », no note", () => {
+    const confirmed = commitA09(unconfirmed());
+    if (!confirmed.ok) throw new Error("fixture");
+    renderPanel(confirmed.content);
+    openPanel();
+    openBlock("Traditions & repères");
+    expect(row().dataset.status).toBe("done");
+    expect(row().querySelector("[data-pending-confirmation]")).toBeNull();
+  });
+
+  it.each([
+    ["en", /My journey/, "Not included in the tribute until you confirm your traditions with “Continue”."],
+    ["es", /Mi recorrido/, "No se incluye en el homenaje hasta que confirme sus referencias con «Continuar»."],
+  ] as const)("is translated (%s)", (language, entry, note) => {
+    renderPanel(unconfirmed(), language);
+    fireEvent.click(screen.getByRole("button", { name: entry }));
+    expect(row().textContent).toContain(note);
+  });
+});
+

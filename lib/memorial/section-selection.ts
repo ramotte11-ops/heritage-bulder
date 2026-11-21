@@ -101,6 +101,14 @@ export type SectionSelectionStatus =
  * docstring.
  */
 export interface SectionSelectionInput {
+  /**
+   * Chef 03 / O03 — the family confirmed, with A09's « Continuer », the
+   * very repères the content holds (`isTraditionsConfirmed`, computed
+   * from the content by the caller: the flow state alone cannot compare a
+   * fingerprint). Only consulted for `traditions` while A00 ≠ "yes".
+   * Absent → `false` (fail closed).
+   */
+  traditionsConfirmed?: boolean;
   /** The family's Guided Flow answers so far (Mission 025's
    * `HumanFlowState`, keyed by `StepId`). Reused as-is rather than a
    * parallel "answers" shape invented for this mission (mission brief
@@ -146,7 +154,8 @@ function isA04AnsweredYes(flowState: HumanFlowState): boolean {
  * Chef 03 / O03 — `traditions` is no longer one of them: it is offered to
  * every family in the Builder, and may enter the memorial when A00 =
  * "yes" (the pre-O03 rule, unchanged) or once the family has explicitly
- * confirmed it at A09 (`isTraditionsRelevant`). A memorial published
+ * confirmed the repères it holds at A09 (`isTraditionsRelevant`, with a
+ * fingerprint: an unconfirmed later change does not count). A memorial published
  * before O03 with A00 ≠ "yes" carries no such confirmation, so its page
  * never starts showing repères by itself.
  */
@@ -207,7 +216,7 @@ export function resolveSectionSelectionStatus(
     return "notRelevant";
   }
 
-  if (sectionId === "traditions" && !isTraditionsRelevant(input.flowState ?? {})) {
+  if (sectionId === "traditions" && !isTraditionsRelevant(input.flowState ?? {}, input.traditionsConfirmed === true)) {
     return "notRelevant";
   }
 
