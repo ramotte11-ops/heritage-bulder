@@ -23,6 +23,13 @@ const ATTENTION_LABELS: Record<OfferingKind, TranslationKey> = {
   lys: "owner.attentionLys",
 };
 
+/** Lot 2 — the same gestures, signed by the visitor (Carnet only, private). */
+const SIGNED_ATTENTION_LABELS: Record<OfferingKind, TranslationKey> = {
+  coeur: "owner.attentionCoeurSigned",
+  bougie: "owner.attentionBougieSigned",
+  lys: "owner.attentionLysSigned",
+};
+
 const DATE_LOCALES: Record<Language, string> = { fr: "fr-FR", en: "en-GB", es: "es-ES" };
 
 /** « 15 nov. 2026 » — the family's language, Paris time like the rest of the space. */
@@ -151,7 +158,12 @@ export function AttentionList({ offerings, language }: { offerings: readonly Fam
         <li key={offering.id} className={styles.attention} data-kind={offering.kind}>
           <OfferingIcon kind={offering.kind} className={styles.attentionIcon} />
           <p className={styles.attentionText}>
-            {translate(language, ATTENTION_LABELS[offering.kind])}
+            {typeof offering.signature === "string" && offering.signature !== "" ? (
+              // Lot 2 — the visitor's signature, private: shown here, to the family only.
+              translateWith(language, SIGNED_ATTENTION_LABELS[offering.kind], { name: offering.signature })
+            ) : (
+              translate(language, ATTENTION_LABELS[offering.kind])
+            )}
             <time className={styles.attentionDate} dateTime={offering.createdAt}>
               {formatAttentionDate(offering.createdAt, language)}
             </time>

@@ -11,8 +11,9 @@ import type { OfferingKind } from "@/config/symbolic-offerings-v1-tokens";
  *
  *  - la Preview du Builder (M3, `OfferingsPreviewProvider`) : transmission
  *    SIMULÉE — la famille essaie librement les trois gestes, revient aux
- *    cartes et recommence ; rien n'est envoyé, rien n'est enregistré, une
- *    mention « aperçu » est posée au-dessus de la composition ;
+ *    cartes et recommence ; rien n'est envoyé, rien n'est enregistré (ni
+ *    geste ni signature, Lot 2), une mention « aperçu » est posée au-dessus
+ *    de la composition ;
  *  - la page publique `/hommage/[slug]` (QG 016, `PublicOfferingsProvider`,
  *    ./offerings-public.tsx) : le geste du visiteur est RÉELLEMENT
  *    enregistré par le serveur (record_symbolic_offering_v1), un geste par
@@ -26,6 +27,10 @@ export interface OfferingsPreviewValue {
   mode?: "preview" | "public";
   /** Hôte public seulement : action de « Poursuivre la visite ». */
   continueAction?: (offering: OfferingKind) => void;
+  /** Lot 2 — hôte public seulement : rattache une signature facultative au
+   * geste déjà enregistré. Absente en Preview : le champ s'essaie
+   * librement, rien n'est envoyé. */
+  sign?: (offering: OfferingKind, signature: string) => Promise<boolean>;
 }
 
 /** Délai de la réponse simulée : le temps d'un aller-retour serveur

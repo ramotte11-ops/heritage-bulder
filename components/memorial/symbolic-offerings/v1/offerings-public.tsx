@@ -19,9 +19,17 @@ import { OfferingsPreviewContext, type OfferingsPreviewValue } from "./offerings
  *  - UN geste par visite de la page : « Poursuivre la visite » ne ramène
  *    pas aux cartes, il fait défiler vers la suite du mémorial ;
  *  - toute erreur (réseau, refus, exception) devient un simple échec :
- *    la scène affiche son message validé et « Réessayer ».
+ *    la scène affiche son message validé et « Réessayer » ;
+ *  - Lot 2 : la signature facultative est envoyée APRÈS l'enregistrement,
+ *    avec la MÊME clé que le geste : elle se rattache à cette ligne, sans
+ *    en créer une autre. Sans geste enregistré (aucune clé), rien n'est
+ *    envoyé ; un échec ne touche jamais au geste.
  */
 export type DepositSymbolicOffering = (slug: string, kind: OfferingKind, idempotencyKey: string) => Promise<boolean>;
+
+/** Lot 2 — rattache la signature facultative au geste DÉJÀ enregistré,
+ * désigné par sa clé d'idempotence (connue de ce seul navigateur). */
+export type SignSymbolicOffering = (slug: string, idempotencyKey: string, signature: string) => Promise<boolean>;
 
 function newIdempotencyKey(): string {
   return crypto.randomUUID();
@@ -44,10 +52,12 @@ export function continueVisitAfterOfferings(): void {
 export function PublicOfferingsProvider({
   slug,
   deposit,
+  sign,
   children,
 }: {
   slug: string;
   deposit: DepositSymbolicOffering;
+  sign?: SignSymbolicOffering;
   children: ReactNode;
 }) {
   const keys = useRef(new Map<OfferingKind, string>());
@@ -67,8 +77,19 @@ export function PublicOfferingsProvider({
         }
       },
       continueAction: () => continueVisitAfterOfferings(),
+      ...(sign !== undefined && {
+        sign: async (offering: OfferingKind, signature: string) => {
+          const key = keys.current.get(offering);
+          if (key === undefined) return false;
+          try {
+            return (await sign(slug, key, signature)) === true;
+          } catch {
+            return false;
+          }
+        },
+      }),
     }),
-    [slug, deposit],
+    [slug, deposit, sign],
   );
   return <OfferingsPreviewContext.Provider value={value}>{children}</OfferingsPreviewContext.Provider>;
 }

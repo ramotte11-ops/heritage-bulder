@@ -255,7 +255,7 @@
    (`--button-max`) : sous les planchers, le libellé passe à la ligne. */
 .continue {
   box-sizing: border-box;
-  margin-top: calc(var(--px) * var(--button-gap));
+  flex: none;
   min-height: max(44px, calc(var(--px) * 62));
   max-width: calc(var(--px) * var(--button-max));
   padding: 4px calc(var(--px) * 32);
@@ -278,6 +278,129 @@
 
 .continue[data-interactive] {
   cursor: pointer;
+}
+
+/* --- Lot 2 : signature facultative (V2 validée par la PO) -----------------
+   La phrase émotionnelle (`.confirm`) est posée sous le grand titre
+   (`--conf-base` = `confirmationLayout.phraseBaseline`). Sous l'objet :
+   l'invitation (ligne de base `--invite-base`), puis le champ et
+   « Poursuivre la visite » — empilés en Mobile (le bouton à `--button-top`),
+   côte à côte en Desktop, centrés sur l'axe. Champ V2 : matière
+   translucide, filet bronze patiné de 1 px, angles discrets, aucune ombre ;
+   saisie en 16 px (pas de zoom automatique sur iPhone), indication en
+   14 px italique. */
+
+.actions {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.actions[hidden] {
+  display: none;
+}
+
+.signForm {
+  margin: 0;
+}
+
+.invite {
+  --fs: max(15px, calc(var(--px) * var(--invite-size)));
+  --lh: calc(var(--fs) * 1.2);
+  position: absolute;
+  left: calc(var(--px) * var(--axis));
+  top: calc(var(--px) * var(--invite-base) - ((var(--lh) - var(--fs) * 1.305) / 2 + var(--fs) * 1.007));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(var(--px) * var(--invite-max));
+  margin: 0;
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--fs);
+  line-height: var(--lh);
+  text-align: center;
+  text-wrap: balance;
+  color: var(--ink-body);
+  pointer-events: auto;
+}
+
+.signRow {
+  position: absolute;
+  left: calc(var(--px) * var(--axis));
+  top: calc(var(--px) * var(--actions-top));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  width: max-content;
+  pointer-events: auto;
+}
+
+.actions[data-arrangement="column"] .signRow {
+  flex-direction: column;
+  /* Le bouton à sa place validée (`--button-top`), jamais à moins de 8 px
+     du champ quand les planchers agrandissent les éléments. */
+  row-gap: max(8px, calc(var(--px) * (var(--button-top) - var(--actions-top)) - var(--field-h)));
+}
+
+.actions[data-arrangement="row"] .signRow {
+  flex-direction: row;
+  column-gap: 12px;
+}
+
+.field {
+  box-sizing: border-box;
+  width: min(var(--field-w), calc(var(--px) * var(--actions-max)));
+  height: var(--field-h);
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  background: var(--field-fill);
+  color: var(--ink-title);
+  font-family: var(--font-heritage-ceremony-serif), serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.2;
+  text-align: center;
+  box-shadow: none;
+  outline: none;
+  appearance: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field::placeholder {
+  font-family: var(--font-heritage-recit-serif-italic), serif;
+  font-style: italic;
+  /* 14 px (V2) ; resserré jusqu'à 12 px sur les plus petits écrans pour
+     rester entier. La SAISIE reste en 16 px. */
+  font-size: clamp(12px, calc(var(--px) * 34), 14px);
+  color: var(--field-hint);
+  opacity: 1;
+}
+
+/* Focus : le filet se fonce et s'épaissit d'un trait intérieur (2 px
+   perçus), le fond s'éclaircit à peine. Jamais d'ombre portée. */
+.field:focus,
+.field:focus-visible {
+  border-color: var(--field-focus-line);
+  background: var(--field-focus-fill);
+  box-shadow: inset 0 0 0 1px var(--field-focus-line);
+}
+
+.field[readonly] {
+  cursor: default;
+}
+
+.continue[aria-busy="true"] {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field {
+    transition: none;
+  }
 }
 
 /* --- État « cartes » (validé en F1) -------------------------------------- */
