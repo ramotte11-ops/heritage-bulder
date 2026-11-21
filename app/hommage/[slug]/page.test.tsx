@@ -41,8 +41,11 @@ const { PublicOfferingsProvider } = vi.hoisted(() => ({
   PublicOfferingsProvider: function PublicOfferingsProvider() { return null; },
 }));
 vi.mock("@/components/memorial/symbolic-offerings/v1/offerings-public", () => ({ PublicOfferingsProvider }));
-const { depositSymbolicOffering } = vi.hoisted(() => ({ depositSymbolicOffering: vi.fn() }));
-vi.mock("./actions", () => ({ depositSymbolicOffering }));
+const { depositSymbolicOffering, signSymbolicOfferingAction } = vi.hoisted(() => ({
+  depositSymbolicOffering: vi.fn(),
+  signSymbolicOfferingAction: vi.fn(),
+}));
+vi.mock("./actions", () => ({ depositSymbolicOffering, signSymbolicOfferingAction }));
 
 const { default: PublicMemorialPage, metadata } = await import("./page");
 
@@ -74,9 +77,11 @@ describe("/hommage/[slug]", () => {
 
   it("QG 016 — the public Offrandes host gets the validated slug and the page's own Server Action", async () => {
     loadPublicMemorial.mockResolvedValue({ status: "ready", assembled: ASSEMBLED });
-    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ slug: string; deposit: unknown }> }>;
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ slug: string; deposit: unknown; sign: unknown }> }>;
     expect(element.props.children.props.slug).toBe("95bd2601eac8");
     expect(element.props.children.props.deposit).toBe(depositSymbolicOffering);
+    // Lot 2 — the page's own signing Server Action, and nothing else.
+    expect(element.props.children.props.sign).toBe(signSymbolicOfferingAction);
   });
 
   it("renders at request time: connection() runs before any read (no prerender, no cached signed URL)", async () => {

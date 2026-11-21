@@ -43,3 +43,31 @@ describe("SupabaseSymbolicOfferingRepository.record", () => {
     await expect(new SupabaseSymbolicOfferingRepository(client).record(INPUT)).rejects.toBeTruthy();
   });
 });
+
+describe("SupabaseSymbolicOfferingRepository.sign (Lot 2)", () => {
+  const SIGN = { slug: "jeanne-martin", idempotencyKey: "0f8fad5b-d9cb-469f-a165-70867728950e", signature: "Marie" };
+
+  it("calls the Lot 2 RPC with exactly its three parameters", async () => {
+    const { client, rpc } = fakeRpcClient({ data: [{ outcome: "signed" }], error: null });
+    expect(await new SupabaseSymbolicOfferingRepository(client).sign(SIGN)).toBe("signed");
+    expect(rpc).toHaveBeenCalledWith("sign_symbolic_offering_v1", {
+      p_slug: "jeanne-martin",
+      p_idempotency_key: "0f8fad5b-d9cb-469f-a165-70867728950e",
+      p_signature: "Marie",
+    });
+  });
+
+  it.each(["signed", "already_signed", "refused"])("maps the %s outcome as is", async (outcome) => {
+    const { client } = fakeRpcClient({ data: { outcome }, error: null });
+    expect(await new SupabaseSymbolicOfferingRepository(client).sign(SIGN)).toBe(outcome);
+  });
+
+  it("fails CLOSED (refused) on no row or an unknown outcome, and rethrows an RPC error", async () => {
+    for (const data of [[], null, [{ outcome: "recorded" }]]) {
+      const { client } = fakeRpcClient({ data, error: null });
+      expect(await new SupabaseSymbolicOfferingRepository(client).sign(SIGN)).toBe("refused");
+    }
+    const { client } = fakeRpcClient({ data: null, error: new Error("permission denied") });
+    await expect(new SupabaseSymbolicOfferingRepository(client).sign(SIGN)).rejects.toThrow("permission denied");
+  });
+});

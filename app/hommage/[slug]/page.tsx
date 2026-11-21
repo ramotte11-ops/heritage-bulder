@@ -5,7 +5,7 @@ import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembl
 import { PublicOfferingsProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-public";
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
-import { depositSymbolicOffering } from "./actions";
+import { depositSymbolicOffering, signSymbolicOfferingAction } from "./actions";
 import styles from "./page.module.css";
 
 /**
@@ -50,8 +50,9 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   return (
     <main className={styles.page} lang={view.assembled.language} data-public-memorial="">
       {/* QG 016 — Offrandes symboliques : l'hôte public enregistre réellement
-          le geste du visiteur (le serveur décide seul de son acceptation). */}
-      <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering}>
+          le geste du visiteur (le serveur décide seul de son acceptation).
+          Lot 2 : puis, s'il le souhaite, sa signature privée (famille seule). */}
+      <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering} sign={signSymbolicOfferingAction}>
         <MemorialAssembly assembled={view.assembled} />
       </PublicOfferingsProvider>
     </main>

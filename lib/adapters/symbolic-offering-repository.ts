@@ -32,3 +32,29 @@ export type SymbolicOfferingOutcome = "recorded" | "duplicate" | "refused" | "ra
 export interface SymbolicOfferingRepository {
   record(input: SymbolicOfferingInput): Promise<SymbolicOfferingOutcome>;
 }
+
+/**
+ * Lot 2 — the contract over sign_symbolic_offering_v1() (supabase/
+ * migrations/20261116120000_lot2_offering_signature.sql): attaches the
+ * visitor's OPTIONAL signature to a gesture ALREADY recorded, designated by
+ * the public slug and the gesture's own idempotency key. Never creates a
+ * gesture. The signature is private to the family; it is never logged.
+ */
+export interface SymbolicOfferingSignatureInput {
+  slug: string;
+  idempotencyKey: string;
+  /** Already normalised (lib/memorial/symbolic-offerings/offering-signature.ts). */
+  signature: string;
+}
+
+/**
+ * Exactly the function's outcomes:
+ * - `signed`: the signature is attached;
+ * - `already_signed`: the same signature already was (a retry);
+ * - `refused`: unknown slug or gesture, signed otherwise, or too late.
+ */
+export type SymbolicOfferingSignatureOutcome = "signed" | "already_signed" | "refused";
+
+export interface SymbolicOfferingSignatureRepository {
+  sign(input: SymbolicOfferingSignatureInput): Promise<SymbolicOfferingSignatureOutcome>;
+}

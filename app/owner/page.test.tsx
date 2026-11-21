@@ -393,8 +393,8 @@ describe("OwnerPage — real attentions of the selected tribute", () => {
     countOfferings.mockResolvedValue({ coeur: 12, bougie: 7, lys: 9 });
     listOfferings.mockResolvedValue({
       offerings: [
-        { id: "o1", kind: "lys", createdAt: "2026-11-15T09:00:00.000Z" },
-        { id: "o2", kind: "bougie", createdAt: "2026-11-12T18:30:00.000Z" },
+        { id: "o1", kind: "lys", createdAt: "2026-11-15T09:00:00.000Z", signature: null },
+        { id: "o2", kind: "bougie", createdAt: "2026-11-12T18:30:00.000Z", signature: null },
       ],
       hasMore: true,
     });
@@ -411,6 +411,27 @@ describe("OwnerPage — real attentions of the selected tribute", () => {
     expect(html).toContain("Une bougie a été allumée.");
     expect(html).toContain("15 nov. 2026");
     expect(html).toContain(`href="/owner/hommages/${ID_1}/attentions"`);
+  });
+
+  it("Lot 2: a signed gesture shows its signature to the family, an unsigned one stays anonymous (FR / EN / ES)", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([PUBLISHED]);
+    listTributeDetails.mockResolvedValue(details({ [ID_1]: { status: "published" } }));
+    countOfferings.mockResolvedValue({ coeur: 1, bougie: 1, lys: 0 });
+    listOfferings.mockResolvedValue({
+      offerings: [
+        { id: "o1", kind: "coeur", createdAt: "2026-11-15T09:00:00.000Z", signature: "Marie <b>" },
+        { id: "o2", kind: "bougie", createdAt: "2026-11-12T18:30:00.000Z", signature: null },
+      ],
+      hasMore: false,
+    });
+
+    const fr = await render();
+    expect(fr).toContain("Un cœur a été déposé par Marie &lt;b&gt;.");
+    expect(fr).not.toContain("<b>");
+    expect(fr).toContain("Une bougie a été allumée.");
+    expect(await render({ langue: "en" })).toContain("A heart was left by Marie &lt;b&gt;.");
+    expect(await render({ langue: "es" })).toContain("Marie &lt;b&gt; ha dejado un corazón.");
   });
 
   it("no gesture: zeros and a quiet empty state — no invented figure, no link to an empty book", async () => {
