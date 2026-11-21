@@ -276,6 +276,11 @@ export const TRANSLATION_KEYS = [
   "journey.deathNoticeHiddenNote",
   "journey.ceremonyDeferredNote",
   "journey.lockedAfterPublication",
+  // Chef 03 / O05 — « Reprendre mon parcours depuis le début ».
+  "journey.fullReviewStart",
+  "journey.fullReviewNotice",
+  "journey.fullReviewFinish",
+  "traditions.reviewConfirm",
   // « Mon parcours » simplifié + « Gérer les rubriques visibles ».
   "journey.manageVisibility",
   "journey.hiddenFromMemorial",

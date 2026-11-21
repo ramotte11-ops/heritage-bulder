@@ -159,6 +159,22 @@ function updatedContent(draft: GuestDraftV3, content: MemorialContent, now: () =
  * Adapts the local V3 CAS store to the existing DraftRevisionProvider.
  * The store performs the revision comparison and write atomically.
  */
+/** Key-order-independent JSON equality (draft content is plain JSON). */
+function sameJson(left: unknown, right: unknown): boolean {
+  return stableJson(left) === stableJson(right);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 export function createGuestDraftSaveTransport({
   store,
   getDraft,
@@ -168,6 +184,13 @@ export function createGuestDraftSaveTransport({
   return async (content, expectedRevision): Promise<DraftSaveResponse> => {
     const current = getDraft();
     if (current.revision !== expectedRevision) return { status: "conflict" };
+    // Chef 03 / O05 — the server's own rule (persist-edit.ts): content
+    // identical to the stored draft is an idempotent confirmation — no
+    // write, same revision. « Continuer » on an unchanged screen (the full
+    // review) therefore never rewrites the local draft.
+    if (sameJson(current.content, content)) {
+      return { status: "saved", updatedAt: current.updatedAt, revision: current.revision };
+    }
 
     const next = updatedContent(current, content, now);
     const result = await store.save(next, expectedRevision);

@@ -23,6 +23,7 @@ import {
   resolveJourney,
   resolveJourneyScreens,
   REVISION_SECTION_ALIASES,
+  nextReviewScreen,
   resolveRevisionContext,
   resolveRevisionTarget,
   resolveReviewingSection,
@@ -468,10 +469,22 @@ describe("Chef 03 / O04 — locks: a screen the server would refuse is never off
     expect(resolveJourney(content, null, null, undefined, LOCKS).current).toBe(resolveJourney(content).current);
   });
 
-  it("a locked current screen stays current (locks never move the route)", () => {
-    const content = throughA03(); // A04 current
-    const state = resolveJourneyScreens(content, undefined, ["ceremonyMoment"]).find((s) => s.id === "ceremonyMoment");
-    expect(state).toMatchObject({ status: "current", accessible: true, locked: false });
+  it("Chef 03 / O05 — a locked open gate never blocks the family: the next editable one is current", () => {
+    const content = ok(commitA00(throughA03(), "no")); // A04 would be current
+    expect(currentJourneyScreen(content)).toBe("ceremonyMoment");
+    const ceremonyLocks = ["ceremonyMoment", "ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyProgramme", "ceremonyNote"] as const;
+    // A04 locked and never answered (published before it): its gate is
+    // passed over for routing only — Traditions, the next editable screen,
+    // is current. Nothing written.
+    const before = JSON.stringify(content);
+    expect(currentJourneyScreen(content, ceremonyLocks)).toBe("traditions");
+    expect(JSON.stringify(content)).toBe(before);
+    expect(readGuidedFlowState(content).A04).toBeUndefined();
+    const screens = resolveJourneyScreens(content, undefined, ceremonyLocks);
+    expect(screens.find((s) => s.id === "ceremonyMoment")).toMatchObject({ accessible: false, locked: true });
+    expect(screens.find((s) => s.status === "current")?.id).toBe(currentJourneyScreen(content, ceremonyLocks));
+    // Without locks: exactly the historical reading.
+    expect(currentJourneyScreen(content, [])).toBe("ceremonyMoment");
   });
 
   it("?etape= and ?rubrique= naming a locked screen are ignored", () => {
@@ -515,6 +528,63 @@ describe("Chef 03 / O04 — « Modifier mon choix »: A00 reopened from the deat
     resolveJourney(no, "announcementChoice", "deathNotice");
     expect(JSON.stringify(no)).toBe(before);
     expect(readGuidedFlowState(no).A01).toEqual(readGuidedFlowState(throughA03()).A01);
+  });
+});
+
+describe("Chef 03 / O05 — nextReviewScreen: the full review, in the natural order", () => {
+  /** Walks the review from the start, as « Continuer » would without changes. */
+  function walk(content: MemorialContent, locks: readonly JourneyScreenId[] = []): JourneyScreenId[] {
+    const steps: JourneyScreenId[] = [];
+    let next = nextReviewScreen(content, null, undefined, locks);
+    while (next !== null) {
+      steps.push(next);
+      next = nextReviewScreen(content, next, undefined, locks);
+    }
+    return steps;
+  }
+
+  it("a finished memorial: every reached screen once, in catalog order, from the very first", () => {
+    const content = ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))));
+    expect(currentJourneyScreen(content)).toBeNull();
+    const steps = walk(content);
+    expect(steps[0]).toBe("identity");
+    expect(steps).toEqual(JOURNEY_SCREEN_IDS.filter((id) => steps.includes(id)));
+    expect(steps).toEqual(resolveJourneyScreens(content).filter((s) => s.accessible).map((s) => s.id));
+    expect(nextReviewScreen(content, steps.at(-1)!)).toBeNull();
+  });
+
+  it("never a hidden, deferred or future screen — their content stays", () => {
+    const content = ok(commitA00(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))), "no"));
+    const steps = walk(content);
+    for (const id of ["announcementText", "announcementDetails", "announcementPreview"] as const) expect(steps).not.toContain(id);
+    expect(steps).toContain("traditions");
+    const partial = throughA03(); // A04 current: the review stops there
+    expect(walk(partial).at(-1)).toBe("ceremonyMoment");
+    expect(walk(partial)).not.toContain("traditions");
+  });
+
+  it("follows answers changed on the way: A00 → « Oui » brings the notice into the review", () => {
+    const no = ok(commitA00(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))), "no"));
+    expect(nextReviewScreen(no, "reveal")).not.toBe("announcementText");
+    const yes = ok(commitA00(no, "yes")); // the family answers « Oui » at A00 during the review
+    expect(nextReviewScreen(yes, "reveal")).toBe("announcementText");
+  });
+
+  it("after publication: locked screens are passed over, the editable ones kept", () => {
+    const content = ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))));
+    const locks = ["identity", "announcementChoice", "phrase", "photo", "crop", "reveal", "ceremonyMoment", "ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyProgramme", "ceremonyNote"] as const;
+    const steps = walk(content, locks);
+    expect(steps[0]).toBe("announcementText");
+    for (const id of locks) expect(steps).not.toContain(id);
+    expect(steps).toContain("traditions");
+    expect(steps).toContain("gallery");
+  });
+
+  it("is pure: computing the review writes nothing", () => {
+    const content = fullAnnouncement();
+    const before = JSON.stringify(content);
+    walk(content);
+    expect(JSON.stringify(content)).toBe(before);
   });
 });
 

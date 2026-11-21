@@ -62,7 +62,9 @@ import {
 import {
   guestCurrentJourneyScreen,
   hasGuestJourney,
+  nextGuestReviewScreen,
   resolveGuestJourney,
+  resolveGuestReviewTarget,
   resolveGuestReviewingSection,
   resolveGuestRevisionTarget,
 } from "@/lib/guest-draft/guest-journey";
@@ -94,9 +96,19 @@ interface JourneyView {
   reviewingSection: JourneySection | null;
   returnToPreview: boolean;
   reopenPreview: boolean;
+  /** Chef 03 / O05 — the full review: `revising` is its current step (the
+   * route's `?parcours=revue`). Local navigation state only; nothing of it
+   * is stored in the draft. */
+  fullReview: boolean;
 }
 
-const NORMAL_VIEW: JourneyView = { revising: null, reviewingSection: null, returnToPreview: false, reopenPreview: false };
+const NORMAL_VIEW: JourneyView = {
+  revising: null,
+  reviewingSection: null,
+  returnToPreview: false,
+  reopenPreview: false,
+  fullReview: false,
+};
 
 type RuntimeState =
   | { status: "loading" }
@@ -115,6 +127,10 @@ type RuntimeState =
  * the route ignores an invalid `?etape=`. */
 function validView(draft: GuestDraftV3, view: JourneyView): JourneyView {
   if (!hasGuestJourney(draft)) return NORMAL_VIEW;
+  if (view.fullReview) {
+    const step = resolveGuestReviewTarget(draft, view.revising);
+    return step === null ? NORMAL_VIEW : { ...NORMAL_VIEW, revising: step, fullReview: true };
+  }
   const revising = resolveGuestRevisionTarget(draft, view.revising);
   return {
     revising,
@@ -127,6 +143,7 @@ function validView(draft: GuestDraftV3, view: JourneyView): JourneyView {
         : revisionSection(revising, view.reviewingSection),
     returnToPreview: revising !== null && view.returnToPreview,
     reopenPreview: view.reopenPreview,
+    fullReview: false,
   };
 }
 
@@ -336,6 +353,13 @@ export function GuestBuilderRuntime({
   const finishStep = useCallback(() => {
     show((view) => {
       if (view.revising === null) return view;
+      // Chef 03 / O05 — a full-review step saved: on to the next one, from
+      // the draft as just saved (`nextReviewScreen`), or back to the route.
+      if (view.fullReview) {
+        const draft = draftRef.current;
+        const next = draft === null ? null : nextGuestReviewScreen(draft, view.revising);
+        return next === null ? NORMAL_VIEW : { ...NORMAL_VIEW, revising: next, fullReview: true };
+      }
       if (view.returnToPreview) return { ...NORMAL_VIEW, reopenPreview: true };
       return { ...NORMAL_VIEW, reviewingSection: view.reviewingSection ?? journeySectionForScreen(view.revising) };
     });
@@ -347,9 +371,15 @@ export function GuestBuilderRuntime({
       reviewingSection: section ?? journeySectionForScreen(id),
       returnToPreview,
       reopenPreview: false,
+      fullReview: false,
     })),
     resume: () => show((view) => (view.returnToPreview ? { ...NORMAL_VIEW, reopenPreview: true } : NORMAL_VIEW)),
     finishReview: () => show(() => NORMAL_VIEW),
+    startReview: () => show(() => {
+      const draft = draftRef.current;
+      const first = draft === null ? null : nextGuestReviewScreen(draft, null);
+      return first === null ? NORMAL_VIEW : { ...NORMAL_VIEW, revising: first, fullReview: true };
+    }),
     finishStep,
   }), [finishStep, show]);
 
@@ -757,7 +787,10 @@ export function GuestBuilderRuntime({
             ? (content) => (
                 <GuestJourneyProvider
                   language={draft.language!}
-                  snapshot={resolveGuestJourney(draft, view.revising, view.reviewingSection)}
+                  snapshot={{
+                    ...resolveGuestJourney(draft, view.revising, view.reviewingSection),
+                    review: view.fullReview && view.revising !== null,
+                  }}
                   skinVariant={draft.skinVariant}
                   returnToPreview={view.returnToPreview}
                   moves={journeyMoves}

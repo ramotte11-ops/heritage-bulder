@@ -20,6 +20,8 @@ export interface GuestJourneyMoves {
   openScreen: (id: JourneyScreenId, returnToPreview: boolean, section?: JourneySection) => void;
   resume: () => void;
   finishReview: () => void;
+  /** Chef 03 / O05 — « Reprendre mon parcours depuis le début ». */
+  startReview?: () => void;
   finishStep: () => void;
 }
 
@@ -102,6 +104,15 @@ export function GuestJourneyProvider({
       moves.finishReview();
       return true;
     },
+    ...(moves.startReview === undefined
+      ? {}
+      : {
+          async startReview() {
+            if (!(await canLeaveCurrentScreen())) return false;
+            moves.startReview!();
+            return true;
+          },
+        }),
     finishStep: moves.finishStep,
     hasPendingInput: () => pendingInputs.hasPending() || hasIncompleteNativeInput(),
   }), [language, snapshot, skinVariant, returnToPreview, moves, pendingInputs, canLeaveCurrentScreen]);

@@ -7,7 +7,9 @@ import {
   guestCurrentJourneyScreen,
   guestJourneyOverrides,
   hasGuestJourney,
+  nextGuestReviewScreen,
   resolveGuestJourney,
+  resolveGuestReviewTarget,
   resolveGuestReviewingSection,
   resolveGuestRevisionTarget,
 } from "./guest-journey";
@@ -162,6 +164,46 @@ describe("Chef 03 / O03 — guest: Traditions independent of A00, « À complét
     expect(traditions(confirmed)).toMatchObject({ status: "done", pendingConfirmation: false });
     // The route's next screen is the same either way: no forced return.
     expect(guestCurrentJourneyScreen(pending)).toBe(guestCurrentJourneyScreen(confirmed));
+  });
+});
+
+describe("Chef 03 / O05 — guest full review, by the route's own rule", () => {
+  const DONE = {
+    hero: HERO,
+    guidedFlow: {
+      ...THROUGH_T08.guidedFlow,
+      A04: { status: "completed", answer: "no" },
+      A09: { status: "skipped" },
+      A10: { status: "skipped" },
+      A11: { status: "skipped" },
+      A12: { status: "skipped" },
+      A13: { status: "skipped" },
+      A15: { status: "skipped" },
+    },
+  };
+
+  it("walks every reopenable screen once, in order, from identity, then ends", () => {
+    const d = draft(DONE);
+    expect(guestCurrentJourneyScreen(d)).toBeNull();
+    const steps: string[] = [];
+    let next = nextGuestReviewScreen(d, null);
+    while (next !== null) {
+      steps.push(next);
+      next = nextGuestReviewScreen(d, next);
+    }
+    expect(steps[0]).toBe("identity");
+    expect(steps).toEqual(resolveJourneyScreens(d.content, guestJourneyOverrides(d)).filter((s) => s.accessible).map((s) => s.id));
+    // The local Hero (T06-T08) is part of it: photos stay local, nothing re-uploaded.
+    expect(steps).toEqual(expect.arrayContaining(["photo", "crop", "reveal", "traditions"]));
+    expect(steps).not.toContain("announcementText");
+  });
+
+  it("a review step stays shown only while reopenable — the current screen included", () => {
+    const mid = draft({ ...THROUGH_T08, guidedFlow: { ...THROUGH_T08.guidedFlow } });
+    const current = guestCurrentJourneyScreen(mid);
+    expect(resolveGuestReviewTarget(mid, current)).toBe(current);
+    expect(resolveGuestReviewTarget(mid, "gallery")).toBeNull();
+    expect(resolveGuestReviewTarget(mid, null)).toBeNull();
   });
 });
 

@@ -1,6 +1,7 @@
 import type { SectionId } from "@/config/sections";
 import type { MemorialContent } from "@/types/memorial";
-import { readGuidedFlowState } from "./flow-state";
+import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
+import type { StepRecord } from "./engine";
 import {
   isPageBComplete,
   isPageCComplete,
@@ -220,10 +221,59 @@ export function isJourneyScreenId(value: unknown): value is JourneyScreenId {
   return typeof value === "string" && (JOURNEY_SCREEN_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * Chef 03 / O05 — how a LOCKED screen the family never answered is read
+ * for routing only: as passed, the way its own « Passer » / neutral
+ * answer would have recorded it, so that the gates after it can open.
+ * Only screens whose lock can leave an answer missing after publication
+ * are listed (A00, T05, the ceremony); a screen absent from this table is
+ * simply skipped.
+ */
+const LOCKED_SCREEN_PASSAGE: Partial<Record<JourneyScreenId, { step: string; record: StepRecord }>> = {
+  announcementChoice: { step: "A00", record: { status: "skipped", answer: "later" } },
+  phrase: { step: "T05", record: { status: "skipped" } },
+  ceremonyMoment: { step: "A04", record: { status: "completed", answer: "undecided" } },
+  ceremonyDateTime: { step: "A05", record: { status: "skipped" } },
+  ceremonyVenue: { step: "A06", record: { status: "skipped" } },
+  ceremonyAddress: { step: "A07", record: { status: "skipped" } },
+  ceremonyProgramme: { step: "A14", record: { status: "skipped" } },
+  ceremonyNote: { step: "A08", record: { status: "skipped" } },
+};
+
+/**
+ * The content the ROUTE reads to find where the family stands, given the
+ * locks: an in-memory copy in which a locked, never-answered step reads
+ * as passed (`LOCKED_SCREEN_PASSAGE`). Never saved, never shown, never
+ * handed to a screen or a composition: a stored answer always wins, and
+ * every screen still renders — and every save is still decided on — the
+ * real draft. Without locks, the content itself.
+ */
+function routingContent(content: MemorialContent, locks: JourneyLocks): MemorialContent {
+  if (locks.length === 0) return content;
+  let flow = readGuidedFlowState(content);
+  let changed = false;
+  for (const id of locks) {
+    const passage = LOCKED_SCREEN_PASSAGE[id];
+    if (passage === undefined || (flow as Record<string, unknown>)[passage.step] !== undefined) continue;
+    flow = { ...flow, [passage.step]: passage.record };
+    changed = true;
+  }
+  return changed ? writeGuidedFlowState(content, flow) : content;
+}
+
 /** The screen the route shows right now (the first open gate), or
- * `null` once every built screen is behind the family. */
-export function currentJourneyScreen(content: MemorialContent): JourneyScreenId | null {
-  return JOURNEY_SCREENS.find((screen) => screen.needs(content))?.id ?? null;
+ * `null` once every built screen is behind the family.
+ *
+ * Chef 03 / O05 — `locks` (journey-locks.ts): an open gate the server
+ * would refuse to save (after publication: a ceremony left to complete,
+ * for instance) never blocks the family — the route moves on to the next
+ * open, editable gate, in the same order, or rests on the final screen.
+ * Nothing is written and no lock is bypassed: the locked screen is simply
+ * not shown, and is read as passed for routing only (`routingContent`).
+ * Without locks, exactly the historical reading. */
+export function currentJourneyScreen(content: MemorialContent, locks: JourneyLocks = []): JourneyScreenId | null {
+  const routing = routingContent(content, locks);
+  return JOURNEY_SCREENS.find((screen) => !locks.includes(screen.id) && screen.needs(routing))?.id ?? null;
 }
 
 /**
@@ -287,6 +337,10 @@ export interface JourneySnapshot {
   revising: JourneyScreenId | null;
   /** The rubrique whose list remains open between successive revisions. */
   reviewingSection: JourneySection | null;
+  /** Chef 03 / O05 — « Reprendre mon parcours depuis le début »: the
+   * revised screen is one step of the full, ordered review; once saved,
+   * the next one follows (`nextReviewScreen`). */
+  review: boolean;
 }
 
 /**
@@ -314,7 +368,7 @@ export function resolveJourneyScreens(
   overrides?: JourneyOverrides,
   locks: JourneyLocks = [],
 ): JourneyScreenState[] {
-  const current = overrides === undefined ? currentJourneyScreen(content) : overrides.current;
+  const current = overrides === undefined ? currentJourneyScreen(content, locks) : overrides.current;
   const currentIndex = current === null ? JOURNEY_SCREENS.length : JOURNEY_SCREENS.findIndex((s) => s.id === current);
 
   return JOURNEY_SCREENS.map((screen, index): JourneyScreenState => {
@@ -373,8 +427,35 @@ export function resolveJourney(
     const own = screens.filter((s) => s.section === id);
     return { id, status: sectionStatus(own), screens: own };
   }).filter((section) => section.screens.length > 0);
-  const current = overrides === undefined ? currentJourneyScreen(content) : overrides.current;
-  return { sections, current, revising, reviewingSection };
+  const current = overrides === undefined ? currentJourneyScreen(content, locks) : overrides.current;
+  return { sections, current, revising, reviewingSection, review: false };
+}
+
+/**
+ * Chef 03 / O05 — the full review (« Reprendre mon parcours depuis le
+ * début »): the next screen to show after `after` (`null` → from the
+ * very first), in the catalog's natural order — the one order the route
+ * itself follows.
+ *
+ * Deterministic and driven by the stored answers only: every call
+ * recomputes the journey from the content as it stands NOW, so an answer
+ * changed on the way (A00 or A04 → « Oui ») brings its screens into the
+ * review right away, and a screen that no longer applies is left out —
+ * its content kept. Only screens the family may genuinely reopen are
+ * offered: already treated (`done` / `toComplete`) or the current one,
+ * never a future screen, a hidden or deferred one, nor one the server
+ * would refuse to save (`locks`). `null` → the review is over: the route
+ * rests where the family stopped (the final screen once all is done).
+ */
+export function nextReviewScreen(
+  content: MemorialContent,
+  after: JourneyScreenId | null,
+  overrides?: JourneyOverrides,
+  locks: JourneyLocks = [],
+): JourneyScreenId | null {
+  const start = after === null ? 0 : JOURNEY_SCREENS.findIndex((screen) => screen.id === after) + 1;
+  const screens = resolveJourneyScreens(content, overrides, locks);
+  return screens.slice(start).find((screen) => screen.accessible)?.id ?? null;
 }
 
 /**

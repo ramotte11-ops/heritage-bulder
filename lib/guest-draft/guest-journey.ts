@@ -1,5 +1,6 @@
 import {
   journeySectionForScreen,
+  nextReviewScreen,
   resolveJourney,
   resolveJourneyScreens,
   type JourneyOverrides,
@@ -79,6 +80,21 @@ export function resolveGuestRevisionTarget(draft: GuestDraftV3, id: JourneyScree
   const state = resolveJourneyScreens(draft.content, guestJourneyOverrides(draft)).find((s) => s.id === id);
   if (state === undefined || !state.accessible || state.status === "current") return null;
   return id;
+}
+
+/** Chef 03 / O05 — the full review's next screen, by the route's own rule
+ * (`nextReviewScreen`) read from the local draft. No server locks exist
+ * for a guest draft (never published). */
+export function nextGuestReviewScreen(draft: GuestDraftV3, after: JourneyScreenId | null): JourneyScreenId | null {
+  return nextReviewScreen(draft.content, after, guestJourneyOverrides(draft));
+}
+
+/** A full-review step stays shown only while it is still reopenable (the
+ * current screen included — the review passes through it too). */
+export function resolveGuestReviewTarget(draft: GuestDraftV3, id: JourneyScreenId | null): JourneyScreenId | null {
+  if (id === null) return null;
+  const state = resolveJourneyScreens(draft.content, guestJourneyOverrides(draft)).find((s) => s.id === id);
+  return state?.accessible === true ? id : null;
 }
 
 /** Same rule as the route's `resolveReviewingSection`: kept only while the

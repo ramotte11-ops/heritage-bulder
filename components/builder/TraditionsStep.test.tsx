@@ -43,6 +43,8 @@ const { resolveAvailableTraditionSuggestions } = vi.hoisted(() => ({
 vi.mock("@/config/tradition-suggestions", () => ({ resolveAvailableTraditionSuggestions }));
 
 const { TraditionsStep } = await import("./TraditionsStep");
+const { JourneyContext } = await import("./journey/journey-context");
+const { resolveJourney } = await import("@/lib/builder/guided-flow/journey");
 
 afterEach(cleanup);
 
@@ -323,3 +325,85 @@ describe("TraditionsStep — B03: a repère being written is reported, never sil
     expect(registry.hasPending()).toBe(false);
   });
 });
+
+describe("Chef 03 / O05 — the full review never renews the confirmation by itself", () => {
+  const ENTRY = { id: "entry-review", origin: "custom" as const, suggestionId: null, title: null, text: "Repère relu" };
+  /** A00 = no, A09 resolved: confirmed (fingerprint) or not. */
+  function reviewed(a09: Record<string, unknown>) {
+    const base = {
+      ...CONTENT,
+      traditions: { entries: [ENTRY] },
+      guidedFlow: { ...CONTENT.guidedFlow, A00: { status: "completed", answer: "no" } },
+    };
+    return { ...base, guidedFlow: { ...base.guidedFlow, A09: a09 } };
+  }
+  const confirmedAnswer = traditionsConfirmationAnswer(reviewed({ status: "skipped" }) as never)!;
+
+  function renderInReview(content: Record<string, unknown>, persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" })) {
+    const finishStep = vi.fn();
+    const journey = {
+      language: "fr",
+      snapshot: { ...resolveJourney(content as never, "traditions", null), review: true },
+      skinVariant: null,
+      openScreen: vi.fn(),
+      resume: vi.fn(),
+      finishReview: vi.fn(),
+      finishStep,
+      hasPendingInput: () => false,
+      backNavigationFailed: false,
+    };
+    render(
+      <JourneyContext.Provider value={journey as never}>
+        <TraditionsStep {...baseProps({ content: content as never, persist })} />
+      </JourneyContext.Provider>,
+    );
+    return { persist, finishStep };
+  }
+
+  it("confirmed, unchanged: « Continuer » goes on WITHOUT writing — the confirmation stays exactly as it was", async () => {
+    const { persist, finishStep } = renderInReview(reviewed({ status: "completed", answer: confirmedAnswer }));
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+    await vi.waitFor(() => expect(finishStep).toHaveBeenCalled());
+    expect(persist).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Confirmer mes repères pour l'hommage" })).toBeNull();
+  });
+
+  it("not confirmed (old draft), unchanged: « Continuer » writes nothing and confirms nothing; the explicit confirmation is offered", async () => {
+    const { persist, finishStep } = renderInReview(reviewed({ status: "skipped" }));
+    expect(screen.getByText("Non incluse dans l'hommage tant que vous n'avez pas confirmé vos repères avec « Continuer ».")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^continuer$/i }));
+    await vi.waitFor(() => expect(finishStep).toHaveBeenCalled());
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("the explicit « Confirmer mes repères pour l'hommage » is the only way to confirm them during the review", async () => {
+    const { persist, finishStep } = renderInReview(reviewed({ status: "skipped" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer mes repères pour l'hommage" }));
+    await vi.waitFor(() => expect(finishStep).toHaveBeenCalled());
+    const saved = persist.mock.calls.at(-1)?.[0];
+    expect(saved.guidedFlow.A09).toEqual({ status: "completed", answer: confirmedAnswer });
+    expect(saved.traditions.entries).toEqual([ENTRY]);
+  });
+
+  it("a repère changed during the review: « Continuer » is the explicit confirmation of the new version", async () => {
+    const { persist, finishStep } = renderInReview(reviewed({ status: "completed", answer: confirmedAnswer }));
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un repère personnalisé/ }));
+    fireEvent.change(screen.getByLabelText("Votre texte"), { target: { value: "Un repère ajouté pendant la relecture." } });
+    fireEvent.click(screen.getByRole("button", { name: "Ajouter" }));
+    fireEvent.click(screen.getByRole("button", { name: /^continuer$/i }));
+    await vi.waitFor(() => expect(finishStep).toHaveBeenCalled());
+    const saved = persist.mock.calls.at(-1)?.[0];
+    expect(saved.traditions.entries).toHaveLength(2);
+    expect(saved.guidedFlow.A09.answer).toBe(traditionsConfirmationAnswer(saved));
+    expect(saved.guidedFlow.A09.answer).not.toBe(confirmedAnswer);
+  });
+
+  it("outside the review, « Continuer » keeps its meaning: it confirms", async () => {
+    const persist = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    render(<TraditionsStep {...baseProps({ content: reviewed({ status: "skipped" }) as never, persist })} />);
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(persist.mock.calls.at(-1)?.[0].guidedFlow.A09).toEqual({ status: "completed", answer: confirmedAnswer });
+  });
+});
+

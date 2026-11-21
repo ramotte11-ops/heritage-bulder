@@ -36,7 +36,9 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { BuilderScreenNav } = await import("./BuilderScreenNav");
-const { ChangeAmbianceLink } = await import("./JourneyEntry");
+const { ChangeAmbianceLink, FullReviewEntry } = await import("./JourneyEntry");
+const { translate: translateI18n } = await import("@/lib/i18n/translate");
+const translateFr = (key: Parameters<typeof translateI18n>[1]) => translateI18n("fr", key);
 const { JourneyContext, RouteJourneyProvider, useStepDone } = await import("./journey-context");
 
 afterEach(() => {
@@ -1126,6 +1128,104 @@ describe("Chef 03 / O04 — « Modifier mon choix », the ceremony « À décide
     renderPanel(withA00(fullAnnouncement(), "no"), { language, locks: lockedJourneyScreens({ status: "published" }) });
     fireEvent.click(screen.getByRole("button", { name: entry }));
     expect(document.body.textContent).toContain(locked);
+  });
+});
+
+describe("Chef 03 / O05 — « Reprendre mon parcours depuis le début »", () => {
+  const DONE = (() => {
+    const content = fullAnnouncement();
+    return content;
+  })();
+  function StepDoneProbe() {
+    const done = useStepDone();
+    return (
+      <button type="button" onClick={done}>
+        step-done
+      </button>
+    );
+  }
+  function renderReview(
+    snapshot: ReturnType<typeof resolveJourney>,
+    language: "fr" | "en" | "es" = "fr",
+    registry = createPreviewFlushRegistry(),
+  ) {
+    render(
+      <PreviewFlushRegistryContext.Provider value={registry}>
+        <RouteJourneyProvider language={language} snapshot={snapshot} builderPath="/builder/m-1">
+          <FullReviewEntry />
+          <BuilderScreenNav />
+          <StepDoneProbe />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+  }
+
+  it("on the resting screen: one explicit entry; it drains the autosave, then opens the review (a navigation, no write)", async () => {
+    const order: string[] = [];
+    const registry = createPreviewFlushRegistry();
+    registry.register(async () => {
+      order.push("flush");
+    });
+    routerPush.mockImplementation(() => order.push("push"));
+    renderReview(resolveJourney(DONE), "fr", registry);
+    fireEvent.click(screen.getByRole("button", { name: "Reprendre mon parcours depuis le début" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?parcours=revue"));
+    expect(order).toEqual(["flush", "push"]);
+    routerPush.mockReset();
+  });
+
+  it("is absent while a screen is being revised, and outside any journey", () => {
+    renderReview({ ...resolveJourney(DONE, "identity"), review: true });
+    expect(screen.queryByRole("button", { name: "Reprendre mon parcours depuis le début" })).toBeNull();
+    cleanup();
+    render(<FullReviewEntry />);
+    expect(screen.queryByRole("button", { name: "Reprendre mon parcours depuis le début" })).toBeNull();
+  });
+
+  it("during the review: the notice says so; a saved step goes on to the next one (?apres=)", async () => {
+    renderReview({ ...resolveJourney(DONE, "phrase", null), review: true });
+    expect(screen.getByText(/Vous relisez votre parcours depuis le début/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "step-done" }));
+    expect(routerPush).toHaveBeenCalledWith("/builder/m-1?parcours=revue&apres=phrase");
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  it("« Terminer la relecture » leaves the review for the normal route — nothing written", async () => {
+    const persist = vi.fn();
+    const registry = createPreviewFlushRegistry();
+    registry.register(async () => persist());
+    renderReview({ ...resolveJourney(DONE, "phrase", null), review: true }, "fr", registry);
+    fireEvent.click(screen.getByRole("button", { name: "Terminer la relecture" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1"));
+    expect(persist).toHaveBeenCalledTimes(1); // the screen's own autosave drain, never a new answer
+  });
+
+  it("an unsaved answer is never lost: leaving the review asks first", async () => {
+    const { usePendingInput } = await import("./pending-input");
+    function Unfinished() {
+      usePendingInput(true);
+      return null;
+    }
+    render(
+      <RouteJourneyProvider language="fr" snapshot={{ ...resolveJourney(DONE, "phrase", null), review: true }} builderPath="/builder/m-1">
+        <Unfinished />
+        <BuilderScreenNav />
+      </RouteJourneyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Terminer la relecture" }));
+    expect(await screen.findByText(translateFr("journey.pending"))).toBeTruthy();
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["en", "Go through my journey again from the start", "End the review"],
+    ["es", "Retomar mi recorrido desde el principio", "Terminar la revisión"],
+  ] as const)("is translated (%s)", (language, start, finish) => {
+    renderReview(resolveJourney(DONE), language);
+    expect(screen.getByRole("button", { name: start })).toBeTruthy();
+    cleanup();
+    renderReview({ ...resolveJourney(DONE, "phrase", null), review: true }, language);
+    expect(screen.getByRole("button", { name: finish })).toBeTruthy();
   });
 });
 
