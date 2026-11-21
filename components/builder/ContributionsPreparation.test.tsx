@@ -115,3 +115,29 @@ describe("M7 — ContributionsPreparation", () => {
     expect(seen).toEqual([{ condolences: false, stories: false, photos: true }]);
   });
 });
+
+describe("UX-A15 (#110) — barre de réglage compacte, commandes et Master ensemble", () => {
+  it("une seule barre, juste avant le Master, dans la même zone (barre collante bornée au Master)", () => {
+    const view = render(<Host />);
+    const workspace = view.container.querySelector<HTMLElement>("[data-contributions-workspace]")!;
+    const bar = workspace.querySelector<HTMLElement>("[data-contributions-bar]")!;
+    expect(bar).toBeTruthy();
+    expect(bar.querySelectorAll('input[role="switch"]')).toHaveLength(3);
+    // La barre précède immédiatement l'aperçu du Master, dans le même conteneur.
+    expect(bar.nextElementSibling?.querySelector("[data-contributions-builder-preview]")).toBeTruthy();
+  });
+
+  it("accessibilité conservée : titre du groupe, nom complet de chaque interrupteur, aide liée ; libellé court seulement visuel", () => {
+    for (const language of ["fr", "en", "es"] as const) {
+      const view = render(<Host language={language} />);
+      expect(view.container.querySelector("[data-contributions-bar] legend")?.textContent).toBe(translate(language, "contributionsStep.featuresLegend"));
+      for (const key of ["condolences", "stories", "photos"] as const) {
+        const input = screen.getByRole("switch", { name: new RegExp(`^${translate(language, `contributionsStep.${key}`)}`) });
+        expect(document.getElementById(input.getAttribute("aria-describedby")!)?.textContent).toBe(translate(language, `contributionsStep.${key}Hint`));
+        const short = input.closest("label")!.querySelector('[aria-hidden="true"]:not([class*="switchTrack"])');
+        expect(short?.textContent).toBe(translate(language, `contributionsStep.${key}Short`));
+      }
+      cleanup();
+    }
+  });
+});

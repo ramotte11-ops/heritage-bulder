@@ -95,7 +95,7 @@ export function ContributionsStep({ language, content, skinVariant, persist, pro
 
   const busy = pending !== null;
   return (
-    <BuilderScreen progress={progress ?? contributionsStepProgress(content)}>
+    <BuilderScreen progress={progress ?? contributionsStepProgress(content)} allowSticky>
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "contributionsStep.title")}</h1>
         <p className={styles.subtitle}>{translate(language, "contributionsStep.subtitle")}</p>

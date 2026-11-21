@@ -18,7 +18,7 @@ export function ContributionsBuilderPilot({ language, skinVariant, initial }: { 
   const [features, setFeatures] = useState<ContributionsFeatures>(initial);
   const [saved, setSaved] = useState<MemorialContent | null>(null);
   return (
-    <BuilderScreen progress={0.9}>
+    <BuilderScreen progress={0.9} allowSticky>
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "var(--heritage-space-sm)" }}>
         <h1 style={{ fontFamily: "var(--heritage-font-family-serif)", fontWeight: 600, fontSize: "1.75rem", color: "var(--heritage-text-primary)", margin: 0 }}>
           {translate(language, "contributionsStep.title")}
