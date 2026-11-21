@@ -7,6 +7,7 @@ import {
   JOURNEY_SECTION_MEMORIAL_SECTION,
   type JourneyScreenId,
   type JourneyScreenState,
+  type JourneySection,
   type JourneySectionState,
 } from "@/lib/builder/guided-flow/journey";
 import type { SectionId } from "@/config/sections";
@@ -221,7 +222,7 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
   }, [onClose]);
 
   const actions: RowActions = {
-    review: (id) => guard.run(id, () => journey.openScreen(id)),
+    review: (id, section) => guard.run(id, () => journey.openScreen(id, section === undefined ? {} : { section })),
     resume: () =>
       guard.run(
         "resume",
@@ -308,7 +309,8 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
 }
 
 interface RowActions {
-  review: (id: JourneyScreenId) => void;
+  /** `section`: the rubrique to come back to when it is not the screen's own. */
+  review: (id: JourneyScreenId, section?: JourneySection) => void;
   resume: () => void;
   busy: boolean;
   pendingKey: string | null;
@@ -338,6 +340,12 @@ function SectionItem({
   const memorialSection = JOURNEY_SECTION_MEMORIAL_SECTION[section.id];
   const hiddenFromMemorial =
     journey.visibility?.sections.some((entry) => entry.sectionId === memorialSection && entry.hidden) ?? false;
+  const noteKey = sectionNoteKey(section);
+  const choice = changeChoiceTarget(section, journey);
+  // The steps are listed whenever one of them applies; a rubrique that
+  // does not apply at all (the death notice after « Non » / « Plus tard »)
+  // shows only its note and the way back to its question.
+  const listed = section.screens.some((screen) => screen.status !== "hidden" && screen.status !== "deferred");
 
   return (
     <li className={styles.section} data-status={section.status} data-section={section.id} data-open={open}>
@@ -366,11 +374,11 @@ function SectionItem({
         </button>
       </h3>
       <div id={contentId} hidden={!open}>
-        {section.status === "hidden" || section.status === "deferred" ? (
-          <p className={styles.hiddenNote}>
-            {translate(language, section.status === "deferred" ? "journey.deferredNote" : "journey.hiddenNote")}
-          </p>
-        ) : (
+        {noteKey !== null && <p className={styles.hiddenNote}>{translate(language, noteKey)}</p>}
+        {choice !== null && (
+          <ChangeChoiceButton choice={choice} sectionTitle={title} journey={journey} actions={actions} />
+        )}
+        {listed && (
           <ul className={styles.screens}>
             {section.screens.map((screen) => {
               const label = translate(language, `journey.screen.${screen.id}` as TranslationKey);
@@ -391,6 +399,80 @@ function SectionItem({
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * Chef 03 / O04 — the note a rubrique carries when (part of) it does not
+ * apply given the family's answers. `null` → no note.
+ */
+function sectionNoteKey(section: JourneySectionState): TranslationKey | null {
+  if (section.id === "deathNotice") {
+    if (section.status === "deferred") return "journey.deferredNote";
+    if (section.status === "hidden") return "journey.deathNoticeHiddenNote";
+    return null;
+  }
+  if (section.id === "ceremony") return section.status === "deferred" ? "journey.ceremonyDeferredNote" : null;
+  return section.status === "hidden" ? "journey.hiddenNote" : null;
+}
+
+interface ChoiceTarget {
+  id: JourneyScreenId;
+  section: JourneySection;
+}
+
+/**
+ * Chef 03 / O04 — « Modifier mon choix »: the question a rubrique depends
+ * on, reopened as it was answered (its screen seeds itself from the
+ * stored answer; opening writes nothing). Only when that question is
+ * reopenable right now — reached and not locked after publication.
+ * - the death notice, answered « Non » or « Plus tard »: A00, coming back
+ *   to this rubrique afterwards (`REVISION_SECTION_ALIASES`);
+ * - the ceremony, answered « Pas encore décidé »: A04.
+ */
+function changeChoiceTarget(section: JourneySectionState, journey: JourneyNavigation): ChoiceTarget | null {
+  let target: ChoiceTarget | null = null;
+  if (section.id === "deathNotice" && (section.status === "hidden" || section.status === "deferred")) {
+    target = { id: "announcementChoice", section: "deathNotice" };
+  } else if (section.id === "ceremony" && section.status === "deferred") {
+    target = { id: "ceremonyMoment", section: "ceremony" };
+  }
+  if (target === null) return null;
+  const id = target.id;
+  const state = journey.snapshot.sections.flatMap((s) => s.screens).find((screen) => screen.id === id);
+  if (state === undefined || !state.accessible || state.status === "current" || journey.snapshot.revising === id) return null;
+  return target;
+}
+
+function ChangeChoiceButton({
+  choice,
+  sectionTitle,
+  journey,
+  actions,
+}: {
+  choice: ChoiceTarget;
+  sectionTitle: string;
+  journey: JourneyNavigation;
+  actions: RowActions;
+}) {
+  const label = translate(journey.language, "journey.changeChoice");
+  return (
+    <button
+      type="button"
+      className={styles.actionButton}
+      data-change-choice={choice.id}
+      onClick={() => actions.review(choice.id, choice.section)}
+      disabled={actions.busy}
+      aria-busy={actions.pendingKey === choice.id || undefined}
+      aria-label={`${label} — ${sectionTitle}`}
+    >
+      <PendingActionLabel
+        pending={actions.pendingKey === choice.id}
+        pendingLabel={translate(journey.language, "common.pleaseWait")}
+      >
+        {label}
+      </PendingActionLabel>
+    </button>
   );
 }
 
@@ -496,6 +578,14 @@ function VisibilityManager({
 /** T08's row, once T08 is done: the ambiance actually saved
  * (`memorials.skin_variant`), so the family sees which one they chose. */
 function ScreenDetail({ screen, journey }: { screen: JourneyScreenState; journey: JourneyNavigation }) {
+  // Chef 03 / O04 — after publication: said, never a « Revoir » that fails.
+  if (screen.locked) {
+    return (
+      <span className={styles.screenDetail} data-locked="true">
+        {translate(journey.language, "journey.lockedAfterPublication")}
+      </span>
+    );
+  }
   // Chef 03 / O03 — repères not confirmed yet: say they are not in the
   // memorial, so « À compléter » is never a mystery.
   if (screen.pendingConfirmation) {

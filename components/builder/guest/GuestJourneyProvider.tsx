@@ -3,7 +3,7 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
-import type { JourneyScreenId, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
+import type { JourneyScreenId, JourneySection, JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { applyBeforeUnloadGuard } from "@/lib/builder/use-autosave";
 import { useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
@@ -17,7 +17,7 @@ import {
 /** The guest runtime's local moves — its stand-ins for the route's
  * `?etape=` / `?rubrique=` / `?apercu=1` navigations. */
 export interface GuestJourneyMoves {
-  openScreen: (id: JourneyScreenId, returnToPreview: boolean) => void;
+  openScreen: (id: JourneyScreenId, returnToPreview: boolean, section?: JourneySection) => void;
   resume: () => void;
   finishReview: () => void;
   finishStep: () => void;
@@ -87,7 +87,7 @@ export function GuestJourneyProvider({
     backNavigationFailed: false,
     async openScreen(id, options = {}) {
       if (!(await canLeaveCurrentScreen())) return false;
-      const navigate = () => moves.openScreen(id, options.returnToPreview === true);
+      const navigate = () => moves.openScreen(id, options.returnToPreview === true, options.section);
       if (options.startTransition) options.startTransition(navigate);
       else navigate();
       return true;

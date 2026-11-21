@@ -118,7 +118,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("states 0 / 1 / 2–6 / 7+", () => {
-  it("0 photo: heading, a calm add zone (multiple, JPEG/PNG/WebP), no register, no ghost slot; Continue and Skip available", () => {
+  it("0 photo: heading, a calm add zone (multiple, JPEG/PNG/WebP), no register, no ghost slot; Continue available, no redundant Skip (O04)", () => {
     render(<GalleryStep {...props()} />);
     expect(screen.getByRole("heading", { level: 1, name: "Vos souvenirs en images" })).toBeTruthy();
     expect(screen.getByText("Ajoutez les photos qui racontent sa vie. HERITAGE se chargera de les mettre en scène avec délicatesse.")).toBeTruthy();
@@ -128,7 +128,7 @@ describe("states 0 / 1 / 2–6 / 7+", () => {
     expect(document.querySelector("ol")).toBeNull();
     expect(document.querySelectorAll("img")).toHaveLength(0);
     expect(continueButton()).toHaveProperty("disabled", false);
-    expect(screen.getByRole("button", { name: "Passer cette étape" })).toHaveProperty("disabled", false);
+    expect(screen.queryByRole("button", { name: "Passer cette étape" })).toBeNull();
   });
 
   it("1 photo: the gentle hint that a second photo brings the Gallery", () => {
@@ -638,14 +638,22 @@ describe("Continuer / Passer", () => {
     expect((lastPersisted(p.persist) as unknown as { guidedFlow: Record<string, unknown> }).guidedFlow.A13).toEqual({ status: "skipped" });
   });
 
-  it("Skip keeps every photograph and retires nothing", async () => {
+  it("Chef 03 / O04 — one command only: « Passer cette étape » is gone, whatever the photographs (it was strictly equivalent to « Continuer »)", () => {
+    for (const count of [0, 1, 2, 7]) {
+      render(<GalleryStep {...props({ content: contentWith(count), thumbnails: thumbsFor(count) })} />);
+      expect(continueButton()).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Passer cette étape" })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("Chef 03 / O04 — « Continuer » keeps every photograph and retires nothing, like the removed Skip did", async () => {
     const p = props({ content: contentWith(2), thumbnails: thumbsFor(2) });
     render(<GalleryStep {...p} />);
-    fireEvent.click(screen.getByRole("button", { name: "Passer cette étape" }));
+    fireEvent.click(continueButton());
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
     const saved = lastPersisted(p.persist);
-    expect((saved as unknown as { guidedFlow: Record<string, unknown> }).guidedFlow.A13).toEqual({ status: "skipped" });
-    expect(galleryOf(saved)).toHaveLength(2);
+    expect(galleryOf(saved)).toEqual(galleryOf(contentWith(2)));
     expect(p.retirePhoto).not.toHaveBeenCalled();
   });
 

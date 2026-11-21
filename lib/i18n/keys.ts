@@ -271,6 +271,11 @@ export const TRANSLATION_KEYS = [
   "journey.ambiance.dark",
   // Chef 03 / O03 — Traditions holding repères not confirmed yet.
   "journey.traditionsUnconfirmed",
+  // Chef 03 / O04 — « Mon parcours » : revenir sur un choix, verrous après publication.
+  "journey.changeChoice",
+  "journey.deathNoticeHiddenNote",
+  "journey.ceremonyDeferredNote",
+  "journey.lockedAfterPublication",
   // « Mon parcours » simplifié + « Gérer les rubriques visibles ».
   "journey.manageVisibility",
   "journey.hiddenFromMemorial",
@@ -602,6 +607,10 @@ export const TRANSLATION_KEYS = [
   "contributionsStep.previewEmpty",
   "contributionsStep.previewUnavailable",
   "contributionsStep.skip",
+  // Chef 03 / O04 — « Passer » avec des choix modifiés non enregistrés.
+  "contributionsStep.unsavedChoices",
+  "contributionsStep.unsavedSave",
+  "contributionsStep.unsavedSkip",
   "contributionsScene.title",
   "contributionsScene.subtitle",
   "contributionsScene.subtitleNoName",

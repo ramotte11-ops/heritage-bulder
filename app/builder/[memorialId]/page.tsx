@@ -58,6 +58,7 @@ import {
   type JourneyScreenId,
   type JourneySection,
 } from "@/lib/builder/guided-flow/journey";
+import { lockedJourneyScreens } from "@/lib/builder/guided-flow/journey-locks";
 import { resolveGalleryStepData } from "@/lib/builder/guided-flow/resolve-gallery-step";
 import {
   resolveHeroPhotoStepData,
@@ -411,6 +412,11 @@ export default async function BuilderMemorialPage({
   const memorialLanguage = resumed.memorial.language;
   const initialDraft = resumed.draft;
   let activeReviewingSection: JourneySection | null = null;
+  // Chef 03 / O04 — screens the server would refuse to save now (after
+  // publication: the Hero, A00, the ceremony — Security V1, read, never
+  // relaxed). « Mon parcours » never offers them for revision, and a
+  // `?etape=` naming one is ignored like any other inaccessible screen.
+  const journeyLocks = lockedJourneyScreens({ status: resumed.memorial.status });
   const memorialSkinVariant = resumed.memorial.skinVariant;
   const memorialSkinId = resumed.memorial.skin;
   const saveVisibility = saveSectionVisibilityAction.bind(null, access.memorialId);
@@ -454,7 +460,7 @@ export default async function BuilderMemorialPage({
           journeyContent === null
             ? null
             : {
-                snapshot: resolveJourney(journeyContent, revising, activeReviewingSection),
+                snapshot: resolveJourney(journeyContent, revising, activeReviewingSection, undefined, journeyLocks),
                 builderPath,
                 skinVariant: memorialSkinVariant,
                 // Only T08, only when opened from the Preview, leads back to it.
@@ -783,10 +789,10 @@ export default async function BuilderMemorialPage({
   // screen fresh. PAGE C keeps its own compensation pass on the raw
   // draft; every other screen renders the reconciled content, exactly
   // like the route below.
-  const revisionContext = resolveRevisionContext(resumed.draft.content, query.etape, query.rubrique);
+  const revisionContext = resolveRevisionContext(resumed.draft.content, query.etape, query.rubrique, journeyLocks);
   activeReviewingSection =
     query.etape === undefined
-      ? resolveReviewingSection(resumed.draft.content, query.rubrique)
+      ? resolveReviewingSection(resumed.draft.content, query.rubrique, journeyLocks)
       : revisionContext?.section ?? null;
   if (revisionContext !== null) {
     const revisionTarget = revisionContext.screen;

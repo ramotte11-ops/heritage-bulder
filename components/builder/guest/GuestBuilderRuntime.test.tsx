@@ -844,7 +844,8 @@ describe("GuestBuilderRuntime", () => {
         A12: { status: "completed" },
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
+    // Chef 03 / O04 — the Gallery's single command (no photograph → skipped, as Skip did).
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
     // M7 — after A13, the next built step: A15 « Contributions des proches ».
     await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
     expect(localContent(store.value!).guidedFlow.A13).toEqual({ status: "skipped" });
@@ -877,7 +878,8 @@ describe("GuestBuilderRuntime", () => {
         A12: { status: "skipped" },
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
+    // Chef 03 / O04 — the Gallery's single command (no photograph → skipped, as Skip did).
+    fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
     // M7 — after A13, the next built step: A15 « Contributions des proches ».
     await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
   });
@@ -1569,6 +1571,40 @@ describe("GuestBuilderRuntime", () => {
       expect(store.value!.photos).toEqual(fixture.draft.photos);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
+
+    it.each(["no", "later"] as const)(
+      "Chef 03 / O04 — A00 = %s: « Modifier mon choix » reopens A00 as answered, writes nothing, and « Oui » brings the notice back",
+      async (answer) => {
+        const fixture = postRevealDraft(answer);
+        const store = new MemoryStore(fixture.draft);
+        store.assets.set(fixture.asset.localId, fixture.asset);
+        renderRuntime(store);
+
+        await screen.findByRole("heading", { name: translate("fr", "ceremony.momentTitle") });
+        const revisionBefore = store.value!.revision;
+        const panel = openJourneyRubrique(translate("fr", "journey.section.deathNotice"));
+        fireEvent.click(
+          within(panel).getByRole("button", {
+            name: `${translate("fr", "journey.changeChoice")} — ${translate("fr", "journey.section.deathNotice")}`,
+          }),
+        );
+
+        await screen.findByRole("heading", { name: translate("fr", "announcementChoice.title") });
+        const radio = (id: string) => document.getElementById(`announcement-choice-${id}`) as HTMLInputElement;
+        expect(radio(answer).checked).toBe(true);
+        expect(store.value!.revision).toBe(revisionBefore);
+
+        fireEvent.click(radio("yes"));
+        fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+        await screen.findByRole("heading", { name: translate("fr", "deathNotice.announcementTitle") });
+        expect(localContent(store.value!).guidedFlow.A00).toEqual({ status: "completed", answer: "yes" });
+        // Back on the notice's block, now in the route.
+        const dialog = screen.getByRole("dialog");
+        expect(within(dialog).getByRole("button", { name: new RegExp(`^${translate("fr", "journey.section.deathNotice")}`) })
+          .getAttribute("aria-expanded")).toBe("true");
+        expect(store.value!.photos).toEqual(fixture.draft.photos);
+      },
+    );
 
     it("revises an earlier answer mid-flow and comes back to the screen where the family stopped", async () => {
       const fixture = postRevealDraft("no");

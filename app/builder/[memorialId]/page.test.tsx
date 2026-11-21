@@ -3312,6 +3312,67 @@ describe("BuilderMemorialPage — granted access", () => {
     });
 
     it.each([
+      ["no", { status: "completed", answer: "no" }],
+      ["later", { status: "skipped", answer: "later" }],
+    ] as const)(
+      "Chef 03 / O04 — A00 = %s: « Modifier mon choix » reopens A00 with the stored answer, back to the notice's block",
+      async (_label, a00) => {
+        const draft = variant({ A00: a00 });
+        resumeWith(draft);
+        const raw = await callPageRaw(MEMORIAL_ID, { etape: "announcementChoice", rubrique: "deathNotice" });
+        expect(raw.props.children.type).toBe(AnnouncementChoiceStep);
+        // The screen seeds itself from the stored answer: the very content it renders.
+        expect((raw.props.children.props.content as { guidedFlow: { A00: unknown } }).guidedFlow.A00).toEqual(a00);
+        expect(raw.props.journey.snapshot.revising).toBe("announcementChoice");
+        expect(raw.props.journey.snapshot.reviewingSection).toBe("deathNotice");
+        // Rendering writes nothing.
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      },
+    );
+
+    it("Chef 03 / O04 — the alias is A00's only: another screen claimed under the notice's block is refused", async () => {
+      resumeWith(variant({ A00: { status: "completed", answer: "no" } }));
+      const raw = await callPageRaw(MEMORIAL_ID, { etape: "identity", rubrique: "deathNotice" });
+      expect(raw.props.journey.snapshot.revising).toBeNull();
+    });
+
+    describe("Chef 03 / O04 — after publication, no revision the server would refuse", () => {
+      const PUBLISHED: StoredMemorialConfig = { ...PAST_EVERYTHING, status: "published" };
+
+      it.each(["identity", "announcementChoice", "phrase", "reveal", "ceremonyMoment"])(
+        "?etape=%s is ignored on a published memorial: the current screen is shown, the screen reads locked",
+        async (etape) => {
+          resumeWith(REAL_DRAFT, PUBLISHED);
+          const raw = await callPageRaw(MEMORIAL_ID, { etape });
+          expect(raw.props.journey.snapshot.revising).toBeNull();
+          const state = raw.props.journey.snapshot.sections
+            .flatMap((section: { screens: { id: string }[] }) => section.screens)
+            .find((screen: { id: string }) => screen.id === etape);
+          expect(state).toMatchObject({ accessible: false, locked: true });
+        },
+      );
+
+      it.each([
+        ["traditions", TraditionsStep],
+        ["personSheet", PersonSheetStep],
+        ["announcementText", DeathNoticeAnnouncementStep],
+      ] as const)("?etape=%s still reopens on a published memorial (editable after publication)", async (etape, component) => {
+        resumeWith(REAL_DRAFT, PUBLISHED);
+        expect((await callPage(MEMORIAL_ID, { etape })).type).toBe(component);
+      });
+
+      it("a draft memorial is never locked", async () => {
+        resumeWith(REAL_DRAFT);
+        expect((await callPage(MEMORIAL_ID, { etape: "identity" })).type).not.toBe(GuidedFlowPause);
+        const raw = await callPageRaw(MEMORIAL_ID);
+        const locked = raw.props.journey.snapshot.sections
+          .flatMap((section: { screens: { locked: boolean }[] }) => section.screens)
+          .filter((screen: { locked: boolean }) => screen.locked);
+        expect(locked).toEqual([]);
+      });
+    });
+
+    it.each([
       ["phrase", HeroPhraseStep],
       ["announcementText", DeathNoticeAnnouncementStep],
       ["ceremonyMoment", CeremonyMomentStep],

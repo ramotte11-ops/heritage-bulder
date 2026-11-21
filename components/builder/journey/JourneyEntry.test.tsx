@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 import { resolveJourney } from "@/lib/builder/guided-flow/journey";
-import { fullAnnouncementWithTraditions, throughA02 } from "@/lib/memorial/assembly/test-fixtures";
+import { fullAnnouncement, fullAnnouncementWithTraditions, throughA02, throughA03 } from "@/lib/memorial/assembly/test-fixtures";
+import { commitA04 } from "@/lib/builder/guided-flow/ceremony-step";
+import { lockedJourneyScreens } from "@/lib/builder/guided-flow/journey-locks";
 import { commitA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { commitA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
@@ -984,6 +986,146 @@ describe("Chef 03 / O03 — Traditions with repères not confirmed yet", () => {
     renderPanel(unconfirmed(), language);
     fireEvent.click(screen.getByRole("button", { name: entry }));
     expect(row().textContent).toContain(note);
+  });
+});
+
+describe("Chef 03 / O04 — « Modifier mon choix », the ceremony « À décider », and locks after publication", () => {
+  function withA00(content: MemorialContent, answer: "yes" | "no" | "later"): MemorialContent {
+    const committed = commitA00(content, answer);
+    if (!committed.ok) throw new Error("fixture");
+    return committed.content;
+  }
+  function withA04(content: MemorialContent, answer: "yes" | "no" | "undecided"): MemorialContent {
+    const committed = commitA04(content, answer);
+    if (!committed.ok) throw new Error("fixture");
+    return committed.content;
+  }
+  function renderPanel(
+    content: MemorialContent,
+    { language = "fr", locks = [] }: { language?: "fr" | "en" | "es"; locks?: readonly string[] } = {},
+    registry = createPreviewFlushRegistry(),
+  ) {
+    render(
+      <PreviewFlushRegistryContext.Provider value={registry}>
+        <RouteJourneyProvider
+          language={language}
+          snapshot={resolveJourney(content, null, null, undefined, locks as never)}
+          builderPath="/builder/m-1"
+        >
+          <BuilderScreenNav />
+        </RouteJourneyProvider>
+      </PreviewFlushRegistryContext.Provider>,
+    );
+  }
+  const block = (title: string) => blockToggle(title).closest("li") as HTMLElement;
+
+  it("A00 = no: « Non concernée », a clear note, and « Modifier mon choix » reopening A00 from this block", async () => {
+    const persist = vi.fn();
+    const registry = createPreviewFlushRegistry();
+    registry.register(async () => persist());
+    renderPanel(withA00(throughA03(), "no"), {}, registry);
+    openPanel();
+    openBlock("L'annonce de décès");
+    const notice = block("L'annonce de décès");
+    expect(notice.dataset.status).toBe("hidden");
+    expect(notice.textContent).toContain("Non concernée");
+    expect(notice.textContent).toContain("Vous avez choisi de ne pas publier d'annonce de décès.");
+    fireEvent.click(within(notice).getByRole("button", { name: "Modifier mon choix — L'annonce de décès" }));
+    await waitFor(() =>
+      expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=announcementChoice&rubrique=deathNotice"),
+    );
+    // Opening drains the current screen's autosave; it never writes an answer itself.
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("A00 = later: « À décider », its note, and the same « Modifier mon choix »", () => {
+    renderPanel(withA00(throughA03(), "later"));
+    openPanel();
+    openBlock("L'annonce de décès");
+    const notice = block("L'annonce de décès");
+    expect(notice.dataset.status).toBe("deferred");
+    expect(notice.textContent).toContain("À décider");
+    expect(notice.textContent).toMatch(/choisi de décider plus tard/);
+    expect(within(notice).getByRole("button", { name: /Modifier mon choix/ })).toBeTruthy();
+  });
+
+  it("A00 = yes: no « Modifier mon choix » in the notice block (its steps are listed instead)", () => {
+    renderPanel(withA00(throughA03(), "yes"));
+    openPanel();
+    openBlock("L'annonce de décès");
+    expect(within(block("L'annonce de décès")).queryByRole("button", { name: /Modifier mon choix/ })).toBeNull();
+    expect(block("L'annonce de décès").querySelector('[data-screen="announcementText"]')).not.toBeNull();
+  });
+
+  it("A04 = « Pas encore décidé »: the ceremony reads « À décider » with a note and « Modifier mon choix » (A04)", async () => {
+    renderPanel(withA04(withA00(throughA03(), "yes"), "undecided"));
+    openPanel();
+    openBlock("La cérémonie");
+    const ceremony = block("La cérémonie");
+    expect(ceremony.dataset.status).toBe("deferred");
+    expect(ceremony.textContent).toContain("Vous n'avez pas encore décidé si un moment est prévu.");
+    expect(ceremony.textContent).not.toContain("Non concernée");
+    expect((ceremony.querySelector('[data-screen="ceremonyDateTime"]') as HTMLElement).dataset.status).toBe("deferred");
+    expect(within(ceremony).getByRole("button", { name: "Revoir — Un moment est-il prévu ?" })).toBeTruthy();
+    fireEvent.click(within(ceremony).getByRole("button", { name: "Modifier mon choix — La cérémonie" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/builder/m-1?etape=ceremonyMoment&rubrique=ceremony"));
+  });
+
+  it("A04 = « Non »: details « Non concernée », no note, no extra button — distinct from « Pas encore décidé »", () => {
+    renderPanel(withA04(withA00(throughA03(), "yes"), "no"));
+    openPanel();
+    openBlock("La cérémonie");
+    const ceremony = block("La cérémonie");
+    expect(ceremony.dataset.status).toBe("done");
+    expect((ceremony.querySelector('[data-screen="ceremonyDateTime"]') as HTMLElement).dataset.status).toBe("hidden");
+    expect(within(ceremony).queryByRole("button", { name: /Modifier mon choix/ })).toBeNull();
+    expect(ceremony.textContent).not.toContain("Vous n'avez pas encore décidé");
+  });
+
+  it("after publication: no « Revoir » on locked screens (Hero, A00, ceremony), said so; editable rubriques keep it", () => {
+    renderPanel(withA00(fullAnnouncement(), "no"), { locks: lockedJourneyScreens({ status: "published" }) });
+    openPanel();
+    for (const title of ["Votre proche", "L'annonce de décès", "La cérémonie", "Traditions & repères", "Quelques mots sur la personne", "Vos souvenirs en images"]) {
+      openBlock(title);
+    }
+    for (const id of ["identity", "announcementChoice", "reveal", "ceremonyMoment", "ceremonyDateTime"]) {
+      const row = document.querySelector(`[data-screen="${id}"]`) as HTMLElement;
+      expect(within(row).queryByRole("button")).toBeNull();
+      expect(row.textContent).toContain("Ne peut plus être modifiée depuis la publication.");
+    }
+    // A00 locked: no « Modifier mon choix » that would end in a refused save.
+    expect(within(block("L'annonce de décès")).queryByRole("button", { name: /Modifier mon choix/ })).toBeNull();
+    for (const id of ["traditions", "personSheet"]) {
+      const row = document.querySelector(`[data-screen="${id}"]`) as HTMLElement;
+      expect(within(row).getByRole("button", { name: /Revoir/ })).toBeTruthy();
+    }
+  });
+
+  it("after publication: « Changer l'ambiance » is not offered either (T08 locked)", () => {
+    render(
+      <RouteJourneyProvider
+        language="fr"
+        snapshot={resolveJourney(fullAnnouncement(), null, null, undefined, lockedJourneyScreens({ status: "published" }))}
+        builderPath="/builder/m-1"
+      >
+        <ChangeAmbianceLink />
+      </RouteJourneyProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Changer l'ambiance" })).toBeNull();
+  });
+
+  it.each([
+    ["en", /My journey/, "Change my choice", "You chose not to publish a death announcement.", "Can no longer be changed since publication."],
+    ["es", /Mi recorrido/, "Modificar mi elección", "Eligió no publicar un anuncio de defunción.", "Ya no se puede modificar desde la publicación."],
+  ] as const)("is translated (%s)", (language, entry, change, note, locked) => {
+    renderPanel(withA00(throughA03(), "no"), { language });
+    fireEvent.click(screen.getByRole("button", { name: entry }));
+    expect(screen.getAllByText(change).length).toBeGreaterThan(0);
+    expect(document.body.textContent).toContain(note);
+    cleanup();
+    renderPanel(withA00(fullAnnouncement(), "no"), { language, locks: lockedJourneyScreens({ status: "published" }) });
+    fireEvent.click(screen.getByRole("button", { name: entry }));
+    expect(document.body.textContent).toContain(locked);
   });
 });
 
