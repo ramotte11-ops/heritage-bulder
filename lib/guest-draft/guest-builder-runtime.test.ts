@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { commitA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
 import { commitPageA, commitPageB, writeDisplayName } from "@/lib/builder/guided-flow/hero-step";
 import { commitWelcome } from "@/lib/builder/guided-flow/welcome-step";
@@ -137,6 +137,31 @@ describe("guest Builder local runtime", () => {
       draftId: "guest-draft-stable",
       transferKey: "guest-transfer-stable",
     });
+  });
+
+  it("Chef 03 / O05 — identical content is an idempotent confirmation: no local write, same revision", async () => {
+    const store = new MemoryStore();
+    let snapshot = draft();
+    store.value = structuredClone(snapshot);
+    const save = vi.spyOn(store, "save");
+    const transport = createGuestDraftSaveTransport({
+      store,
+      getDraft: () => snapshot,
+      acceptDraft: (next) => { snapshot = next; },
+      now: () => T1,
+    });
+    // Same content, keys in another order: still identical.
+    const reordered = JSON.parse(JSON.stringify(snapshot.content)) as Record<string, unknown>;
+    const shuffled = Object.fromEntries(Object.entries(reordered).reverse());
+    await expect(transport(shuffled as never, snapshot.revision)).resolves.toEqual({
+      status: "saved",
+      updatedAt: snapshot.updatedAt,
+      revision: snapshot.revision,
+    });
+    expect(save).not.toHaveBeenCalled();
+    // A real change is still written, with a new revision.
+    await expect(transport(commitWelcome({}), snapshot.revision)).resolves.toMatchObject({ status: "saved", revision: 1 });
+    expect(save).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a stale tab blocked and preserves the winning tab", async () => {

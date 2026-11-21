@@ -53,6 +53,10 @@ export interface JourneyNavigation {
   returnToPreview?: boolean;
   /** Explicitly leaves rubrique revision and resumes the normal route. */
   finishReview: () => Promise<boolean>;
+  /** Chef 03 / O05 — « Reprendre mon parcours depuis le début »: drains
+   * the screen's autosave, then opens the first screen of the full review.
+   * Absent → the host offers no full review (the entry is not shown). */
+  startReview?: () => Promise<boolean>;
   /** Called by a step once its own Continue (or skip) is saved. */
   finishStep: () => void;
   /** The current screen holds input the autosave cannot save yet
@@ -74,6 +78,9 @@ export interface OpenScreenOptions {
   section?: JourneySection;
   startTransition?: (navigate: () => void) => void;
 }
+
+/** Chef 03 / O05 — the full review's query flag (validated by the page). */
+export const FULL_REVIEW_QUERY = "parcours=revue";
 
 /** The query flag that reopens the Preview when the route arrives (validated by the page). */
 export const RETURN_TO_PREVIEW_QUERY = "apercu=1";
@@ -305,7 +312,18 @@ export function RouteJourneyProvider({
         router.replace(builderPath);
         return true;
       },
+      async startReview() {
+        if (!(await canLeaveCurrentScreen())) return false;
+        router.push(`${builderPath}?${FULL_REVIEW_QUERY}`);
+        return true;
+      },
       finishStep() {
+        // Chef 03 / O05 — one step of the full review saved: on to the
+        // next, computed by the route from the saved draft.
+        if (snapshot.review && snapshot.revising !== null) {
+          router.push(`${builderPath}?${FULL_REVIEW_QUERY}&apres=${snapshot.revising}`);
+          return;
+        }
         // Opened from the Preview: once saved, back to the Preview (the new choice in it).
         if (snapshot.revising !== null && returnToPreview) router.replace(`${builderPath}?${RETURN_TO_PREVIEW_QUERY}`);
         else if (snapshot.revising !== null) {

@@ -1606,6 +1606,38 @@ describe("GuestBuilderRuntime", () => {
       },
     );
 
+    it("Chef 03 / O05 — the full review from the resting screen: prefilled, « Continuer » unchanged writes nothing, way out back to the end", async () => {
+      const fixture = completedDraft();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const { view, fetchSpy } = renderRuntime(store);
+
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      const before = structuredClone(store.value!);
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "journey.fullReviewStart") }));
+
+      // 1. The very first screen, with the stored answers.
+      await screen.findByRole("heading", { name: translate("fr", "hero.identityTitle") });
+      expect((view.container.querySelector("#hero-display-name") as HTMLInputElement).value)
+        .toBe((before.content as unknown as { hero: { displayName: string } }).hero.displayName);
+      expect(screen.getByText(translate("fr", "journey.fullReviewNotice"))).toBeTruthy();
+
+      // 2. « Continuer » without any change: the next screen, nothing rewritten.
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+      await screen.findByRole("heading", { name: translate("fr", "announcementChoice.title") });
+      const stored = localContent(before).guidedFlow.A00 as { answer: string };
+      expect((document.getElementById(`announcement-choice-${stored.answer}`) as HTMLInputElement).checked).toBe(true);
+      expect(store.value!.revision).toBe(before.revision);
+      expect(store.value!.content).toEqual(before.content);
+
+      // 3. Interrupted: back to where the family stood — the resting screen.
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "journey.fullReviewFinish") }));
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      expect(store.value).toEqual(before);
+      expect(store.value!.photos).toEqual(fixture.draft.photos);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it("revises an earlier answer mid-flow and comes back to the screen where the family stopped", async () => {
       const fixture = postRevealDraft("no");
       const store = new MemoryStore(fixture.draft);

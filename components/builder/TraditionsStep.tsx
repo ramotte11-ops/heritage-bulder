@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useStepDone } from "./journey/journey-context";
+import { useJourney, useStepDone } from "./journey/journey-context";
 import { usePendingInput } from "./journey/pending-input";
 import type { Language } from "@/config/languages";
 import type { Skin } from "@/config/skins";
@@ -14,9 +14,12 @@ import { resolveAvailableTraditionSuggestions, type TraditionSuggestion } from "
 import {
   addTraditionsEntry,
   commitA09,
+  isA09Resolved,
+  isTraditionsPendingConfirmation,
   readTraditionsForEditing,
   removeTraditionsEntry,
   skipA09,
+  traditionsConfirmationFingerprint,
   traditionsStepProgress,
   updateTraditionsEntry,
 } from "@/lib/builder/guided-flow/traditions-step";
@@ -107,6 +110,19 @@ export function TraditionsStep({
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
+  // Chef 03 / O05 — the full review (« Reprendre mon parcours depuis le
+  // début ») must never renew the confirmation of the repères by itself.
+  // When A09 was already treated and the repères are exactly those the
+  // screen opened with, « Continuer » keeps everything as it is: no
+  // write, no new confirmation. Confirming is then a separate, explicit
+  // action, offered only while a confirmation is genuinely missing. Any
+  // change to a repère makes « Continuer » the explicit confirmation of
+  // the new version, exactly as outside the review.
+  const reviewing = useJourney()?.snapshot.review === true;
+  const [opened] = useState(() => ({
+    resolved: isA09Resolved(initialContent),
+    fingerprint: traditionsConfirmationFingerprint(initialContent),
+  }));
   const [composer, setComposer] = useState<Composer | null>(null);
   const [editing, setEditing] = useState<EntryEdit | null>(null);
   // B03 — a repère being written (not added yet) or an open edit lives
@@ -167,10 +183,24 @@ export function TraditionsStep({
     }
   }
 
+  const keepAsReviewed =
+    reviewing && opened.resolved && traditionsConfirmationFingerprint(content) === opened.fingerprint;
+
   async function handleContinue(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (read.status !== "ready") return;
+    if (keepAsReviewed) {
+      setPendingAction("continue");
+      if (!(await drainAutosave())) return;
+      stepDone();
+      return;
+    }
+    await confirmEntries();
+  }
 
+  /** « Continuer » outside the review, or the review's explicit confirmation. */
+  async function confirmEntries() {
+    if (read.status !== "ready") return;
     setPendingAction("continue");
     if (!(await drainAutosave())) return;
 
@@ -398,6 +428,20 @@ export function TraditionsStep({
               {translate(language, "common.continue")}
             </PrimaryButton>
           </div>
+
+          {keepAsReviewed && isTraditionsPendingConfirmation(content) && (
+            <div className={styles.reviewConfirm}>
+              <p className={styles.reviewConfirmText}>{translate(language, "journey.traditionsUnconfirmed")}</p>
+              <button
+                type="button"
+                className={styles.skipLink}
+                disabled={controlsDisabled}
+                onClick={() => void confirmEntries()}
+              >
+                {translate(language, "traditions.reviewConfirm")}
+              </button>
+            </div>
+          )}
 
           <button
             type="button"

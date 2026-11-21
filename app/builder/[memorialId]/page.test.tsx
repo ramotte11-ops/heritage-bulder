@@ -3336,6 +3336,85 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(raw.props.journey.snapshot.revising).toBeNull();
     });
 
+    describe("Chef 03 / O05 — the full review (?parcours=revue)", () => {
+      const snapshotOf = (raw: { props: { journey: { snapshot: Record<string, unknown> } } }) => raw.props.journey.snapshot;
+
+      it("starts on the first screen, prefilled from the stored draft, marked as a review step — rendering writes nothing", async () => {
+        resumeWith(REAL_DRAFT);
+        const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue" });
+        expect(raw.props.children.type).toBe(HeroIdentityStep);
+        expect((raw.props.children.props.content as { hero: { displayName: string } }).hero.displayName).toBe("Real content");
+        expect(snapshotOf(raw)).toMatchObject({ revising: "identity", review: true, reviewingSection: null });
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      });
+
+      it("?apres= gives the NEXT screen, computed from the stored draft — a reload shows the same step", async () => {
+        resumeWith(REAL_DRAFT);
+        const first = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "identity" });
+        expect(snapshotOf(first)).toMatchObject({ revising: "announcementChoice", review: true });
+        const reloaded = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "identity" });
+        expect(snapshotOf(reloaded).revising).toBe("announcementChoice");
+        expect(reloaded.props.children.type).toBe(first.props.children.type);
+      });
+
+      it("past the last screen: the normal route — the final screen on a finished memorial", async () => {
+        resumeWith(REAL_DRAFT);
+        const done = await callPageRaw(MEMORIAL_ID);
+        expect(done.props.children.type).toBe(GuidedFlowPause);
+        const last = (snapshotOf(done).sections as { screens: { id: string; accessible: boolean }[] }[])
+          .flatMap((section) => section.screens)
+          .filter((screen) => screen.accessible)
+          .at(-1)!.id;
+        const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: last });
+        expect(raw.props.children.type).toBe(GuidedFlowPause);
+        expect(snapshotOf(raw)).toMatchObject({ revising: null, review: false });
+      });
+
+      it("an unknown ?apres= starts from the beginning; a forged one can never jump forward", async () => {
+        resumeWith(REAL_DRAFT);
+        expect(snapshotOf(await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "nope" })).revising).toBe("identity");
+        // A04 is current and nothing after it was ever treated: the review
+        // reaches A04, and never a screen after it (none is reopenable).
+        resumeWith(
+          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }),
+        );
+        const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "ceremonyMoment" });
+        expect(raw.props.children.type).toBe(CeremonyMomentStep);
+        expect(snapshotOf(raw).revising).toBeNull();
+        const atA04 = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "announcementPreview" });
+        expect(snapshotOf(atA04)).toMatchObject({ revising: "ceremonyMoment", review: true });
+      });
+
+      it("a published memorial: the review starts on the first editable screen and never opens a locked one", async () => {
+        resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, status: "published" });
+        const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue" });
+        expect(snapshotOf(raw)).toMatchObject({ revising: "announcementText", review: true });
+        expect(raw.props.children.type).toBe(DeathNoticeAnnouncementStep);
+        const afterNotice = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "announcementPreview" });
+        expect(["traditions", "personSheet"]).toContain(snapshotOf(afterNotice).revising);
+      });
+    });
+
+    describe("Chef 03 / O05 — a locked current screen never blocks the family", () => {
+      it("published, ceremony never answered (locked): the route shows the next editable screen, not the locked form", async () => {
+        // Published right after the notice: the ceremony never answered, nothing after it treated.
+        const unanswered = { A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined };
+        resumeWith(variant(unanswered), { ...PAST_EVERYTHING, status: "published" });
+        const raw = await callPageRaw(MEMORIAL_ID);
+        expect(raw.props.children.type).toBe(TraditionsStep);
+        const ceremony = (raw.props.journey.snapshot.sections as { screens: { id: string }[] }[])
+          .flatMap((section) => section.screens)
+          .find((screen) => screen.id === "ceremonyMoment");
+        expect(ceremony).toMatchObject({ accessible: false, locked: true });
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      });
+
+      it("the same draft unpublished: the ceremony question is shown, as before", async () => {
+        resumeWith(variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }));
+        expect((await callPage()).type).toBe(CeremonyMomentStep);
+      });
+    });
+
     describe("Chef 03 / O04 — after publication, no revision the server would refuse", () => {
       const PUBLISHED: StoredMemorialConfig = { ...PAST_EVERYTHING, status: "published" };
 

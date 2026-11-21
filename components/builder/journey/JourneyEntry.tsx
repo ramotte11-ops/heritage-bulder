@@ -164,9 +164,13 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
   const guard = useGuardedNavigation(journey);
   // Opened from the Preview (« Changer l'ambiance »): both ways lead back to it.
   const fromPreview = journey.returnToPreview === true;
+  // Chef 03 / O05 — a step of the full review: said so, with the way out.
+  const review = journey.snapshot.review;
+  const text: TranslationKey = review ? "journey.fullReviewNotice" : fromPreview ? "journey.revisingFromPreview" : "journey.revising";
+  const way: TranslationKey = review ? "journey.fullReviewFinish" : fromPreview ? "journey.backToPreview" : "journey.resume";
   return (
-    <div className={styles.revising}>
-      <p className={styles.revisingText}>{translate(journey.language, fromPreview ? "journey.revisingFromPreview" : "journey.revising")}</p>
+    <div className={styles.revising} data-full-review={review || undefined}>
+      <p className={styles.revisingText}>{translate(journey.language, text)}</p>
       <button
         type="button"
         className={styles.linkButton}
@@ -178,7 +182,7 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
           pending={guard.pendingKey === "resume"}
           pendingLabel={translate(journey.language, "common.pleaseWait")}
         >
-          {translate(journey.language, fromPreview ? "journey.backToPreview" : "journey.resume")}
+          {translate(journey.language, way)}
         </PendingActionLabel>
       </button>
       {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
@@ -569,6 +573,49 @@ function VisibilityManager({
       {failed && (
         <p role="alert" className={styles.error}>
           {translate(language, "visibility.saveFailed")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Chef 03 / O05 — « Reprendre mon parcours depuis le début », on the
+ * Guided Flow's resting screen: one discreet, explicit entry — the same
+ * text-link treatment as the screen's other ways out. It opens the first
+ * screen of the full review (after draining the autosave), never a new
+ * draft and never a reset: every answer stays where it is.
+ * Renders nothing outside a journey, when the host offers no review, or
+ * while a screen is already being revised.
+ */
+export function FullReviewEntry() {
+  const journey = useJourney();
+  if (journey === null || journey.startReview === undefined || journey.snapshot.revising !== null) return null;
+  return <FullReviewAction journey={journey} start={journey.startReview} />;
+}
+
+function FullReviewAction({ journey, start }: { journey: JourneyNavigation; start: () => Promise<boolean> }) {
+  const guard = useGuardedNavigation(journey);
+  return (
+    <div className={styles.revising}>
+      <button
+        type="button"
+        className={styles.linkButton}
+        onClick={() => guard.run("fullReview", start)}
+        disabled={guard.busy}
+        aria-busy={guard.pendingKey === "fullReview" || undefined}
+      >
+        <PendingActionLabel
+          pending={guard.pendingKey === "fullReview"}
+          pendingLabel={translate(journey.language, "common.pleaseWait")}
+        >
+          {translate(journey.language, "journey.fullReviewStart")}
+        </PendingActionLabel>
+      </button>
+      {guard.waiting && <PendingConfirm journey={journey} onStay={guard.stay} onLeave={guard.leave} />}
+      {guard.failed && (
+        <p role="alert" className={styles.error}>
+          {translate(journey.language, "journey.saveFailed")}
         </p>
       )}
     </div>

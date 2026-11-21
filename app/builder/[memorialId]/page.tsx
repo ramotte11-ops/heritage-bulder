@@ -52,6 +52,9 @@ import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
 import { needsA15 } from "@/lib/builder/guided-flow/contributions-step";
 import {
+  currentJourneyScreen,
+  isJourneyScreenId,
+  nextReviewScreen,
   resolveJourney,
   resolveRevisionContext,
   resolveReviewingSection,
@@ -444,6 +447,7 @@ export default async function BuilderMemorialPage({
     available: boolean,
     journeyContent: MemorialContent | null = null,
     revising: JourneyScreenId | null = null,
+    review = false,
   ) {
     return (
       <BuilderPreviewHost
@@ -460,7 +464,10 @@ export default async function BuilderMemorialPage({
           journeyContent === null
             ? null
             : {
-                snapshot: resolveJourney(journeyContent, revising, activeReviewingSection, undefined, journeyLocks),
+                snapshot: {
+                  ...resolveJourney(journeyContent, revising, activeReviewingSection, undefined, journeyLocks),
+                  review: review && revising !== null,
+                },
                 builderPath,
                 skinVariant: memorialSkinVariant,
                 // Only T08, only when opened from the Preview, leads back to it.
@@ -755,8 +762,30 @@ export default async function BuilderMemorialPage({
     }
   };
 
-  /** The current screen of the normal route, wrapped. */
-  const showCurrent = async (id: JourneyScreenId, content: MemorialContent) => {
+  /** The Guided Flow's resting screen (see the end of this route). */
+  const showPause = (content: MemorialContent) =>
+    withPreview(
+      <GuidedFlowPause
+        language={language}
+        progress={heroStepProgress(content, readHero(content))}
+        openPreview
+      />,
+      previewAvailable(content),
+      content,
+    );
+
+  /** The current screen of the normal route, wrapped.
+   *
+   * Chef 03 / O05 — a gate the server would refuse to save (`journeyLocks`,
+   * after publication) never blocks the family: the route shows the next
+   * open, editable screen in the same order, or the resting screen. The
+   * locked screen is not shown at all — never a form whose « Continuer »
+   * would be refused; the policy itself is untouched. */
+  const showCurrent = async (id: JourneyScreenId, content: MemorialContent): Promise<ReactElement | null> => {
+    if (journeyLocks.includes(id)) {
+      const next = currentJourneyScreen(content, journeyLocks);
+      return next === null ? showPause(content) : showCurrent(next, content);
+    }
     const screen = await renderScreen(id, content);
     return screen === null ? null : withPreview(screen.element, screen.available, content);
   };
@@ -789,6 +818,35 @@ export default async function BuilderMemorialPage({
   // screen fresh. PAGE C keeps its own compensation pass on the raw
   // draft; every other screen renders the reconciled content, exactly
   // like the route below.
+  // Chef 03 / O05 — « Reprendre mon parcours depuis le début »: the full
+  // review, one screen at a time in the natural order, as a navigation
+  // in the URL (`?parcours=revue&apres=<the screen just saved>`), so that
+  // a reload comes back to the same step. The next screen is computed
+  // HERE, from the stored draft (`nextReviewScreen`) — never taken from
+  // the browser: it is always reached, applicable and not locked. Each
+  // screen is the SAME screen as everywhere else (`renderScreen`), seeded
+  // from the stored answers; opening it writes nothing. Past the last
+  // one, the normal route below resumes (the final screen once all is done).
+  if (query.parcours === "revue") {
+    const after = isJourneyScreenId(query.apres) ? query.apres : null;
+    const reviewTarget = nextReviewScreen(resumed.draft.content, after, undefined, journeyLocks);
+    if (reviewTarget !== null) {
+      const reviewContent =
+        reviewTarget === "photo"
+          ? resumed.draft.content
+          : await reconcileHeroMediaOnResume(
+              { mediaEngine: createServerMediaEngineDeps(), draftRepository },
+              actor,
+              access.memorialId,
+              resumed.draft.content,
+            );
+      const reviewed = await renderScreen(reviewTarget, reviewContent, `review-${reviewTarget}`);
+      if (reviewed !== null) {
+        return withPreview(reviewed.element, reviewed.available, reviewContent, reviewTarget, true);
+      }
+    }
+  }
+
   const revisionContext = resolveRevisionContext(resumed.draft.content, query.etape, query.rubrique, journeyLocks);
   activeReviewingSection =
     query.etape === undefined
@@ -1029,13 +1087,5 @@ export default async function BuilderMemorialPage({
   // edit right is created or removed by this: every write still goes
   // through its own action and `authorizeMemorialEdit` (hero locked after
   // publication, gallery and texts per the existing policy).
-  return withPreview(
-    <GuidedFlowPause
-      language={resumed.memorial.language}
-      progress={heroStepProgress(heroReconciledContent, readHero(heroReconciledContent))}
-      openPreview
-    />,
-    previewAvailable(heroReconciledContent),
-    heroReconciledContent,
-  );
+  return showPause(heroReconciledContent);
 }

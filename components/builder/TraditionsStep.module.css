@@ -230,3 +230,20 @@
   font-size: 0.875rem;
   color: var(--heritage-state-error-text);
 }
+
+/* Chef 03 / O05 — the full review's explicit confirmation, in the step's
+   own secondary-link treatment. */
+.reviewConfirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-xs);
+  text-align: center;
+}
+
+.reviewConfirmText {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+}
+
