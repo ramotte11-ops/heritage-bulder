@@ -10,6 +10,7 @@ import { countVisibleCharacters, normalizeContributionText } from "@/lib/memoria
 import type { ContributionsFeatures } from "@/lib/memorial/contributions/contributions-settings";
 import type { ContributionDepositTransport } from "./deposit-transport";
 import { useContributionDeposit, type ContributionDepositEngine, type DepositKind as Kind } from "./use-contribution-deposit";
+import { CONTRIBUTIONS_PRIVACY_LEGAL_STATUS, PRIVACY_MENTION_KEYS, PRIVACY_NOTICE_KEYS, privacyText } from "@/config/contributions-privacy";
 import { LetterCard } from "./letter/LetterCard";
 import { BookIcon, CloseIcon, HeartIcon, ImageIcon, LeafDivider, LockIcon, PlaneIcon } from "./letter/letter-icons";
 import styles from "./ContributionDepositWindow.module.css";
@@ -390,10 +391,28 @@ function DepositForm({
         </label>
       </div>
 
-      <p className={styles.privacy}>
+      {/* M8-Q6 — mention propre au type de contribution, puis la notice détaillée.
+          Textes et contact : config/contributions-privacy.ts (PROPOSITION non validée). */}
+      <div className={styles.privacy} data-privacy-kind={kind}>
         <LockIcon className={styles.privacyIcon} />
-        <span>{t("contributionsDeposit.privacy")}</span>
-      </p>
+        <div className={styles.privacyText}>
+          <p className={styles.privacyMention}>{privacyText(language, PRIVACY_MENTION_KEYS[kind])}</p>
+          {CONTRIBUTIONS_PRIVACY_LEGAL_STATUS !== "validated" ? (
+            <p className={styles.privacyStatus} data-privacy-status="proposal">
+              {t("contributionsPrivacy.status")}
+            </p>
+          ) : null}
+          <details className={styles.notice} data-privacy-notice="">
+            <summary className={styles.noticeSummary}>{t("contributionsPrivacy.learnMore")}</summary>
+            <h3 className={styles.noticeTitle}>{t("contributionsPrivacy.noticeTitle")}</h3>
+            <ul className={styles.noticeList}>
+              {PRIVACY_NOTICE_KEYS.map((key) => (
+                <li key={key}>{privacyText(language, key)}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      </div>
 
       {errorKey ? (
         <p id={ids.error} className={styles.error} role="alert" tabIndex={-1}>

@@ -117,6 +117,29 @@ describe("M8-E4 — fenêtre de dépôt (proposition PO)", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("M8-Q6 — mention propre au type, statut « proposition », notice détaillée, contact jamais présenté comme joignable", async () => {
+    const t = transport({ status: "pending" });
+    draw(t);
+    for (const [kind, needle] of [
+      ["condolence", "publiés aussitôt"],
+      ["testimonial", "d’abord transmis à la famille"],
+      ["photo", "(lieu, appareil, date) sont retirées"],
+    ] as const) {
+      fireEvent.click(document.querySelector(`[data-choice="${kind}"]`)!);
+      await waitFor(() => expect(document.querySelector(`[data-privacy-kind="${kind}"]`)).not.toBeNull());
+      const box = document.querySelector<HTMLElement>(`[data-privacy-kind="${kind}"]`)!;
+      expect(box.textContent).toContain(needle);
+      expect(box.textContent).toContain("contact@herelys.com (adresse en cours de mise en service)");
+      expect(box.querySelector('[data-privacy-status="proposal"]')?.textContent).toBe("Proposition de texte — non validée juridiquement.");
+      const notice = box.querySelector("details[data-privacy-notice]")!;
+      expect(notice.querySelector("summary")?.textContent).toBe("En savoir plus sur vos données");
+      expect(notice.querySelectorAll("li")).toHaveLength(8);
+      expect(box.innerHTML).not.toContain("mailto:");
+      fireEvent.click(screen.getByRole("button", { name: "Retour" }));
+      await waitFor(() => expect(state()).toBe("choose"));
+    }
+  });
+
   it("aucune catégorie en vigueur, ou jeton refusé : message calme, aucun formulaire", async () => {
     draw(transport(), { condolences: false, stories: false, photos: false });
     expect(state()).toBe("closed");

@@ -14,9 +14,12 @@ describe("M8-E4 — verrou du dépôt public (Q6, design, E6)", () => {
   it("le verrou est fermé et chaque réserve est nommée", () => {
     expect(CONTRIBUTIONS_DEPOSIT_PUBLIC_READY).toBe(false);
     expect(CONTRIBUTIONS_DEPOSIT_BLOCKERS.map((b) => b.id)).toEqual(
-      expect.arrayContaining(["Q6-legal", "Q6-withdrawal-contact", "E4-design", "E6-migrations", "E6-form-secret"]),
+      expect.arrayContaining(["Q6-legal", "Q6-withdrawal-contact", "E6-migrations", "E6-form-secret"]),
     );
-    expect(CONTRIBUTIONS_DEPOSIT_PROVISIONAL_KEYS).toContain("contributionsDeposit.privacy");
+    // E6-A : la direction artistique « La lettre des proches » est validée par la PO (plus une réserve).
+    expect(CONTRIBUTIONS_DEPOSIT_BLOCKERS.map((b) => b.id)).not.toContain("E4-design");
+    // M8-Q6 : les mentions par type et la notice remplacent la mention générique provisoire.
+    expect(CONTRIBUTIONS_DEPOSIT_PROVISIONAL_KEYS).toEqual(expect.arrayContaining(["contributionsPrivacy.mentionCondolence", "contributionsPrivacy.mentionStory", "contributionsPrivacy.mentionPhoto"]));
   });
 
   it("le verrou est aussi appliqué côté serveur par les quatre actions de dépôt", () => {

@@ -1,6 +1,7 @@
 # Contributions des proches — Q6 : proposition de textes de confidentialité
 
 > **PROPOSITION soumise à la PO et au juridique. Rien n'est validé.**
+> **M8-Q6** : textes intégrés techniquement (`contributionsPrivacy.*`, FR/EN/ES), marqués « non validés » à l'écran ; contact retenu par la PO : `contact@herelys.com`, **non encore opérationnel** (voir § 6 à 8).
 > Le texte affiché aujourd'hui dans la lettre reste la mention provisoire (`contributionsDeposit.privacy`), qui n'est pas publiable. Ces textes ne sont **pas** intégrés à l'application.
 > Le verrou de publication reste fermé.
 
@@ -91,3 +92,50 @@ Elle remplacerait la mention provisoire, au même endroit (cadenas, au-dessus du
 3. Ajouter un test par langue, qui vérifie l'absence de `[CONTACT]` non remplacé.
 
 Il n'y a aucun changement au moteur ni aux Masters. Le travail est estimé à une demi-journée, une fois les textes et le contact validés.
+
+
+## 6. Dispositif technique (M8-Q6)
+
+| Élément | Emplacement |
+|---|---|
+| Contact de retrait et son état | `config/contributions-privacy.ts`, `CONTRIBUTIONS_WITHDRAWAL_CONTACT = { email: "contact@herelys.com", reachable: false }`. C'est le **seul** endroit : les textes ne contiennent que `{contact}` |
+| Statut juridique | `CONTRIBUTIONS_PRIVACY_LEGAL_STATUS = "proposal"`. Tant qu'il vaut « proposition », la lettre affiche « Proposition de texte — non validée juridiquement » |
+| Textes | `contributionsPrivacy.*` (15 clés × 3 langues) : statut, 3 mentions (condoléance, récit, photo), libellé du contact en attente, lien, titre et 8 points de la notice |
+| Affichage | La lettre affiche la mention du type choisi, puis la notice repliable « En savoir plus sur vos données » (`<details>` natif, clavier et lecteurs d'écran, saisie conservée) |
+| Contact non joignable | Affiché « contact@herelys.com (adresse en cours de mise en service) », jamais sous forme de lien `mailto:` |
+| Garde-fou de publication | `privacyPublicationBlockers()` liste ce qui bloque : juridique non validé, contact non vérifié, clé absente dans une langue, marqueur « [À DÉFINIR / TO BE DEFINED / POR DEFINIR] » restant. **Le verrou de dépôt ne peut pas s'ouvrir tant que cette liste n'est pas vide** (test) |
+
+**Après validation juridique :**
+1. Remplacer les textes validés dans les trois dictionnaires, y compris les trois points « à définir ».
+2. Passer `CONTRIBUTIONS_PRIVACY_LEGAL_STATUS` à `"validated"`.
+3. Après vérification de la boîte (§ 7), passer `reachable` à `true`.
+
+Les tests de complétude et de marqueurs doivent alors laisser la liste vide.
+
+## 7. `contact@herelys.com` : ce qui a été contrôlé, et la vérification à faire
+
+**Contrôlé depuis la session (lecture seule, sans aucune modification externe) :**
+- résolution DNS publique (MX, TXT, DMARC) : **impossible d'ici**. Le conteneur n'a pas de DNS externe, et les services DoH sont refusés par le proxy réseau. **La présence d'un MX n'est donc ni confirmée ni infirmée.**
+- dépôt : `herelys.com` est déjà authentifié pour l'**envoi** via Brevo (`no-reply@herelys.com`, DKIM ×2, DMARC, cf. `docs/authentification-mot-de-passe.md`). L'authentification d'envoi ne crée **aucune** boîte de réception.
+- Netlify (lecture) : projets `herelys-vitrine` et `hommages`, sans information de messagerie.
+
+**Vérification à faire par le QG** (aucune n'a été faite ici) :
+1. Chez le registrar ou l'hébergeur DNS de `herelys.com` : vérifier les enregistrements **MX** (sans eux, aucune réception possible).
+2. Créer la boîte ou l'alias `contact@herelys.com` chez le fournisseur de messagerie choisi. Vérifier que le SPF existant (Brevo) **reste compatible** : un seul enregistrement SPF par domaine.
+3. Envoyer un message depuis une adresse **extérieure** (Gmail par exemple), le recevoir, puis répondre depuis la boîte.
+4. Désigner qui lit cette boîte et sous quel délai.
+5. Seulement ensuite : `reachable: true`, par une PR.
+
+## 8. Décisions restantes (liste courte)
+
+| # | Décision | Autorité |
+|---|---|---|
+| 1 | Responsable du traitement (HERITAGE, famille, ou responsabilité conjointe) | Juridique |
+| 2 | Base légale du traitement des contributions | Juridique |
+| 3 | Durée de conservation, y compris à l'archivage ou à la suppression de l'hommage | Juridique / PO |
+| 4 | Rédaction des droits des personnes (accès, effacement, réclamation CNIL) | Juridique |
+| 5 | Photographies : droit à l'image des personnes représentées ; formule « en droit de diffuser » suffisante ou non | Juridique |
+| 6 | Contributions de mineurs | Juridique / PO |
+| 7 | Journaux techniques de l'hébergeur (adresses IP éventuelles) à mentionner ou non | Juridique / QG |
+| 8 | Procédure de retrait : qui traite, sous quel délai, comment identifier l'auteur sans compte | PO / QG |
+| 9 | Mise en service et vérification de `contact@herelys.com` (§ 7) | QG |

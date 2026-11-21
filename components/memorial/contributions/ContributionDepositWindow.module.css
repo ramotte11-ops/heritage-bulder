@@ -387,12 +387,62 @@
 .privacy {
   display: flex;
   align-items: flex-start;
+  width: 100%;
   gap: 0.5rem;
   margin: 0.1rem 0 0;
   font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
   font-size: calc(0.86rem * var(--letter-scale, 1));
   line-height: 1.35;
   color: var(--letter-ink-soft);
+}
+
+.privacyText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.privacyMention {
+  margin: 0;
+}
+
+.privacyStatus {
+  margin: 0;
+  font-style: italic;
+  color: var(--letter-muted);
+}
+
+.notice {
+  margin: 0;
+}
+
+.noticeSummary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--letter-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.noticeSummary:focus-visible {
+  outline: 2px solid var(--letter-field-focus);
+  outline-offset: 2px;
+}
+
+.noticeTitle {
+  margin: 0.5rem 0 0.25rem;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-weight: 700;
+  font-size: 1em;
+  color: var(--letter-ink);
+}
+
+.noticeList {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 0.25rem;
 }
 
 .privacyIcon {
