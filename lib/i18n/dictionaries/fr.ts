@@ -407,7 +407,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "contributionsPrivacy.mentionCondolence": "Votre nom et votre message seront publiés aussitôt dans cet hommage et visibles par ses visiteurs. La famille peut les masquer ou les supprimer. Pour demander leur retrait : {contact}.",
   "contributionsPrivacy.mentionStory": "Votre nom et votre récit seront d’abord transmis à la famille, qui décidera de leur publication dans cet hommage. Pour demander leur retrait : {contact}.",
   "contributionsPrivacy.mentionPhoto": "Votre nom, votre photographie et sa légende seront d’abord transmis à la famille, qui décidera de leur publication. Les informations techniques de la photo (lieu, appareil, date) sont retirées. Ne partagez que des photos que vous êtes en droit de diffuser. Pour demander leur retrait : {contact}.",
-  "contributionsPrivacy.contactPending": "{email} (adresse en cours de mise en service)",
+  "contributionsPrivacy.withdrawalSubject": "Demande de retrait d’une contribution",
   "contributionsPrivacy.learnMore": "En savoir plus sur vos données",
   "contributionsPrivacy.noticeTitle": "Vos contributions dans un hommage HERITAGE",
   "contributionsPrivacy.noticeReceived": "Ce que nous recevons : le nom que vous indiquez, votre message, votre récit ou votre photographie et sa légende. Aucun compte ni adresse e-mail n’est demandé.",

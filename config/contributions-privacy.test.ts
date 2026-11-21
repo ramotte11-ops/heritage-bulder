@@ -8,8 +8,10 @@ import {
   PRIVACY_MENTION_KEYS,
   PRIVACY_PENDING_MARKERS,
   privacyPublicationBlockers,
+  privacySegments,
   privacyText,
   withdrawalContactLabel,
+  withdrawalMailto,
 } from "./contributions-privacy";
 
 /** M8-Q6 — textes de confidentialité : complétude, contact unique, aucun marqueur publié. */
@@ -33,7 +35,7 @@ describe("M8-Q6 — textes de confidentialité (PROPOSITION)", () => {
 
   it("rendu : aucune variable laissée en place, le contact apparaît dans chaque mention et dans la procédure de retrait", () => {
     for (const lang of LANGS) {
-      for (const key of PRIVACY_KEYS.filter((k) => k !== "contributionsPrivacy.contactPending")) {
+      for (const key of PRIVACY_KEYS) {
         expect(privacyText(lang, key), `${lang} ${key}`).not.toMatch(/\{\w+\}/);
       }
       for (const key of Object.values(PRIVACY_MENTION_KEYS)) expect(privacyText(lang, key)).toContain(CONTRIBUTIONS_WITHDRAWAL_CONTACT.email);
@@ -46,19 +48,30 @@ describe("M8-Q6 — textes de confidentialité (PROPOSITION)", () => {
     expect(dict("es")[PRIVACY_MENTION_KEYS.photo]).toMatch(/lugar, dispositivo, fecha/);
   });
 
-  it("contact non vérifié : jamais présenté comme joignable (« en cours de mise en service »)", () => {
-    expect(CONTRIBUTIONS_WITHDRAWAL_CONTACT).toEqual({ email: "contact@herelys.com", reachable: false });
-    expect(withdrawalContactLabel("fr")).toBe("contact@herelys.com (adresse en cours de mise en service)");
-    expect(withdrawalContactLabel("en")).toBe("contact@herelys.com (address being set up)");
-    expect(withdrawalContactLabel("es")).toBe("contact@herelys.com (dirección en proceso de activación)");
+  it("M8-E6-T — contact vérifié (confirmation PO) : adresse seule, lien mailto avec objet traduit, sans mention « en cours »", () => {
+    expect(CONTRIBUTIONS_WITHDRAWAL_CONTACT).toEqual({ email: "contact@herelys.com", reachable: true });
+    expect(withdrawalContactLabel()).toBe("contact@herelys.com");
+    expect(withdrawalMailto("fr")).toBe("mailto:contact@herelys.com?subject=Demande%20de%20retrait%20d%E2%80%99une%20contribution");
+    expect(withdrawalMailto("en")).toBe("mailto:contact@herelys.com?subject=Request%20to%20remove%20a%20contribution");
+    expect(withdrawalMailto("es")).toBe("mailto:contact@herelys.com?subject=Solicitud%20de%20retirada%20de%20una%20contribuci%C3%B3n");
+    for (const lang of LANGS) {
+      for (const key of PRIVACY_KEYS) expect(privacyText(lang, key)).not.toMatch(/mise en service|being set up|proceso de activación/);
+      const parts = privacySegments(lang, PRIVACY_MENTION_KEYS.photo);
+      expect(parts.filter((p) => p.contact)).toEqual([{ text: "contact@herelys.com", contact: true }]);
+      expect(parts.map((p) => p.text).join("")).toBe(privacyText(lang, PRIVACY_MENTION_KEYS.photo));
+    }
   });
 
-  it("blocages actuels : juridique, contact, et les arbitrages « à définir » dans les trois langues", () => {
+  it("le contact vérifié NE valide PAS les textes : le statut juridique reste « proposition »", () => {
+    expect(CONTRIBUTIONS_PRIVACY_LEGAL_STATUS).toBe("proposal");
+  });
+
+  it("blocages actuels : le juridique et les arbitrages « à définir » ; le contact n'en est plus un", () => {
     const blockers = privacyPublicationBlockers();
+    expect(blockers.some((b) => b.startsWith("contact:"))).toBe(false);
     expect(CONTRIBUTIONS_PRIVACY_LEGAL_STATUS).toBe("proposal");
     expect(blockers).toEqual(expect.arrayContaining([
       "legal: textes non validés juridiquement",
-      "contact: réception de contact@herelys.com non vérifiée",
       "fr: contributionsPrivacy.noticeRetention contient un arbitrage à définir",
       "en: contributionsPrivacy.noticeRights contient un arbitrage à définir",
       "es: contributionsPrivacy.noticeController contient un arbitrage à définir",

@@ -11,6 +11,12 @@ mkuser() {
 UA=$(mkuser famille.martin@example.test); UB=$(mkuser famille.durand@example.test)
 OA=$($DB -c "insert into owners (auth_user_id, email) values ('$UA','famille.martin@example.test') returning id;")
 OB=$($DB -c "insert into owners (auth_user_id, email) values ('$UB','famille.durand@example.test') returning id;")
+# QG 004-B : la publication exige la preuve d'adresse HERITAGE (owner_email_verifications).
+# Ces deux comptes de TEST locaux reçoivent la preuve directement, comme le banc du harnais
+# SQL (bench_fixture.autoverify_owner) ; le contrôle de l'application reste inchangé.
+$DB -c "insert into owner_email_verifications (owner_id, auth_user_id, email_normalized, method) values
+  ('$OA','$UA','famille.martin@example.test','email_otp'),
+  ('$OB','$UB','famille.durand@example.test','email_otp');" >/dev/null
 pub() { # owner slug name
   local ent mem content
   ent=$($DB -c "insert into entitlements (access_level, source, offer_id) values ('complet','direct','intemporel') returning id;")

@@ -422,7 +422,7 @@ export const en: Record<TranslationKey, string> = {
   "contributionsPrivacy.mentionCondolence": "Your name and message will be published immediately in this tribute and visible to its visitors. The family can hide or delete them. To request removal: {contact}.",
   "contributionsPrivacy.mentionStory": "Your name and story will first be sent to the family, who will decide whether to publish them in this tribute. To request removal: {contact}.",
   "contributionsPrivacy.mentionPhoto": "Your name, photograph and caption will first be sent to the family, who will decide whether to publish them. The photo’s technical information (location, device, date) is removed. Only share photos you have the right to share. To request removal: {contact}.",
-  "contributionsPrivacy.contactPending": "{email} (address being set up)",
+  "contributionsPrivacy.withdrawalSubject": "Request to remove a contribution",
   "contributionsPrivacy.learnMore": "Learn more about your data",
   "contributionsPrivacy.noticeTitle": "Your contributions to a HERITAGE tribute",
   "contributionsPrivacy.noticeReceived": "What we receive: the name you enter, your message, story or photograph and its caption. No account or e-mail address is required.",

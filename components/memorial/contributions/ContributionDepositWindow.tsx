@@ -10,7 +10,7 @@ import { countVisibleCharacters, normalizeContributionText } from "@/lib/memoria
 import type { ContributionsFeatures } from "@/lib/memorial/contributions/contributions-settings";
 import type { ContributionDepositTransport } from "./deposit-transport";
 import { useContributionDeposit, type ContributionDepositEngine, type DepositKind as Kind } from "./use-contribution-deposit";
-import { CONTRIBUTIONS_PRIVACY_LEGAL_STATUS, PRIVACY_MENTION_KEYS, PRIVACY_NOTICE_KEYS, privacyText } from "@/config/contributions-privacy";
+import { CONTRIBUTIONS_PRIVACY_LEGAL_STATUS, PRIVACY_MENTION_KEYS, PRIVACY_NOTICE_KEYS, privacySegments, withdrawalMailto } from "@/config/contributions-privacy";
 import { LetterCard } from "./letter/LetterCard";
 import { BookIcon, CloseIcon, HeartIcon, ImageIcon, LeafDivider, LockIcon, PlaneIcon } from "./letter/letter-icons";
 import styles from "./ContributionDepositWindow.module.css";
@@ -396,7 +396,9 @@ function DepositForm({
       <div className={styles.privacy} data-privacy-kind={kind}>
         <LockIcon className={styles.privacyIcon} />
         <div className={styles.privacyText}>
-          <p className={styles.privacyMention}>{privacyText(language, PRIVACY_MENTION_KEYS[kind])}</p>
+          <p className={styles.privacyMention}>
+            <PrivacyText language={language} textKey={PRIVACY_MENTION_KEYS[kind]} />
+          </p>
           {CONTRIBUTIONS_PRIVACY_LEGAL_STATUS !== "validated" ? (
             <p className={styles.privacyStatus} data-privacy-status="proposal">
               {t("contributionsPrivacy.status")}
@@ -407,7 +409,9 @@ function DepositForm({
             <h3 className={styles.noticeTitle}>{t("contributionsPrivacy.noticeTitle")}</h3>
             <ul className={styles.noticeList}>
               {PRIVACY_NOTICE_KEYS.map((key) => (
-                <li key={key}>{privacyText(language, key)}</li>
+                <li key={key}>
+                  <PrivacyText language={language} textKey={key} />
+                </li>
               ))}
             </ul>
           </details>
@@ -437,6 +441,24 @@ function DepositForm({
   );
 
   return <LetterCard stepKey={`write-${kind}-${preview ? "p" : ""}-${errorKey ?? ""}`} header={header} close={close} body={body} footer={footer} />;
+}
+
+/** M8-E6-T — un texte Q6, le contact de retrait rendu en lien `mailto:` (contact vérifié). */
+function PrivacyText({ language, textKey }: { language: Language; textKey: Parameters<typeof privacySegments>[1] }) {
+  const mailto = withdrawalMailto(language);
+  return (
+    <>
+      {privacySegments(language, textKey).map((part, i) =>
+        part.contact && mailto ? (
+          <a key={i} href={mailto} className={styles.contactLink} data-withdrawal-contact="">
+            {part.text}
+          </a>
+        ) : (
+          <span key={i}>{part.text}</span>
+        ),
+      )}
+    </>
+  );
 }
 
 function Field({ label, id, count, max, language, required = false, children }: { label: string; id: string; count: number; max: number; language: Language; required?: boolean; children: React.ReactNode }) {

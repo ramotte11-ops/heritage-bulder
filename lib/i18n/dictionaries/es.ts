@@ -412,7 +412,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "contributionsPrivacy.mentionCondolence": "Su nombre y su mensaje se publicarán de inmediato en este homenaje y serán visibles para sus visitantes. La familia puede ocultarlos o eliminarlos. Para solicitar su retirada: {contact}.",
   "contributionsPrivacy.mentionStory": "Su nombre y su relato se enviarán primero a la familia, que decidirá si se publican en este homenaje. Para solicitar su retirada: {contact}.",
   "contributionsPrivacy.mentionPhoto": "Su nombre, su fotografía y su leyenda se enviarán primero a la familia, que decidirá si se publican. Se eliminan los datos técnicos de la foto (lugar, dispositivo, fecha). Comparta solo fotografías que tenga derecho a difundir. Para solicitar su retirada: {contact}.",
-  "contributionsPrivacy.contactPending": "{email} (dirección en proceso de activación)",
+  "contributionsPrivacy.withdrawalSubject": "Solicitud de retirada de una contribución",
   "contributionsPrivacy.learnMore": "Más información sobre sus datos",
   "contributionsPrivacy.noticeTitle": "Sus contribuciones en un homenaje HERITAGE",
   "contributionsPrivacy.noticeReceived": "Lo que recibimos: el nombre que indique, su mensaje, su relato o su fotografía y su leyenda. No se solicita cuenta ni dirección de correo electrónico.",

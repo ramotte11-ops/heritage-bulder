@@ -417,6 +417,18 @@
   margin: 0;
 }
 
+.contactLink {
+  color: var(--letter-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.contactLink:focus-visible {
+  outline: 2px solid var(--letter-field-focus);
+  outline-offset: 2px;
+}
+
 .noticeSummary {
   cursor: pointer;
   width: fit-content;

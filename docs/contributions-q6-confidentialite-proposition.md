@@ -1,7 +1,8 @@
 # Contributions des proches — Q6 : proposition de textes de confidentialité
 
 > **PROPOSITION soumise à la PO et au juridique. Rien n'est validé.**
-> **M8-Q6** : textes intégrés techniquement (`contributionsPrivacy.*`, FR/EN/ES), marqués « non validés » à l'écran ; contact retenu par la PO : `contact@herelys.com`, **non encore opérationnel** (voir § 6 à 8).
+> **M8-Q6** : textes intégrés techniquement (`contributionsPrivacy.*`, FR/EN/ES), marqués « non validés » à l'écran.
+> **M8-E6-T** : `contact@herelys.com` **opérationnel** (redirection IONOS, réception réelle réussie, confirmation PO), affiché en lien `mailto:`. **Les textes restent à valider juridiquement.**
 > Le texte affiché aujourd'hui dans la lettre reste la mention provisoire (`contributionsDeposit.privacy`), qui n'est pas publiable. Ces textes ne sont **pas** intégrés à l'application.
 > Le verrou de publication reste fermé.
 
@@ -98,11 +99,11 @@ Il n'y a aucun changement au moteur ni aux Masters. Le travail est estimé à un
 
 | Élément | Emplacement |
 |---|---|
-| Contact de retrait et son état | `config/contributions-privacy.ts`, `CONTRIBUTIONS_WITHDRAWAL_CONTACT = { email: "contact@herelys.com", reachable: false }`. C'est le **seul** endroit : les textes ne contiennent que `{contact}` |
+| Contact de retrait et son état | `config/contributions-privacy.ts`, `CONTRIBUTIONS_WITHDRAWAL_CONTACT = { email: "contact@herelys.com", reachable: true }` (E6-T). C'est le **seul** endroit : les textes ne contiennent que `{contact}` |
 | Statut juridique | `CONTRIBUTIONS_PRIVACY_LEGAL_STATUS = "proposal"`. Tant qu'il vaut « proposition », la lettre affiche « Proposition de texte — non validée juridiquement » |
 | Textes | `contributionsPrivacy.*` (15 clés × 3 langues) : statut, 3 mentions (condoléance, récit, photo), libellé du contact en attente, lien, titre et 8 points de la notice |
 | Affichage | La lettre affiche la mention du type choisi, puis la notice repliable « En savoir plus sur vos données » (`<details>` natif, clavier et lecteurs d'écran, saisie conservée) |
-| Contact non joignable | Affiché « contact@herelys.com (adresse en cours de mise en service) », jamais sous forme de lien `mailto:` |
+| Contact | Lien `mailto:contact@herelys.com`, avec un objet de message traduit (« Demande de retrait d'une contribution »), dans la mention et dans la procédure de retrait de la notice |
 | Garde-fou de publication | `privacyPublicationBlockers()` liste ce qui bloque : juridique non validé, contact non vérifié, clé absente dans une langue, marqueur « [À DÉFINIR / TO BE DEFINED / POR DEFINIR] » restant. **Le verrou de dépôt ne peut pas s'ouvrir tant que cette liste n'est pas vide** (test) |
 
 **Après validation juridique :**
@@ -112,7 +113,7 @@ Il n'y a aucun changement au moteur ni aux Masters. Le travail est estimé à un
 
 Les tests de complétude et de marqueurs doivent alors laisser la liste vide.
 
-## 7. `contact@herelys.com` : ce qui a été contrôlé, et la vérification à faire
+## 7. `contact@herelys.com` : contrôle M8-Q6 (historique) — **vérifié depuis par la PO (E6-T)**
 
 **Contrôlé depuis la session (lecture seule, sans aucune modification externe) :**
 - résolution DNS publique (MX, TXT, DMARC) : **impossible d'ici**. Le conteneur n'a pas de DNS externe, et les services DoH sont refusés par le proxy réseau. **La présence d'un MX n'est donc ni confirmée ni infirmée.**
@@ -138,4 +139,4 @@ Les tests de complétude et de marqueurs doivent alors laisser la liste vide.
 | 6 | Contributions de mineurs | Juridique / PO |
 | 7 | Journaux techniques de l'hébergeur (adresses IP éventuelles) à mentionner ou non | Juridique / QG |
 | 8 | Procédure de retrait : qui traite, sous quel délai, comment identifier l'auteur sans compte | PO / QG |
-| 9 | Mise en service et vérification de `contact@herelys.com` (§ 7) | QG |
+| ~~9~~ | ~~Mise en service et vérification de `contact@herelys.com`~~ — **fait** (E6-T, confirmation PO) | — |

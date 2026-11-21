@@ -639,7 +639,7 @@ export const TRANSLATION_KEYS = [
   "contributionsPrivacy.mentionCondolence",
   "contributionsPrivacy.mentionStory",
   "contributionsPrivacy.mentionPhoto",
-  "contributionsPrivacy.contactPending",
+  "contributionsPrivacy.withdrawalSubject",
   "contributionsPrivacy.learnMore",
   "contributionsPrivacy.noticeTitle",
   "contributionsPrivacy.noticeReceived",

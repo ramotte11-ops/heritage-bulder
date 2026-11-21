@@ -117,7 +117,7 @@ describe("M8-E4 — fenêtre de dépôt (proposition PO)", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("M8-Q6 — mention propre au type, statut « proposition », notice détaillée, contact jamais présenté comme joignable", async () => {
+  it("M8-Q6/E6-T — mention propre au type, statut « proposition », notice détaillée, contact vérifié en lien mailto", async () => {
     const t = transport({ status: "pending" });
     draw(t);
     for (const [kind, needle] of [
@@ -129,12 +129,18 @@ describe("M8-E4 — fenêtre de dépôt (proposition PO)", () => {
       await waitFor(() => expect(document.querySelector(`[data-privacy-kind="${kind}"]`)).not.toBeNull());
       const box = document.querySelector<HTMLElement>(`[data-privacy-kind="${kind}"]`)!;
       expect(box.textContent).toContain(needle);
-      expect(box.textContent).toContain("contact@herelys.com (adresse en cours de mise en service)");
+      expect(box.textContent).not.toContain("mise en service");
+      // Le contact apparaît dans la mention ET dans la procédure de retrait de la notice, en lien mailto.
+      const links = [...box.querySelectorAll<HTMLAnchorElement>("a[data-withdrawal-contact]")];
+      expect(links.length).toBe(2);
+      for (const a of links) {
+        expect(a.textContent).toBe("contact@herelys.com");
+        expect(a.getAttribute("href")).toBe("mailto:contact@herelys.com?subject=Demande%20de%20retrait%20d%E2%80%99une%20contribution");
+      }
       expect(box.querySelector('[data-privacy-status="proposal"]')?.textContent).toBe("Proposition de texte — non validée juridiquement.");
       const notice = box.querySelector("details[data-privacy-notice]")!;
       expect(notice.querySelector("summary")?.textContent).toBe("En savoir plus sur vos données");
       expect(notice.querySelectorAll("li")).toHaveLength(8);
-      expect(box.innerHTML).not.toContain("mailto:");
       fireEvent.click(screen.getByRole("button", { name: "Retour" }));
       await waitFor(() => expect(state()).toBe("choose"));
     }
