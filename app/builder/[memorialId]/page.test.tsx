@@ -3395,6 +3395,53 @@ describe("BuilderMemorialPage — granted access", () => {
       });
     });
 
+    describe("Chef 03 / O05 — a hand-edited ?apres= (accepted, documented behaviour)", () => {
+      const reviewedOf = (raw: { props: { journey: { snapshot: { revising: string | null } } } }) =>
+        raw.props.journey.snapshot.revising;
+
+      it("finished memorial: ?apres=gallery skips to Contributions — a screen already reopenable — and writes nothing", async () => {
+        resumeWith(REAL_DRAFT);
+        const pause = await callPageRaw(MEMORIAL_ID);
+        const reopenable = (pause.props.journey.snapshot.sections as { screens: { id: string; accessible: boolean }[] }[])
+          .flatMap((section) => section.screens)
+          .filter((screen) => screen.accessible)
+          .map((screen) => screen.id);
+        expect(reopenable).toContain("contributions");
+
+        expect(reviewedOf(await callPageRaw(MEMORIAL_ID, { parcours: "revue" }))).toBe("identity");
+        const forged = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "gallery" });
+        expect(reviewedOf(forged)).toBe("contributions");
+        expect(forged.props.children.type).toBe(ContributionsStep);
+        // The same screen « Revoir » already opens: nothing beyond the family's own reach.
+        expect(reviewedOf(await callPageRaw(MEMORIAL_ID, { etape: "contributions" }))).toBe("contributions");
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      });
+
+      it("never a screen not reached yet: past the current screen, the review stops on it", async () => {
+        resumeWith(
+          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }),
+        );
+        for (const apres of ["ceremonyMoment", "traditions", "gallery"]) {
+          const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres });
+          expect(raw.props.children.type).toBe(CeremonyMomentStep);
+          for (const future of ["traditions", "personSheet", "gallery", "contributions"]) {
+            expect(reviewedOf(raw)).not.toBe(future);
+          }
+        }
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      });
+
+      it("never a locked screen after publication, whatever ?apres= says", async () => {
+        resumeWith(REAL_DRAFT, { ...PAST_EVERYTHING, status: "published" });
+        const locked = ["identity", "announcementChoice", "phrase", "photo", "crop", "reveal", "ceremonyMoment"];
+        for (const apres of ["nope", "identity", "reveal", "announcementPreview", "ceremonyMoment", "gallery"]) {
+          const shown = reviewedOf(await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres }));
+          expect(locked).not.toContain(shown);
+        }
+        expect(saveDraftAction).not.toHaveBeenCalled();
+      });
+    });
+
     describe("Chef 03 / O05 — a locked current screen never blocks the family", () => {
       it("published, ceremony never answered (locked): the route shows the next editable screen, not the locked form", async () => {
         // Published right after the notice: the ceremony never answered, nothing after it treated.
