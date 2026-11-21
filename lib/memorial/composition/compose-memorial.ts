@@ -29,6 +29,8 @@ import {
 } from "@/lib/builder/guided-flow/ceremony-step";
 import { isA09Resolved } from "@/lib/builder/guided-flow/traditions-step";
 import { isPersonSheetResolved } from "@/lib/builder/guided-flow/person-sheet-step";
+import { isA15Resolved } from "@/lib/builder/guided-flow/contributions-step";
+import { hasOpenContributionFeature, inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
 import { ARCHIVABLE_SECTIONS, isHideableSection, readHiddenSections } from "@/lib/memorial/section-visibility";
 
 /**
@@ -185,6 +187,8 @@ export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule
   traditions: isA09Resolved,
   gallery: hasGalleryMatter,
   symbolicOfferings: isPageEComplete,
+  // M8-E3 : A15 traitée (Continuer ou Passer) — jamais en cours de choix.
+  testimonials: isA15Resolved,
 };
 
 function hasText(value: string | null): boolean {
@@ -230,6 +234,11 @@ export function resolveExplicitContentSectionIds(content: MemorialContent): Sect
 
   // Dettes D2–D4: photographs the family added, enough for a Gallery state.
   if (hasGalleryMatter(content)) ids.push("gallery");
+
+  // M8-E3 : au moins une catégorie ouverte en A15 (lecture sûre : des
+  // choix illisibles ne comptent jamais).
+  const contributions = inspectContributionsSettings(content);
+  if (contributions.status !== "corrupted" && hasOpenContributionFeature(contributions.features)) ids.push("testimonials");
 
   return ids;
 }

@@ -13,6 +13,7 @@ import { HERO_SHORT_PHRASE_MAX_CHARS } from "@/lib/memorial/hero";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),

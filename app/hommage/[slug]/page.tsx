@@ -3,9 +3,21 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
 import { PublicOfferingsProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-public";
+import { PublicContributionsProvider } from "@/components/memorial/contributions/contributions-host";
+import { loadPublicContributionsInitial } from "@/lib/memorial/contributions/visitor-contributions";
+import { createVisitorContributionDeps } from "@/lib/memorial/contributions/server-contributions";
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
 import { depositSymbolicOffering, signSymbolicOfferingAction } from "./actions";
+import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "@/config/contributions-deposit-readiness";
+import {
+  beginContributionPhoto,
+  completeContributionPhoto,
+  depositContributionText,
+  loadContributions,
+  openContributionWindow,
+  renewContributionPhotos,
+} from "./contribution-actions";
 import styles from "./page.module.css";
 
 /**
@@ -40,6 +52,15 @@ export const metadata: Metadata = {
   },
 };
 
+async function loadContributionsForVisit(slug: string) {
+  try {
+    return await loadPublicContributionsInitial(createVisitorContributionDeps(), slug);
+  } catch {
+    console.error("Contributions: public read unavailable");
+    return null;
+  }
+}
+
 export default async function PublicMemorialPage({ params }: { params: Promise<{ slug: string }> }) {
   await connection();
   const { slug } = await params;
@@ -47,13 +68,34 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   const view = await loadPublicMemorial(slug, { client: createServiceRoleSupabaseClient() });
   if (view.status !== "ready") notFound();
 
+  // M8-E3 — Contributions des proches : les contributions RÉELLES de cette
+  // visite, filtrées par les catégories EN VIGUEUR (O9). Lues seulement si
+  // la copie publiée porte la rubrique ; un échec de lecture n'affiche
+  // jamais la démonstration du Builder : la rubrique est simplement absente.
+  //
+  // M8-E6-F — VERROU DE PUBLICATION. Tant qu'il est fermé (Q6, modération
+  // familiale, E6), la rubrique n'est ni lue ni dessinée en public : elle
+  // inviterait à « laisser un message » sans le permettre. Aucune requête
+  // n'est faite. Ouvert : la lecture, puis le dépôt (Server Actions E2).
+  const contributions =
+    CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
+      ? await loadContributionsForVisit(slug)
+      : null;
+  const deposit = CONTRIBUTIONS_DEPOSIT_PUBLIC_READY
+    ? { slug, actions: { openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto } }
+    : undefined;
+
   return (
     <main className={styles.page} lang={view.assembled.language} data-public-memorial="">
       {/* QG 016 — Offrandes symboliques : l'hôte public enregistre réellement
           le geste du visiteur (le serveur décide seul de son acceptation).
           Lot 2 : puis, s'il le souhaite, sa signature privée (famille seule). */}
       <PublicOfferingsProvider slug={slug} deposit={depositSymbolicOffering} sign={signSymbolicOfferingAction}>
-        <MemorialAssembly assembled={view.assembled} />
+        {/* M8-E3 — pages suivantes de l'Album et liens photo renouvelés : Server Actions liées
+            à CE slug ; le navigateur ne choisit ni l'hommage ni ce qui est lisible. */}
+        <PublicContributionsProvider initial={contributions} loadMore={loadContributions.bind(null, slug)} renewPhotos={renewContributionPhotos.bind(null, slug)} deposit={deposit}>
+          <MemorialAssembly assembled={view.assembled} />
+        </PublicContributionsProvider>
       </PublicOfferingsProvider>
     </main>
   );

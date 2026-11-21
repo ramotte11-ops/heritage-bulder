@@ -11,6 +11,7 @@ import { RecitDeVieV2 } from "@/components/memorial/life-story/v2/RecitDeVieV2";
 import { TraditionsV2 } from "@/components/memorial/traditions/v2/TraditionsV2";
 import { GalleryIntemporel } from "@/components/memorial/gallery/GalleryIntemporel";
 import { SymbolicOfferingsV1Section } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsV1Section";
+import { ContributionsV1Section } from "@/components/memorial/contributions/ContributionsV1Section";
 
 /**
  * Étape 2 — Assembleur du Memorial: the renderer key → real component
@@ -34,4 +35,5 @@ export const RENDERER_COMPONENTS: { readonly [K in RendererKey]: ComponentType<R
   TraditionsV2,
   GalleryIntemporel,
   SymbolicOfferingsV1Section,
+  ContributionsV1Section,
 };

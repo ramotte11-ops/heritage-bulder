@@ -42,6 +42,14 @@ import { largestVisibleSquare, v2SlotToA13 } from "@/lib/memorial/gallery/galler
  * also receive a CONTEXT: the already placed prints of the preceding group
  * (Mobile "local to the current group plus the preceding seam"), which
  * must stay identifiable and reachable under the incoming group.
+ *
+ * SHAPES (M4 Contributions des proches): a profile may also carry a SHAPE
+ * FACTORY (`shapeFor`) — the Contributions text cards are not Polaroids —
+ * and FORBIDDEN ZONES (`forbiddenZones`, every group, not only the first).
+ * Both are optional: without them every line below runs exactly as before
+ * (the Polaroid of `shapeAt`, no extra rejection), which
+ * `a13-default-path-fingerprint.test.ts` pins to the bit on the Album, the
+ * Album Mobile and the Gallery.
  */
 
 export const ALBUM_TRANSLATION_STEP = 2;
@@ -51,9 +59,9 @@ const REPAIR_BUDGET = 30000;
 const EPS = 1e-6;
 const TIER = 1000;
 
-export interface GroupShape {
+export interface GroupShape<L = PolaroidLayout> {
   s: number;
-  layout: PolaroidLayout;
+  layout: L;
   slot: A13Slot;
   outer0: Point[];
   photo0: Point[];
@@ -61,9 +69,9 @@ export interface GroupShape {
   area: number;
 }
 
-export interface GroupPlacement {
+export interface GroupPlacement<L = PolaroidLayout> {
   slotIndex: number;
-  shape: GroupShape;
+  shape: GroupShape<L>;
   d: Point;
   /** Polygons in the group frame (Master page frame, 1670). */
   outer: Point[];
@@ -72,9 +80,9 @@ export interface GroupPlacement {
   cost: number;
 }
 
-export interface GroupCandidate {
+export interface GroupCandidate<L = PolaroidLayout> {
   rank: number;
-  placements: GroupPlacement[];
+  placements: GroupPlacement<L>[];
   cost: number;
   visualTop: number;
   visualBottom: number;
@@ -89,8 +97,16 @@ export interface GroupFailure {
 
 export const add = (p: Point[], d: Point) => p.map((q) => ({ x: q.x + d.x, y: q.y + d.y }));
 
+/**
+ * M4 — builds the shape of slot `slotIndex` at linear scale `s`, in the slot
+ * frame placed at its witness centre (the session translates it by `d`).
+ * `photo0` is the region the slot's `minima.photo` protects: the photograph
+ * for a Polaroid, the text block for a Contributions card.
+ */
+export type GroupShapeFactory<L> = (slot: V2Slot, source: PhotoSource, s: number, slotIndex: number) => GroupShape<L>;
+
 /** Frame-dependent values of the shared local solver. */
-export interface AlbumSolverProfile {
+export interface AlbumSolverProfile<L = PolaroidLayout> {
   id: string;
   /** DynamicPolaroid paper (frame px); undefined = the Desktop V2.1 paper. */
   paper?: PaperProfile;
@@ -106,7 +122,26 @@ export interface AlbumSolverProfile {
   /** Per-slot minima (visible photo / visible paper fraction). */
   minima(slots: readonly V2Slot[]): { photo: number; outer: number }[];
   /** Optional per-slot shape rule for a candidate alone (true = allowed). */
-  shapeAllowed?: (slotIndex: number, shape: GroupShape) => boolean;
+  shapeAllowed?: (slotIndex: number, shape: GroupShape<L>) => boolean;
+  /** M4 — optional shape factory; absent = the A13 Polaroid (`shapeAt`). */
+  shapeFor?: GroupShapeFactory<L>;
+  /**
+   * M4 — optional CONVEX zones no outer paper may enter, for every group
+   * (titles, actions, canvas bands). Absent = no extra rule. Checked after
+   * every A13 rule, so it never changes an A13 rejection count.
+   */
+  forbiddenZones?: readonly (readonly Point[])[];
+  /** M4.1 — optional joint-evaluation budget; absent = `ALBUM_MAX_JOINT` (A13). */
+  maxJoint?: number;
+  /** M4.1 — optional local-repair budget; absent = the A13 repair budget. */
+  repairBudget?: number;
+}
+
+/** The slot's shape: the profile's factory, else the A13 Polaroid (unchanged). */
+function buildShape<L>(profile: AlbumSolverProfile<L>, v: V2Slot, source: PhotoSource, s: number, slotIndex: number): GroupShape<L> {
+  if (profile.shapeFor) return profile.shapeFor(v, source, s, slotIndex);
+  // Without a factory the layout IS a PolaroidLayout: L is its default.
+  return shapeAt(v, source, s, profile.paper) as unknown as GroupShape<L>;
 }
 
 function polyArea(p: Point[]) {
@@ -240,22 +275,22 @@ export const DESKTOP_ALBUM_SOLVER_PROFILE: AlbumSolverProfile = {
   minima: (slots) => groupMinima({ slots }),
 };
 
-class SlotStream {
+class SlotStream<L = PolaroidLayout> {
   readonly scales: number[];
-  private readonly shapes = new Map<number, GroupShape>();
+  private readonly shapes = new Map<number, GroupShape<L>>();
   private readonly sOrder: { si: number; tier: number; cost: number }[];
   private readonly tList: { d: Point; cost: number }[];
   private readonly heap: MinHeap<{ a: number; b: number; c: Cand }>;
   private readonly seen = new Set<number>();
   readonly valid: Cand[] = [];
   exhausted = false;
-  rejected = { canvas: 0, topZone: 0, size: 0 };
+  rejected = { canvas: 0, topZone: 0, size: 0, zone: 0 };
 
   constructor(
     readonly v: V2Slot,
     readonly source: PhotoSource,
     readonly first: boolean,
-    readonly profile: AlbumSolverProfile = DESKTOP_ALBUM_SOLVER_PROFILE,
+    readonly profile: AlbumSolverProfile<L> = DESKTOP_ALBUM_SOLVER_PROFILE as unknown as AlbumSolverProfile<L>,
     readonly index = 0,
   ) {
     const [h0, h1] = v.scaleBounds.hard;
@@ -288,7 +323,7 @@ class SlotStream {
   shape(si: number) {
     let sh = this.shapes.get(si);
     if (!sh) {
-      sh = shapeAt(this.v, this.source, this.scales[si], this.profile.paper);
+      sh = buildShape(this.profile, this.v, this.source, this.scales[si], this.index);
       this.shapes.set(si, sh);
     }
     return sh;
@@ -320,6 +355,13 @@ class SlotStream {
     if (pr.shapeAllowed && !pr.shapeAllowed(this.index, sh)) {
       this.rejected.size++;
       return false;
+    }
+    if (pr.forbiddenZones && pr.forbiddenZones.length) {
+      const outer = add(sh.outer0, c.d);
+      if (pr.forbiddenZones.some((z) => convexIntersectionArea(outer, z as Point[]) > EPS)) {
+        this.rejected.zone++;
+        return false;
+      }
     }
     return true;
   }
@@ -353,7 +395,12 @@ export interface HardPrint {
  * Hard failures of `targets` under every higher print of `all` (targets ⊆
  * all). `stopAtFirst`: stop at the first failure (search).
  */
-export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst: boolean, profile: AlbumSolverProfile = DESKTOP_ALBUM_SOLVER_PROFILE): GroupFailure[] {
+export function hardFailures(
+  targets: HardPrint[],
+  all: HardPrint[],
+  stopAtFirst: boolean,
+  profile: Pick<AlbumSolverProfile, "hitTargetPx" | "minVisibleOuterArea"> = DESKTOP_ALBUM_SOLVER_PROFILE,
+): GroupFailure[] {
   const out: GroupFailure[] = [];
   const need = profile.hitTargetPx;
   for (const t of targets) {
@@ -378,20 +425,20 @@ export function hardFailures(targets: HardPrint[], all: HardPrint[], stopAtFirst
 
 // ── Group session: valid joint candidates in rank order ─────────────────
 
-export interface GroupSessionOptions {
-  profile?: AlbumSolverProfile;
+export interface GroupSessionOptions<L = PolaroidLayout> {
+  profile?: AlbumSolverProfile<L>;
   /** Already placed prints of the preceding group (below the incoming one). */
   context?: HardPrint[];
 }
 
-export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> {
-  private readonly streams: SlotStream[];
-  readonly profile: AlbumSolverProfile;
+export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar, L = PolaroidLayout> {
+  private readonly streams: SlotStream<L>[];
+  readonly profile: AlbumSolverProfile<L>;
   readonly context: HardPrint[];
   readonly minima: { photo: number; outer: number }[];
   private readonly heap: MinHeap<{ ix: number[]; key: number; tie: number; id: string }>;
   private readonly seen = new Set<string>();
-  private readonly found: GroupCandidate[] = [];
+  private readonly found: GroupCandidate<L>[] = [];
   evaluated = 0;
   repairEvaluated = 0;
   repaired = false;
@@ -406,17 +453,17 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
     readonly grammar: G,
     readonly sources: readonly PhotoSource[],
     readonly first: boolean,
-    options: GroupSessionOptions = {},
+    options: GroupSessionOptions<L> = {},
   ) {
-    this.profile = options.profile ?? DESKTOP_ALBUM_SOLVER_PROFILE;
+    this.profile = options.profile ?? (DESKTOP_ALBUM_SOLVER_PROFILE as unknown as AlbumSolverProfile<L>);
     this.context = options.context ?? [];
     this.minima = this.profile.minima(grammar.slots);
-    this.streams = grammar.slots.map((v, i) => new SlotStream(v, sources[i], first, this.profile, i));
+    this.streams = grammar.slots.map((v, i) => new SlotStream<L>(v, sources[i], first, this.profile, i));
     this.heap = new MinHeap((a, b) => (a.key !== b.key ? a.key < b.key : a.tie !== b.tie ? a.tie < b.tie : a.id < b.id));
     for (let i = 0; i < this.streams.length; i++) {
       if (!this.streams[i].at(0)) {
         const r = this.streams[i].rejected;
-        this.structuralStop = `${grammar.slots[i].slotId} : aucune position valide seule (canvas ${r.canvas}, zone haute ${r.topZone}${r.size ? `, taille ${r.size}` : ""})`;
+        this.structuralStop = `${grammar.slots[i].slotId} : aucune position valide seule (canvas ${r.canvas}, zone haute ${r.topZone}${r.size ? `, taille ${r.size}` : ""}${r.zone ? `, zone interdite ${r.zone}` : ""})`;
         this.structuralCanvas = r.canvas > 0 && r.topZone === 0;
         this.exhausted = true;
         return;
@@ -438,7 +485,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
     this.heap.push({ ix, key, tie, id: ix.map((k) => String(k).padStart(7, "0")).join(",") });
   }
 
-  private placements(ix: number[]): GroupPlacement[] {
+  private placements(ix: number[]): GroupPlacement<L>[] {
     return ix.map((k, i) => {
       const c = this.streams[i].at(k)!;
       const shape = this.streams[i].shape(c.si);
@@ -446,7 +493,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
     });
   }
 
-  hardPrints(pl: GroupPlacement[]): HardPrint[] {
+  hardPrints(pl: GroupPlacement<L>[]): HardPrint[] {
     return pl.map((p, i) => ({ id: this.grammar.slots[i].slotId, z: this.grammar.slots[i].zIndex, outer: p.outer, photo: p.photo, minima: this.minima[i] }));
   }
 
@@ -455,7 +502,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
     return this.context.length ? [...this.context, ...hp] : hp;
   }
 
-  private accept(pl: GroupPlacement[]) {
+  private accept(pl: GroupPlacement<L>[]) {
     const ys = pl.flatMap((p) => p.outer.map((q) => q.y));
     this.found.push({ rank: this.found.length, placements: pl, cost: pl.reduce((s, p) => s + p.cost, 0), visualTop: Math.min(...ys), visualBottom: Math.max(...ys) });
   }
@@ -468,6 +515,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
    * (V1.1: the seam never asks for another local solution — README §4.4-6).
    */
   private localRepair() {
+    const repairBudget = this.profile.repairBudget ?? REPAIR_BUDGET;
     if (!this.bestFailure) return;
     const slots = this.grammar.slots;
     const failing = [...new Set(this.bestFailure.map((f) => slots.findIndex((s) => s.slotId === f.slotId)))].filter((i) => i >= 0);
@@ -492,7 +540,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
     // the best cost found so far; the single cheapest composition wins.
     let best: { cost: number; ix: number[] } | null = null;
     for (const i of list) {
-      for (let k = 1; k < REPAIR_BUDGET && this.streams[i].at(k); k++) {
+      for (let k = 1; k < repairBudget && this.streams[i].at(k); k++) {
         const ix = [...zero];
         ix[i] = k;
         const c = costOf(ix);
@@ -519,7 +567,7 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
           heap.push({ ki, kj, c: costOf(ix) });
         };
         push(0, 0);
-        for (let n = 0; n < REPAIR_BUDGET && heap.size; n++) {
+        for (let n = 0; n < repairBudget && heap.size; n++) {
           const t = heap.pop()!;
           if (best && t.c >= best.cost - 1e-12) break;
           const ix = [...zero];
@@ -541,10 +589,10 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
   }
 
   /** Valid candidate #k in rank order (computed lazily), or null. */
-  candidate(k: number): GroupCandidate | null {
+  candidate(k: number): GroupCandidate<L> | null {
     while (this.found.length <= k && !this.exhausted) {
       const top = this.heap.pop();
-      if (!top || this.evaluated >= ALBUM_MAX_JOINT) {
+      if (!top || this.evaluated >= (this.profile.maxJoint ?? ALBUM_MAX_JOINT)) {
         this.exhausted = true;
         if (top && !this.found.length) this.localRepair();
         break;
@@ -572,9 +620,9 @@ export class GroupSession<G extends Pick<AlbumGrammar, "slots"> = AlbumGrammar> 
   }
 
   /** Witness-order fallback for QA rendering of a STOP (never a solution). */
-  fallback(): GroupCandidate {
-    const pl = this.grammar.slots.map((v, i): GroupPlacement => {
-      const shape = shapeAt(v, this.sources[i], 1, this.profile.paper);
+  fallback(): GroupCandidate<L> {
+    const pl = this.grammar.slots.map((v, i): GroupPlacement<L> => {
+      const shape = buildShape(this.profile, v, this.sources[i], 1, i);
       return { slotIndex: i, shape, d: { x: 0, y: 0 }, outer: shape.outer0, photo: shape.photo0, tier: 0, cost: 0 };
     });
     const ys = pl.flatMap((p) => p.outer.map((q) => q.y));

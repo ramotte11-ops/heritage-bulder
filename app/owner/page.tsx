@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { FamilyDashboard, type FamilyDashboardView } from "@/components/owner/FamilyDashboard";
-import type { FamilyAttentions } from "@/components/owner/FamilyFeatures";
+import type { FamilyAttentions, FamilyContributionsSummary } from "@/components/owner/FamilyFeatures";
 import { isLanguage, type Language } from "@/config/languages";
 import { UNKNOWN_OWNER_FREE_PUBLICATION_STATUS } from "@/lib/adapters/owner-free-publication-status-repository";
 import type { FamilySpaceRepository } from "@/lib/adapters/family-space-repository";
@@ -9,6 +9,7 @@ import type { HeritageActor } from "@/lib/auth/heritage-actor";
 import { selectTribute, type FamilyTribute } from "@/lib/owner/family-space";
 import { loadFamilySpace } from "@/lib/owner/load-family-space";
 import { loadTributePhotos, type FamilyTributePhoto } from "@/lib/owner/load-tribute-photos";
+import { getPendingContributionCounts } from "@/lib/memorial/contributions/family-contribution-actions";
 
 /**
  * « Mon espace famille » — the family dashboard (Lot 1).
@@ -39,6 +40,23 @@ async function loadAttentions(repository: FamilySpaceRepository, memorialId: str
     return { status: "ready", counts, latest: page.offerings, hasMore: page.hasMore };
   } catch (error) {
     console.error("Owner space: attentions unavailable:", error instanceof Error ? error.message : error);
+    return { status: "unavailable" };
+  }
+}
+
+/**
+ * Lot 3 — the selected tribute's stories and photographs awaiting the
+ * family (contract E5 § 3.1). The identity is the SESSION's, resolved by the
+ * action itself; only the tribute id this page already validated is passed.
+ */
+async function loadContributionsSummary(memorialId: string): Promise<FamilyContributionsSummary> {
+  try {
+    const result = await getPendingContributionCounts(memorialId);
+    if (result.status !== "ok") return { status: "unavailable" };
+    const row = result.counts.find((count) => count.memorialId === memorialId);
+    return { status: "ready", pending: row?.pendingTotal ?? 0 };
+  } catch (error) {
+    console.error("Owner space: contributions summary unavailable:", error instanceof Error ? error.message : error);
     return { status: "unavailable" };
   }
 }
@@ -76,11 +94,12 @@ export default async function OwnerPage(
     if (selected === null) {
       view = { status: "none" };
     } else {
-      const [attentions, photos] = await Promise.all([
+      const [attentions, photos, contributions] = await Promise.all([
         loadAttentions(space.repository, selected.id),
         loadPhotos(space.actor, tributes),
+        loadContributionsSummary(selected.id),
       ]);
-      view = { status: "tributes", tributes, photos, selected, attentions };
+      view = { status: "tributes", tributes, photos, selected, attentions, contributions };
     }
   } else {
     view = { status: space.status };

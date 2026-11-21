@@ -181,6 +181,12 @@ vi.mock("@/components/builder/PersonSheetStep", () => ({ PersonSheetStep }));
 // and what it hands it, never the screen's own DOM (GalleryStep.test.tsx).
 const { GalleryStep } = vi.hoisted(() => ({ GalleryStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/GalleryStep", () => ({ GalleryStep }));
+// M7 — A15 « Contributions des proches », même convention : ce que la route rend, jamais le DOM de l'écran.
+const { ContributionsStep } = vi.hoisted(() => ({ ContributionsStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/ContributionsStep", () => ({ ContributionsStep }));
+// M8-E3 : l'application immédiate des catégories (O9), Server Action familiale.
+const { updateContributionCategories } = vi.hoisted(() => ({ updateContributionCategories: vi.fn(async () => ({ status: "ok" })) }));
+vi.mock("@/lib/memorial/contributions/family-contribution-actions", () => ({ updateContributionCategories }));
 const { resolveGalleryStepData } = vi.hoisted(() => ({
   resolveGalleryStepData: vi.fn(
     (): Promise<{ status: "ready"; thumbnails: Record<string, string | null> } | { status: "corrupted" }> =>
@@ -391,6 +397,7 @@ const REAL_DRAFT_CONTENT_BASE = {
     A11: { status: "skipped" },
     A12: { status: "skipped" },
     A13: { status: "skipped" },
+    A15: { status: "skipped" },
   },
 };
 
@@ -1473,6 +1480,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A11: { status: "skipped" },
           A12: { status: "skipped" },
           A13: { status: "skipped" },
+          A15: { status: "skipped" },
         },
       };
       const reconciledContent = {
@@ -3021,6 +3029,46 @@ describe("BuilderMemorialPage — granted access", () => {
           resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
         }
 
+        describe("M7 — A15 « Contributions des proches », right after A13", () => {
+          const withoutA15 = (draft: MemorialVersion): MemorialVersion => {
+            const guidedFlow = { ...(draft.content as { guidedFlow: Record<string, unknown> }).guidedFlow };
+            delete guidedFlow.A15;
+            return { ...draft, content: { ...draft.content, guidedFlow } as MemorialVersion["content"] };
+          };
+
+          it("renders ContributionsStep once A13 is resolved, with the memorial's ambiance and the save bound to the AUTHORIZED id", async () => {
+            granted(withoutA15(sheetResolved({ A13: { status: "skipped" } })), { ...CONFIGURED_MEMORIAL, skinVariant: "dark", slug: null });
+            const result = await callPage();
+            expect(result.type).toBe(ContributionsStep);
+            expect(result.props.skinVariant).toBe("dark");
+            await result.props.persist({ guidedFlow: {} }, 1);
+            expect(saveDraftAction).toHaveBeenLastCalledWith(MEMORIAL_ID, { guidedFlow: {} }, 1);
+            // M8-E3 (O9) : l'application immédiate est liée au MÊME id autorisé.
+            await result.props.applyCategoriesNow({ condolences: true, stories: false, photos: true }, 4);
+            expect(updateContributionCategories).toHaveBeenLastCalledWith(MEMORIAL_ID, { condolences: true, stories: false, photos: true }, 4);
+          });
+
+          it("« Mon parcours » reopens A15 (?etape=contributions) once resolved, showing the stored choices — never before it is reached", async () => {
+            const stored = sheetResolved({ A13: { status: "skipped" }, A15: { status: "completed" } });
+            const withChoices = { ...stored, content: { ...stored.content, contributions: { features: { condolences: true, stories: false, photos: false } } } as MemorialVersion["content"] };
+            granted(withChoices, { ...CONFIGURED_MEMORIAL, slug: null });
+            const reopened = await callPage(MEMORIAL_ID, { etape: "contributions" });
+            expect(reopened.type).toBe(ContributionsStep);
+            expect((reopened.props.content as { contributions: unknown }).contributions).toEqual({ features: { condolences: true, stories: false, photos: false } });
+            granted(withoutA15(withoutA13(sheetResolved())));
+            expect((await callPage(MEMORIAL_ID, { etape: "contributions" })).type).toBe(GalleryStep);
+          });
+
+          it("never before A13, and never again once A15 is resolved (completed or skipped)", async () => {
+            granted(withoutA15(withoutA13(sheetResolved())));
+            expect((await callPage()).type).toBe(GalleryStep);
+            for (const status of ["completed", "skipped"]) {
+              granted(sheetResolved({ A13: { status: "skipped" }, A15: { status } }), { ...CONFIGURED_MEMORIAL, slug: null });
+              expect((await callPage()).type).toBe(GuidedFlowPause);
+            }
+          });
+        });
+
         it("renders GalleryStep right after the sheet is resolved, and never before", async () => {
           granted(withoutA13(sheetResolved()));
           expect((await callPage()).type).toBe(GalleryStep);
@@ -3131,6 +3179,7 @@ describe("BuilderMemorialPage — granted access", () => {
       traditions: TraditionsStep,
       personSheet: PersonSheetStep,
       gallery: GalleryStep,
+      contributions: ContributionsStep,
     };
 
     it.each([

@@ -12,6 +12,7 @@ import type { MemorialContent } from "@/types/memorial";
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),

@@ -894,14 +894,20 @@
   color: var(--family-ink-soft);
 }
 
-.feature[data-feature="contributions"] .featureBody {
-  display: none;
+/* Lot 3 — the number of stories and photographs awaiting the family. */
+.contributionsCount {
+  margin-top: 0.75rem;
+  font-family: var(--heritage-font-family-serif);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--family-ink);
 }
 
-@media (min-width: 52rem) {
-  .feature[data-feature="contributions"] .featureBody {
-    display: block;
-  }
+.contributionsCount[data-contributions-pending="0"],
+.contributionsCount[data-contributions-pending="unavailable"] {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--family-ink-soft);
 }
 
 .feature[data-available="false"] .featureArrow {

@@ -19,6 +19,7 @@ vi.mock("next/navigation", () => ({ useRouter }));
 // Same test-environment stub HeroCropStep.test.tsx uses, extended with
 // the two Mission 035 typefaces HeroIntemporel pulls in.
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),

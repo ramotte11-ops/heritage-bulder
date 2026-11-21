@@ -58,7 +58,8 @@ describe("hero.photo absent ↔ null — mutation claim", () => {
   });
 
   it("does not enlarge the target list", () => {
-    expect(MEMORIAL_CONTENT_EDIT_TARGETS).toHaveLength(44);
+    // 44 + M8-E3 : contributions.features et guidedFlow.A15.
+    expect(MEMORIAL_CONTENT_EDIT_TARGETS).toHaveLength(46);
     expect(MEMORIAL_CONTENT_EDIT_TARGETS).not.toContain("hero.photo");
     expect(MEMORIAL_CONTENT_EDIT_TARGETS).toContain("hero.photo.mediaId");
   });

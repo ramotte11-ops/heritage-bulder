@@ -1,0 +1,388 @@
+import "server-only";
+
+import {
+  CONTRIBUTION_PAGE_SIZE,
+  CONTRIBUTION_PAGE_SIZE_MAX,
+  CONTRIBUTION_PHOTO_MAX_BYTES,
+  CONTRIBUTION_TEXT_TYPES,
+  type ContributionTextType,
+  type ContributionType,
+} from "@/config/contributions";
+import { MEDIA_READ_URL_TTL_SECONDS } from "@/config/media";
+import type { ContributionPhotoStore } from "@/lib/adapters/contribution-photo-store";
+import type { ContributionCursor, ContributionRepository, DepositResult, PublicContributionRow } from "@/lib/adapters/contribution-repository";
+import type { MediaObjectStore } from "@/lib/adapters/media-object-store";
+import type { MediaRepository } from "@/lib/adapters/media-repository";
+import { isAllowedImageMimeType } from "@/lib/media/image-signature";
+import { buildMediaObjectPath, isMediaIdentifier, isPathWithinMemorial } from "@/lib/media/media-path";
+import { isPublicSlugShape } from "@/lib/memorial/public/read-public-memorial";
+import { checkContributionText, checkOptionalCaption } from "./contribution-text";
+import { retireContributionMedia, type ContributionMediaCleanupDeps } from "./contribution-media-cleanup";
+import {
+  issueFormToken,
+  issuePhotoTicket,
+  verifyFormToken,
+  verifyPhotoTicket,
+  type FormTokenSecrets,
+} from "./form-token";
+import type { processContributionPhoto } from "./photo-processing";
+import type { PublicContribution, PublicContributionsInitial, PublicContributionsPage, RenewPhotosResult } from "./public-contribution-types";
+
+export type { PublicContribution, PublicContributionsInitial, PublicContributionsPage, RenewPhotosResult } from "./public-contribution-types";
+
+/**
+ * M8-E2 — le moteur serveur des dépôts de visiteurs.
+ *
+ * SERVER ONLY. Ce module ne lit aucune session : un visiteur est anonyme.
+ * Tout argument arrive `unknown` et peut être forgé. Le serveur fait foi :
+ *  1. forme du slug (celle de la publication) ;
+ *  2. champ piège vide (R4) et jeton de formulaire valide (Q3 : signé pour
+ *     CET hommage, ≥ 3 s, ≤ 2 h) ;
+ *  3. textes normalisés et comptés (contribution-text, Q2/O7) ;
+ *  4. puis la base décide seule (M8-E1) : hommage public, rubrique non
+ *     masquée, catégorie en vigueur (O9), idempotence (nonce du jeton),
+ *     doublon de moins de 10 min, plafonds R2/R3, statut initial D2.
+ *
+ * Le visiteur ne reçoit jamais la raison d'un refus de la base ; il
+ * reçoit seulement de quoi afficher le bon message (publiée, en attente,
+ * R5, à corriger, indisponible).
+ */
+
+export interface VisitorContributionDeps extends ContributionMediaCleanupDeps {
+  repository: ContributionRepository;
+  objectStore: Pick<MediaObjectStore, "createUploadPermission" | "createReadUrl" | "statObject" | "removeByPrefix">;
+  mediaRepository: Pick<MediaRepository, "findById">;
+  photoStore: ContributionPhotoStore;
+  processPhoto: typeof processContributionPhoto;
+  /** `null` : secret absent ou trop court — dépôt fermé (échec fermé). */
+  secrets: FormTokenSecrets | null;
+  generateId: () => string;
+  now: () => Date;
+}
+
+export type VisitorFailure =
+  /** Champ à corriger (le formulaire peut dire lequel). */
+  | { status: "invalid"; field: "authorName" | "text" | "caption" | "photo" | "request" }
+  /** R5 : « Un petit moment de patience » (R2 rate_limited ou R3 pending_full). */
+  | { status: "busy" }
+  /** Le jeton a plus de 2 h : rouvrir la fenêtre (nouveau jeton). */
+  | { status: "expired" }
+  /** Hommage fermé, catégorie désactivée, jeton forgé, robot… sans détail. */
+  | { status: "refused" }
+  /** Configuration ou infrastructure indisponible. */
+  | { status: "unavailable" };
+
+export type VisitorDepositResult = { status: "published" | "pending" } | VisitorFailure;
+
+const UNAVAILABLE = { status: "unavailable" } as const;
+const REFUSED = { status: "refused" } as const;
+
+function isHoneypotFilled(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
+type TokenGate = { ok: true; secrets: FormTokenSecrets; nonce: string } | { ok: false; result: VisitorFailure };
+
+function gate(deps: VisitorContributionDeps, slug: unknown, formToken: unknown, honeypot: unknown): TokenGate & { slug?: string } {
+  if (!isPublicSlugShape(slug)) return { ok: false, result: REFUSED };
+  if (deps.secrets === null) return { ok: false, result: UNAVAILABLE };
+  if (isHoneypotFilled(honeypot)) return { ok: false, result: REFUSED };
+  const checked = verifyFormToken(deps.secrets, formToken, slug, deps.now());
+  if (!checked.ok) return { ok: false, result: checked.reason === "expired" ? { status: "expired" } : REFUSED };
+  return { ok: true, secrets: deps.secrets, nonce: checked.nonce, slug };
+}
+
+function fromDeposit(result: DepositResult): VisitorDepositResult {
+  switch (result.outcome) {
+    case "published":
+      return { status: "published" };
+    case "pending":
+      return { status: "pending" };
+    case "duplicate":
+      // Un rejeu (réseau, double clic) : le succès qu'il était déjà. Une
+      // contribution masquée ou refusée depuis n'est pas révélée.
+      return { status: result.status === "published" ? "published" : "pending" };
+    case "rate_limited":
+      return { status: "busy" };
+    default:
+      return REFUSED;
+  }
+}
+
+/** Ouverture de la fenêtre de dépôt : un jeton signé pour cet hommage. */
+export function openContributionForm(deps: Pick<VisitorContributionDeps, "secrets" | "now">, slug: unknown): { status: "ready"; formToken: string } | VisitorFailure {
+  if (!isPublicSlugShape(slug)) return REFUSED;
+  if (deps.secrets === null) return UNAVAILABLE;
+  return { status: "ready", formToken: issueFormToken(deps.secrets, slug, deps.now()) };
+}
+
+/** Condoléance (publiée tout de suite) ou récit (en attente d'approbation). */
+export async function submitContributionText(
+  deps: VisitorContributionDeps,
+  input: { slug: unknown; type: unknown; authorName: unknown; text: unknown; formToken: unknown; honeypot?: unknown },
+): Promise<VisitorDepositResult> {
+  const g = gate(deps, input.slug, input.formToken, input.honeypot);
+  if (!g.ok) return g.result;
+  const type = CONTRIBUTION_TEXT_TYPES.find((t) => t === input.type) as ContributionTextType | undefined;
+  if (!type) return { status: "invalid", field: "request" };
+  const name = checkContributionText("authorName", input.authorName);
+  if (!name.ok) return { status: "invalid", field: "authorName" };
+  const text = checkContributionText(type === "condolence" ? "condolence" : "story", input.text);
+  if (!text.ok) return { status: "invalid", field: "text" };
+  try {
+    return fromDeposit(await deps.repository.submit({ slug: g.slug!, type, authorName: name.value, content: text.value, idempotencyKey: g.nonce }));
+  } catch {
+    return UNAVAILABLE;
+  }
+}
+
+export type PhotoStartResult =
+  | { status: "ready"; mediaId: string; uploadUrl: string; uploadToken: string; photoTicket: string }
+  | VisitorFailure;
+
+/**
+ * Étape 1 de la photo : réservation (R2 réservations, R3 en attente), puis
+ * une permission d'envoi pour CE SEUL objet. Le chemin est toujours
+ * `<memorial>/<media>/original.webp` : c'est la forme finale, après
+ * traitement ; les octets bruts déposés à ce chemin y sont remplacés par
+ * le serveur avant toute mise à disposition.
+ */
+export async function startContributionPhoto(
+  deps: VisitorContributionDeps,
+  input: { slug: unknown; declaredMimeType: unknown; formToken: unknown; honeypot?: unknown },
+): Promise<PhotoStartResult> {
+  const g = gate(deps, input.slug, input.formToken, input.honeypot);
+  if (!g.ok) return g.result;
+  if (!isAllowedImageMimeType(input.declaredMimeType)) return { status: "invalid", field: "photo" };
+  try {
+    const memorialId = await deps.repository.findPublicMemorialId(g.slug!);
+    if (memorialId === null) return REFUSED;
+    const mediaId = deps.generateId();
+    const storagePath = buildMediaObjectPath({ memorialId, mediaId, mimeType: "image/webp" });
+    const outcome = await deps.repository.reservePhoto({ slug: g.slug!, mediaId, storagePath, declaredMimeType: input.declaredMimeType });
+    if (outcome === "rate_limited" || outcome === "pending_full") return { status: "busy" };
+    if (outcome !== "reserved") return REFUSED;
+    const permission = await deps.objectStore.createUploadPermission({ path: storagePath });
+    return {
+      status: "ready",
+      mediaId,
+      uploadUrl: permission.url,
+      uploadToken: permission.token,
+      photoTicket: issuePhotoTicket(g.secrets, g.slug!, mediaId, g.nonce),
+    };
+  } catch {
+    return UNAVAILABLE;
+  }
+}
+
+export type PhotoFinishResult = VisitorDepositResult | { status: "upload_incomplete" };
+
+/**
+ * Étape 2 de la photo, après l'envoi direct du navigateur : vérification,
+ * traitement O5 (sharp), remplacement de l'objet par la version nettoyée,
+ * puis finalisation en base (média ready + message photo en attente, D2).
+ * Un fichier refusé est retiré tout de suite (octets supprimés).
+ */
+export async function finishContributionPhoto(
+  deps: VisitorContributionDeps,
+  input: { slug: unknown; mediaId: unknown; photoTicket: unknown; authorName: unknown; caption?: unknown; formToken: unknown; honeypot?: unknown },
+): Promise<PhotoFinishResult> {
+  const g = gate(deps, input.slug, input.formToken, input.honeypot);
+  if (!g.ok) return g.result;
+  if (!isMediaIdentifier(input.mediaId)) return REFUSED;
+  const mediaId = input.mediaId;
+  if (!verifyPhotoTicket(g.secrets, input.photoTicket, g.slug!, mediaId, g.nonce)) return REFUSED;
+  const name = checkContributionText("authorName", input.authorName);
+  if (!name.ok) return { status: "invalid", field: "authorName" };
+  const caption = checkOptionalCaption(input.caption);
+  if (!caption.ok) return { status: "invalid", field: "caption" };
+
+  try {
+    const memorialId = await deps.repository.findPublicMemorialId(g.slug!);
+    if (memorialId === null) return REFUSED;
+    const media = await deps.mediaRepository.findById({ memorialId, mediaId });
+    if (media === null || (media.purpose as string) !== "contribution") return REFUSED;
+    const storagePath = buildMediaObjectPath({ memorialId, mediaId, mimeType: "image/webp" });
+    if (media.storagePath !== storagePath || !isPathWithinMemorial(storagePath, memorialId)) return REFUSED;
+
+    const finalize = (m: { mimeType: string; sizeBytes: number; width: number; height: number }) =>
+      deps.repository.finalizePhoto({
+        slug: g.slug!,
+        mediaId,
+        authorName: name.value,
+        caption: caption.value,
+        idempotencyKey: g.nonce,
+        ...m,
+      });
+
+    // Rejeu après une réponse perdue : la photo est déjà traitée et prête.
+    // Jamais retraitée (pas de perte de qualité en cascade) : la base
+    // répond `duplicate` avec l'état de la contribution.
+    if (media.status === "ready") {
+      if (media.sizeBytes === null || media.width === null || media.height === null) return REFUSED;
+      return fromDeposit(await finalize({ mimeType: media.mimeType, sizeBytes: media.sizeBytes, width: media.width, height: media.height }));
+    }
+
+    const stat = await deps.objectStore.statObject({ path: storagePath });
+    if (stat === null || stat.sizeBytes <= 0) return { status: "upload_incomplete" };
+    const discard = () => retireContributionMedia(deps, { memorialId, ownerId: media.ownerId, mediaId, createdAt: media.createdAt });
+    if (stat.sizeBytes > CONTRIBUTION_PHOTO_MAX_BYTES) {
+      await discard();
+      return { status: "invalid", field: "photo" };
+    }
+    const raw = await deps.photoStore.download({ path: storagePath, maxBytes: CONTRIBUTION_PHOTO_MAX_BYTES });
+    if (raw === null) return { status: "upload_incomplete" };
+    const processed = await deps.processPhoto(raw);
+    if (!processed.ok) {
+      await discard();
+      return { status: "invalid", field: "photo" };
+    }
+    await deps.photoStore.replace({ path: storagePath, bytes: processed.bytes, contentType: processed.mimeType });
+    const result = fromDeposit(await finalize({ mimeType: processed.mimeType, sizeBytes: processed.sizeBytes, width: processed.width, height: processed.height }));
+    // Refus de la base (catégorie désactivée entre-temps, hommage fermé…) :
+    // la photo n'a pas de message et ne doit pas rester stockée.
+    if (result.status === "refused") await discard();
+    return result;
+  } catch {
+    return UNAVAILABLE;
+  }
+}
+
+
+export function encodeCursor(cursor: ContributionCursor): string {
+  return Buffer.from(JSON.stringify([cursor.publishedAt, cursor.id]), "utf8").toString("base64url");
+}
+
+export function decodeCursor(value: unknown): ContributionCursor | null | "invalid" {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.length > 200) return "invalid";
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!Array.isArray(parsed) || parsed.length !== 2) return "invalid";
+    const [publishedAt, id] = parsed;
+    if (typeof publishedAt !== "string" || Number.isNaN(Date.parse(publishedAt)) || !isMediaIdentifier(id)) return "invalid";
+    return { publishedAt, id };
+  } catch {
+    return "invalid";
+  }
+}
+
+/**
+ * Lecture publique (scène et Album) : contributions publiées des
+ * catégories EN VIGUEUR, de la plus récente à la plus ancienne (P1 :
+ * published_at desc, id desc), page par page. Les photos sont servies par
+ * des URL signées courtes (5 min), jamais par un chemin de stockage.
+ */
+/** Rows → contributions publiques ; liens signés en parallèle (une page n'attend pas ses photos une à une). */
+async function toPublicContributions(
+  deps: Pick<VisitorContributionDeps, "objectStore">,
+  rows: PublicContributionRow[],
+): Promise<PublicContribution[]> {
+  const signed = await Promise.all(
+    rows.map((row) =>
+      row.type === "photo" && row.media
+        ? deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS })
+        : Promise.resolve(null),
+    ),
+  );
+  const items: PublicContribution[] = [];
+  rows.forEach((row, i) => {
+    if (row.type === "photo" && (!row.media || signed[i] === null)) return;
+    const photo = row.type === "photo" && row.media ? { url: signed[i] as string, width: row.media.width, height: row.media.height } : null;
+    items.push({ id: row.id, type: row.type, authorName: row.authorName, text: row.content, caption: row.caption, publishedAt: row.publishedAt, photo });
+  });
+  return items;
+}
+
+export async function readPublicContributions(
+  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  input: { slug: unknown; limit?: unknown; cursor?: unknown; types?: readonly ContributionType[] },
+): Promise<PublicContributionsPage | { status: "refused" | "unavailable" }> {
+  if (!isPublicSlugShape(input.slug)) return REFUSED;
+  const before = decodeCursor(input.cursor);
+  if (before === "invalid") return REFUSED;
+  const limit = typeof input.limit === "number" && Number.isInteger(input.limit) ? Math.min(Math.max(input.limit, 1), CONTRIBUTION_PAGE_SIZE_MAX) : CONTRIBUTION_PAGE_SIZE;
+  try {
+    const rows = await deps.repository.readPublic({ slug: input.slug, limit, before, ...(input.types ? { types: input.types } : {}) });
+    const items = await toPublicContributions(deps, rows);
+    const last = rows[rows.length - 1];
+    return { items, nextCursor: rows.length === limit && last ? encodeCursor({ publishedAt: last.publishedAt, id: last.id }) : null };
+  } catch {
+    return UNAVAILABLE;
+  }
+}
+
+/** M8-E4 — la première page de l'Album lue avec la page ; les suivantes à la demande, sans plafond. */
+export const PUBLIC_CONTRIBUTIONS_FIRST_PAGE = 100;
+
+const TYPE_OF_CATEGORY = { condolences: "condolence", stories: "testimonial", photos: "photo" } as const;
+
+/**
+ * Ce que la page publique lit pour la rubrique (M8-E3, M8-E4) :
+ *  1. la vue d'ensemble : catégories EN VIGUEUR et nombres publiés ;
+ *  2. la PREMIÈRE page de l'Album (P1) — les suivantes sont lues à la
+ *     demande par l'hôte (loadContributions), sans aucun plafond global ;
+ *  3. pour chaque catégorie disponible absente de cette page, sa
+ *     contribution la plus récente (`sceneExtras`) : la scène O8 représente
+ *     ainsi chaque catégorie sans charger l'Album entier.
+ * `null` : rubrique non publique ou indisponible — pas de rubrique.
+ */
+export async function loadPublicContributionsInitial(
+  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  slug: unknown,
+): Promise<PublicContributionsInitial | null> {
+  if (!isPublicSlugShape(slug)) return null;
+  let overview;
+  try {
+    overview = await deps.repository.readPublicOverview(slug);
+  } catch {
+    return null;
+  }
+  if (overview === null) return null;
+  const total = overview.published.condolences + overview.published.stories + overview.published.photos;
+  if (total === 0) return { categories: overview.categories, total, items: [], sceneExtras: [], complete: true, nextCursor: null };
+  const first = await readPublicContributions(deps, { slug, limit: PUBLIC_CONTRIBUTIONS_FIRST_PAGE });
+  if (!("items" in first)) return null;
+  const missing = (Object.keys(TYPE_OF_CATEGORY) as (keyof typeof TYPE_OF_CATEGORY)[])
+    .filter((c) => overview.published[c] > 0 && !first.items.some((it) => it.type === TYPE_OF_CATEGORY[c]))
+    .map((c) => TYPE_OF_CATEGORY[c]);
+  const sceneExtras: PublicContribution[] = [];
+  for (const type of missing) {
+    const page = await readPublicContributions(deps, { slug, limit: 1, types: [type] });
+    if ("items" in page) sceneExtras.push(...page.items);
+  }
+  return { categories: overview.categories, total, items: first.items, sceneExtras, complete: first.nextCursor === null, nextCursor: first.nextCursor };
+}
+
+/** M8-E3 — au plus 100 photos renouvelées par appel. */
+export const RENEW_PHOTOS_MAX_IDS = 100;
+
+/**
+ * M8-E3/E4 — renouvellement sécurisé d'un lien photographique expiré (5 min).
+ *
+ * Le navigateur ne donne que des identifiants de contributions déjà reçus.
+ * Le serveur les RELIT un par un, aux règles de la lecture publique en
+ * vigueur (read_public_contributions_by_ids_v1 : hommage public, rubrique non
+ * masquée, catégories en vigueur, contribution publiée, média `ready`), où
+ * qu'elles soient dans l'Album, et ne signe un nouveau lien que pour une
+ * photo qui y figure toujours. Une photo masquée, refusée, supprimée ou d'une
+ * catégorie désactivée entre-temps est rendue dans `gone` : aucun lien, et
+ * l'hôte la retire de l'affichage. Aucun chemin de stockage ne quitte le serveur.
+ */
+export async function renewPublicContributionPhotos(
+  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  input: { slug: unknown; ids: unknown },
+): Promise<RenewPhotosResult> {
+  if (!isPublicSlugShape(input.slug)) return REFUSED;
+  if (!Array.isArray(input.ids) || input.ids.length === 0 || input.ids.length > RENEW_PHOTOS_MAX_IDS || !input.ids.every(isMediaIdentifier)) return REFUSED;
+  const wanted = [...new Set((input.ids as string[]).map((id) => id.toLowerCase()))];
+  try {
+    const rows = await deps.repository.readPublicByIds({ slug: input.slug, ids: wanted });
+    const items = await toPublicContributions(deps, rows.filter((r) => r.type === "photo"));
+    const renewed: Record<string, string> = {};
+    for (const item of items) if (item.photo) renewed[item.id] = item.photo.url;
+    return { status: "ok", renewed, gone: wanted.filter((id) => !(id in renewed)) };
+  } catch {
+    return UNAVAILABLE;
+  }
+}

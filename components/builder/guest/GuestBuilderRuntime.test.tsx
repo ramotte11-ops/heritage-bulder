@@ -42,6 +42,8 @@ vi.mock("next/font/google", () => ({
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
   EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),
+  // M7 — l'écran A15 charge aussi la police des signatures de la scène.
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
 }));
 
 const { GuestBuilderRuntime } = await import("./GuestBuilderRuntime");
@@ -289,7 +291,7 @@ function completedDraft() {
   const flow = localContent(fixture.draft).guidedFlow;
   const updated = updateGuestDraftV3(fixture.draft, {
     now: "2026-10-26T10:12:00.000Z",
-    content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" } } } as MemorialContent,
+    content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" }, A15: { status: "skipped" } } } as MemorialContent,
   });
   if (!updated.ok) throw new Error(updated.reason);
   return { draft: updated.draft, asset: fixture.asset };
@@ -842,7 +844,8 @@ describe("GuestBuilderRuntime", () => {
       },
     });
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
-    await vi.waitFor(() => expect(view.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    // M7 — after A13, the next built step: A15 « Contributions des proches ».
+    await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
     expect(localContent(store.value!).guidedFlow.A13).toEqual({ status: "skipped" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -860,7 +863,7 @@ describe("GuestBuilderRuntime", () => {
       .toEqual({ text: "Les longues tablées du dimanche." }), { timeout: 3_000 });
     first.unmount();
 
-    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    render(<GuestBuilderRuntime {...props} />);
     expect(await screen.findByDisplayValue("Les longues tablées du dimanche.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "personSheet.skip") }));
 
@@ -874,7 +877,8 @@ describe("GuestBuilderRuntime", () => {
       },
     });
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "galleryStep.skip") }));
-    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    // M7 — after A13, the next built step: A15 « Contributions des proches ».
+    await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
   });
 
   it("loads an uncapped local A13, persists order and captions, reloads blobs, removes safely, then stops", async () => {
@@ -913,7 +917,7 @@ describe("GuestBuilderRuntime", () => {
 
     first.unmount();
     expect(revokeObjectURL).toHaveBeenCalledTimes(8);
-    const reloaded = render(<GuestBuilderRuntime {...props} />);
+    render(<GuestBuilderRuntime {...props} />);
     await screen.findByDisplayValue("Légende conservée");
     list = screen.getByRole("list", { name: translate("fr", "galleryStep.listLabel") });
     rows = within(list).getAllByRole("listitem");
@@ -926,7 +930,8 @@ describe("GuestBuilderRuntime", () => {
     expect(store.value!.photos.filter((photo) => photo.placement.purpose === "gallery")).toHaveLength(7);
 
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
-    await vi.waitFor(() => expect(reloaded.container.querySelector('[data-guest-builder-pending="post-reveal"]')).toBeTruthy());
+    // M7 — after A13, the next built step: A15 « Contributions des proches ».
+    await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
     expect(localContent(store.value!).guidedFlow.A13).toEqual({ status: "completed" });
     expect((store.value!.content as unknown as { gallery?: unknown }).gallery).toBeUndefined();
     expect(JSON.stringify(store.value!.content)).not.toMatch(/mediaId|memorialId|blob:/);
@@ -1380,6 +1385,63 @@ describe("GuestBuilderRuntime", () => {
       // The photo reference and its crop are kept: nothing is ever deleted.
       expect(after.photos).toEqual(before.photos);
       expect(after.language).toBe("fr");
+    });
+  });
+
+  describe("M7 — A15 « Contributions des proches » in the guest Builder", () => {
+    function draftAtA15() {
+      const fixture = completedDraft();
+      const flow = { ...localContent(fixture.draft).guidedFlow } as Record<string, unknown>;
+      delete flow.A15;
+      const updated = updateGuestDraftV3(fixture.draft, {
+        now: "2026-10-26T10:13:00.000Z",
+        content: { ...fixture.draft.content, guidedFlow: flow } as MemorialContent,
+      });
+      if (!updated.ok) throw new Error(updated.reason);
+      return { draft: updated.draft, asset: fixture.asset };
+    }
+
+    it("shows A15 right after A13, saves only the three choices locally, resumes on the pause, keeps the rest of the draft and the Offrandes in the Preview", async () => {
+      const fixture = draftAtA15();
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const before = structuredClone(store.value!.content) as unknown as Record<string, unknown>;
+      vi.stubGlobal("URL", Object.assign(globalThis.URL, { createObjectURL: vi.fn(() => "blob:a15"), revokeObjectURL: vi.fn() }));
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const first = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+      await screen.findByRole("heading", { name: translate("fr", "contributionsStep.title") });
+      fireEvent.click(screen.getByRole("switch", { name: new RegExp(translate("fr", "contributionsStep.condolences")) }));
+      fireEvent.click(screen.getByRole("switch", { name: new RegExp(translate("fr", "contributionsStep.photos")) }));
+      expect(first.container.querySelectorAll("[data-contributions-builder-preview] [data-contribution]")).toHaveLength(2);
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+
+      const saved = store.value!.content as unknown as Record<string, unknown>;
+      expect(saved.contributions).toEqual({ features: { condolences: true, stories: false, photos: true } });
+      expect((saved.guidedFlow as Record<string, unknown>).A15).toEqual({ status: "completed" });
+      // Every other key of the local draft is untouched; no example is ever stored.
+      const without = (o: Record<string, unknown>, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+      expect(without(saved, "contributions", "guidedFlow")).toEqual(without(before, "guidedFlow"));
+      expect(without(saved.guidedFlow as Record<string, unknown>, "A15")).toEqual(before.guidedFlow);
+      expect(JSON.stringify(saved)).not.toMatch(/builder-demo|Marie et Pierre|photo-demo/);
+
+      // Resume: a fresh runtime on the same local draft rests on the pause, choices kept.
+      first.unmount();
+      const resumed = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "preview.view") }));
+      await screen.findByRole("button", { name: translate("fr", "preview.backToCreation") });
+      const sections = [...resumed.container.querySelectorAll("[data-memorial-preview] [data-memorial-section]")].map((n) => n.getAttribute("data-memorial-section"));
+      expect(sections).toContain("symbolicOfferings");
+      // M8-E3 : la rubrique est dans l'Aperçu, après les Offrandes, avec la seule
+      // démonstration M7 (hôte « preview ») — jamais une contribution réelle.
+      expect(sections.indexOf("testimonials")).toBeGreaterThan(sections.indexOf("symbolicOfferings"));
+      expect(resumed.container.querySelector('[data-memorial-preview] [data-contributions-host="preview"]')).not.toBeNull();
+      expect(resumed.container.querySelector('[data-contributions-host="public"]')).toBeNull();
+      expect((store.value!.content as unknown as Record<string, unknown>).contributions).toEqual({ features: { condolences: true, stories: false, photos: true } });
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 

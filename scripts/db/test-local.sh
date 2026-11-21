@@ -5083,6 +5083,624 @@ check "Lot 2: the migration re-applies cleanly on itself (idempotent)" "0" "$($P
 $PSQL -d postgres -c "drop database l2s_down;" >/dev/null
 
 echo ""
+echo ""
+echo "== M8-E1: Contributions des proches (20261119090000, NOT applied to any project) =="
+
+# Bench helpers (e1_ prefix). Every fixture owner has an Auth account, so the
+# QG 004-B bench fixture verifies its e-mail and publication is allowed.
+E1_ALL='{"condolences":true,"stories":true,"photos":true}'
+e1_owner() { q8_owner "$1"; }
+e1_complet() {
+  # $1 owner, $2 slug, $3 features JSON (or "" for no contributions key), $4 extra JSON members (optional)
+  # -> memorial id : a published Intemporel « complet », draft = snapshot.
+  local ent mem content
+  ent=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
+  mem=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status, first_published_at) values ('$1','$ent','person','announcement','intemporel','light','fr','$2','published', now() - interval '1 day') returning id;")
+  if [ -n "$3" ]; then content="{\"hero\":{\"displayName\":\"E1 $2\"},\"contributions\":{\"features\":$3}${4:+,$4}}";
+  else content="{\"hero\":{\"displayName\":\"E1 $2\"}${4:+,$4}}"; fi
+  $DB -c "update memorial_drafts set content='$content' where memorial_id='$mem'; insert into memorial_published_snapshots (memorial_id, content) values ('$mem', '$content');" >/dev/null
+  echo "$mem"
+}
+e1_key() { $DB -t -A -c "select gen_random_uuid();"; }
+e1_submit() {
+  # $1 slug, $2 type, $3 author, $4 text, $5 key -> outcome|status
+  svc "select outcome || '|' || coalesce(contribution_status, '-') from submit_contribution_v1('$1','$2','$3','$4','$5');"
+}
+e1_reserve() {
+  # $1 slug, $2 memorial id, $3 media id -> outcome
+  svc "select outcome from reserve_contribution_photo_v1('$1','$3','$2/$3/original.webp','image/webp');"
+}
+e1_finalize() {
+  # $1 slug, $2 media id, $3 key, $4 caption SQL literal (default null), $5 size (default 450000) -> outcome|status
+  svc "select outcome || '|' || coalesce(contribution_status, '-') from finalize_contribution_photo_v1('$1','$2','Un proche',${4:-null},'$3','image/webp',${5:-450000},2000,1500);"
+}
+e1_photo() {
+  # $1 slug, $2 memorial id -> message id of a pending photo
+  local media key
+  media=$(e1_key); key=$(e1_key)
+  e1_reserve "$1" "$2" "$media" >/dev/null
+  svc "select contribution_id from finalize_contribution_photo_v1('$1','$media','Un proche',null,'$key','image/webp',450000,2000,1500);"
+}
+e1_msg() { $DB -t -A -c "select $2 from messages where id='$1';"; }
+e1_moderate() { svc "select outcome || '|' || coalesce(contribution_status, '-') from moderate_contribution_v1('$1','$2','$3');"; }
+e1_read_ids() {
+  # $1 slug, $2 limit, $3 cursor published_at SQL literal, $4 cursor id SQL literal -> comma-joined types
+  svc "select coalesce(string_agg(message_type, ',' order by published_at desc, contribution_id desc), '') from read_public_contributions_v1('$1', ${2:-24}, ${3:-null}, ${4:-null});"
+}
+e1_cats() { $DB -t -A -c "select coalesce((select condolences || '|' || stories || '|' || photos from memorial_contribution_categories where memorial_id='$1'), 'none');"; }
+
+# --- E1-1. Structure and privileges (graded on the migrations-only state) ---
+# The main bench database carries this script's TEST-ONLY grants (Mission
+# 002 RLS tests); privileges are therefore graded on a fresh clone of the
+# stand-ins with only supabase/migrations/ applied, exactly like a project.
+E1_DOWN="$REPO_ROOT/supabase/rollbacks/20261119090000_m8_e1_contributions.down.sql"
+E1_MIG="$MIGRATIONS_DIR/20261119090000_m8_e1_contributions.sql"
+E1_PRE="$REPO_ROOT/supabase/verifications/m8_e1_preflight.sql"
+E1_POST="$REPO_ROOT/supabase/verifications/m8_e1_postflight.sql"
+$PSQL -d postgres -c "create database m8e1_fresh template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do
+  # Stop at the QG 017 A2 state: E1 and every later migration (E2) excluded.
+  [[ "$(basename "$f")" < "$(basename "$E1_MIG")" ]] || continue
+  $PSQL -d m8e1_fresh -f "$f" >/dev/null 2>&1
+done
+E1F="$PSQL -d m8e1_fresh"
+E1_PRE_OUT=$($E1F -t -A -f "$E1_PRE" 2>&1)
+check "M8-E1 preflight before the migration: zero ECHEC, 24 OK" "0|24" \
+  "$(echo "$E1_PRE_OUT" | grep -c 'ECHEC' || true)|$(echo "$E1_PRE_OUT" | grep -c '|OK$' || true)"
+"$PG_BINDIR/pg_dump" -h "$SOCKET_DIR" -U postgres -s m8e1_fresh | grep -v '^\\\(un\)\?restrict ' > "$PGDATA_DIR/m8e1_before.sql"
+check "M8-E1 migration applies on the QG 017 A2 state" "0" "$($E1F -f "$E1_MIG" >/dev/null 2>&1; echo $?)"
+E1_POST_OUT=$($E1F -t -A -f "$E1_POST" 2>&1)
+check "M8-E1 postflight: zero ECHEC, 26 OK" "0|26" \
+  "$(echo "$E1_POST_OUT" | grep -c 'ECHEC' || true)|$(echo "$E1_POST_OUT" | grep -c '|OK$' || true)"
+E1_PRE_AFTER=$($E1F -t -A -f "$E1_PRE" 2>&1)
+check "M8-E1 preflight after the migration refuses (already applied): 9 ECHEC" "9" "$(echo "$E1_PRE_AFTER" | grep -c 'ECHEC' || true)"
+check "M8-E1 postflight turns red if the categories trigger is disabled" "1" \
+  "$($E1F -t -A -c "begin;" -c "alter table memorial_published_snapshots disable trigger memorial_published_snapshots_sync_contribution_categories;" -f "$E1_POST" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+check "M8-E1 postflight turns red if a client role receives a write on messages" "1" \
+  "$($E1F -t -A -c "begin;" -c "grant insert on messages to anon;" -f "$E1_POST" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+check "M8-E1 postflight turns red if idempotency_key becomes readable" "1" \
+  "$($E1F -t -A -c "begin;" -c "grant select (idempotency_key) on messages to authenticated;" -f "$E1_POST" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+for t in contribution_settings contribution_limits_override contribution_rate_limits memorial_contribution_categories owner_notification_preferences contributions_digest_log; do
+  check "M8-E1: no role holds any privilege on $t (anon|authenticated|service_role)" "false|false|false" \
+    "$($E1F -t -A -c "select bool_or(has_table_privilege('anon','public.$t',p)) || '|' || bool_or(has_table_privilege('authenticated','public.$t',p)) || '|' || bool_or(has_table_privilege('service_role','public.$t',p)) from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p;")"
+done
+for p in SELECT INSERT UPDATE DELETE; do
+  check "M8-E1: messages, no TABLE privilege $p for anon|authenticated|service_role (013C kept)" "false|false|false" \
+    "$($E1F -t -A -c "select has_table_privilege('anon','public.messages','$p') || '|' || has_table_privilege('authenticated','public.messages','$p') || '|' || has_table_privilege('service_role','public.messages','$p');")"
+done
+check "M8-E1: authenticated reads messages column by column, never idempotency_key; anon reads nothing" "true|true|true|false|false" \
+  "$($E1F -t -A -c "select has_column_privilege('authenticated','public.messages','status','SELECT') || '|' || has_column_privilege('authenticated','public.messages','author_name','SELECT') || '|' || has_column_privilege('authenticated','public.messages','media_id','SELECT') || '|' || has_column_privilege('authenticated','public.messages','idempotency_key','SELECT') || '|' || has_any_column_privilege('anon','public.messages','SELECT');")"
+for fn in "submit_contribution_v1(text,text,text,text,uuid)" "reserve_contribution_photo_v1(text,uuid,text,text)" \
+  "finalize_contribution_photo_v1(text,uuid,text,text,uuid,text,bigint,integer,integer)" "read_public_contributions_v1(text,integer,timestamptz,uuid)" \
+  "moderate_contribution_v1(uuid,uuid,text)" "remove_contribution_v1(uuid,uuid)" "count_pending_contributions_v1(uuid,uuid)" \
+  "set_contribution_categories_v1(uuid,uuid,boolean,boolean,boolean,bigint)" "set_contributions_digest_preference_v1(uuid,boolean)" \
+  "claim_contributions_digests_v1(timestamptz,integer)" "mark_contributions_digest_v1(uuid,text,text)"; do
+  check "M8-E1: $fn executable by service_role only (anon|authenticated|service_role)" "false|false|true" \
+    "$($E1F -t -A -c "select has_function_privilege('anon','public.$fn','EXECUTE') || '|' || has_function_privilege('authenticated','public.$fn','EXECUTE') || '|' || has_function_privilege('service_role','public.$fn','EXECUTE');")"
+done
+check "M8-E1: QG 017 functions keep their privileges after the new versions (no role)" "false|false|false|false|false|false" \
+  "$($E1F -t -A -c "select has_function_privilege('anon','public.owner_free_storage_bytes_v1(uuid)','EXECUTE') || '|' || has_function_privilege('authenticated','public.owner_free_storage_bytes_v1(uuid)','EXECUTE') || '|' || has_function_privilege('service_role','public.owner_free_storage_bytes_v1(uuid)','EXECUTE') || '|' || has_function_privilege('anon','public.guard_free_storage_budget_v1()','EXECUTE') || '|' || has_function_privilege('authenticated','public.guard_free_storage_budget_v1()','EXECUTE') || '|' || has_function_privilege('service_role','public.guard_free_storage_budget_v1()','EXECUTE');")"
+check "M8-E1: C3 client allowlist unchanged — anon/authenticated execute only the three allowlisted functions" "" \
+  "$($E1F -t -A -c "select string_agg(p.oid::regprocedure::text, ', ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')) and p.oid not in ('public.current_owner_id()'::regprocedure, 'public.public_memorial_message_allowed_v1(uuid,text)'::regprocedure, 'public.public_memorial_publication_state(uuid)'::regprocedure);")"
+check "M8-E1: an anonymous visitor cannot insert into messages, even through the kept policy" "1" \
+  "$($E1F -c "set role anon; insert into messages (memorial_id, message_type, author_name, content) values (gen_random_uuid(), 'condolence', 'x', 'y');" 2>&1 | grep -c 'permission denied' || true)"
+check "M8-E1: an authenticated family cannot update nor delete messages directly" "1|1" \
+  "$($E1F -c "set role authenticated; update messages set content = 'x';" 2>&1 | grep -c 'permission denied' || true)|$($E1F -c "set role authenticated; delete from messages;" 2>&1 | grep -c 'permission denied' || true)"
+check "M8-E1: anon and authenticated cannot call the deposit RPC" "1|1" \
+  "$($E1F -c "set role anon; select * from submit_contribution_v1('x','condolence','a','b',gen_random_uuid());" 2>&1 | grep -c 'permission denied' || true)|$($E1F -c "set role authenticated; select * from submit_contribution_v1('x','condolence','a','b',gen_random_uuid());" 2>&1 | grep -c 'permission denied' || true)"
+
+# --- E1-14. Rollback, then re-application, on this throwaway database ---
+check "M8-E1 rollback applies without error" "0" "$($E1F -f "$E1_DOWN" >/dev/null 2>&1; echo $?)"
+"$PG_BINDIR/pg_dump" -h "$SOCKET_DIR" -U postgres -s m8e1_fresh | grep -v '^\\\(un\)\?restrict ' > "$PGDATA_DIR/m8e1_after.sql"
+check "M8-E1 rollback restores the exact pre-migration schema (pg_dump -s, ACLs included)" "identical" \
+  "$(diff -q "$PGDATA_DIR/m8e1_before.sql" "$PGDATA_DIR/m8e1_after.sql" >/dev/null && echo identical || echo different)"
+check "M8-E1 rollback: preflight is green again (24 OK)" "0|24" \
+  "$($E1F -t -A -f "$E1_PRE" 2>&1 | grep -c 'ECHEC' || true)|$($E1F -t -A -f "$E1_PRE" 2>&1 | grep -c '|OK$' || true)"
+check "M8-E1 re-applies after the rollback, postflight green (26 OK)" "0|0|26" \
+  "$($E1F -f "$E1_MIG" >/dev/null 2>&1; echo $?)|$($E1F -t -A -f "$E1_POST" 2>&1 | grep -c 'ECHEC' || true)|$($E1F -t -A -f "$E1_POST" 2>&1 | grep -c '|OK$' || true)"
+$PSQL -d postgres -c "drop database m8e1_fresh;" >/dev/null
+
+# --- From here: functional tests on the main bench database -----------
+E1_OWNER=$(e1_owner m8e1-owner)
+E1_OTHER=$(e1_owner m8e1-other)
+E1_MEM=$(e1_complet "$E1_OWNER" m8e1-complet "$E1_ALL")
+check "M8-E1 setup: the first publication initialised the categories in effect (Q1 trigger)" "true|true|true" "$(e1_cats "$E1_MEM")"
+$DB -c "insert into contribution_limits_override (memorial_id, photo_reservations_per_hour, photo_reservations_per_day, max_pending_photos) values ('$E1_MEM', 1000, 1000, 1000);" >/dev/null
+
+# --- E1-2. Deposits (D1, D2) and refusals ---
+check "a condolence is published at once (D2)" "published|published" "$(e1_submit m8e1-complet condolence 'Marie' 'Toutes nos pensées.' "$(e1_key)")"
+check "a story waits for the family's approval (D2)" "pending|pending" "$(e1_submit m8e1-complet testimonial 'Paul' 'Un été à la mer, il riait.' "$(e1_key)")"
+E1_PH_MEDIA=$(e1_key); E1_PH_KEY=$(e1_key)
+check "a photo reservation is accepted" "reserved" "$(e1_reserve m8e1-complet "$E1_MEM" "$E1_PH_MEDIA")"
+check "replaying the same reservation is still reserved, with no second media" "reserved|1" \
+  "$(e1_reserve m8e1-complet "$E1_MEM" "$E1_PH_MEDIA")|$($DB -t -A -c "select count(*) from media where id='$E1_PH_MEDIA';")"
+check "the reserved photo is a pending contribution media under <memorial>/<media>/original.*" "contribution|pending|true" \
+  "$($DB -t -A -c "select purpose || '|' || status || '|' || (storage_path like '$E1_MEM/$E1_PH_MEDIA/original.%') from media where id='$E1_PH_MEDIA';")"
+check "a finalised photo waits for approval (D2), its media is ready" "pending|pending|ready" \
+  "$(e1_finalize m8e1-complet "$E1_PH_MEDIA" "$E1_PH_KEY" "'Au jardin'")|$($DB -t -A -c "select status from media where id='$E1_PH_MEDIA';")"
+check "the stored rows are coherent: visible follows status, a photo has no text" "condolence:true:true|photo:false:false|testimonial:false:true" \
+  "$($DB -t -A -c "select string_agg(message_type || ':' || visible || ':' || (content is not null), '|' order by message_type) from messages where memorial_id='$E1_MEM';")"
+svc_expect_error "a reservation path outside <memorial>/<media>/ is refused" \
+  "select * from reserve_contribution_photo_v1('m8e1-complet', gen_random_uuid(), 'elsewhere/x/original.webp', 'image/webp');" "invalid contribution photo reservation"
+svc_expect_error "a reservation with a non-image type is refused" \
+  "select * from reserve_contribution_photo_v1('m8e1-complet', gen_random_uuid(), 'x', 'application/pdf');" "invalid contribution photo reservation"
+svc_expect_error "memory_message never goes through the Contributions deposit" \
+  "select * from submit_contribution_v1('m8e1-complet','memory_message','A','B',gen_random_uuid());" "invalid contribution request"
+svc_expect_error "a deposit without idempotency key is refused" \
+  "select * from submit_contribution_v1('m8e1-complet','condolence','A','B',null);" "invalid contribution request"
+check "an unknown slug is refused" "refused|-" "$(e1_submit m8e1-nope condolence 'A' 'B' "$(e1_key)")"
+E1_DRAFT_ENT=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
+E1_DRAFT_MEM=$($DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, slug, status) values ('$E1_OWNER','$E1_DRAFT_ENT','person','announcement','intemporel','light','fr','m8e1-draft','draft') returning id;")
+$DB -c "update memorial_drafts set content='{\"hero\":{\"displayName\":\"E1 draft\"},\"contributions\":{\"features\":$E1_ALL}}' where memorial_id='$E1_DRAFT_MEM';" >/dev/null
+check "a memorial that is not published refuses every deposit" "refused|-|refused" \
+  "$(e1_submit m8e1-draft condolence 'A' 'B' "$(e1_key)")|$(e1_reserve m8e1-draft "$E1_DRAFT_MEM" "$(e1_key)")"
+check "a withdrawn (archived) memorial refuses every deposit and reads nothing" "refused|-|0" \
+  "$($DB -t -A -c "begin;" -c "update memorials set status = 'archived' where id='$E1_MEM';" -c "set role service_role;" -c "select outcome || '|' || coalesce(contribution_status,'-') from submit_contribution_v1('m8e1-complet','condolence','A','B',gen_random_uuid());" -c "select count(*) from read_public_contributions_v1('m8e1-complet', 24, null, null);" -c "rollback;" | paste -sd'|')"
+E1_HIDDEN=$(e1_complet "$E1_OWNER" m8e1-hidden "$E1_ALL" '"presentation":{"hiddenSections":["testimonials"]}')
+check "a rubric hidden in the published copy refuses deposits and reads nothing" "refused|-|refused|" \
+  "$(e1_submit m8e1-hidden condolence 'A' 'B' "$(e1_key)")|$(e1_reserve m8e1-hidden "$E1_HIDDEN" "$(e1_key)")|$(e1_read_ids m8e1-hidden)"
+E1_PARTIAL=$(e1_complet "$E1_OWNER" m8e1-partial '{"condolences":true}')
+check "a closed category refuses (stories, photos) while an open one accepts (condolences)" "refused|-|refused|published|published" \
+  "$(e1_submit m8e1-partial testimonial 'A' 'B' "$(e1_key)")|$(e1_reserve m8e1-partial "$E1_PARTIAL" "$(e1_key)")|$(e1_submit m8e1-partial condolence 'A' 'B' "$(e1_key)")"
+E1_NONE=$(e1_complet "$E1_OWNER" m8e1-none "")
+check "a publication without contributions choices: everything closed" "refused|-|false|false|false" \
+  "$(e1_submit m8e1-none condolence 'A' 'B' "$(e1_key)")|$(e1_cats "$E1_NONE")"
+
+# The free offer (D1): the three types are open in « avis » too, through the real v4 publication.
+IFS='|' read -r E1_AVIS_OWNER E1_AVIS <<<"$(l4_draft m8e1-avis)"
+E1_AVIS_HERO=$(l2_media "$E1_AVIS" "$E1_AVIS_OWNER" hero ready)
+E1_AVIS_CONTENT="{\"hero\":{\"displayName\":\"E1 avis\",\"photo\":{\"mediaId\":\"$E1_AVIS_HERO\",\"crop\":{\"zoom\":1,\"focalX\":0.5,\"focalY\":0.5}}},\"contributions\":{\"features\":$E1_ALL}}"
+l3_set_draft "$E1_AVIS" "$E1_AVIS_CONTENT"
+E1_AVIS_SLUG=$(l4_expected "$E1_AVIS")
+check "free offer (D1): an « avis » copy carrying contributions passes the HD403 guard (real v4)" "published|$E1_AVIS_SLUG" \
+  "$(svc "$(l4_sql "$E1_AVIS" "$E1_AVIS_OWNER" null "$E1_AVIS_CONTENT")")"
+check "free offer: the v4 publication initialised the categories (Q1)" "true|true|true" "$(e1_cats "$E1_AVIS")"
+check "free offer: condolence published, story pending, photo reserved" "published|published|pending|pending|reserved" \
+  "$(e1_submit "$E1_AVIS_SLUG" condolence 'Lou' 'Pensées.' "$(e1_key)")|$(e1_submit "$E1_AVIS_SLUG" testimonial 'Lou' 'Souvenir.' "$(e1_key)")|$(e1_reserve "$E1_AVIS_SLUG" "$E1_AVIS" "$(e1_key)")"
+check "free offer: the other premium keys are still refused by HD403 (video)" "1" \
+  "$($DB -c "update memorial_published_snapshots set content = content || '{\"video\":{}}' where memorial_id='$E1_AVIS';" 2>&1 | grep -c 'free publication cannot include video' || true)"
+check "free offer expired (past free_public_until): every deposit is refused" "refused|-|refused" \
+  "$($DB -t -A -c "begin;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id='$E1_AVIS';" -c "set role service_role;" -c "select outcome || '|' || coalesce(contribution_status,'-') from submit_contribution_v1('$E1_AVIS_SLUG','condolence','A','B',gen_random_uuid());" -c "select outcome from reserve_contribution_photo_v1('$E1_AVIS_SLUG', gen_random_uuid(), 'x', 'image/webp');" -c "rollback;" | paste -sd'|')"
+check "memory_message keeps the QG 008 rule: complete offer + enabled section only (v2)" "t|f|f" \
+  "$($DB -t -A -c "begin;" -c "update memorials set enabled_sections = array['memoryMessage'] where id='$E1_MEM';" -c "select public_memorial_message_allowed_v2('$E1_MEM','memory_message');" -c "rollback;" | tail -1)|$($DB -t -A -c "select public_memorial_message_allowed_v2('$E1_MEM','memory_message');")|$($DB -t -A -c "begin;" -c "update memorials set enabled_sections = array['memoryMessage'] where id='$E1_AVIS';" -c "select public_memorial_message_allowed_v2('$E1_AVIS','memory_message');" -c "rollback;" | tail -1)"
+
+# --- E1-3. Duplicates ---
+E1_DUP_KEY=$(e1_key)
+check "first deposit with a key" "pending|pending" "$(e1_submit m8e1-complet testimonial 'Jo' 'Le vélo rouge.' "$E1_DUP_KEY")"
+E1_DUP_COUNT=$($DB -t -A -c "select count(*) from messages where memorial_id='$E1_MEM';")
+check "same key again: duplicate, with the first deposit's state" "duplicate|pending" "$(e1_submit m8e1-complet testimonial 'Jo' 'Autre texte' "$E1_DUP_KEY")"
+check "same name and text within 10 minutes, new key: duplicate" "duplicate|pending" "$(e1_submit m8e1-complet testimonial 'Jo' 'Le vélo rouge.' "$(e1_key)")"
+check "duplicates add no row" "$E1_DUP_COUNT" "$($DB -t -A -c "select count(*) from messages where memorial_id='$E1_MEM';")"
+check "duplicates are not counted against the ceilings (story counter = stories stored)" "$($DB -t -A -c "select count(*) || '|' || count(*) from messages where memorial_id='$E1_MEM' and message_type='testimonial';")" "$($DB -t -A -c "select hour_count || '|' || day_count from contribution_rate_limits where memorial_id='$E1_MEM' and kind='story';")"
+$DB -c "update messages set created_at = created_at - interval '11 minutes' where memorial_id='$E1_MEM' and author_name='Jo';" >/dev/null
+check "the same name and text after 10 minutes is a new deposit" "pending|pending" "$(e1_submit m8e1-complet testimonial 'Jo' 'Le vélo rouge.' "$(e1_key)")"
+check "the same photo cannot be finalised twice" "duplicate|pending" "$(e1_finalize m8e1-complet "$E1_PH_MEDIA" "$(e1_key)")"
+check "the same photo key cannot create a second photo" "duplicate|pending" "$(e1_finalize m8e1-complet "$(e1_key)" "$E1_PH_KEY")"
+
+# --- E1-4. R2 ceilings ---
+E1_R2=$(e1_complet "$E1_OWNER" m8e1-r2 "$E1_ALL")
+check "R2 general values: condolences 120/1000, stories 60/400, photo reservations 30/200, 200 pending" "120|1000|60|400|30|200|200" \
+  "$($DB -t -A -c "select (select per_hour || '|' || per_day from contribution_limits_v1('$E1_R2','condolence')) || '|' || (select per_hour || '|' || per_day from contribution_limits_v1('$E1_R2','story')) || '|' || (select per_hour || '|' || per_day || '|' || max_pending_photos from contribution_limits_v1('$E1_R2','photo'));")"
+$DB -c "insert into contribution_limits_override (memorial_id, condolences_per_hour, condolences_per_day, photo_reservations_per_hour, photo_reservations_per_day) values ('$E1_R2', 2, 3, 1, 2);" >/dev/null
+check "R2 per-memorial override is read (condolences 2/3, photos 1/2, stories inherit 60/400)" "2|3|60|400|1|2" \
+  "$($DB -t -A -c "select (select per_hour || '|' || per_day from contribution_limits_v1('$E1_R2','condolence')) || '|' || (select per_hour || '|' || per_day from contribution_limits_v1('$E1_R2','story')) || '|' || (select per_hour || '|' || per_day from contribution_limits_v1('$E1_R2','photo'));")"
+check "R2: two condolences within the hour are accepted" "published|published|published|published" \
+  "$(e1_submit m8e1-r2 condolence 'A' 'Un' "$(e1_key)")|$(e1_submit m8e1-r2 condolence 'A' 'Deux' "$(e1_key)")"
+check "R2: the third in the hour is rate_limited" "rate_limited|-" "$(e1_submit m8e1-r2 condolence 'A' 'Trois' "$(e1_key)")"
+check "R2: the refusal is not counted, nothing stored" "2|2|2" \
+  "$($DB -t -A -c "select hour_count || '|' || day_count || '|' || (select count(*) from messages where memorial_id='$E1_R2') from contribution_rate_limits where memorial_id='$E1_R2' and kind='condolence';")"
+check "R2: another type has its own counter (a story passes)" "pending|pending" "$(e1_submit m8e1-r2 testimonial 'A' 'Récit' "$(e1_key)")"
+$DB -c "update contribution_rate_limits set hour_window_started_at = hour_window_started_at - interval '61 minutes' where memorial_id='$E1_R2' and kind='condolence';" >/dev/null
+check "R2: a new hour resets the hourly window" "published|published" "$(e1_submit m8e1-r2 condolence 'A' 'Quatre' "$(e1_key)")"
+$DB -c "update contribution_rate_limits set hour_window_started_at = hour_window_started_at - interval '61 minutes' where memorial_id='$E1_R2' and kind='condolence';" >/dev/null
+check "R2: ... but the daily ceiling (3) still holds; the refusal is not counted" "rate_limited|-|0|3" \
+  "$(e1_submit m8e1-r2 condolence 'A' 'Cinq' "$(e1_key)")|$($DB -t -A -c "select hour_count || '|' || day_count from contribution_rate_limits where memorial_id='$E1_R2' and kind='condolence';")"
+$DB -c "update contribution_rate_limits set day_window_started_at = day_window_started_at - interval '25 hours', hour_window_started_at = hour_window_started_at - interval '61 minutes' where memorial_id='$E1_R2' and kind='condolence';" >/dev/null
+check "R2: a new day resets the daily window" "published|published" "$(e1_submit m8e1-r2 condolence 'A' 'Six' "$(e1_key)")"
+check "R2: photo reservations are capped per hour (1)" "reserved|rate_limited" \
+  "$(e1_reserve m8e1-r2 "$E1_R2" "$(e1_key)")|$(e1_reserve m8e1-r2 "$E1_R2" "$(e1_key)")"
+
+# --- E1-5. R3: at most 200 pending photos ---
+E1_R3=$(e1_complet "$E1_OWNER" m8e1-r3 "$E1_ALL")
+$DB -c "insert into contribution_limits_override (memorial_id, photo_reservations_per_hour, photo_reservations_per_day) values ('$E1_R3', 1000, 1000);" >/dev/null
+check "R3 setup: 200 photos reserved and finalised (pending)" "200" \
+  "$($DB -t -A -c "set role service_role; do \$\$ declare m uuid := '$E1_R3'; i int; md uuid; r text; begin for i in 1..200 loop md := gen_random_uuid(); select outcome into r from public.reserve_contribution_photo_v1('m8e1-r3', md, m::text || '/' || md::text || '/original.webp', 'image/webp'); if r <> 'reserved' then raise exception 'reserve %: %', i, r; end if; perform public.finalize_contribution_photo_v1('m8e1-r3', md, 'P' || i, null, gen_random_uuid(), 'image/webp', 1000, 10, 10); end loop; end \$\$;" -c "reset role; select count(*) from messages where memorial_id='$E1_R3' and status='pending' and message_type='photo';" | tail -1)"
+check "R3: the 201st reservation is pending_full" "pending_full" "$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")"
+check "R3: pending_full is not counted against R2" "200|200" "$($DB -t -A -c "select hour_count || '|' || day_count from contribution_rate_limits where memorial_id='$E1_R3' and kind='photo';")"
+E1_R3_IDS=($($DB -t -A -c "select id from messages where memorial_id='$E1_R3' order by created_at limit 3;"))
+e1_moderate "$E1_OWNER" "${E1_R3_IDS[0]}" approve >/dev/null
+E1_R3_A=$(e1_key)
+check "R3: an approval frees one place (reserved), then full again" "reserved|pending_full" \
+  "$(e1_reserve m8e1-r3 "$E1_R3" "$E1_R3_A")|$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")"
+check "R3: an active reservation counts as pending (reserved, not finalised)" "200" \
+  "$($DB -t -A -c "select contribution_pending_photos_v1('$E1_R3', clock_timestamp());")"
+e1_moderate "$E1_OWNER" "${E1_R3_IDS[1]}" reject >/dev/null
+check "R3: a refusal frees one place" "reserved|pending_full" \
+  "$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")|$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")"
+svc "select outcome from remove_contribution_v1('$E1_OWNER','${E1_R3_IDS[2]}');" >/dev/null
+check "R3: a removal frees one place" "reserved|pending_full" \
+  "$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")|$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")"
+$DB -c "update media set created_at = created_at - interval '2 hours' where memorial_id='$E1_R3' and status='pending';" >/dev/null
+check "R3: an abandoned reservation older than the window no longer holds a place" "reserved" "$(e1_reserve m8e1-r3 "$E1_R3" "$(e1_key)")"
+
+# --- E1-6. Unicode (Q2), from the shared case set ---
+E1_UNI="$REPO_ROOT/supabase/verifications/m8_e1_unicode_cases.sql"
+$DB -c "insert into contribution_limits_override (memorial_id, condolences_per_hour, condolences_per_day, stories_per_hour, stories_per_day) values ('$E1_MEM', 1000, 1000, 1000, 1000) on conflict (memorial_id) do update set condolences_per_hour = 1000, condolences_per_day = 1000, stories_per_hour = 1000, stories_per_day = 1000;" >/dev/null
+E1_UNI_OUT=$($DB -t -A -v mem="$E1_MEM" 2>&1 <<SQL | grep '='
+begin;
+\i $E1_UNI
+create function pg_temp.m8e1_try(p_type text, p_field text, p_value text) returns text
+language plpgsql as \$\$
+declare r text; md uuid := gen_random_uuid();
+begin
+  if p_type = 'photo' then
+    perform public.reserve_contribution_photo_v1('m8e1-complet', md, '$E1_MEM/' || md || '/original.webp', 'image/webp');
+    select outcome into r from public.finalize_contribution_photo_v1('m8e1-complet', md, 'Un proche',
+      case when p_field = 'caption' then p_value end, gen_random_uuid(), 'image/webp', 1000, 10, 10);
+  else
+    select outcome into r from public.submit_contribution_v1('m8e1-complet', p_type,
+      case when p_field = 'author_name' then p_value else 'Un proche ' || md end,
+      case when p_field = 'content' then p_value else 'Texte ' || md end, gen_random_uuid());
+  end if;
+  return case when r in ('published', 'pending') then 'accepted' else r end;
+exception when sqlstate '22023' then
+  return 'refused';
+end \$\$;
+select string_agg(case_id || '=' || case when pg_temp.m8e1_try(message_type, field, value) = expected then 'ok' else 'KO' end, ',' order by case_id)
+  from m8_e1_unicode_cases;
+rollback;
+SQL
+)
+check "Q2: every shared Unicode case behaves as specified (12 cases, deposit and photo RPCs)" "u01=ok,u02=ok,u03=ok,u04=ok,u05=ok,u06=ok,u07=ok,u08=ok,u09=ok,u10=ok,u11=ok,u12=ok" "$E1_UNI_OUT"
+check "Q2: case u01 is 500 visible characters and 5000 code points" "5000" \
+  "$($DB -t -A -c "begin;" -f "$E1_UNI" -c "select code_points from m8_e1_unicode_cases where case_id = 'u01';" -c "rollback;" | grep -v '^$' | tail -1)"
+check "Q2: the database net itself accepts 5000 code points of 500 kiss emojis in a condolence" "0" \
+  "$($DB -c "begin;" -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, published_at) values ('$E1_MEM','condolence','Net',repeat(U&'\+01F469\+01F3FB\200D\2764\FE0F\200D\+01F48B\200D\+01F468\+01F3FC', 500),'published',true,now());" -c "rollback;" >/dev/null 2>&1; echo $?)"
+expect_error "Q2: the database net itself refuses 5001 code points" \
+  "insert into messages (memorial_id, message_type, author_name, content) values ('$E1_MEM','condolence','Net',repeat(U&'\+01F469\+01F3FB\200D\2764\FE0F\200D\+01F48B\200D\+01F468\+01F3FC', 500) || 'a');"
+expect_error "Q2: the database net itself refuses a decomposed (NFD) name" \
+  "insert into messages (memorial_id, message_type, author_name, content) values ('$E1_MEM','condolence',U&'Rene\0301','x');"
+expect_error "Q2: the database net itself refuses a carriage return" \
+  "insert into messages (memorial_id, message_type, author_name, content) values ('$E1_MEM','testimonial','R','a' || chr(13) || chr(10) || 'b');"
+expect_error "a photo row without media is refused (shape)" \
+  "insert into messages (memorial_id, message_type, author_name, content) values ('$E1_MEM','photo','R',null);"
+expect_error "a text row carrying a caption is refused (shape)" \
+  "insert into messages (memorial_id, message_type, author_name, content, caption) values ('$E1_MEM','condolence','R','x','y');"
+expect_error "visible cannot disagree with status" \
+  "insert into messages (memorial_id, message_type, author_name, content, status, visible) values ('$E1_MEM','condolence','R','x','pending',true);"
+E1_CAP_A=$(e1_key); E1_CAP_B=$(e1_key)
+e1_reserve m8e1-complet "$E1_MEM" "$E1_CAP_A" >/dev/null; e1_reserve m8e1-complet "$E1_MEM" "$E1_CAP_B" >/dev/null
+check "a caption may be empty or absent: accepted, stored NULL" "pending|pending|pending|pending|t" \
+  "$(e1_finalize m8e1-complet "$E1_CAP_A" "$(e1_key)" "''")|$(e1_finalize m8e1-complet "$E1_CAP_B" "$(e1_key)")|$($DB -t -A -c "select bool_and(caption is null) from messages where media_id in ('$E1_CAP_A','$E1_CAP_B');")"
+check "the caption given with the first photo is kept as written" "Au jardin" "$($DB -t -A -c "select caption from messages where media_id='$E1_PH_MEDIA';")"
+
+# --- E1-7. Moderation ---
+E1_STORY=$($DB -t -A -c "select id from messages where memorial_id='$E1_MEM' and author_name='Paul';")
+E1_COND=$($DB -t -A -c "select id from messages where memorial_id='$E1_MEM' and author_name='Marie';")
+check "moderation: approve a pending story" "updated|published" "$(e1_moderate "$E1_OWNER" "$E1_STORY" approve)"
+check "moderation: approving again is unchanged" "unchanged|published" "$(e1_moderate "$E1_OWNER" "$E1_STORY" approve)"
+check "moderation: a published story cannot be rejected (invalid transition)" "invalid_transition|published" "$(e1_moderate "$E1_OWNER" "$E1_STORY" reject)"
+E1_PUB_AT=$(e1_msg "$E1_STORY" published_at)
+check "moderation: hide then unhide a published contribution" "updated|hidden|updated|published" \
+  "$(e1_moderate "$E1_OWNER" "$E1_STORY" hide)|$(e1_moderate "$E1_OWNER" "$E1_STORY" unhide)"
+check "moderation: unhiding keeps the original published_at (its place in P1)" "$E1_PUB_AT|true" "$(e1_msg "$E1_STORY" "published_at || '|' || visible")"
+check "moderation: a published condolence may be hidden afterwards (moderated after publication)" "updated|hidden|f" \
+  "$(e1_moderate "$E1_OWNER" "$E1_COND" hide)|$(e1_msg "$E1_COND" visible)"
+check "moderation: another owner has no effect" "refused|-|hidden" "$(e1_moderate "$E1_OTHER" "$E1_COND" unhide)|$(e1_msg "$E1_COND" status)"
+check "moderation: an unknown contribution is refused" "refused|-" "$(e1_moderate "$E1_OWNER" "$(e1_key)" approve)"
+svc_expect_error "moderation: an unknown action is refused" "select * from moderate_contribution_v1('$E1_OWNER','$E1_COND','rewrite');" "invalid contribution moderation"
+check "moderation never rewrites the name nor the text" "Marie|Toutes nos pensées." "$(e1_msg "$E1_COND" "author_name || '|' || content")"
+check "moderation records moderated_at" "t" "$(e1_msg "$E1_COND" "moderated_at is not null")"
+E1_RM_PHOTO=$(e1_photo m8e1-complet "$E1_MEM")
+E1_RM_MEDIA=$(e1_msg "$E1_RM_PHOTO" media_id)
+check "removal by another owner has no effect" "refused|1" \
+  "$(svc "select outcome from remove_contribution_v1('$E1_OTHER','$E1_RM_PHOTO');")|$($DB -t -A -c "select count(*) from messages where id='$E1_RM_PHOTO';")"
+E1_RM=$(svc "select outcome || '|' || (cleanup_claim_id is not null) || '|' || storage_path from remove_contribution_v1('$E1_OWNER','$E1_RM_PHOTO');")
+check "removing a photo deletes the message and claims its media for cleanup" "removed|true|0|pending|1" \
+  "$(echo "$E1_RM" | cut -d'|' -f1,2)|$($DB -t -A -c "select count(*) from messages where id='$E1_RM_PHOTO';")|$($DB -t -A -c "select status from media where id='$E1_RM_MEDIA';")|$($DB -t -A -c "select count(*) from pending_media_cleanup_claims where media_id='$E1_RM_MEDIA' and completed_at is null;")"
+E1_RM_CLAIM=$($DB -t -A -c "select id from pending_media_cleanup_claims where media_id='$E1_RM_MEDIA' and completed_at is null;")
+svc "select finish_pending_media_cleanup_v1('$E1_MEM','$E1_OWNER','$E1_RM_CLAIM');" >/dev/null
+check "the existing cleanup circuit then deletes the media row" "0|1" \
+  "$($DB -t -A -c "select count(*) from media where id='$E1_RM_MEDIA';")|$($DB -t -A -c "select count(*) from pending_media_cleanup_claims where id='$E1_RM_CLAIM' and completed_at is not null;")"
+check "removing a text contribution leaves no cleanup claim" "removed|false" \
+  "$(svc "select outcome || '|' || (cleanup_claim_id is not null) from remove_contribution_v1('$E1_OWNER','$E1_COND');")"
+check "the pending counter (O12) counts by memorial and type" "$($DB -t -A -c "select count(*) filter (where message_type='testimonial') || '|' || count(*) filter (where message_type='photo') from messages where memorial_id='$E1_MEM' and status='pending';")" \
+  "$(svc "select pending_stories || '|' || pending_photos from count_pending_contributions_v1('$E1_OWNER','$E1_MEM');")"
+check "the pending counter never reports another owner's memorials" "0" "$(svc "select count(*) from count_pending_contributions_v1('$E1_OTHER','$E1_MEM');")"
+
+# --- E1-8. O9: immediate deactivation, without republication ---
+E1_O9=$(e1_complet "$E1_OWNER" m8e1-o9 "$E1_ALL")
+e1_submit m8e1-o9 condolence 'A' 'Pensée' "$(e1_key)" >/dev/null
+E1_O9_PH=$(e1_photo m8e1-o9 "$E1_O9"); e1_moderate "$E1_OWNER" "$E1_O9_PH" approve >/dev/null
+E1_O9_SNAP=$($DB -t -A -c "select md5(content::text) || published_at from memorial_published_snapshots where memorial_id='$E1_O9';")
+E1_O9_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$E1_O9';")
+check "O9 setup: both published contributions are read" "condolence,photo" "$(e1_read_ids m8e1-o9 | tr ',' '\n' | sort | paste -sd,)"
+check "O9: photos switched off by the family" "updated|$((E1_O9_REV + 1))" "$(svc "select outcome || '|' || draft_revision from set_contribution_categories_v1('$E1_OWNER','$E1_O9',true,true,false,$E1_O9_REV);")"
+check "O9: immediately, a photo reservation is refused and the photo is no longer read" "refused|condolence" \
+  "$(e1_reserve m8e1-o9 "$E1_O9" "$(e1_key)")|$(e1_read_ids m8e1-o9)"
+check "O9: the published copy is untouched" "$E1_O9_SNAP" "$($DB -t -A -c "select md5(content::text) || published_at from memorial_published_snapshots where memorial_id='$E1_O9';")"
+check "O9: the draft is aligned (contributions.features, other keys kept)" '{"photos": false, "stories": true, "condolences": true}|E1 m8e1-o9' \
+  "$($DB -t -A -c "select (content #> '{contributions,features}')::text || '|' || (content #>> '{hero,displayName}') from memorial_drafts where memorial_id='$E1_O9';")"
+check "O9: the change is traced (categories row by the owner, audit event)" "true|true|false|$E1_OWNER|1" \
+  "$(e1_cats "$E1_O9")|$($DB -t -A -c "select updated_by from memorial_contribution_categories where memorial_id='$E1_O9';")|$($DB -t -A -c "select count(*) from memorial_edit_audit_events where memorial_id='$E1_O9' and operation='contributions.categories';")"
+check "O9: the rows are kept (approved photo still published)" "published" "$(e1_msg "$E1_O9_PH" status)"
+check "O9: a stale Builder revision is refused, nothing changes" "stale_revision|$((E1_O9_REV + 1))|true|true|false" \
+  "$(svc "select outcome || '|' || draft_revision from set_contribution_categories_v1('$E1_OWNER','$E1_O9',true,true,true,$E1_O9_REV);")|$(e1_cats "$E1_O9")"
+check "O9: the same choices again are unchanged (no revision bump)" "unchanged|$((E1_O9_REV + 1))" \
+  "$(svc "select outcome || '|' || draft_revision from set_contribution_categories_v1('$E1_OWNER','$E1_O9',true,true,false,null);")"
+check "O9: another owner cannot change the categories" "refused|true|true|false" \
+  "$(svc "select outcome from set_contribution_categories_v1('$E1_OTHER','$E1_O9',false,false,false,null);")|$(e1_cats "$E1_O9")"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E1_O9',true,true,true,null);" >/dev/null
+check "O9: re-enabled, the published photo comes back, with its original state" "condolence,photo|published" \
+  "$(e1_read_ids m8e1-o9 | tr ',' '\n' | sort | paste -sd,)|$(e1_msg "$E1_O9_PH" status)"
+# Republication (Q1, the UPDATE path, with the exact statement of the publication functions).
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E1_O9',true,false,true,null);" >/dev/null
+$DB -c "insert into memorial_published_snapshots (memorial_id, content, published_at) values ('$E1_O9', (select content || '{\"legacy\":{\"text\":\"republié\"}}' from memorial_published_snapshots where memorial_id='$E1_O9') , now()) on conflict (memorial_id) do update set content = excluded.content, published_at = excluded.published_at;" >/dev/null
+check "Q1: a republication with unchanged choices keeps the immediate O9 setting" "true|false|true" "$(e1_cats "$E1_O9")"
+$DB -c "insert into memorial_published_snapshots (memorial_id, content, published_at) values ('$E1_O9', jsonb_set((select content from memorial_published_snapshots where memorial_id='$E1_O9'), '{contributions,features}', '{\"condolences\":false,\"stories\":true,\"photos\":true}'), now()) on conflict (memorial_id) do update set content = excluded.content, published_at = excluded.published_at;" >/dev/null
+check "Q1: a republication with new choices wins (the family's explicit republication)" "false|true|true|" \
+  "$(e1_cats "$E1_O9")|$($DB -t -A -c "select coalesce(updated_by::text, '') from memorial_contribution_categories where memorial_id='$E1_O9';")"
+check "Q1: malformed choices in a republication never fail it and change nothing" "0|false|true|true" \
+  "$($DB -c "update memorial_published_snapshots set content = jsonb_set(content, '{contributions}', '\"tout\"') where memorial_id='$E1_O9';" >/dev/null 2>&1; echo $?)|$(e1_cats "$E1_O9")"
+E1_O9B=$(e1_complet "$E1_OWNER" m8e1-o9-malformed '{"photos":"yes"}')
+check "Q1: malformed choices at the first publication: no row, everything closed" "none|refused|-" "$(e1_cats "$E1_O9B")|$(e1_submit m8e1-o9-malformed condolence 'A' 'B' "$(e1_key)")"
+check "O9: a never-published memorial only aligns its draft (no categories row, no audit)" "updated|none|false|0" \
+  "$(svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E1_DRAFT_MEM',false,true,false,null);")|$(e1_cats "$E1_DRAFT_MEM")|$($DB -t -A -c "select content #>> '{contributions,features,condolences}' from memorial_drafts where memorial_id='$E1_DRAFT_MEM';")|$($DB -t -A -c "select count(*) from memorial_edit_audit_events where memorial_id='$E1_DRAFT_MEM';")"
+
+# --- E1-9. Public read and P1 order ---
+E1_P1=$(e1_complet "$E1_OWNER" m8e1-p1 "$E1_ALL")
+$DB -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, published_at) values
+  ('$E1_P1','condolence','A','c1','published',true,'2026-11-01 10:00+00'),
+  ('$E1_P1','testimonial','B','s1','published',true,'2026-11-03 10:00+00'),
+  ('$E1_P1','condolence','C','c2','published',true,'2026-11-02 10:00+00'),
+  ('$E1_P1','condolence','D','c3','published',true,'2026-11-02 10:00+00'),
+  ('$E1_P1','testimonial','E','s2','pending',false,null),
+  ('$E1_P1','testimonial','F','s3','rejected',false,null),
+  ('$E1_P1','testimonial','G','s4','hidden',false,'2026-11-04 10:00+00');" >/dev/null
+E1_P1_EXPECT=$($DB -t -A -c "select string_agg(author_name, ',' order by published_at desc, id desc) from messages where memorial_id='$E1_P1' and status='published';")
+check "P1: published only, most recent first, ties broken by id desc" "$E1_P1_EXPECT" \
+  "$(svc "select string_agg(author_name, ',' order by n) from (select author_name, row_number() over () n from read_public_contributions_v1('m8e1-p1', 24, null, null)) x;")"
+check "P1: pending, rejected and hidden are never read" "4" "$(svc "select count(*) from read_public_contributions_v1('m8e1-p1', 24, null, null);")"
+E1_P1_FIRST=$(svc "select published_at || '|' || contribution_id from read_public_contributions_v1('m8e1-p1', 2, null, null) offset 1 limit 1;")
+check "P1: the cursor continues strictly after the last item read" "$(echo "$E1_P1_EXPECT" | cut -d, -f3,4)" \
+  "$(svc "select string_agg(author_name, ',' order by n) from (select author_name, row_number() over () n from read_public_contributions_v1('m8e1-p1', 2, '${E1_P1_FIRST%%|*}', '${E1_P1_FIRST##*|}')) x;")"
+check "P1: a half cursor reads nothing" "0" "$(svc "select count(*) from read_public_contributions_v1('m8e1-p1', 2, now(), null);")"
+check "P1: the limit is clamped to [1, 100]" "1|4" \
+  "$(svc "select count(*) from read_public_contributions_v1('m8e1-p1', 0, null, null);")|$(svc "select count(*) from read_public_contributions_v1('m8e1-p1', 1000, null, null);")"
+e1_moderate "$E1_OWNER" "$($DB -t -A -c "select id from messages where media_id='$E1_PH_MEDIA';")" approve >/dev/null
+check "read: a photo is returned with its ready media, never a pending one" "1|true" \
+  "$(svc "select count(*) || '|' || bool_and(media ->> 'storage_path' like '$E1_MEM/%') from read_public_contributions_v1('m8e1-complet', 100, null, null) where message_type = 'photo';")"
+check "read: the public read never returns idempotency_key (exact column set)" "contribution_id,message_type,author_name,content,caption,published_at,media" \
+  "$($DB -t -A -c "select string_agg(a, ',' order by o) from unnest((select proargnames from pg_proc where oid='public.read_public_contributions_v1(text,integer,timestamptz,uuid)'::regprocedure)[5:]) with ordinality as t(a, o);")"
+check "read: an expired free offer reads nothing" "0" \
+  "$($DB -t -A -c "begin;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id='$E1_AVIS';" -c "select count(*) from read_public_contributions_v1('$E1_AVIS_SLUG', 24, null, null);" -c "rollback;" | tail -1)"
+check "read_public_memorial_v1 never exposes a contribution photo" "0" \
+  "$(svc "select count(*) from read_public_memorial_v1('m8e1-complet') r, jsonb_array_elements(r.media) e where e ->> 'purpose' = 'contribution';")"
+
+# --- E1-10. Q7-B: visitors' photos are outside the free 300 MB budget ---
+E1_Q7_USED=$($DB -t -A -c "select owner_free_storage_bytes_v1('$E1_AVIS_OWNER');")
+E1_Q7_MEDIA=$(e1_key)
+e1_reserve "$E1_AVIS_SLUG" "$E1_AVIS" "$E1_Q7_MEDIA" >/dev/null
+e1_finalize "$E1_AVIS_SLUG" "$E1_Q7_MEDIA" "$(e1_key)" null 9000000 >/dev/null
+check "Q7-B: a 9 MB visitor photo, ready, does not reduce the family's budget" "ready|$E1_Q7_USED" \
+  "$($DB -t -A -c "select status from media where id='$E1_Q7_MEDIA';")|$($DB -t -A -c "select owner_free_storage_bytes_v1('$E1_AVIS_OWNER');")"
+check "Q7-B: the family's own media are still counted" "$((E1_Q7_USED + 100))" \
+  "$($DB -t -A -c "begin;" -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status, size_bytes) values ('$E1_AVIS','$E1_AVIS_OWNER','$E1_AVIS/' || gen_random_uuid() || '/original.jpg','photo','image/jpeg','gallery','ready',100);" -c "select owner_free_storage_bytes_v1('$E1_AVIS_OWNER');" -c "rollback;" | tail -1)"
+check "Q7-B: with the budget exhausted, the family still gets HD507, a visitor's photo still passes" "HD507|reserved" \
+  "$($DB -t -A -c "begin;" -c "update memorial_access_settings set free_storage_bytes_per_owner = 50 where id;" -c "insert into media (memorial_id, owner_id, storage_path, media_type, mime_type, purpose, status) values ('$E1_AVIS','$E1_AVIS_OWNER','$E1_AVIS/' || gen_random_uuid() || '/original.jpg','photo','image/jpeg','gallery','pending');" -c "rollback;" 2>&1 | grep -o 'free storage budget reached' | sed 's/free storage budget reached/HD507/')|$($DB -t -A -c "begin;" -c "update memorial_access_settings set free_storage_bytes_per_owner = 50 where id;" -c "set role service_role;" -c "select outcome from reserve_contribution_photo_v1('$E1_AVIS_SLUG', '00000000-0000-4000-8000-0000000000e1', '$E1_AVIS/00000000-0000-4000-8000-0000000000e1/original.webp', 'image/webp');" -c "rollback;" | tail -1)"
+svc_expect_error "a photo above the 15 MB ceiling is refused at finalisation" \
+  "select * from finalize_contribution_photo_v1('$E1_AVIS_SLUG', gen_random_uuid(), 'A', null, gen_random_uuid(), 'image/webp', 15728641, 10, 10);" "invalid contribution photo finalization"
+
+# --- E1-12. O12: digest preference and journal ---
+E1_DG_OWNER=$(e1_owner m8e1-digest)
+E1_DG=$(e1_complet "$E1_DG_OWNER" m8e1-digest "$E1_ALL")
+e1_submit m8e1-digest testimonial 'Ami' 'Un souvenir.' "$(e1_key)" >/dev/null
+# M8-E6-I : le dépôt est daté explicitement AVANT le jour 1. Il prenait
+# l'heure réelle (now()) alors que DAY1 est figé : le test échouait dès que
+# l'horloge dépassait le 2026-11-20 07:00 UTC (dépendance à l'heure du
+# passage, pas un défaut du récapitulatif, qui exclut à juste titre ce qui
+# est postérieur à p_now).
+$DB -c "update messages set created_at = '2026-11-19 20:00+01' where memorial_id='$E1_DG';" >/dev/null
+E1_DAY1="'2026-11-20 08:00+01'::timestamptz"
+E1_DAY2="'2026-11-21 08:00+01'::timestamptz"
+check "O12: no preference row means no digest (disabled by default)" "0" \
+  "$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY1, 50) where owner_id='$E1_DG_OWNER';")"
+check "O12: the preference defaults to false and can be enabled" "f|t" \
+  "$($DB -t -A -c "begin;" -c "insert into owner_notification_preferences (owner_id) values ('$E1_DG_OWNER');" -c "select contributions_digest from owner_notification_preferences where owner_id='$E1_DG_OWNER';" -c "rollback;" | tail -1)|$(svc "select contributions_digest from set_contributions_digest_preference_v1('$E1_DG_OWNER', true);")"
+E1_DG_CLAIM=$(svc "select digest_id || '|' || (memorials -> 0 ->> 'pending_stories') || '|' || (memorials -> 0 ->> 'display_name') || '|' || (memorials::text like '%Ami%') || '|' || (memorials::text like '%souvenir%') from claim_contributions_digests_v1($E1_DAY1, 50) where owner_id='$E1_DG_OWNER';")
+check "O12: one digest claimed, numbers only (no relative's name nor text)" "1|E1 m8e1-digest|false|false" "$(echo "$E1_DG_CLAIM" | cut -d'|' -f2-)"
+check "O12: a second run the same day claims nothing" "0" "$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY1 + interval '2 hours', 50) where owner_id='$E1_DG_OWNER';")"
+check "O12: the outcome is marked sent once; a second mark is refused" "updated|refused" \
+  "$(svc "select outcome from mark_contributions_digest_v1('${E1_DG_CLAIM%%|*}', 'sent', 'brevo-1');")|$(svc "select outcome from mark_contributions_digest_v1('${E1_DG_CLAIM%%|*}', 'failed');")"
+check "O12: next day, nothing new since the last digest: nothing claimed" "0" "$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY2, 50) where owner_id='$E1_DG_OWNER';")"
+$DB -c "update messages set created_at = '2026-11-20 20:00+01' where memorial_id='$E1_DG';" >/dev/null
+svc "select outcome from submit_contribution_v1('m8e1-digest','testimonial','Ami 2','Nouveau.',gen_random_uuid());" >/dev/null
+$DB -c "update messages set created_at = '2026-11-20 21:00+01' where memorial_id='$E1_DG' and author_name='Ami 2';" >/dev/null
+check "O12: something new since the last digest: claimed the next day" "1" "$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY2, 50) where owner_id='$E1_DG_OWNER';")"
+E1_DAY3="'2026-11-22 08:00+01'::timestamptz"
+$DB -c "update messages set created_at = '2026-11-21 20:00+01' where memorial_id='$E1_DG' and author_name='Ami 2';" >/dev/null
+svc "select set_contributions_digest_preference_v1('$E1_DG_OWNER', false);" >/dev/null
+check "O12: an owner who unsubscribes is excluded immediately" "0" "$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY3, 50) where owner_id='$E1_DG_OWNER';")"
+svc "select set_contributions_digest_preference_v1('$E1_DG_OWNER', true);" >/dev/null
+E1_DG3=$(svc "select digest_id from claim_contributions_digests_v1($E1_DAY3, 50) where owner_id='$E1_DG_OWNER';")
+svc "select mark_contributions_digest_v1('$E1_DG3', 'failed');" >/dev/null
+E1_DG_RETRY=$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY3 + interval '1 hour', 50) where owner_id='$E1_DG_OWNER';")
+svc "select outcome from mark_contributions_digest_v1('$E1_DG3', 'failed');" >/dev/null
+check "O12: an explicit failure is retried once the same day, then never again" "1|0|2" \
+  "$E1_DG_RETRY|$(svc "select count(*) from claim_contributions_digests_v1($E1_DAY3 + interval '2 hours', 50) where owner_id='$E1_DG_OWNER';")|$($DB -t -A -c "select attempts from contributions_digest_log where id='$E1_DG3';")"
+check "O12: an unknown outcome (claimed, never marked) is never re-sent the same day" "0" \
+  "$($DB -t -A -c "begin;" -c "update contributions_digest_log set status='claimed', attempts=1 where owner_id='$E1_DG_OWNER' and digest_day='2026-11-22';" -c "set role service_role;" -c "select count(*) from claim_contributions_digests_v1($E1_DAY3 + interval '3 hours', 50) where owner_id='$E1_DG_OWNER';" -c "rollback;" | tail -1)"
+check "O12: the journal is unique per owner and day" "1" "$($DB -c "insert into contributions_digest_log (owner_id, digest_day, status, covered_until) values ('$E1_DG_OWNER', '2026-11-22', 'claimed', now());" 2>&1 | grep -c 'contributions_digest_log_owner_day' || true)"
+
+# --- E1-13. Non-regression ---
+check "non-regression: public_memorial_message_allowed_v1 still evaluates the QG 008 rule" "f" \
+  "$($DB -t -A -c "select public_memorial_message_allowed_v1('$E1_MEM','condolence');")"
+check "non-regression: the Offrandes trigger still opens a first publication" "1" \
+  "$($DB -t -A -c "select count(*) from symbolic_offering_eligibility where memorial_id='$E1_O9' and closes_at is null;")"
+check "non-regression: hero and gallery reservations still refuse the contribution purpose" "1" \
+  "$($DB -c "set role service_role; select * from reserve_memorial_media_upload_v1('$E1_MEM','$E1_OWNER',gen_random_uuid(),'$E1_MEM/x/original.webp','contribution','image/webp');" 2>&1 | grep -c 'invalid media reservation' || true)"
+check "non-regression: the free gallery quota ignores contribution photos" "0" \
+  "$($DB -t -A -c "select count(*) from media where memorial_id='$E1_AVIS' and purpose='gallery';")"
+
+# --- E1-14b. The rollback refuses to erase real contributions ---
+$PSQL -d postgres -c "create database m8e1_guard template $DB_NAME;" >/dev/null
+E1_GUARD_BEFORE=$($PSQL -d m8e1_guard -t -A -c "select count(*) from messages where status is not null;")
+check "M8-E1 rollback refuses when real contributions exist, and changes nothing" "1|$E1_GUARD_BEFORE|present" \
+  "$($PSQL -d m8e1_guard -f "$E1_DOWN" 2>&1 | grep -c 'rollback refused: real contributions exist' || true)|$($PSQL -d m8e1_guard -t -A -c "select count(*) from messages where status is not null;")|$($PSQL -d m8e1_guard -t -A -c "select case when to_regprocedure('public.submit_contribution_v1(text,text,text,text,uuid)') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database m8e1_guard;" >/dev/null
+
+echo ""
+echo "== M8-E2: family read of the Contributions settings (20261120090000, NOT applied to any project) =="
+E2_FN="public.read_owner_contribution_settings_v1(uuid,uuid)"
+E2_MIG="$MIGRATIONS_DIR/20261120090000_m8_e2_owner_contribution_settings.sql"
+E2_DOWN="$REPO_ROOT/supabase/rollbacks/20261120090000_m8_e2_owner_contribution_settings.down.sql"
+e2_read() { svc "select outcome || '|' || coalesce(condolences::text,'-') || '|' || coalesce(stories::text,'-') || '|' || coalesce(photos::text,'-') || '|' || coalesce(first_published::text,'-') || '|' || coalesce(contributions_digest::text,'-') from read_owner_contribution_settings_v1('$1','$2');"; }
+check "M8-E2: the read is executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$E2_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$E2_FN','EXECUTE') || '|' || has_function_privilege('service_role','$E2_FN','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$E2_FN'::regprocedure;")"
+check "M8-E2: published memorial -> the categories IN EFFECT (O9), not the published copy" "ok|$(e1_cats "$E1_O9" | tr '|' '\n' | paste -sd'|')|true|false" \
+  "$(e2_read "$E1_OWNER" "$E1_O9")"
+check "M8-E2: never-published memorial -> the draft's A15 choices" "ok|false|true|false|false|false" "$(e2_read "$E1_OWNER" "$E1_DRAFT_MEM")"
+check "M8-E2: the digest preference is read (enabled for this owner), false by default elsewhere" "true|false" \
+  "$(e2_read "$E1_DG_OWNER" "$E1_DG" | cut -d'|' -f6)|$(e2_read "$E1_OWNER" "$E1_O9" | cut -d'|' -f6)"
+check "M8-E2: another owner's memorial is refused, with no data" "refused|-|-|-|-|-" "$(e2_read "$E1_OTHER" "$E1_O9")"
+check "M8-E2: an unknown memorial is refused like another owner's" "refused|-|-|-|-|-" "$(e2_read "$E1_OWNER" "$(e1_key)")"
+check "M8-E2: malformed draft choices are reported as corrupted (all closed)" "corrupted|false|false|false|false|false" \
+  "$($DB -t -A -c "begin;" -c "update memorial_drafts set content = jsonb_set(content, '{contributions}', '\"tout\"') where memorial_id='$E1_DRAFT_MEM';" -c "set role service_role;" -c "select outcome || '|' || condolences || '|' || stories || '|' || photos || '|' || first_published || '|' || contributions_digest from read_owner_contribution_settings_v1('$E1_OWNER','$E1_DRAFT_MEM');" -c "rollback;" | tail -1)"
+check "M8-E2: the draft revision is returned for the Builder's expected revision" "$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$E1_O9';")" \
+  "$(svc "select draft_revision from read_owner_contribution_settings_v1('$E1_OWNER','$E1_O9');")"
+svc_expect_error "M8-E2: a request without owner is refused" "select * from read_owner_contribution_settings_v1(null, '$E1_O9');" "invalid contribution settings request"
+check "M8-E2: the read writes nothing (STABLE)" "s" "$($DB -t -A -c "select provolatile from pg_proc where oid = '$E2_FN'::regprocedure;")"
+$PSQL -d postgres -c "create database m8e2_down template $DB_NAME;" >/dev/null
+check "M8-E2 rollback removes the function, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e2_down -f "$E2_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e2_down -f "$E2_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e2_down -t -A -c "select case when to_regprocedure('$E2_FN') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database m8e2_down;" >/dev/null
+
+echo ""
+echo "== M8-E3: public overview of the Contributions (20261121090000, NOT applied to any project) =="
+E3_FN="public.read_public_contributions_overview_v1(text)"
+E3_MIG="$MIGRATIONS_DIR/20261121090000_m8_e3_public_contributions_overview.sql"
+E3_DOWN="$REPO_ROOT/supabase/rollbacks/20261121090000_m8_e3_public_contributions_overview.down.sql"
+e3_over() { svc "select coalesce((select condolences || '|' || stories || '|' || photos || '|' || published_condolences || '|' || published_stories || '|' || published_photos from read_public_contributions_overview_v1('$1')), 'none');"; }
+check "M8-E3: the overview is executable by service_role only, SECURITY DEFINER, empty search_path, STABLE" "false|false|true|true|true|s" \
+  "$($DB -t -A -c "select has_function_privilege('anon','$E3_FN','EXECUTE') || '|' || has_function_privilege('authenticated','$E3_FN','EXECUTE') || '|' || has_function_privilege('service_role','$E3_FN','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) || '|' || p.provolatile::text from pg_proc p where p.oid = '$E3_FN'::regprocedure;")"
+E3_MEM=$(e1_complet "$E1_OWNER" m8e3-overview "$E1_ALL")
+check "M8-E3: categories open, nothing published yet -> open, zero counts (empty state M0)" "true|true|true|0|0|0" "$(e3_over m8e3-overview)"
+e1_submit m8e3-overview condolence 'A' 'Pensées' "$(e1_key)" >/dev/null
+e1_submit m8e3-overview testimonial 'B' 'Récit en attente' "$(e1_key)" >/dev/null
+E3_PH=$(e1_photo m8e3-overview "$E3_MEM")
+check "M8-E3: only PUBLISHED contributions are counted (story and photo still pending)" "true|true|true|1|0|0" "$(e3_over m8e3-overview)"
+e1_moderate "$E1_OWNER" "$E3_PH" approve >/dev/null
+check "M8-E3: an approved photo (ready media) is counted" "true|true|true|1|0|1" "$(e3_over m8e3-overview)"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,false,null);" >/dev/null
+check "M8-E3 (O9): photos switched off -> the overview says so at once and stops counting them" "true|true|false|1|0|0" "$(e3_over m8e3-overview)"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,true,null);" >/dev/null
+check "M8-E3 (O9): switched on again -> the published photo is back" "true|true|true|1|0|1" "$(e3_over m8e3-overview)"
+check "M8-E3: a hidden rubrique, a non-published memorial, an unknown slug -> no row at all" "none|none|none" \
+  "$(e3_over m8e1-hidden)|$(e3_over m8e1-draft)|$(e3_over m8e3-nope)"
+check "M8-E3: an expired free offer -> no row" "none" \
+  "$($DB -t -A -c "begin;" -c "update memorials set first_published_at = now() - interval '50 days', free_public_until = now() - interval '5 days', free_private_until = now() + interval '25 days' where id='$E1_AVIS';" -c "set role service_role;" -c "select coalesce((select 'row' from read_public_contributions_overview_v1('$E1_AVIS_SLUG')), 'none');" -c "rollback;" | tail -1)"
+
+# --- O9 while a visitor's photo deposit is in flight -------------------------
+E3_FLY=$(e1_key); E3_FLY_KEY=$(e1_key)
+check "M8-E3: a visitor reserves a photo" "reserved" "$(e1_reserve m8e3-overview "$E3_MEM" "$E3_FLY")"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,false,null);" >/dev/null
+check "M8-E3 (O9): the family switches photos off mid-deposit -> finalisation refused, no message, media stays pending for cleanup" "refused|-|0|pending" \
+  "$(e1_finalize m8e3-overview "$E3_FLY" "$E3_FLY_KEY")|$($DB -t -A -c "select count(*) from messages where media_id='$E3_FLY';")|$($DB -t -A -c "select status from media where id='$E3_FLY';")"
+check "M8-E3 (O9): ... and a new reservation is refused too" "refused" "$(e1_reserve m8e3-overview "$E3_MEM" "$(e1_key)")"
+svc "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',true,true,true,null);" >/dev/null
+E3_FLY2=$(e1_key)
+check "M8-E3 (O9): switched on again -> a new deposit goes through (pending, D2)" "reserved|pending|pending" \
+  "$(e1_reserve m8e3-overview "$E3_MEM" "$E3_FLY2")|$(e1_finalize m8e3-overview "$E3_FLY2" "$(e1_key)")"
+check "M8-E3 (O9): a text deposit in flight while condolences close -> refused, nothing stored" "refused|-|1" \
+  "$($DB -t -A -c "begin;" -c "set role service_role;" -c "select outcome from set_contribution_categories_v1('$E1_OWNER','$E3_MEM',false,true,true,null);" -c "select outcome || '|' || coalesce(contribution_status,'-') from submit_contribution_v1('m8e3-overview','condolence','C','Encore',gen_random_uuid());" -c "rollback;" | tail -1)|$($DB -t -A -c "select count(*) from messages where memorial_id='$E3_MEM' and message_type='condolence';")"
+
+$PSQL -d postgres -c "create database m8e3_down template $DB_NAME;" >/dev/null
+check "M8-E3 rollback removes the function, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e3_down -f "$E3_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")|$($PSQL -d m8e3_down -f "$E3_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e3_down -t -A -c "select case when to_regprocedure('$E3_FN') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database m8e3_down;" >/dev/null
+
+echo ""
+echo "== M8-E4: targeted public reads (20261122090000, NOT applied to any project) =="
+E4_V2="public.read_public_contributions_v2(text,integer,timestamptz,uuid,text[])"
+E4_IDS="public.read_public_contributions_by_ids_v1(text,uuid[])"
+E4_MIG="$MIGRATIONS_DIR/20261122090000_m8_e4_public_contributions_reads.sql"
+E4_DOWN="$REPO_ROOT/supabase/rollbacks/20261122090000_m8_e4_public_contributions_reads.down.sql"
+for fn in "$E4_V2" "$E4_IDS"; do
+  check "M8-E4: $fn executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+    "$($DB -t -A -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$fn'::regprocedure;")"
+done
+check "M8-E4: v2 without types = v1 exactly (same rows, same P1 order)" \
+  "$(svc "select string_agg(contribution_id::text, ',' order by n) from (select contribution_id, row_number() over () n from read_public_contributions_v1('m8e1-p1', 24, null, null)) x;")" \
+  "$(svc "select string_agg(contribution_id::text, ',' order by n) from (select contribution_id, row_number() over () n from read_public_contributions_v2('m8e1-p1', 24, null, null, null)) x;")"
+check "M8-E4: v2 with types=testimonial returns the most recent story only (O8 representative)" "B" \
+  "$(svc "select string_agg(author_name, ',') from read_public_contributions_v2('m8e1-p1', 1, null, null, array['testimonial']);")"
+check "M8-E4: v2 refuses an unknown or empty type filter (no row)" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_v2('m8e1-p1', 24, null, null, array['memory_message']);")|$(svc "select count(*) from read_public_contributions_v2('m8e1-p1', 24, null, null, array[]::text[]);")"
+check "M8-E4: v2 still honours the categories in effect (photos off -> no photo even when asked)" "0" \
+  "$($DB -t -A -c "begin;" -c "set role service_role;" -c "select outcome from set_contribution_categories_v1('$E1_OWNER','$E1_MEM',true,true,false,null);" -c "select count(*) from read_public_contributions_v2('m8e1-complet', 24, null, null, array['photo']);" -c "rollback;" | tail -1)"
+E4_PUB=$($DB -t -A -c "select string_agg(quote_literal(id::text) || '::uuid', ',') from messages where memorial_id='$E1_P1' and status='published';")
+E4_HIDDEN=$($DB -t -A -c "select id from messages where memorial_id='$E1_P1' and status='hidden' limit 1;")
+E4_OTHER=$($DB -t -A -c "select id from messages where memorial_id='$E1_O9' and status='published' limit 1;")
+check "M8-E4: by-ids returns the published contributions asked, in P1 order" "4" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array[$E4_PUB]);")"
+check "M8-E4: by-ids never returns a hidden contribution nor another memorial's" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array['$E4_HIDDEN'::uuid]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array['$E4_OTHER'::uuid]);")"
+check "M8-E4: by-ids refuses an empty list and more than 100 ids" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', array[]::uuid[]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-p1', (select array_agg(gen_random_uuid()) from generate_series(1,101)));")"
+check "M8-E4: by-ids on a hidden rubrique or an unknown slug returns nothing" "0|0" \
+  "$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e1-hidden', array[$E4_PUB]);")|$(svc "select count(*) from read_public_contributions_by_ids_v1('m8e4-nope', array[$E4_PUB]);")"
+check "M8-E4: neither read ever exposes idempotency_key (exact column sets)" "contribution_id,message_type,author_name,content,caption,published_at,media|contribution_id,message_type,author_name,content,caption,published_at,media" \
+  "$($DB -t -A -c "select string_agg(a, ',' order by o) from unnest((select proargnames from pg_proc where oid='$E4_V2'::regprocedure)[6:]) with ordinality as t(a, o);")|$($DB -t -A -c "select string_agg(a, ',' order by o) from unnest((select proargnames from pg_proc where oid='$E4_IDS'::regprocedure)[3:]) with ordinality as t(a, o);")"
+$PSQL -d postgres -c "create database m8e4_down template $DB_NAME;" >/dev/null
+check "M8-E4 rollback removes both functions, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d m8e4_down -f "$E4_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is null and to_regprocedure('$E4_IDS') is null then 'absent' else 'present' end;")|$($PSQL -d m8e4_down -f "$E4_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d m8e4_down -t -A -c "select case when to_regprocedure('$E4_V2') is not null and to_regprocedure('$E4_IDS') is not null then 'present' else 'absent' end;")"
+$PSQL -d postgres -c "drop database m8e4_down;" >/dev/null
+
+echo "== M8-E6-P: read-only postflight of E2 to E4 (supabase/verifications/m8_e2_e4_postflight.sql) =="
+E24_POST="$REPO_ROOT/supabase/verifications/m8_e2_e4_postflight.sql"
+E24_OUT=$($DB -t -A -f "$E24_POST" 2>&1)
+check "M8-E6-P: E2-E4 postflight after the migrations: zero ECHEC, 16 OK" "0|16" \
+  "$(echo "$E24_OUT" | grep -c 'ECHEC' || true)|$(echo "$E24_OUT" | grep -c '|OK$' || true)"
+check "M8-E6-P: E2-E4 postflight turns red if a client role may execute a read" "1" \
+  "$($DB -t -A -c "begin;" -c "grant execute on function public.read_public_contributions_v2(text,integer,timestamptz,uuid,text[]) to anon;" -f "$E24_POST" -c "rollback;" 2>/dev/null | grep -c 'ECHEC' || true)"
+check "M8-E6-P: E2-E4 postflight is a read-only transaction (writes nothing)" "1" \
+  "$(grep -c '^begin transaction read only;' "$E24_POST")"
+
+echo "== M8-E5: family list under the session (RLS), composite cursor — no new migration =="
+# The family list (SupabaseFamilyContributionReader) reads messages with the
+# FAMILY'S OWN session (messages_select_own), ordered created_at desc, id desc.
+# M8-E5: the next page uses the composite cursor (created_at, id), the exact
+# predicate the adapter sends to PostgREST:
+#   created_at < ts OR (created_at = ts AND id < id)
+E5_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$E1_OWNER';")
+E5_MEM=$(e1_complet "$E1_OWNER" m8e5-family "$E1_ALL")
+$DB -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, created_at) select '$E5_MEM','testimonial','T'||g,'r'||g,'pending',false,'2026-11-10 10:00:00.123456+00' from generate_series(1,5) g;" >/dev/null
+$DB -c "insert into messages (memorial_id, message_type, author_name, content, status, visible, created_at) values ('$E5_MEM','testimonial','Older','r0','pending',false,'2026-11-09 10:00+00');" >/dev/null
+E5_ORDER="order by created_at desc, id desc"
+E5_ALL=$(as_owner "$E5_AUTH" "select string_agg(id::text, ',' $E5_ORDER) from messages where memorial_id='$E5_MEM' and status='pending';")
+E5_P1=$(as_owner "$E5_AUTH" "select string_agg(id::text, ',' $E5_ORDER) from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' $E5_ORDER limit 2) x;")
+E5_LAST=$(as_owner "$E5_AUTH" "select created_at || '|' || id from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' $E5_ORDER limit 2) x $E5_ORDER offset 1 limit 1;")
+e5_page() { # $1 cursor "ts|id" -> next 2 ids
+  as_owner "$E5_AUTH" "select coalesce(string_agg(id::text, ',' $E5_ORDER), '') from (select id, created_at from messages where memorial_id='$E5_MEM' and status='pending' and (created_at < '${1%%|*}' or (created_at = '${1%%|*}' and id < '${1##*|}')) $E5_ORDER limit 2) x;"
+}
+E5_P2=$(e5_page "$E5_LAST")
+E5_LAST2=$(as_owner "$E5_AUTH" "select created_at || '|' || id from messages where id = '${E5_P2##*,}';")
+E5_P3=$(e5_page "$E5_LAST2")
+check "M8-E5: six pending stories, five sharing one created_at: three pages of 2 return all six, in order, none repeated" \
+  "$E5_ALL" "$E5_P1,$E5_P2,$E5_P3"
+check "M8-E5: the former single-key cursor (created_at < ts) would have skipped the ties (regression proof)" "1" \
+  "$(as_owner "$E5_AUTH" "select count(*) from messages where memorial_id='$E5_MEM' and status='pending' and created_at < '${E5_LAST%%|*}';")"
+check "M8-E5: created_at round-trips at microsecond precision (cursor equality holds)" "1" \
+  "$(as_owner "$E5_AUTH" "select count(*) from messages where id='${E5_LAST##*|}' and created_at = '${E5_LAST%%|*}';")"
+E5_OTHER_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$(e1_owner m8e5-other)';")
+check "M8-E5: another family's session reads none of these contributions (RLS)" "0" \
+  "$(as_owner "$E5_OTHER_AUTH" "select count(*) from messages where memorial_id='$E5_MEM';")"
+# Column privileges (never idempotency_key, anon reads nothing) are proven by
+# M8-E1 on the migrations-only database ($E1F): this database carries the
+# test-only grants of the RLS section, so it cannot measure them.
+check "M8-E5: the family sees its own pending count through the counter RPC (6 stories)" "6|6" \
+  "$(svc "select pending_stories || '|' || pending_total from count_pending_contributions_v1('$E1_OWNER', '$E5_MEM');")"
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

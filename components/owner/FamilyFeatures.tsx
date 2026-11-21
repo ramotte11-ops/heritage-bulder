@@ -88,16 +88,48 @@ export function TributeSwitcher({
  * n'existe pas encore (Lot 3) ; la carte tient sa place sans simuler une
  * fonction — pas de lien, « Bientôt disponible ».
  */
-export function ContributionsCard({ language }: { language: Language }) {
+/** Lot 3 — what the dashboard knows about the selected tribute's contributions. */
+export type FamilyContributionsSummary = { status: "ready"; pending: number } | { status: "unavailable" };
+
+/**
+ * « Gérer les contributions » (Lot 3) — the real number of stories and
+ * photographs awaiting the family's approval (condolences are published at
+ * once and never counted, contract E5 § 3.1), and the way to the tribute's
+ * contributions page. An unreadable count is said plainly; the way in stays.
+ */
+export function ContributionsCard({
+  language,
+  summary,
+  href,
+}: {
+  language: Language;
+  summary: FamilyContributionsSummary;
+  href: string;
+}) {
+  const pending = summary.status === "ready" ? summary.pending : null;
   return (
-    <section className={styles.feature} data-feature="contributions" data-available="false">
+    <section className={styles.feature} data-feature="contributions" data-available="true">
       <div className={styles.featureHead}>
         <MessageIcon className={styles.featureIcon} />
         <h2 className={styles.featureTitle}>{translate(language, "owner.contributionsTitle")}</h2>
         <ArrowIcon className={styles.featureArrow} />
       </div>
       <p className={styles.featureBody}>{translate(language, "owner.contributionsBody")}</p>
-      <p className={styles.soon}>{translate(language, "owner.comingSoon")}</p>
+      <p className={styles.contributionsCount} data-contributions-pending={pending ?? "unavailable"}>
+        {pending === null
+          ? translate(language, "owner.contributionsPendingUnavailable")
+          : pending === 0
+            ? translate(language, "owner.contributionsPendingNone")
+            : pending === 1
+              ? translate(language, "owner.contributionsPendingOne")
+              : translateWith(language, "owner.contributionsPendingMany", { count: String(pending) })}
+      </p>
+      <p className={styles.featureFoot}>
+        <Link href={href} className={styles.textLink} data-contributions-open="">
+          {translate(language, "owner.contributionsOpen")}
+          <ArrowIcon className={styles.textLinkIcon} />
+        </Link>
+      </p>
     </section>
   );
 }

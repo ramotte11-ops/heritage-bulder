@@ -244,3 +244,21 @@ describe("preparePhotoForUpload — refus, jamais d'envoi de l'original", () => 
     expect(await preparePhotoForUpload(photo(), "gallery", env)).toEqual({ ok: false, code: "file_too_large" });
   });
 });
+
+describe("M8-E4 — profil de préparation « contribution »", () => {
+  it("2 000 px au plus grand côté, égal au plafond du traitement serveur Sharp", async () => {
+    const { CONTRIBUTION_PHOTO_MAX_SIDE } = await import("@/config/contributions");
+    expect(PHOTO_PROFILES.contribution.maxSide).toBe(2000);
+    expect(PHOTO_PROFILES.contribution.maxSide).toBe(CONTRIBUTION_PHOTO_MAX_SIDE);
+  });
+
+  it("une photographie de proche est préparée dans le profil dédié, jamais celui du Hero", async () => {
+    const { env } = fakeEnv({ decoded: { width: 4032, height: 3024 } });
+    const result = await preparePhotoForUpload(photo(), "contribution", env);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.report.purpose).toBe("contribution");
+      expect(Math.max(result.report.width, result.report.height)).toBe(2000);
+    }
+  });
+});

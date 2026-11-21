@@ -30,12 +30,26 @@ export interface PhotoProfile {
   qualityFloor: number;
 }
 
-export const PHOTO_PROFILES: Readonly<Record<MediaPurpose, PhotoProfile>> = {
+/**
+ * M8-E4 — les profils de préparation : une finalité média de la famille
+ * (hero, gallery), ou `contribution` pour la photographie d'un proche, qui
+ * n'est pas une finalité du moteur familial (elle passe par son propre
+ * circuit serveur, lib/memorial/contributions/).
+ */
+export type PhotoProfileKey = MediaPurpose | "contribution";
+
+export const PHOTO_PROFILES: Readonly<Record<PhotoProfileKey, PhotoProfile>> = {
   // Hero — unique exception : plus grand, qualité un peu supérieure,
   // plancher élevé pour préserver la netteté des visages.
   hero: { maxSide: 2400, targetMaxBytes: 700 * 1024, qualityStart: 0.86, qualityFloor: 0.74 },
   // Galerie, Album et toute autre photographie.
   gallery: { maxSide: 1600, targetMaxBytes: 350 * 1024, qualityStart: 0.8, qualityFloor: 0.62 },
+  // M8-E4 — photographie d'un proche : 2 000 px au plus grand côté (cible
+  // PO, O5), égale au plafond du traitement serveur Sharp
+  // (CONTRIBUTION_PHOTO_MAX_SIDE), qui reste la garantie (validation,
+  // orientation, ré-encodage, métadonnées retirées). Poids visé et qualités :
+  // PROVISOIRES, à fixer après essais sur photographies réelles.
+  contribution: { maxSide: 2000, targetMaxBytes: 450 * 1024, qualityStart: 0.82, qualityFloor: 0.66 },
 };
 
 /** Pas de baisse de qualité entre deux essais. */

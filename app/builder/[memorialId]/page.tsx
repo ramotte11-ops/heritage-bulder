@@ -26,6 +26,8 @@ import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GalleryStep } from "@/components/builder/GalleryStep";
+import { ContributionsStep } from "@/components/builder/ContributionsStep";
+import { updateContributionCategories } from "@/lib/memorial/contributions/family-contribution-actions";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { FirstSaveNotice } from "@/components/builder/FirstSaveNotice";
@@ -48,6 +50,7 @@ import { needsA04, needsA05, needsA06, needsA07, needsA08, needsA14 } from "@/li
 import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
+import { needsA15 } from "@/lib/builder/guided-flow/contributions-step";
 import {
   resolveJourney,
   resolveRevisionContext,
@@ -727,6 +730,22 @@ export default async function BuilderMemorialPage({
           available: previewAvailable(content),
         };
       }
+      case "contributions":
+        // M7 — A15 : trois choix de préparation, enregistrés par la même Server
+        // Action liée que tous les écrans ; les exemples de l'aperçu ne le sont jamais.
+        return {
+          element: (
+            <ContributionsStep
+              key={key}
+              language={language}
+              content={content}
+              skinVariant={resumed.memorial.skinVariant ?? "light"}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              applyCategoriesNow={updateContributionCategories.bind(null, access.memorialId)}
+            />
+          ),
+          available: previewAvailable(content),
+        };
     }
   };
 
@@ -973,6 +992,13 @@ export default async function BuilderMemorialPage({
   // every other step).
   if (needsA13(heroReconciledContent)) {
     return (await showCurrent("gallery", heroReconciledContent))!;
+  }
+
+  // M7 — A15 « Contributions des proches ». Shown once A13 is genuinely
+  // behind the family (`needsA15` gates on `isA13Resolved`) and only until
+  // A15 itself has been treated once, whichever way.
+  if (needsA15(heroReconciledContent)) {
+    return (await showCurrent("contributions", heroReconciledContent))!;
   }
 
   // Builder continuity mission — what a memorial past every BUILT gate

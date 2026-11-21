@@ -11,6 +11,7 @@ import { PreviewEntryContext, type PreviewEntryState } from "./preview/BuilderPr
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-a", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-b", className: "" }),
   EB_Garamond: () => ({ variable: "--font-c", className: "" }),

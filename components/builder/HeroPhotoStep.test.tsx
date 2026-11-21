@@ -36,6 +36,7 @@ vi.mock("next/navigation", () => ({ useRouter }));
 // makes rendering the REAL component tree possible here at all, rather
 // than mocking BuilderScreen/HeroPhotoStep itself away.
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Playfair_Display: () => ({ variable: "--font-heritage-serif-mock", className: "" }),
   Inter: () => ({ variable: "--font-heritage-sans-mock", className: "" }),
   // Mission 035 — components/builder/fonts.ts also exports these two now.

@@ -20,6 +20,7 @@ import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeSte
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
+import { ContributionsStep } from "@/components/builder/ContributionsStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { JourneyContext, type JourneyNavigation } from "@/components/builder/journey/journey-context";
 import {
@@ -353,6 +354,8 @@ export default function QgRuntimeDemoPage() {
         return { label: "A10-A12 — quelques mots sur la personne", screen: <PersonSheetStep language={LANGUAGE} content={content} persist={persist} />};
       case "gallery":
         return { label: "A13 — galerie (indisponible dans ce banc d'essai)", screen: unavailableNotice("La galerie")};
+      case "contributions":
+        return { label: "A15 — contributions des proches", screen: <ContributionsStep language={LANGUAGE} content={content} skinVariant={skinVariant} persist={persist} /> };
       case null:
         return {
           label: "Parcours terminé (écran de repos)",

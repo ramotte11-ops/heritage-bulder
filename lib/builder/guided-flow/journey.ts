@@ -28,6 +28,7 @@ import {
 import { isA09Resolved, needsA09 } from "./traditions-step";
 import { isPersonSheetResolved, needsPersonSheet } from "./person-sheet-step";
 import { isA13Resolved, needsA13 } from "./gallery-step";
+import { isA15Resolved, needsA15 } from "./contributions-step";
 
 /**
  * B03 — « Mon parcours »: the family-facing table of contents of the
@@ -70,7 +71,7 @@ import { isA13Resolved, needsA13 } from "./gallery-step";
  * how the Guided Flow computes progress.
  */
 
-export const JOURNEY_SECTIONS = ["person", "deathNotice", "ceremony", "traditions", "personSheet", "gallery"] as const;
+export const JOURNEY_SECTIONS = ["person", "deathNotice", "ceremony", "traditions", "personSheet", "gallery", "contributions"] as const;
 export type JourneySection = (typeof JOURNEY_SECTIONS)[number];
 
 /**
@@ -90,6 +91,8 @@ export const JOURNEY_SECTION_MEMORIAL_SECTION: Readonly<Record<JourneySection, S
   traditions: "traditions",
   personSheet: "story",
   gallery: "gallery",
+  // M7 — la rubrique « Contributions des proches » (SectionId historique `testimonials`).
+  contributions: "testimonials",
 };
 
 export const JOURNEY_SCREEN_IDS = [
@@ -111,6 +114,7 @@ export const JOURNEY_SCREEN_IDS = [
   "traditions",
   "personSheet",
   "gallery",
+  "contributions",
 ] as const;
 export type JourneyScreenId = (typeof JOURNEY_SCREEN_IDS)[number];
 
@@ -190,6 +194,7 @@ export const JOURNEY_SCREENS: readonly JourneyScreenDefinition[] = [
   { id: "traditions", section: "traditions", needs: needsA09, resolved: isA09Resolved, applicable: announcement },
   { id: "personSheet", section: "personSheet", needs: needsPersonSheet, resolved: isPersonSheetResolved, applicable: always },
   { id: "gallery", section: "gallery", needs: needsA13, resolved: isA13Resolved, applicable: always },
+  { id: "contributions", section: "contributions", needs: needsA15, resolved: isA15Resolved, applicable: always },
 ];
 
 export function isJourneyScreenId(value: unknown): value is JourneyScreenId {

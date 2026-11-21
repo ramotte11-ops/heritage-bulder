@@ -80,6 +80,10 @@ describe("guest Builder import graph", () => {
       // QG 004-B — the one-time address check, reached only by an
       // authenticated publication refused for an unverified address.
       "components/builder/preview/PreviewPublicationPanel.tsx -> @/components/auth/EmailVerificationStep",
+      // M8-E6-F — « La lettre des proches » et son transport réel : chargés au clic
+      // d'un visiteur sur la page PUBLIQUE seulement. Dans le Builder (hôte « preview »),
+      // la rubrique montre la démonstration et ne rend jamais ce composant.
+      "components/memorial/contributions/ContributionsV1Section.tsx -> ./PublicDepositLetter",
     ]);
   });
 });

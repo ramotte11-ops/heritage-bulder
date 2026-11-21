@@ -107,6 +107,19 @@ const SERVER_ONLY_MODULES = [
   // client. No browser bundle may reach either; C1 wires them to no route.
   "lib/adapters/supabase/symbolic-offering-repository.ts",
   "lib/memorial/symbolic-offerings/server-record-symbolic-offering.ts",
+  // M8-E2: Contributions des proches. The adapters call service-role-only
+  // RPCs and the private media bucket; form-token.ts holds the HMAC
+  // secret (node:crypto); photo-processing.ts loads the native `sharp`;
+  // the engines and the wiring compose them. A browser reaches them only
+  // through Server Actions (app/hommage/[slug]/contribution-actions.ts,
+  // lib/memorial/contributions/family-contribution-actions.ts).
+  "lib/adapters/supabase/contribution-repository.ts",
+  "lib/adapters/supabase/contribution-photo-store.ts",
+  "lib/memorial/contributions/form-token.ts",
+  "lib/memorial/contributions/photo-processing.ts",
+  "lib/memorial/contributions/visitor-contributions.ts",
+  "lib/memorial/contributions/family-contributions.ts",
+  "lib/memorial/contributions/server-contributions.ts",
   // Mission 019B: the Etsy channel's server half.
   //
   // `config.ts` reads ETSY_API_SHARED_SECRET and the bootstrap refresh

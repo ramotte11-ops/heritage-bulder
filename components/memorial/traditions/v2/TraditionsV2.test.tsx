@@ -18,6 +18,7 @@ import type { TraditionEntry, TraditionsContent } from "@/types/traditions";
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "--font-heritage-hero-serif-mock", className: "" }),
   La_Belle_Aurore: () => ({ variable: "--font-heritage-hero-script-mock", className: "" }),
   EB_Garamond: () => ({ variable: "--font-heritage-ceremony-serif-mock", className: "" }),

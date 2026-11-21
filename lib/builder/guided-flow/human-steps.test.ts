@@ -25,13 +25,13 @@ const REMOVED_STEP_IDS = ["T09", "T10", "P02", "P03", "V01"];
 
 const ANNOUNCEMENT_ORDER_NO_A04: StepId[] = [
   "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-  "A01", "A02", "A03", "A04", "A09", "A10", "A11", "A12", "A13",
+  "A01", "A02", "A03", "A04", "A09", "A10", "A11", "A12", "A13", "A15",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
 const ANNOUNCEMENT_ORDER_A04_YES: StepId[] = [
   "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-  "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13",
+  "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13", "A15",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
@@ -39,7 +39,7 @@ const ANNOUNCEMENT_ORDER_A04_YES: StepId[] = [
  * question (A04) and every tribute section stay. */
 const NO_NOTICE_ORDER_NO_A04: StepId[] = [
   "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-  "A04", "A10", "A11", "A12", "A13",
+  "A04", "A10", "A11", "A12", "A13", "A15",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
@@ -56,7 +56,7 @@ describe("STEP_IDS / STEPS — structural guards on the UX-A config itself", () 
   it("matches the exact single-route order: common trunk, tribute sections, final trunk", () => {
     expect(STEP_IDS).toEqual([
       "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13",
+      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13", "A15",
       "P01", "P04", "V02", "V03", "V04",
     ]);
   });
@@ -338,7 +338,7 @@ describe("QG micro-hardening — a skippable:false UX-A step can never resolve a
       A01: { status: "completed" }, A02: { status: "skipped" }, A03: { status: "completed" },
       A04: { status: "completed", answer: "no" },
       A09: { status: "skipped" }, A10: { status: "skipped" }, A11: { status: "skipped" },
-      A12: { status: "skipped" }, A13: { status: "skipped" },
+      A12: { status: "skipped" }, A13: { status: "skipped" }, A15: { status: "skipped" },
       P01: { status: "skipped" }, P04: { status: "skipped" },
       V02: { status: "completed" }, V03: { status: "completed" },
       V04: { status: "skipped" }, // corrupt/illegal for a skippable:false step

@@ -14,6 +14,7 @@ import type { MediaRequest, ResolvedMedia } from "@/lib/memorial/assembly/media-
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
   La_Belle_Aurore: () => ({ variable: "v-aurore", className: "" }),
   EB_Garamond: () => ({ variable: "v-eb", className: "" }),

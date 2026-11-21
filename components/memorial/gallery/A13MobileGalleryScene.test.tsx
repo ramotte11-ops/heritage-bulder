@@ -20,6 +20,7 @@ import { A13_MOBILE_DARK_BACKGROUND, A13_MOBILE_DARK_BOTTOM_CONTINUATION, A13_MO
  */
 
 vi.mock("next/font/google", () => ({
+  Allura: () => ({ variable: "--font-heritage-contributions-signature-mock", className: "" }),
   Cormorant_Garamond: () => ({ variable: "v-cormorant", className: "" }),
   La_Belle_Aurore: () => ({ variable: "v-aurore", className: "" }),
   Playfair_Display: () => ({ variable: "v-playfair", className: "" }),

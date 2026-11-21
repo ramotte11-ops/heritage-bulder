@@ -1,0 +1,146 @@
+/*
+ * M6 — Album complet des Contributions des proches. En-tête et pied dans le
+ * flux (le contenu fixe la hauteur), planches en repère source (`--u`) ;
+ * cartes et lecture agrandie : styles partagés de la scène (M5-B / M5-C).
+ */
+
+.frame {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  color: var(--text);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-inline: calc(var(--u) * 80);
+}
+
+.emblem {
+  display: block;
+  object-fit: contain;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-heritage-offerings-medium), "EB Garamond", Georgia, serif;
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.005em;
+  color: var(--title);
+  text-wrap: balance;
+}
+
+.subtitle {
+  margin: 0;
+  line-height: 1.3;
+  text-wrap: pretty;
+  max-width: 44ch;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+}
+
+.divider span {
+  display: block;
+  height: 1px;
+  background: var(--rule);
+  opacity: 0.85;
+}
+
+.divider img {
+  display: block;
+  object-fit: contain;
+}
+
+/* Desktop : tailles relatives au repère (comme la scène M5-A). */
+.desktop .header {
+  padding-top: calc(var(--u) * 70);
+  gap: calc(var(--u) * 16);
+}
+.desktop .emblem {
+  width: calc(var(--u) * 60);
+  height: calc(var(--u) * 60);
+}
+.desktop .title {
+  font-size: max(30px, calc(var(--u) * 72));
+}
+.desktop .subtitle {
+  font-size: max(16px, calc(var(--u) * 24));
+}
+.desktop .divider span {
+  width: calc(var(--u) * 150);
+}
+.desktop .divider img {
+  width: calc(var(--u) * 64);
+  height: calc(var(--u) * 36);
+}
+
+/* Mobile : textes en px CSS fixes (lisibles dès 320 px). */
+.mobile .header {
+  padding-top: calc(var(--u) * 60);
+  gap: 10px;
+}
+.mobile .emblem {
+  width: calc(var(--u) * 72);
+  height: calc(var(--u) * 72);
+}
+.mobile .title {
+  font-size: 30px;
+}
+.mobile .subtitle {
+  font-size: 15px;
+}
+.mobile .divider span {
+  width: calc(var(--u) * 170);
+}
+.mobile .divider img {
+  width: calc(var(--u) * 72);
+  height: calc(var(--u) * 42);
+}
+
+.plates {
+  position: relative;
+}
+
+/* Une planche : repère source, hauteur ajustée à ses papiers. */
+.plate {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(var(--u) * 20) 0 calc(var(--u) * 150);
+}
+
+.footer span {
+  display: block;
+  width: calc(var(--u) * 180);
+  height: 1px;
+  background: var(--rule);
+  opacity: 0.85;
+}
+
+.footer svg {
+  width: 20px;
+  height: 18px;
+}

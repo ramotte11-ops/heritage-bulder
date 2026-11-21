@@ -27,6 +27,7 @@ import { CeremonyProgrammeStep } from "@/components/builder/CeremonyProgrammeSte
 import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
+import { ContributionsStep } from "@/components/builder/ContributionsStep";
 import { GuestGalleryStepAdapter } from "@/components/builder/guest/GuestGalleryStepAdapter";
 import { GuestJourneyProvider, type GuestJourneyMoves } from "@/components/builder/guest/GuestJourneyProvider";
 import {
@@ -177,7 +178,7 @@ function defaultRevokeObjectUrl(url: string): void {
 /**
  * Entry for the existing Builder screens backed by the single local guest
  * draft. It reuses the existing T06/T07/T08, A01/A02/A03 and A04-A14
- * screens through the existing A13 Gallery, then rests on the existing
+ * screens through the existing A13 Gallery and the M7 A15 Contributions, then rests on the existing
  * Guided Flow pause (without the owner space a guest does not have yet).
  *
  * QG 003 — from T08 on, every screen sits in the one `BuilderPreviewHost`,
@@ -685,6 +686,17 @@ export function GuestBuilderRuntime({
             acceptDraft={acceptDraft}
             createId={createId}
             now={now}
+            progress={guestHeroStepProgress(draft)}
+          />
+        );
+      case "contributions":
+        // M7 — A15 : les trois choix vont dans le brouillon local, comme tout le parcours invité.
+        return (
+          <ContributionsStep
+            language={draft.language!}
+            content={draft.content}
+            skinVariant={draft.skinVariant ?? "light"}
+            persist={persist}
             progress={guestHeroStepProgress(draft)}
           />
         );
