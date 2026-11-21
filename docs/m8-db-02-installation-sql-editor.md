@@ -1,15 +1,52 @@
 # M8-DB-02 — Installation des cinq migrations depuis le SQL Editor Supabase
 
-> **Préparation seulement — STOP PRODUCTION.** Ce document n'autorise rien.
-> L'exécution exige un **GO explicite du QG et de la PO**.
+> **Statut : installation Supabase TERMINÉE — CLOSED** (décision QG, mission M8-DB-02-FINAL).
+> Les cinq migrations sont installées sur `nudqzbdfnjzlnyffllgs`. Aucune nouvelle exécution des fichiers 01 à 05 n'est prévue.
+> Les §§ 1 à 7 décrivent la **procédure historique**, conservée comme référence. Le § 0 donne les **résultats réels**.
 
 ```text
 Référentiel QG-BASE-001 lu : oui
 Production officielle : nudqzbdfnjzlnyffllgs
-Cible de la mission : nudqzbdfnjzlnyffllgs (préparation seulement)
-Écriture Supabase autorisée : non (préparation) — GO distinct requis
+Cible de la mission : nudqzbdfnjzlnyffllgs
+Écriture Supabase : réalisée sous GO QG + PO (installation 1/5 à 5/5), puis CLOSED
 Modification des raccordements de production : interdite
 ```
+
+## 0. Installation réelle — résultats (CLOSED)
+
+**Source des résultats.** Ce sont ceux affichés par le SQL Editor Supabase du projet `nudqzbdfnjzlnyffllgs`, lors de l'exécution des fichiers par la PO. La PO les a transmis et le QG central les a validés. **Ce ne sont pas des tests rejoués par l'agent** : les essais locaux de préparation sont décrits séparément, au § 7.
+
+**Déroulement.**
+1. **Premier essai de l'étape 1 :** arrêt « STOP … empreinte différente », sans aucune modification de la base (§ 8).
+2. **Correction :** le texte des migrations voyage en base64.
+3. **Installation :** les cinq migrations ont ensuite été installées dans l'ordre, depuis le SQL Editor.
+
+| Contrôle (SQL Editor, production) | Résultat validé par le QG |
+|---|---|
+| Historique avant l'étape 1 | 44 migrations |
+| Installations 1/5 à 5/5 | **5 / 5 OK** |
+| Empreintes SHA-256 des textes installés | **5 / 5 conformes** |
+| Postflight Lot 2 (`lot2_signature_postflight`) | **10 / 10 OK** |
+| Postflight M8-E1 (`m8_e1_postflight`) | **26 / 26 OK** |
+| Postflight M8-E2 à E4 (`m8_e2_e4_postflight`) | **16 / 16 OK** |
+| Contrôle global Z1 (`030_postflight`) | Aucun ECHEC |
+| Contrôle final Z2 (`99_etat_apres_installation`) | **66 / 66 OK** |
+| Historique après l'étape 5 | **49 migrations**, soit les 49 fichiers de `supabase/migrations/` |
+| Données existantes | Conservées : 35 médias, 3 offrandes symboliques |
+
+**Incident de copier-coller :** la cause, des fins de ligne Windows (CRLF), a été identifiée. La correction par transport base64 a été **validée en conditions réelles** par cette installation (§ 8).
+
+**Ce qui reste hors de cette clôture.** Les opérations suivantes ne font pas partie de l'installation Supabase. Elles relèvent du dossier `docs/contributions-e6r-dossier-operationnel.md` § 4, et chacune exige son propre GO :
+- le secret du formulaire Netlify ;
+- la publication unique ;
+- la recette E7 ;
+- l'ouverture publique.
+
+Les retours arrière R5 → R1 (§ 6) restent disponibles, uniquement sur décision du QG.
+
+---
+
+*Procédure historique, conservée comme référence (§§ 1 à 7).*
 
 ## 1. Le principe, en une phrase
 
@@ -56,7 +93,7 @@ Ils se trouvent dans `supabase/installation/m8-sql-editor/`. Ils sont générés
 
 Les droits de sécurité ne sont pas touchés. Le schéma obtenu, droits compris, est **identique** à celui d'une application classique des cinq fichiers (prouvé par l'essai local du § 7).
 
-## 4. Avant de commencer (QG)
+## 4. Avant de commencer (QG) — référence historique, réalisé
 
 - [ ] GO explicite du QG et de la PO.
 - [ ] **Bonne base :** l'adresse du navigateur contient `supabase.com/dashboard/project/nudqzbdfnjzlnyffllgs/`. Le nom affiché doit être `HERITAGE HOMMAGE - PRODUCTION`. **La référence prévaut sur le nom.** Si l'adresse contient `pbgzyyqdbdrhgnkzmxyn`, c'est l'ancien projet : **STOP**.
@@ -69,7 +106,9 @@ Les droits de sécurité ne sont pas touchés. Le schéma obtenu, droits compris
 - [ ] Netlify `hommages` : le déploiement `6afbd1d6759c7fa4752d391b` est toujours publié et **verrouillé**. Il le reste jusqu'à la fin.
 - [ ] Prévoir environ 30 minutes, sans interruption.
 
-## 5. Pas à pas (PO, avec le QG)
+## 5. Pas à pas (PO, avec le QG) — référence historique, exécuté (résultats au § 0)
+
+> Ne pas rejouer les fichiers 01 à 05 : ils répondraient « STOP … DÉJÀ INSTALLÉE » sans rien modifier.
 
 **Pour chaque fichier :**
 1. Sur GitHub, ouvrir le fichier, puis cliquer sur « Copy raw file ».
@@ -114,7 +153,9 @@ Ils s'appliquent dans l'ordre inverse : R5, R4, R3, R2, R1. Chaque fichier véri
 
 Après R5 → R1, la base revient **à l'identique** à son état d'avant l'étape 1, historique compris : 44 versions.
 
-## 7. Preuves (essai local)
+## 7. Preuves de préparation (essai local, avant l'installation réelle)
+
+Cette section décrit les essais faits **avant** l'installation, sur une base locale jetable et non sur la production. Les résultats réels sont au § 0.
 
 `bash scripts/db/test-sql-editor-installation.sh` rejoue tout sur un PostgreSQL jetable : base au niveau de la production (44 versions, 3 offrandes, aucun message). Chaque fichier y est envoyé en **une seule requête**, comme le fait le SQL Editor. Résultat : **78 contrôles réussis sur 78**, transport altéré compris (§ 8).
 - **Fichiers générés :** ils sont à jour.
@@ -153,7 +194,9 @@ L'erreur se situe à la ligne 169 du bloc `DO`. **La protection a joué son rôl
   - indentation retirée ;
   - espaces ajoutés en fin de ligne.
 
-  Le fichier intact, lui, s'installe normalement. La plus probable est la conversion en fins de ligne Windows (CRLF) lors d'un copier-coller sous Windows. Le fichier `00a`, collé de la même façon, **identifie la cause réelle** sur le poste de la PO, en lecture seule.
+  Le fichier intact, lui, s'installe normalement. À ce stade, la plus probable était la conversion en fins de ligne Windows (CRLF) lors d'un copier-coller sous Windows. Le fichier `00a`, collé de la même façon, permet d'identifier la cause réelle sur le poste de la PO, en lecture seule.
+
+**Cause confirmée.** Le QG a confirmé la cause : **fins de ligne Windows (CRLF)** introduites au copier-coller.
 
 **Correction.**
 - Le texte des migrations et des retours arrière voyage désormais en base64, et l'empreinte SHA-256 est vérifiée sur le texte décodé. La protection garde donc toute sa force : le texte exécuté est le fichier GitHub à l'octet près, et toute autre altération donne un STOP.
@@ -164,6 +207,8 @@ L'erreur se situe à la ligne 169 du bloc `DO`. **La protection a joué son rôl
   - l'étape 1 s'installe ;
   - les étapes 1 à 5 cumulées donnent un schéma et des droits identiques à une application classique.
 
+**Résolution.** Avec la procédure corrigée, l'installation réelle a réussi : 5 / 5 OK, empreintes conformes et contrôle final 66 / 66 OK (§ 0). **Incident clos.**
+
 ## 9. Après l'installation
 
-La base est prête, mais rien n'est encore visible : Netlify publie toujours l'ancien déploiement verrouillé. La suite est décrite dans `docs/contributions-e6r-dossier-operationnel.md` § 4 (secret du formulaire, puis une seule publication). Chaque opération y exige son propre GO.
+L'installation Supabase est **CLOSED** (§ 0). La suite ne relève plus de ce document. Elle est décrite dans `docs/contributions-e6r-dossier-operationnel.md` § 4 : le secret du formulaire, puis une seule publication. Chaque opération y exige son propre GO.
