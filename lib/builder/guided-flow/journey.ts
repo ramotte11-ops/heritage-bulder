@@ -45,7 +45,8 @@ import { isA15Resolved, needsA15 } from "./contributions-step";
  *     independently of the gates (a gate is also false before its step
  *     is reachable, so `!needs` alone never means "done");
  *   - `applicable` repeats the conditional rules already in force (A00
- *     for the death notice and A09, A04 for A05-A08).
+ *     for the death notice, A04 for A05-A08). Traditions (A09) is
+ *     independent of A00 since Chef 03 / O03.
  *
  * ## Revision never deletes
  *
@@ -191,7 +192,8 @@ export const JOURNEY_SCREENS: readonly JourneyScreenDefinition[] = [
   { id: "ceremonyAddress", section: "ceremony", needs: needsA07, resolved: recordResolved("A07"), applicable: ceremonyPlanned },
   { id: "ceremonyProgramme", section: "ceremony", needs: needsA14, resolved: isA14Resolved, applicable: ceremonyPlanned },
   { id: "ceremonyNote", section: "ceremony", needs: needsA08, resolved: recordResolved("A08"), applicable: ceremonyPlanned },
-  { id: "traditions", section: "traditions", needs: needsA09, resolved: isA09Resolved, applicable: announcement },
+  // Chef 03 / O03 — independent of A00 (PO decision): part of every route.
+  { id: "traditions", section: "traditions", needs: needsA09, resolved: isA09Resolved, applicable: always },
   { id: "personSheet", section: "personSheet", needs: needsPersonSheet, resolved: isPersonSheetResolved, applicable: always },
   { id: "gallery", section: "gallery", needs: needsA13, resolved: isA13Resolved, applicable: always },
   { id: "contributions", section: "contributions", needs: needsA15, resolved: isA15Resolved, applicable: always },

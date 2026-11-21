@@ -286,6 +286,29 @@ describe("M1-B1 publication policy", () => {
     expect(serialized).not.toContain("indirect-testimonial");
   });
 
+  it("Chef 03 / O03 — keeps A09's exact independence confirmation, and only that value", () => {
+    const confirmed = successfulProjection(
+      { guidedFlow: { A09: { status: "completed", answer: "independent" } } } as unknown as MemorialContent,
+      "avis",
+    );
+    expect(confirmed.content).toEqual({ guidedFlow: { A09: { status: "completed", answer: "independent" } } });
+
+    const keptOnSkip = successfulProjection(
+      { guidedFlow: { A09: { status: "skipped", answer: "independent" } } } as unknown as MemorialContent,
+      "complet",
+    );
+    expect(keptOnSkip.content).toEqual({ guidedFlow: { A09: { status: "skipped", answer: "independent" } } });
+
+    for (const answer of [undefined, "Independent", "independent ", "yes", "https://private.example/x"]) {
+      const record = answer === undefined ? { status: "completed" } : { status: "completed", answer };
+      const projection = successfulProjection(
+        { guidedFlow: { A09: record } } as unknown as MemorialContent,
+        "avis",
+      );
+      expect(projection.content).toEqual({ guidedFlow: { A09: { status: "completed" } } });
+    }
+  });
+
   it("normalizes an operational section through its closed parser", () => {
     const draft = { hero: { displayName: "Jeanne", unexpectedPremium: { video: true } } } as MemorialContent;
     const projection = successfulProjection(draft, "avis");

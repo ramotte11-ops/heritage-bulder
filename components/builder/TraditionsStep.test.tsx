@@ -272,7 +272,8 @@ describe("TraditionsStep — continue avec un repère → completed", () => {
 
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled());
     const persistedContent = persist.mock.calls.at(-1)?.[0];
-    expect(persistedContent.guidedFlow.A09).toEqual({ status: "completed" });
+    // Chef 03 / O03 — « Continuer » is the explicit confirmation (independence marker).
+    expect(persistedContent.guidedFlow.A09).toEqual({ status: "completed", answer: "independent" });
     expect(persistedContent.traditions.entries).toHaveLength(1);
     expect(persistedContent.traditions.entries[0].text).toBe("Un texte de famille.");
   });

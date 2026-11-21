@@ -1,5 +1,5 @@
 import { MEMORIAL_SECTIONS, SECTION_IDS, type SectionId } from "@/config/sections";
-import { isAnnouncementVisible, type HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
+import { isAnnouncementVisible, isTraditionsRelevant, type HumanFlowState } from "@/lib/builder/guided-flow/human-steps";
 
 /**
  * Mission 027 — the section selection / recommendation foundation.
@@ -142,8 +142,15 @@ function isA04AnsweredYes(flowState: HumanFlowState): boolean {
  * de l'annonce »). They apply only when A00 resolves to "yes"; "no",
  * "later" or no answer leave them `notRelevant` — their content is kept,
  * never cleared, and shows again if the answer becomes "yes".
+ *
+ * Chef 03 / O03 — `traditions` is no longer one of them: it is offered to
+ * every family in the Builder, and may enter the memorial when A00 =
+ * "yes" (the pre-O03 rule, unchanged) or once the family has explicitly
+ * confirmed it at A09 (`isTraditionsRelevant`). A memorial published
+ * before O03 with A00 ≠ "yes" carries no such confirmation, so its page
+ * never starts showing repères by itself.
  */
-const ANNOUNCEMENT_SECTIONS: readonly SectionId[] = ["deathNotice", "traditions", "condolences"];
+const ANNOUNCEMENT_SECTIONS: readonly SectionId[] = ["deathNotice", "condolences"];
 
 /**
  * The single-section classification. Every other export in this module
@@ -157,9 +164,12 @@ const ANNOUNCEMENT_SECTIONS: readonly SectionId[] = ["deathNotice", "traditions"
  *     configuration at all (mission brief section 2).
  *  2. A section `MEMORIAL_SECTIONS` doesn't list at all
  *     (`memoryMessage`) is `"notRelevant"`; so are the death-notice
- *     sections (`ANNOUNCEMENT_SECTIONS`) while A00 is not "yes" (B02-L2).
- *     Both are checked before anything else, so A00 always wins over any
- *     content signal a caller might pass in (mission brief section 8).
+ *     sections (`ANNOUNCEMENT_SECTIONS`) while A00 is not "yes" (B02-L2),
+ *     and `traditions` while neither A00 = "yes" nor an explicit A09
+ *     confirmation makes it relevant (Chef 03 / O03).
+ *     All are checked before anything else, so these answers always win
+ *     over any content signal a caller might pass in (mission brief
+ *     section 8).
  *  3. `ceremony` (the only section whose relevance this module ties to
  *     a specific Guided Flow answer rather than the generic content
  *     signal) is `"applicable"` when A04 is answered `"yes"` — the
@@ -194,6 +204,10 @@ export function resolveSectionSelectionStatus(
   if (!definition) return "notRelevant";
 
   if (ANNOUNCEMENT_SECTIONS.includes(sectionId) && !isAnnouncementVisible(input.flowState ?? {})) {
+    return "notRelevant";
+  }
+
+  if (sectionId === "traditions" && !isTraditionsRelevant(input.flowState ?? {})) {
     return "notRelevant";
   }
 

@@ -556,7 +556,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
 });
 
 describe("B03 — A00 « Plus tard » reads « À décider »", () => {
-  it("the notice and traditions sections show « À décider » with their note, never « Non concernée »", async () => {
+  it("the notice section shows « À décider » with its note, never « Non concernée »", async () => {
     const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
     const later = commitA00(PARTIAL, "later");
     if (!later.ok) throw new Error("fixture");
@@ -567,13 +567,31 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
     );
     openPanel();
     const section = (title: string) => blockToggle(title).closest("li") as HTMLElement;
-    for (const title of ["L'annonce de décès", "Traditions & repères"]) {
-      expect(section(title).dataset.status).toBe("deferred");
-      expect(section(title).textContent).toContain("À décider");
-      expect(section(title).textContent).not.toContain("Non concernée");
-      expect(section(title).textContent).toMatch(/choisi de décider plus tard/);
-    }
+    expect(section("L'annonce de décès").dataset.status).toBe("deferred");
+    expect(section("L'annonce de décès").textContent).toContain("À décider");
+    expect(section("L'annonce de décès").textContent).not.toContain("Non concernée");
+    expect(section("L'annonce de décès").textContent).toMatch(/choisi de décider plus tard/);
   });
+
+  it.each(["later", "no"] as const)(
+    "Chef 03 / O03 — A00 = %s: « Traditions & repères » is never « À décider » nor « Non concernée »",
+    async (answer) => {
+      const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
+      const changed = commitA00(PARTIAL, answer);
+      if (!changed.ok) throw new Error("fixture");
+      render(
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(changed.content)} builderPath="/builder/m-1">
+          <BuilderScreenNav />
+        </RouteJourneyProvider>,
+      );
+      openPanel();
+      const traditions = blockToggle("Traditions & repères").closest("li") as HTMLElement;
+      expect(["upcoming", "inProgress", "done"]).toContain(traditions.dataset.status);
+      expect(traditions.textContent).not.toContain("À décider");
+      expect(traditions.textContent).not.toContain("Non concernée");
+      expect(traditions.querySelector('[data-screen="traditions"]')).not.toBeNull();
+    },
+  );
 
   it.each([
     ["en", "To decide"],
@@ -588,7 +606,8 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
       </RouteJourneyProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: language === "en" ? /My journey/ : /Mi recorrido/ }));
-    expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(2);
+    // Chef 03 / O03 — only the death notice is « to decide » now.
+    expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
   });
 });
 

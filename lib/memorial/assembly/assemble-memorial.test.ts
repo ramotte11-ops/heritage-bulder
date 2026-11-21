@@ -361,13 +361,27 @@ describe("Traditions V2 — assembled between the Récit and the Galerie", () =>
     expect(assembled.failures).toEqual([{ sectionId: "traditions", rendererKey: "TraditionsV2", reason: "contentUnreadable" }]);
   });
 
-  it("A00 unchanged (M1): no death notice → no Traditions, the rest unchanged", async () => {
+  it("O03 — no death notice, pre-O03 A09 record (no confirmation) → no Traditions, the rest unchanged", async () => {
+    const base = fullAnnouncementWithTraditions();
+    const noNotice = {
+      ...base,
+      guidedFlow: {
+        ...(base as { guidedFlow?: object }).guidedFlow,
+        A00: { status: "completed", answer: "no" },
+        A09: { status: "completed" },
+      },
+    } as MemorialContent;
+    const assembled = await assembleMemorial(input(noNotice), { resolveMedia: recordingResolver().resolve });
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "symbolicOfferings"]);
+  });
+
+  it("O03 — no death notice, Traditions explicitly confirmed at A09 → Traditions assembled", async () => {
     const base = fullAnnouncementWithTraditions();
     const noNotice = {
       ...base,
       guidedFlow: { ...(base as { guidedFlow?: object }).guidedFlow, A00: { status: "completed", answer: "no" } },
     } as MemorialContent;
     const assembled = await assembleMemorial(input(noNotice), { resolveMedia: recordingResolver().resolve });
-    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "symbolicOfferings"]);
+    expect(ids(assembled.sections)).toEqual(["hero", "ceremony", "story", "traditions", "symbolicOfferings"]);
   });
 });

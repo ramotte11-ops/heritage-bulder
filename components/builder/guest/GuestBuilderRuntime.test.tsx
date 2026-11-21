@@ -346,7 +346,7 @@ describe("GuestBuilderRuntime", () => {
       if (answer === "yes") {
         await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
       } else {
-        await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+        await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
         expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") })).toBeNull();
       }
       expect(localContent(store.value!).guidedFlow.A04).toEqual({ status: "completed", answer });
@@ -366,13 +366,13 @@ describe("GuestBuilderRuntime", () => {
       if (answer === "yes") {
         await screen.findByRole("heading", { name: translate("fr", "ceremony.dateTimeTitle") });
       } else {
-        await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+        await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
       }
       expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.momentTitle") })).toBeNull();
     },
   );
 
-  it("runs A05-A08 with partial values, reloads between screens, and continues to the person sheet", async () => {
+  it("runs A05-A08 with partial values, reloads between screens, and continues to Traditions (independent of A00, O03)", async () => {
     const fixture = ceremonyDraft();
     const store = new MemoryStore(fixture.draft);
     store.assets.set(fixture.asset.localId, fixture.asset);
@@ -447,7 +447,7 @@ describe("GuestBuilderRuntime", () => {
     expect(third.container.querySelector('[aria-hidden="true"] > div')?.getAttribute("style"))
       .toContain(`${guestHeroStepProgress(store.value!) * 100}%`);
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "ceremony.skip") }));
-    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
     expect(localContent(store.value!).guidedFlow.A08).toEqual({ status: "skipped" });
   });
 
@@ -552,7 +552,7 @@ describe("GuestBuilderRuntime", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("persists and reloads A08 locally, then continues to the person sheet when A09 is not applicable", async () => {
+  it("persists and reloads A08 locally, then continues to Traditions, independent of A00 (O03)", async () => {
     const fixture = ceremonyDraft({
       records: {
         A05: { status: "skipped" },
@@ -588,11 +588,11 @@ describe("GuestBuilderRuntime", () => {
     expect((restored as HTMLTextAreaElement).value).toBe("Stationnement derrière la mairie");
     fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
 
-    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
     expect(localContent(store.value!).guidedFlow.A08).toEqual({ status: "completed" });
     expect(((store.value!.content as MemorialContent).ceremony as CeremonyContent).note)
       .toBe("Stationnement derrière la mairie");
-    expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
+    expect(screen.queryByRole("heading", { name: translate("fr", "personSheet.title") })).toBeNull();
     expect(JSON.stringify(store.value)).not.toMatch(/mediaId|memorialId/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -617,7 +617,7 @@ describe("GuestBuilderRuntime", () => {
     store.value = hidden.draft;
 
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
     expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).note).toBe("Note stable");
     expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.noteTitle") })).toBeNull();
     hiddenView.unmount();
@@ -751,7 +751,7 @@ describe("GuestBuilderRuntime", () => {
     ids.mockRestore();
   });
 
-  it("preserves confirmed A09 entries through A00 yes → no → yes", async () => {
+  it("O03 — keeps A09 entries through A00 yes → no → yes, and Traditions stays offered whatever A00", async () => {
     const entry = {
       id: "entry-stable",
       origin: "custom" as const,
@@ -772,9 +772,10 @@ describe("GuestBuilderRuntime", () => {
     if (!hidden.ok) throw new Error(hidden.reason);
     store.value = hidden.draft;
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
+    await screen.findByText("Repère conservé");
     expect(((store.value.content as MemorialContent).traditions as TraditionsContent).entries).toEqual([entry]);
-    expect(screen.queryByRole("heading", { name: translate("fr", "traditions.title") })).toBeNull();
+    expect(screen.queryByRole("heading", { name: translate("fr", "personSheet.title") })).toBeNull();
     hiddenView.unmount();
 
     const visibleContent = structuredClone(store.value.content) as MemorialContent;
@@ -999,7 +1000,7 @@ describe("GuestBuilderRuntime", () => {
     store.value = hidden.draft;
 
     const hiddenView = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
-    await screen.findByRole("heading", { name: translate("fr", "personSheet.title") });
+    await screen.findByRole("heading", { name: translate("fr", "traditions.title") });
     expect(((store.value.content as MemorialContent).ceremony as CeremonyContent).programme).toEqual([moment]);
     expect(screen.queryByRole("heading", { name: translate("fr", "ceremony.programmeTitle") })).toBeNull();
     hiddenView.unmount();

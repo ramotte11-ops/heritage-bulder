@@ -155,7 +155,7 @@ describe("A04 yes/no/undecided — ceremony applicability", () => {
   });
 });
 
-describe("no death notice — traditions conditioned by the notice (PO doctrine, B01 decision 9)", () => {
+describe("no death notice, no explicit A09 confirmation — traditions stays out of the memorial (Chef 03 / O03 guard)", () => {
   it("traditions is not relevant without a death notice", () => {
     expect(resolveSectionSelectionStatus("traditions", remembrance())).toBe("notRelevant");
     expect(resolveSectionSelectionStatus("traditions", { flowState: A00_LATER })).toBe("notRelevant");
@@ -169,6 +169,37 @@ describe("no death notice — traditions conditioned by the notice (PO doctrine,
   it("stays not relevant even if a content signal (entries already written) tries to force it — A00 always wins", () => {
     const input = remembrance(undefined, ["traditions"]);
     expect(resolveSectionSelectionStatus("traditions", input)).toBe("notRelevant");
+  });
+});
+
+describe("Chef 03 / O03 — traditions explicitly confirmed at A09, whatever A00", () => {
+  const CONFIRMED = { A09: { status: "completed", answer: "independent" } } as const;
+
+  it("A00 = no / later / unanswered + confirmation: follows the generic content signal", () => {
+    for (const a00 of [remembrance().flowState, A00_LATER, {}]) {
+      const flowState = { ...a00, ...CONFIRMED } as HumanFlowState;
+      expect(resolveSectionSelectionStatus("traditions", { flowState })).toBe("optionalAvailable");
+      expect(resolveSectionSelectionStatus("traditions", { flowState, explicitContentSectionIds: ["traditions"] })).toBe(
+        "applicable",
+      );
+    }
+  });
+
+  it("an unmarked or differently-marked A09 record never makes it relevant without a death notice", () => {
+    for (const A09 of [{ status: "completed" }, { status: "skipped" }, { status: "completed", answer: "other" }] as const) {
+      const flowState = { ...remembrance().flowState, A09 } as HumanFlowState;
+      expect(resolveSectionSelectionStatus("traditions", { flowState, explicitContentSectionIds: ["traditions"] })).toBe(
+        "notRelevant",
+      );
+    }
+  });
+
+  it("the death notice and condolences stay conditioned by A00, whatever A09", () => {
+    const flowState = { ...remembrance().flowState, ...CONFIRMED } as HumanFlowState;
+    expect(resolveSectionSelectionStatus("deathNotice", { flowState, explicitContentSectionIds: ["deathNotice"] })).toBe(
+      "notRelevant",
+    );
+    expect(resolveSectionSelectionStatus("condolences", { flowState })).toBe("notRelevant");
   });
 });
 

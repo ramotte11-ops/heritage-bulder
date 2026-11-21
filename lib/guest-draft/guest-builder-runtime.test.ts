@@ -259,12 +259,21 @@ describe("guest Builder local runtime", () => {
   });
 
   it.each([
-    ["no", "personSheet"],
-    ["undecided", "personSheet"],
+    // Chef 03 / O03 — A09 is independent of A00: with A00 = no, Traditions
+    // follows the ceremony block, then the person sheet.
+    ["no", "traditions"],
+    ["undecided", "traditions"],
     ["yes", "ceremonyDateTime"],
   ] as const)("uses the canonical ceremony branch when A04 = %s", (answer, expected) => {
     const guest = postHeroDraft("no", { A04: { status: "completed", answer } });
     expect(resolveGuestPostHeroScreen(guest)).toBe(expected);
+  });
+
+  it.each(["no", "later"] as const)("O03 — A00 = %s: Traditions, then the person sheet once A09 is resolved", (a00) => {
+    expect(resolveGuestPostHeroScreen(postHeroDraft(a00, { A04: { status: "completed", answer: "no" } }))).toBe("traditions");
+    expect(
+      resolveGuestPostHeroScreen(postHeroDraft(a00, { A04: { status: "completed", answer: "no" }, A09: { status: "skipped" } })),
+    ).toBe("personSheet");
   });
 
   it("keeps the canonical A07 → A14 → A08 order without inventing guest gates", () => {

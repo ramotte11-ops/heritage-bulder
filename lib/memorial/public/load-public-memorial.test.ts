@@ -5,6 +5,9 @@ vi.mock("server-only", () => ({}));
 const { loadPublicMemorial, publicContentFor } = await import("./load-public-memorial");
 const { fullAnnouncementWithTraditions, fullAnnouncementEmptyRecit, FIXTURE_PERSON_WORDS } = await import("@/lib/memorial/assembly/test-fixtures");
 const { updateGallery } = await import("@/lib/memorial/gallery-content");
+const { projectMemorialPublication } = await import("@/lib/memorial/publication-policy");
+const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
+const { addTraditionsEntry, commitA09, skipA09 } = await import("@/lib/builder/guided-flow/traditions-step");
 
 /**
  * QG 016 / M2 — the public page's single server step: M1 read → public
@@ -257,6 +260,97 @@ describe("QG 016 — Offrandes symboliques on the public page", () => {
     const ids = (await publicSections({ access_level, content })).map((section) => section.sectionId);
     expect(ids).not.toContain("symbolicOfferings");
     expect(ids).toContain("gallery");
+  });
+});
+
+/**
+ * Chef 03 / O03 — « Traditions & repères » became independent of A00 in
+ * the Builder. The public page recomposes its snapshot with the CURRENT
+ * rules, so a memorial published BEFORE O03 with A00 ≠ "yes" — whose
+ * snapshot may well carry repères that were never shown — must look
+ * exactly as it did: no Traditions appear by themselves.
+ */
+describe("Chef 03 / O03 — no retroactive Traditions on an already published memorial", () => {
+  function publishedSnapshot(a00: object, a09: object): MemorialContent {
+    const content = snapshot() as Record<string, unknown>;
+    return { ...content, guidedFlow: { ...(content.guidedFlow as object), A00: a00, A09: a09 } } as MemorialContent;
+  }
+  async function sectionIds(content: MemorialContent, access = "complet") {
+    const view = await loadPublicMemorial(SLUG, deps([row({ content, access_level: access })]).deps);
+    expect(view.status).toBe("ready");
+    if (view.status !== "ready") return [];
+    return view.assembled.sections.map((section) => section.sectionId);
+  }
+
+  it.each([
+    ["no", { status: "completed", answer: "no" }],
+    ["later", { status: "skipped", answer: "later" }],
+  ] as const)("a pre-O03 snapshot (A00 = %s, repères present, A09 unmarked) still shows no Traditions", async (_label, a00) => {
+    for (const a09 of [{ status: "completed" }, { status: "skipped" }]) {
+      for (const access of ["avis", "complet"]) {
+        const content = publishedSnapshot(a00, a09);
+        expect((content as { traditions: { entries: unknown[] } }).traditions.entries.length).toBeGreaterThan(0);
+        const ids = await sectionIds(content, access);
+        expect(ids).toContain("hero");
+        expect(ids).not.toContain("traditions");
+      }
+    }
+  });
+
+  it("a pre-O03 snapshot with A00 = yes is unchanged: its Traditions stay shown", async () => {
+    const ids = await sectionIds(publishedSnapshot({ status: "completed", answer: "yes" }, { status: "completed" }));
+    expect(ids).toContain("traditions");
+  });
+
+  it("a snapshot published after an explicit O03 confirmation shows Traditions, whatever A00", async () => {
+    const ids = await sectionIds(
+      publishedSnapshot({ status: "completed", answer: "no" }, { status: "completed", answer: "independent" }),
+    );
+    expect(ids).toContain("traditions");
+  });
+});
+
+describe("Chef 03 / O03 — draft → publication → public page, end to end", () => {
+  const ENTRY = { id: "t-e2e", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
+  const okc = (result: { ok: true; content: MemorialContent } | { ok: false; reason: unknown }) => {
+    if (!result.ok) throw new Error(`fixture refused: ${String(result.reason)}`);
+    return result.content;
+  };
+  async function publishedSections(draft: MemorialContent) {
+    const projection = projectMemorialPublication({ draft, accessLevel: "complet", skin: "intemporel" });
+    if (!projection.ok) throw new Error(`projection refused: ${projection.error.code}`);
+    const view = await loadPublicMemorial(SLUG, deps([row({ content: projection.projection.content, access_level: "complet" })]).deps);
+    expect(view.status).toBe("ready");
+    return view.status === "ready" ? view.assembled.sections.map((section) => section.sectionId) : [];
+  }
+
+  /** A draft whose A09 was never treated under O03 (its repères kept,
+   * its A09 record removed): what an unconfirmed family has. */
+  function unconfirmed(a00: "no" | "later"): MemorialContent {
+    const content = okc(commitA00(snapshot(), a00)) as Record<string, unknown>;
+    const { A09: _ignored, ...guidedFlow } = content.guidedFlow as Record<string, unknown>;
+    void _ignored;
+    return { ...content, guidedFlow } as MemorialContent;
+  }
+
+  it.each(["no", "later"] as const)("A00 = %s, repères added then « Passer cette étape »: published without Traditions", async (a00) => {
+    const draft = okc(skipA09(okc(addTraditionsEntry(unconfirmed(a00), { ...ENTRY }))));
+    expect((draft as { guidedFlow: { A09: unknown } }).guidedFlow.A09).toEqual({ status: "skipped" });
+    expect(await publishedSections(draft)).not.toContain("traditions");
+  });
+
+  it.each(["no", "later"] as const)("A00 = %s, repères present, A09 never treated: published without Traditions", async (a00) => {
+    expect(await publishedSections(okc(addTraditionsEntry(unconfirmed(a00), { ...ENTRY })))).not.toContain("traditions");
+  });
+
+  it("A00 = no, the repères confirmed with « Continuer »: published with Traditions", async () => {
+    const draft = okc(commitA09(okc(addTraditionsEntry(unconfirmed("no"), { ...ENTRY }))));
+    expect(await publishedSections(draft)).toContain("traditions");
+  });
+
+  it("A00 = later, confirmed, then passed during a later revision: the confirmation is kept", async () => {
+    const confirmed = okc(commitA09(okc(addTraditionsEntry(unconfirmed("later"), { ...ENTRY }))));
+    expect(await publishedSections(okc(skipA09(confirmed)))).toContain("traditions");
   });
 });
 

@@ -10,12 +10,14 @@ import {
   type TraditionsValidationReason,
 } from "@/lib/memorial/traditions";
 import { readHero } from "@/lib/memorial/hero";
+import { inspectPersonWords } from "@/lib/memorial/person-words";
+import { inspectLovedThings } from "@/lib/memorial/loved-things";
+import { inspectLegacy } from "@/lib/memorial/legacy";
 import { guidedFlowProgress, type StepRecord } from "./engine";
 import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
-import { humanFlowDefinition } from "./human-steps";
+import { A09_CONFIRMED_INDEPENDENTLY, humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08, needsA14 } from "./ceremony-step";
-import { isAnnouncementChosen } from "./announcement-choice-step";
 
 /**
  * Mission 042 — A09 ("Traditions & repères") as a real, persisted
@@ -110,22 +112,53 @@ export function isA09Resolved(content: MemorialContent): boolean {
 }
 
 /**
+ * Chef 03 / O03 — has the family already moved past A09's place in the
+ * route? Only a draft written before O03 can be: with A00 ≠ "yes", its
+ * route went from the ceremony straight to the person sheet (A10-A12).
+ * Once that sheet carries a record or an autosaved text, A09 is never
+ * imposed on it by the gates (PO: no automatic return to a rubrique the
+ * family has already passed) — it stays reachable from « Mon parcours »
+ * (`toComplete`). A new draft never reaches the sheet before A09, so
+ * this never changes its progression.
+ *
+ * Reads the sheet's records and matières directly (not through
+ * `person-sheet-step.ts`, which itself depends on this module). An
+ * unreadable matière counts as started: fail towards "do not redirect".
+ */
+export function hasMovedPastTraditions(content: MemorialContent): boolean {
+  const flow = readGuidedFlowState(content);
+  if (flow.A10 !== undefined || flow.A11 !== undefined || flow.A12 !== undefined) return true;
+  const personWords = inspectPersonWords(content);
+  const lovedThings = inspectLovedThings(content);
+  const legacy = inspectLegacy(content);
+  if (personWords.status === "corrupted" || lovedThings.status === "corrupted" || legacy.status === "corrupted") {
+    return true;
+  }
+  return [personWords.personWords.text, lovedThings.lovedThings.text, legacy.legacy.text].some(
+    (text) => text !== null && text.trim() !== "",
+  );
+}
+
+/**
  * A09 is shown once the Ceremony block is genuinely behind the family
  * (never before — see this module's own docstring for exactly why this
  * never reads a single Ceremony field) and only until A09 itself has
  * been treated once, whichever way.
+ *
+ * Chef 03 / O03 — whatever the A00 answer (« Traditions & repères » is
+ * independent of the death notice, PO decision). Entries already written
+ * stay in the draft. A pre-O03 draft that has already moved past A09's
+ * place (`hasMovedPastTraditions`) is not sent back to it.
  */
 export function needsA09(content: MemorialContent): boolean {
-  // B02-L2 — A09 belongs with the death notice (PO doctrine): offered
-  // only when A00 = yes. Entries already written stay in the draft.
-  if (!isAnnouncementChosen(content)) return false;
   if (needsA04(content)) return false;
   if (needsA05(content)) return false;
   if (needsA06(content)) return false;
   if (needsA07(content)) return false;
   if (needsA14(content)) return false;
   if (needsA08(content)) return false;
-  return !isA09Resolved(content);
+  if (isA09Resolved(content)) return false;
+  return !hasMovedPastTraditions(content);
 }
 
 // ---------------------------------------------------------------------
@@ -203,7 +236,11 @@ export function commitA09(content: MemorialContent): TraditionsFieldWriteResult 
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
   if (inspected.traditions.entries.length === 0) return { ok: false, reason: "entries" };
 
-  const nextFlow = { ...readGuidedFlowState(content), A09: { status: "completed" } as StepRecord };
+  // Chef 03 / O03 — « Continuer » is the family's explicit confirmation
+  // of its repères: the one write of the marker that lets Traditions
+  // enter the memorial whatever A00 says (`isTraditionsRelevant`).
+  const record: StepRecord = { status: "completed", answer: A09_CONFIRMED_INDEPENDENTLY };
+  const nextFlow = { ...readGuidedFlowState(content), A09: record };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
 
@@ -216,6 +253,15 @@ export function skipA09(content: MemorialContent): TraditionsFieldWriteResult {
   const inspected = inspectTraditions(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
 
-  const nextFlow = { ...readGuidedFlowState(content), A09: { status: "skipped" } as StepRecord };
+  // Chef 03 / O03 — passing is never a confirmation: it never CREATES
+  // the independence marker. It only keeps one an earlier « Continuer »
+  // recorded, so that passing the step during a later revision never
+  // withdraws repères the family had already confirmed.
+  const previous = readGuidedFlowState(content).A09;
+  const record: StepRecord =
+    previous?.answer === A09_CONFIRMED_INDEPENDENTLY
+      ? { status: "skipped", answer: A09_CONFIRMED_INDEPENDENTLY }
+      : { status: "skipped" };
+  const nextFlow = { ...readGuidedFlowState(content), A09: record };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
