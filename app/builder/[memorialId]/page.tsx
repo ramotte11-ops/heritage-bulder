@@ -964,9 +964,10 @@ export default async function BuilderMemorialPage({
   // A05-A08 resolved too whenever A04 was answered "yes" (never
   // before: `needsA09` reuses `needsA04`..`needsA08` verbatim) — and
   // reached exactly the same way whether A04 was "yes", "no" or
-  // "undecided". B02-L2 — A09 belongs with the death notice (PO
-  // doctrine): `needsA09` itself is false unless A00 = "yes"; entries
-  // already written stay in the draft.
+  // "undecided". Chef 03 / O03 — independent of A00 (PO decision):
+  // offered whatever the death-notice answer; a pre-O03 draft that has
+  // already moved on to the person sheet is never sent back to it
+  // (`hasMovedPastTraditions`). Entries already written stay in the draft.
   if (needsA09(heroReconciledContent)) {
     return (await showCurrent("traditions", heroReconciledContent))!;
   }
@@ -976,9 +977,9 @@ export default async function BuilderMemorialPage({
   // only once A09 is genuinely behind the family (never before — see
   // `needsPersonSheet`'s own guard, which gates on `isA09Resolved`,
   // never on `needsA09` — `needsA09 === false` is ambiguous for a
-  // skippable step), or once the Ceremony block is when A09 is not part
-  // of the route (A00 not "yes") and only until the sheet itself has been treated
-  // once, whichever way. Entirely facultative and passable, three
+  // skippable step) — or, for a pre-O03 draft that had already started
+  // the sheet, once the Ceremony block is (O03) — and only until the sheet
+  // itself has been treated once, whichever way. Entirely facultative and passable, three
   // free-text matières resolved together.
   if (needsPersonSheet(heroReconciledContent)) {
     return (await showCurrent("personSheet", heroReconciledContent))!;

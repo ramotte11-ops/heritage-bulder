@@ -6,6 +6,7 @@ import {
 import type { SectionId } from "@/config/sections";
 import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import { A00_ANSWERS, A04_ANSWERS } from "@/lib/builder/guided-flow/human-steps";
+import { isTraditionsConfirmed } from "@/lib/builder/guided-flow/traditions-step";
 import { inspectCeremony } from "@/lib/memorial/ceremony";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
 import { deathNoticePreviewFingerprint } from "@/lib/builder/guided-flow/death-notice-step";
@@ -260,6 +261,18 @@ function addGuidedFlowProjection(draft: MemorialContent, target: Record<string, 
       ) {
         sanitized[stepId] = { status: record.status, answer: record.answer };
       }
+      continue;
+    }
+    if (stepId === "A09") {
+      // Chef 03 / O03 — the explicit « Continuer » confirmation that lets
+      // Traditions enter a memorial whatever A00 says. Kept in the
+      // snapshot only when its fingerprint matches the repères being
+      // published (same rule as A03 below), so a repère changed since the
+      // last confirmation never reaches a new publication as confirmed,
+      // and the public page composes the same relevance as the Preview.
+      sanitized[stepId] = isTraditionsConfirmed(draft)
+        ? { status: record.status, answer: record.answer }
+        : { status: record.status };
       continue;
     }
     if (stepId === "A03") {

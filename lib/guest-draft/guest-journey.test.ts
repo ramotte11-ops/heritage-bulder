@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MemorialContent } from "@/types/memorial";
 import { resolveJourney, resolveJourneyScreens } from "@/lib/builder/guided-flow/journey";
+import { traditionsConfirmationAnswer } from "@/lib/builder/guided-flow/traditions-step";
 import { createGuestDraftV3, updateGuestDraftV3, type GuestDraftV3 } from "./guest-draft-v3";
 import {
   guestCurrentJourneyScreen,
@@ -133,3 +134,34 @@ describe("guest revision rules — the route's own", () => {
     expect(d).toEqual(before);
   });
 });
+
+describe("Chef 03 / O03 — guest: Traditions independent of A00, « À compléter » when unconfirmed", () => {
+  const ENTRY = { id: "t-guest", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." };
+  const PAST_A09 = (a09: Record<string, unknown>) => ({
+    hero: HERO,
+    traditions: { entries: [ENTRY] },
+    guidedFlow: {
+      ...THROUGH_T08.guidedFlow,
+      A04: { status: "completed", answer: "no" },
+      A09: a09,
+    },
+  });
+  const traditions = (d: GuestDraftV3) => resolveGuestJourney(d).sections.flatMap((s) => s.screens).find((s) => s.id === "traditions")!;
+
+  it("A00 = no, after the ceremony: Traditions is the current screen", () => {
+    const d = draft({ ...THROUGH_T08, guidedFlow: { ...THROUGH_T08.guidedFlow, A04: { status: "completed", answer: "no" } } });
+    expect(guestCurrentJourneyScreen(d)).toBe("traditions");
+  });
+
+  it("unconfirmed repères: « À compléter », reopenable; confirmed: « Terminée »", () => {
+    const pending = draft(PAST_A09({ status: "skipped" }));
+    expect(traditions(pending)).toMatchObject({ status: "toComplete", accessible: true, pendingConfirmation: true });
+    expect(resolveGuestRevisionTarget(pending, "traditions")).toBe("traditions");
+    const answer = traditionsConfirmationAnswer({ traditions: { entries: [ENTRY] } } as unknown as MemorialContent);
+    const confirmed = draft(PAST_A09({ status: "completed", answer }));
+    expect(traditions(confirmed)).toMatchObject({ status: "done", pendingConfirmation: false });
+    // The route's next screen is the same either way: no forced return.
+    expect(guestCurrentJourneyScreen(pending)).toBe(guestCurrentJourneyScreen(confirmed));
+  });
+});
+

@@ -10,8 +10,7 @@ import { guidedFlowProgress, type StepRecord } from "./engine";
 import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
 import { humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
-import { isA09Resolved } from "./traditions-step";
-import { isAnnouncementChosen } from "./announcement-choice-step";
+import { hasMovedPastTraditions, isA09Resolved } from "./traditions-step";
 import { isCeremonyBlockResolved } from "./ceremony-step";
 
 /**
@@ -141,9 +140,12 @@ export function isPersonSheetResolved(content: MemorialContent): boolean {
  * until the sheet itself has been treated once, whichever way.
  */
 export function needsPersonSheet(content: MemorialContent): boolean {
-  // B02-L2 — when the death notice is not chosen, A09 is not part of the
-  // route, so the sheet follows the ceremony block directly.
-  const previousBehind = isAnnouncementChosen(content) ? isA09Resolved(content) : isCeremonyBlockResolved(content);
+  // Chef 03 / O03 — A09 is part of every route (independent of A00), so
+  // the sheet follows it for every family. A pre-O03 draft whose route
+  // went from the ceremony straight to the sheet, and that has already
+  // started it, keeps its place: `needsA09` does not send it back.
+  const previousBehind =
+    isA09Resolved(content) || (isCeremonyBlockResolved(content) && hasMovedPastTraditions(content));
   if (!previousBehind) return false;
   return !isPersonSheetResolved(content);
 }

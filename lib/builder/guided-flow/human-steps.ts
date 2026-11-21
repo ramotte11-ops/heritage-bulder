@@ -130,6 +130,39 @@ export const isAnnouncementVisible = (state: HumanFlowState): boolean => {
 };
 
 /**
+ * Chef 03 / O03 — « Traditions & repères » no longer depends on A00 in the
+ * Builder (PO decision): A09 is part of every family's route, whatever
+ * the A00 answer.
+ *
+ * Publication stays protected, because a published page is recomposed
+ * with the CURRENT rules: before O03, Traditions existed in a memorial
+ * only when A00 = "yes", and snapshots published with A00 ≠ "yes" may
+ * still hold repères that were never shown. Those must never appear by
+ * themselves. So, outside A00 = "yes", the rubrique becomes relevant for
+ * the memorial only once the family has explicitly CONFIRMED its repères
+ * under the new rule — and only the repères it confirmed: A09's own
+ * « Continuer » (`commitA09`) records, as its `answer`, this prefix
+ * followed by a fingerprint of the repères as they stood at the click
+ * (the A03 mechanism: `traditionsConfirmationAnswer`, traditions-step.ts).
+ * Any later, unconfirmed change makes the fingerprint stop matching.
+ * « Passer cette étape » (`skipA09`) never creates nor renews it, and
+ * merely reopening the screen or editing a repère writes nothing here.
+ */
+export const A09_CONFIRMATION_PREFIX = "independent:";
+
+/**
+ * May « Traditions & repères » be part of the MEMORIAL (composition,
+ * Preview, public page)? A00 = "yes" — the rule every memorial published
+ * before O03 was composed with, unchanged — or an explicit O03
+ * confirmation that matches the repères present (`confirmed`, computed
+ * from the content by `isTraditionsConfirmed`). Whether the family is
+ * OFFERED the step in the Builder is a different question: always (A09
+ * has no `isApplicable`).
+ */
+export const isTraditionsRelevant = (state: HumanFlowState, confirmed: boolean): boolean =>
+  isAnnouncementVisible(state) || confirmed;
+
+/**
  * The full UX-A step list, in canonical order — this array's order IS
  * the route order (same convention as `config/sections.ts`'s
  * `EDITORIAL_CONTEXT_SECTIONS`), before any applicability filtering.
@@ -181,10 +214,10 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "A07", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
   { id: "A14", group: "announcement", required: false, skippable: true, isApplicable: isA14InRoute },
   { id: "A08", group: "announcement", required: false, skippable: true, isApplicable: isA04AnsweredYes },
-  // A09 (Traditions & repères) belongs with the death notice (PO
-  // doctrine): applicable only when A00 = yes. Entries already written
-  // are kept when it is hidden.
-  { id: "A09", group: "announcement", required: false, skippable: true, isApplicable: isAnnouncementVisible },
+  // A09 (Traditions & repères) — Chef 03 / O03: independent of A00 (PO
+  // decision), part of every family's route. Whether it may appear in
+  // the memorial is `isTraditionsRelevant` (section-selection.ts).
+  { id: "A09", group: "announcement", required: false, skippable: true },
   { id: "A10", group: "announcement", required: false, skippable: true },
   { id: "A11", group: "announcement", required: false, skippable: true },
   { id: "A12", group: "announcement", required: false, skippable: true },

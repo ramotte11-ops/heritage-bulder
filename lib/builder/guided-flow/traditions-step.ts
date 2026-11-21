@@ -10,11 +10,15 @@ import {
   type TraditionsValidationReason,
 } from "@/lib/memorial/traditions";
 import { readHero } from "@/lib/memorial/hero";
+import { inspectPersonWords } from "@/lib/memorial/person-words";
+import { inspectLovedThings } from "@/lib/memorial/loved-things";
+import { inspectLegacy } from "@/lib/memorial/legacy";
 import { guidedFlowProgress, type StepRecord } from "./engine";
 import { readGuidedFlowState, writeGuidedFlowState } from "./flow-state";
-import { humanFlowDefinition } from "./human-steps";
+import { A09_CONFIRMATION_PREFIX, humanFlowDefinition } from "./human-steps";
 import { resolveHeroFlowState } from "./hero-step";
 import { needsA04, needsA05, needsA06, needsA07, needsA08, needsA14 } from "./ceremony-step";
+import { fnv1aHash } from "./death-notice-step";
 import { isAnnouncementChosen } from "./announcement-choice-step";
 
 /**
@@ -99,6 +103,67 @@ export function readTraditionsForEditing(content: MemorialContent): TraditionsEd
 }
 
 // ---------------------------------------------------------------------
+// Chef 03 / O03 — the confirmation of the repères, by fingerprint
+// (the exact mechanism A03 uses for the death notice).
+// ---------------------------------------------------------------------
+
+/**
+ * A deterministic fingerprint of the repères exactly as they would be
+ * shown — the closed field list of each entry, in order, read through
+ * the fail-safe `inspectTraditions` (the same normalisation the
+ * publication projection applies, so a snapshot's repères fingerprint to
+ * the same value). `null` when Traditions is unreadable: nothing
+ * corrupted is ever confirmed.
+ */
+export function traditionsConfirmationFingerprint(content: MemorialContent): string | null {
+  const inspected = inspectTraditions(content);
+  if (inspected.status === "corrupted") return null;
+  const payload = JSON.stringify(
+    inspected.traditions.entries.map((entry) => ({
+      id: entry.id,
+      origin: entry.origin,
+      suggestionId: entry.suggestionId,
+      title: entry.title,
+      text: entry.text,
+    })),
+  );
+  return fnv1aHash(payload);
+}
+
+/** The `answer` « Continuer » records for the repères as they stand now. */
+export function traditionsConfirmationAnswer(content: MemorialContent): string | null {
+  const fingerprint = traditionsConfirmationFingerprint(content);
+  return fingerprint === null ? null : `${A09_CONFIRMATION_PREFIX}${fingerprint}`;
+}
+
+/**
+ * Has the family confirmed THESE repères — the ones present right now —
+ * with A09's « Continuer »? A stored confirmation whose fingerprint no
+ * longer matches (a repère added, edited or removed since, without a new
+ * « Continuer ») reads `false`: an unconfirmed change never becomes
+ * publishable by itself. Nothing is cleared — the record stays as it is.
+ */
+export function isTraditionsConfirmed(content: MemorialContent): boolean {
+  const answer = readGuidedFlowState(content).A09?.answer;
+  if (answer === undefined || !answer.startsWith(A09_CONFIRMATION_PREFIX)) return false;
+  return answer === traditionsConfirmationAnswer(content);
+}
+
+/**
+ * The family has repères that cannot enter the memorial until it
+ * confirms them: without a death notice (A00 ≠ "yes" — with "yes", the
+ * pre-O03 rule applies and they are shown), at least one repère, and no
+ * matching confirmation. « Mon parcours » then reads « À compléter »
+ * (journey.ts); the route's progression is never affected.
+ */
+export function isTraditionsPendingConfirmation(content: MemorialContent): boolean {
+  if (isAnnouncementChosen(content)) return false;
+  const inspected = inspectTraditions(content);
+  if (inspected.status !== "valid" || inspected.traditions.entries.length === 0) return false;
+  return !isTraditionsConfirmed(content);
+}
+
+// ---------------------------------------------------------------------
 // Page gate
 // ---------------------------------------------------------------------
 
@@ -110,22 +175,53 @@ export function isA09Resolved(content: MemorialContent): boolean {
 }
 
 /**
+ * Chef 03 / O03 — has the family already moved past A09's place in the
+ * route? Only a draft written before O03 can be: with A00 ≠ "yes", its
+ * route went from the ceremony straight to the person sheet (A10-A12).
+ * Once that sheet carries a record or an autosaved text, A09 is never
+ * imposed on it by the gates (PO: no automatic return to a rubrique the
+ * family has already passed) — it stays reachable from « Mon parcours »
+ * (`toComplete`). A new draft never reaches the sheet before A09, so
+ * this never changes its progression.
+ *
+ * Reads the sheet's records and matières directly (not through
+ * `person-sheet-step.ts`, which itself depends on this module). An
+ * unreadable matière counts as started: fail towards "do not redirect".
+ */
+export function hasMovedPastTraditions(content: MemorialContent): boolean {
+  const flow = readGuidedFlowState(content);
+  if (flow.A10 !== undefined || flow.A11 !== undefined || flow.A12 !== undefined) return true;
+  const personWords = inspectPersonWords(content);
+  const lovedThings = inspectLovedThings(content);
+  const legacy = inspectLegacy(content);
+  if (personWords.status === "corrupted" || lovedThings.status === "corrupted" || legacy.status === "corrupted") {
+    return true;
+  }
+  return [personWords.personWords.text, lovedThings.lovedThings.text, legacy.legacy.text].some(
+    (text) => text !== null && text.trim() !== "",
+  );
+}
+
+/**
  * A09 is shown once the Ceremony block is genuinely behind the family
  * (never before — see this module's own docstring for exactly why this
  * never reads a single Ceremony field) and only until A09 itself has
  * been treated once, whichever way.
+ *
+ * Chef 03 / O03 — whatever the A00 answer (« Traditions & repères » is
+ * independent of the death notice, PO decision). Entries already written
+ * stay in the draft. A pre-O03 draft that has already moved past A09's
+ * place (`hasMovedPastTraditions`) is not sent back to it.
  */
 export function needsA09(content: MemorialContent): boolean {
-  // B02-L2 — A09 belongs with the death notice (PO doctrine): offered
-  // only when A00 = yes. Entries already written stay in the draft.
-  if (!isAnnouncementChosen(content)) return false;
   if (needsA04(content)) return false;
   if (needsA05(content)) return false;
   if (needsA06(content)) return false;
   if (needsA07(content)) return false;
   if (needsA14(content)) return false;
   if (needsA08(content)) return false;
-  return !isA09Resolved(content);
+  if (isA09Resolved(content)) return false;
+  return !hasMovedPastTraditions(content);
 }
 
 // ---------------------------------------------------------------------
@@ -203,7 +299,13 @@ export function commitA09(content: MemorialContent): TraditionsFieldWriteResult 
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
   if (inspected.traditions.entries.length === 0) return { ok: false, reason: "entries" };
 
-  const nextFlow = { ...readGuidedFlowState(content), A09: { status: "completed" } as StepRecord };
+  // Chef 03 / O03 — « Continuer » is the family's explicit confirmation
+  // of THESE repères: the one write of the fingerprinted marker that lets
+  // them enter the memorial whatever A00 says (`isTraditionsConfirmed`).
+  const answer = traditionsConfirmationAnswer(content);
+  if (answer === null) return { ok: false, reason: "corrupted" };
+  const record: StepRecord = { status: "completed", answer };
+  const nextFlow = { ...readGuidedFlowState(content), A09: record };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }
 
@@ -216,6 +318,15 @@ export function skipA09(content: MemorialContent): TraditionsFieldWriteResult {
   const inspected = inspectTraditions(content);
   if (inspected.status === "corrupted") return { ok: false, reason: "corrupted" };
 
-  const nextFlow = { ...readGuidedFlowState(content), A09: { status: "skipped" } as StepRecord };
+  // Chef 03 / O03 — passing is never a confirmation: it neither creates
+  // nor renews the fingerprinted marker. An earlier « Continuer »'s value
+  // is copied verbatim — it still confirms exactly the repères it was
+  // computed for, and stops matching as soon as they changed since.
+  const previous = readGuidedFlowState(content).A09?.answer;
+  const record: StepRecord =
+    previous !== undefined && previous.startsWith(A09_CONFIRMATION_PREFIX)
+      ? { status: "skipped", answer: previous }
+      : { status: "skipped" };
+  const nextFlow = { ...readGuidedFlowState(content), A09: record };
   return { ok: true, content: writeGuidedFlowState(content, nextFlow) };
 }

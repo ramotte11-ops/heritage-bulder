@@ -13,6 +13,7 @@ import {
   STEPS,
   humanFlowDefinition,
   isAnnouncementVisible,
+  isTraditionsRelevant,
   resolveA00Record,
   type HumanFlowState,
   type StepId,
@@ -35,11 +36,12 @@ const ANNOUNCEMENT_ORDER_A04_YES: StepId[] = [
   "P01", "P04", "V02", "V03", "V04",
 ];
 
-/** A00 = no / later (B02-L2): no death notice, no A09 — the ceremony
- * question (A04) and every tribute section stay. */
+/** A00 = no / later (B02-L2): no death notice — the ceremony question
+ * (A04), Traditions (A09, independent of A00 since Chef 03 / O03) and
+ * every tribute section stay. */
 const NO_NOTICE_ORDER_NO_A04: StepId[] = [
   "T03", "T04", "A00", "T05", "T06", "T07", "T08",
-  "A04", "A10", "A11", "A12", "A13", "A15",
+  "A04", "A09", "A10", "A11", "A12", "A13", "A15",
   "P01", "P04", "V02", "V03", "V04",
 ];
 
@@ -115,7 +117,7 @@ describe("Single route — exact, before A04 is answered", () => {
   it.each([
     ["no", { status: "completed", answer: "no" }],
     ["later", { status: "skipped", answer: "later" }],
-  ] as const)("A00 = %s: no death notice and no A09, the ceremony and the tribute sections stay", (_answer, record) => {
+  ] as const)("A00 = %s: no death notice; the ceremony, A09 and the tribute sections stay", (_answer, record) => {
     expect(applicableSteps(flow, { A00: { ...record } }).map((s) => s.id)).toEqual(NO_NOTICE_ORDER_NO_A04);
   });
 
@@ -236,7 +238,7 @@ describe("Reprise — first incomplete step, explicit skip, non-applicable", () 
     expect(firstIncompleteStep(flow, state)?.id).toBe("A09");
   });
 
-  it("A00 = no: after the ceremony question, resume lands on the person sheet (A10), never A09", () => {
+  it("A00 = no: after the ceremony question, resume lands on A09 — Traditions is independent of A00 (O03)", () => {
     const state: HumanFlowState = {
       A00: { status: "completed", answer: "no" },
       T03: { status: "completed" },
@@ -247,7 +249,7 @@ describe("Reprise — first incomplete step, explicit skip, non-applicable", () 
       T08: { status: "completed" },
       A04: { status: "completed", answer: "undecided" },
     };
-    expect(firstIncompleteStep(flow, state)?.id).toBe("A10");
+    expect(firstIncompleteStep(flow, state)?.id).toBe("A09");
   });
 
   it("A00 = later, right after the Hero: resume lands on the ceremony question (A04)", () => {
@@ -355,21 +357,47 @@ describe("QG micro-hardening — a skippable:false UX-A step can never resolve a
   });
 });
 
-describe("A09 (Traditions & repères) — conditioned by the death notice (PO doctrine)", () => {
+describe("A09 (Traditions & repères) — independent of A00 (Chef 03 / O03, PO decision)", () => {
   const flow = humanFlowDefinition();
   const a09 = STEPS.find((s) => s.id === "A09")!;
 
-  it("applicable only when A00 = yes", () => {
-    expect(stepRuntimeStatus(a09, flow, A00_YES)).toBe("incomplete");
-    expect(stepRuntimeStatus(a09, flow, { A00: { status: "completed", answer: "no" } })).toBe("notApplicable");
-    expect(stepRuntimeStatus(a09, flow, { A00: { status: "skipped", answer: "later" } })).toBe("notApplicable");
+  it.each([
+    ["yes", { A00: { status: "completed", answer: "yes" } }],
+    ["no", { A00: { status: "completed", answer: "no" } }],
+    ["later", { A00: { status: "skipped", answer: "later" } }],
+    ["not answered", {}],
+  ] as const)("part of the route whatever A00 (%s)", (_label, state) => {
+    expect(a09.isApplicable).toBeUndefined();
+    expect(stepRuntimeStatus(a09, flow, state as HumanFlowState)).toBe("incomplete");
   });
 
-  it("a record already written is kept, and counts again once A00 returns to yes", () => {
-    const hidden: HumanFlowState = { A00: { status: "completed", answer: "no" }, A09: { status: "completed" } };
-    expect(stepRuntimeStatus(a09, flow, hidden)).toBe("notApplicable");
-    expect(hidden.A09).toEqual({ status: "completed" });
-    expect(stepRuntimeStatus(a09, flow, { ...hidden, ...A00_YES })).toBe("completed");
+  it("a record already written is read as it is, whatever A00 — never cleared", () => {
+    const no: HumanFlowState = { A00: { status: "completed", answer: "no" }, A09: { status: "completed" } };
+    expect(stepRuntimeStatus(a09, flow, no)).toBe("completed");
+    expect(no.A09).toEqual({ status: "completed" });
+    expect(stepRuntimeStatus(a09, flow, { ...no, ...A00_YES })).toBe("completed");
+  });
+});
+
+describe("isTraditionsRelevant — may Traditions enter the MEMORIAL (O03 publication guard)", () => {
+  const NO = { status: "completed", answer: "no" } as const;
+  const LATER = { status: "skipped", answer: "later" } as const;
+
+  it("A00 = yes: relevant, confirmed or not (the pre-O03 rule, unchanged)", () => {
+    expect(isTraditionsRelevant(A00_YES, false)).toBe(true);
+    expect(isTraditionsRelevant({ ...A00_YES, A09: { status: "completed" } }, false)).toBe(true);
+    expect(isTraditionsRelevant(A00_YES, true)).toBe(true);
+  });
+
+  it.each([
+    ["no", NO],
+    ["later", LATER],
+    ["not answered", undefined],
+  ] as const)("A00 = %s: relevant only with a matching confirmation (computed from the content)", (_label, a00) => {
+    const state: HumanFlowState = a00 === undefined ? {} : { A00: { ...a00 } };
+    expect(isTraditionsRelevant(state, false)).toBe(false);
+    expect(isTraditionsRelevant({ ...state, A09: { status: "completed", answer: "independent:00000000" } }, false)).toBe(false);
+    expect(isTraditionsRelevant(state, true)).toBe(true);
   });
 });
 

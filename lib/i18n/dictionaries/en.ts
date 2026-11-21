@@ -71,6 +71,7 @@ export const en: Record<TranslationKey, string> = {
   "journey.screen.reveal": "The look of the tribute",
   "journey.ambiance.light": "Ambiance: Light",
   "journey.ambiance.dark": "Ambiance: Dark",
+  "journey.traditionsUnconfirmed": "Not included in the tribute until you confirm your traditions with “Continue”.",
   "journey.manageVisibility": "Manage visible sections",
   "journey.hiddenFromMemorial": "Hidden from the tribute",
   "visibility.title": "Visible sections",

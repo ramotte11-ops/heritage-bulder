@@ -25,7 +25,7 @@ import {
   needsA08,
   readCeremonyMomentAnswer,
 } from "./ceremony-step";
-import { isA09Resolved, needsA09 } from "./traditions-step";
+import { isA09Resolved, isTraditionsPendingConfirmation, needsA09 } from "./traditions-step";
 import { isPersonSheetResolved, needsPersonSheet } from "./person-sheet-step";
 import { isA13Resolved, needsA13 } from "./gallery-step";
 import { isA15Resolved, needsA15 } from "./contributions-step";
@@ -45,7 +45,8 @@ import { isA15Resolved, needsA15 } from "./contributions-step";
  *     independently of the gates (a gate is also false before its step
  *     is reachable, so `!needs` alone never means "done");
  *   - `applicable` repeats the conditional rules already in force (A00
- *     for the death notice and A09, A04 for A05-A08).
+ *     for the death notice, A04 for A05-A08). Traditions (A09) is
+ *     independent of A00 since Chef 03 / O03.
  *
  * ## Revision never deletes
  *
@@ -131,6 +132,11 @@ interface JourneyScreenDefinition {
    * `"deferred"` when the family answered A00 « Plus tard »: still to be
    * decided, never presented as required nor as not concerned. */
   applicable: (content: MemorialContent) => boolean | "undecided" | "deferred";
+  /** Chef 03 / O03 — treated once, but holding matter the family still
+   * has to confirm before it can enter the memorial: reads « À compléter »
+   * (`toComplete`, reopenable) instead of « Terminée ». Display only —
+   * never part of `needs`, so the route's progression is unchanged. */
+  pendingConfirmation?: (content: MemorialContent) => boolean;
 }
 
 const always = () => true;
@@ -191,7 +197,15 @@ export const JOURNEY_SCREENS: readonly JourneyScreenDefinition[] = [
   { id: "ceremonyAddress", section: "ceremony", needs: needsA07, resolved: recordResolved("A07"), applicable: ceremonyPlanned },
   { id: "ceremonyProgramme", section: "ceremony", needs: needsA14, resolved: isA14Resolved, applicable: ceremonyPlanned },
   { id: "ceremonyNote", section: "ceremony", needs: needsA08, resolved: recordResolved("A08"), applicable: ceremonyPlanned },
-  { id: "traditions", section: "traditions", needs: needsA09, resolved: isA09Resolved, applicable: announcement },
+  // Chef 03 / O03 — independent of A00 (PO decision): part of every route.
+  {
+    id: "traditions",
+    section: "traditions",
+    needs: needsA09,
+    resolved: isA09Resolved,
+    applicable: always,
+    pendingConfirmation: isTraditionsPendingConfirmation,
+  },
   { id: "personSheet", section: "personSheet", needs: needsPersonSheet, resolved: isPersonSheetResolved, applicable: always },
   { id: "gallery", section: "gallery", needs: needsA13, resolved: isA13Resolved, applicable: always },
   { id: "contributions", section: "contributions", needs: needsA15, resolved: isA15Resolved, applicable: always },
@@ -242,6 +256,9 @@ export interface JourneyScreenState {
   status: JourneyScreenStatus;
   /** May be reopened for revision right now. */
   accessible: boolean;
+  /** Chef 03 / O03 — holds matter not confirmed yet (Traditions without a
+   * death notice): « Mon parcours » says it is not in the memorial yet. */
+  pendingConfirmation: boolean;
 }
 
 export type JourneySectionStatus = "done" | "inProgress" | "upcoming" | "deferred" | "hidden";
@@ -281,15 +298,26 @@ export function resolveJourneyScreens(content: MemorialContent, overrides?: Jour
 
   return JOURNEY_SCREENS.map((screen, index): JourneyScreenState => {
     const applicable = screen.applicable(content);
+    const pending = screen.pendingConfirmation?.(content) ?? false;
     let status: JourneyScreenStatus;
     if (applicable === false) status = "hidden";
     else if (applicable === "undecided") status = "upcoming";
     else if (applicable === "deferred") status = "deferred";
     else if (screen.id === current) status = "current";
-    else if (overrides?.resolved?.[screen.id] ?? screen.resolved(content)) status = "done";
-    else status = index < currentIndex ? "toComplete" : "upcoming";
+    else if (overrides?.resolved?.[screen.id] ?? screen.resolved(content)) {
+      // Already treated: « Terminée », unless it still holds matter to
+      // confirm — then « À compléter », reopenable wherever the family
+      // stands in the route (never a forced return: `needs` is untouched).
+      status = pending ? "toComplete" : "done";
+    } else status = index < currentIndex ? "toComplete" : "upcoming";
     const accessible = status === "done" || status === "current" || status === "toComplete";
-    return { id: screen.id, section: screen.section, status, accessible };
+    return {
+      id: screen.id,
+      section: screen.section,
+      status,
+      accessible,
+      pendingConfirmation: pending && status !== "hidden" && status !== "deferred" && status !== "upcoming",
+    };
   });
 }
 

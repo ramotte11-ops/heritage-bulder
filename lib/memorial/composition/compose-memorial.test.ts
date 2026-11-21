@@ -316,12 +316,78 @@ describe("traditions", () => {
     expect(stateOf(composition, "traditions")).toBe("noRenderer");
   });
 
-  it("A00 unchanged (M1): still not relevant without a death notice, entries kept", () => {
+  /** A pre-O03 shape: A09 resolved without the independence marker
+   * (everything A09 ever wrote before Chef 03 / O03). */
+  function withoutMarker(content: MemorialContent, status: "completed" | "skipped" = "completed"): MemorialContent {
+    const guidedFlow = (content as { guidedFlow: Record<string, unknown> }).guidedFlow;
+    return { ...content, guidedFlow: { ...guidedFlow, A09: { status } } } as MemorialContent;
+  }
+
+  it("O03 — A00 = no / later, pre-O03 record (no confirmation): still not relevant, entries kept", () => {
+    for (const record of [A00_NO, A00_LATER]) {
+      for (const status of ["completed", "skipped"] as const) {
+        const content = withA00(withoutMarker(withOneEntry(), status), record);
+        expect(stateOf(compose(content), "traditions")).toBe("notRelevant");
+        expect(compose(content).renderable).not.toContain("traditions");
+        expect(readTraditions(content).entries).toHaveLength(1);
+      }
+    }
+  });
+
+  it("O03 — A00 = no / later, explicitly confirmed at A09 (« Continuer »): renderable", () => {
     for (const record of [A00_NO, A00_LATER]) {
       const content = withA00(withOneEntry(), record);
-      expect(stateOf(compose(content), "traditions")).toBe("notRelevant");
-      expect(readTraditions(content).entries).toHaveLength(1);
+      expect(stateOf(compose(content), "traditions")).toBe("renderable");
     }
+  });
+
+  it("O03 — A00 = no, repères then « Passer » without confirmation: not relevant, entries kept", () => {
+    const added = addTraditionEntry(readTraditions(ceremonyNo()), {
+      id: "t-skip",
+      origin: "custom",
+      suggestionId: null,
+      title: null,
+      text: "Un repère fictif passé.",
+    });
+    if (!added.ok) throw new Error("fixture: tradition entry refused");
+    const content = withA00(ok(skipA09(writeTraditions(ceremonyNo(), added.traditions))), A00_NO);
+    expect(stateOf(compose(content), "traditions")).toBe("notRelevant");
+    expect(readTraditions(content).entries).toHaveLength(1);
+  });
+
+  it("O03 — A00 = no: confirmed, then a repère changed or added without « Continuer »: not relevant until confirmed again", () => {
+    const confirmed = withA00(withOneEntry(), A00_NO);
+    expect(stateOf(compose(confirmed), "traditions")).toBe("renderable");
+
+    const edited = writeTraditions(confirmed, {
+      entries: readTraditions(confirmed).entries.map((entry) => ({ ...entry, text: "Modifié sans confirmer." })),
+    });
+    const added = addTraditionEntry(readTraditions(confirmed), {
+      id: "t2",
+      origin: "custom",
+      suggestionId: null,
+      title: null,
+      text: "Ajouté sans confirmer.",
+    });
+    if (!added.ok) throw new Error("fixture: tradition entry refused");
+    for (const changed of [edited, writeTraditions(confirmed, added.traditions)]) {
+      const passed = ok(skipA09(changed));
+      expect(stateOf(compose(passed), "traditions")).toBe("notRelevant");
+      expect(readTraditions(passed).entries.length).toBeGreaterThan(0);
+      expect(stateOf(compose(ok(commitA09(passed))), "traditions")).toBe("renderable");
+    }
+  });
+
+  it("O03 — the pre-fingerprint marker value never makes it relevant", () => {
+    const content = withA00(withoutMarker(withOneEntry()), A00_NO) as { guidedFlow: Record<string, unknown> };
+    const old = { ...content, guidedFlow: { ...content.guidedFlow, A09: { status: "completed", answer: "independent" } } };
+    expect(stateOf(compose(old as unknown as MemorialContent), "traditions")).toBe("notRelevant");
+  });
+
+  it("O03 — A00 = yes: unchanged, the marker plays no part", () => {
+    const yes = { status: "completed", answer: "yes" } as const;
+    expect(stateOf(compose(withA00(withoutMarker(withOneEntry()), yes)), "traditions")).toBe("renderable");
+    expect(stateOf(compose(withA00(withOneEntry(), yes)), "traditions")).toBe("renderable");
   });
 });
 
@@ -333,7 +399,7 @@ describe("A00 = no / later — no death notice", () => {
   it.each([
     ["no", A00_NO],
     ["later", A00_LATER],
-  ] as const)("%s: never renders deathNotice, traditions or condolences, even with notice data already written", (_answer, record) => {
+  ] as const)("%s: never renders deathNotice, condolences — nor an unconfirmed traditions — even with notice data already written", (_answer, record) => {
     const composition = compose(withA00(withCeremonyYesResolved(), record));
     for (const id of ["deathNotice", "traditions", "condolences"] as const) {
       expect(stateOf(composition, id)).toBe("notRelevant");

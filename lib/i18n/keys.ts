@@ -269,6 +269,8 @@ export const TRANSLATION_KEYS = [
   "journey.screen.reveal",
   "journey.ambiance.light",
   "journey.ambiance.dark",
+  // Chef 03 / O03 — Traditions holding repères not confirmed yet.
+  "journey.traditionsUnconfirmed",
   // « Mon parcours » simplifié + « Gérer les rubriques visibles ».
   "journey.manageVisibility",
   "journey.hiddenFromMemorial",

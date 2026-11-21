@@ -2713,7 +2713,36 @@ describe("BuilderMemorialPage — granted access", () => {
       expect(result.type).toBe(TraditionsStep);
     });
 
-    it("B02-L2 — A09 never appears when A00 = no: after the ceremony, the combined sheet follows", async () => {
+    it.each([
+      ["no", { status: "completed", answer: "no" }],
+      ["later", { status: "skipped", answer: "later" }],
+    ] as const)("Chef 03 / O03 — A00 = %s: after the ceremony, A09 is shown (Traditions independent of A00)", async (_label, a00) => {
+      getHeritageActor.mockResolvedValue(OWNER_ACTOR);
+      authorizeMemorialForRequest.mockResolvedValue({
+        status: "granted",
+        ownerId: "owner-a",
+        memorialId: MEMORIAL_ID,
+      });
+      const base = withA00(DRAFT_WITH_A03_DONE_NO_A04, a00);
+      resumeBuilderSession.mockResolvedValue({
+        status: "resumable",
+        memorial: LANGUAGE_AND_CONTEXT_CHOSEN_BUT_OTHERWISE_UNCONFIGURED,
+        draft: {
+          ...base,
+          content: {
+            ...base.content,
+            guidedFlow: { ...(base.content as { guidedFlow: object }).guidedFlow, A04: { status: "completed", answer: "no" } },
+          } as MemorialVersion["content"],
+        },
+      });
+
+      const result = await callPage();
+
+      expect(result.type).toBe(TraditionsStep);
+      expect(PersonSheetStep).not.toHaveBeenCalled();
+    });
+
+    it("Chef 03 / O03 — a pre-O03 draft (A00 = no) that already started its sheet is never sent back to A09", async () => {
       getHeritageActor.mockResolvedValue(OWNER_ACTOR);
       authorizeMemorialForRequest.mockResolvedValue({
         status: "granted",
@@ -2728,6 +2757,7 @@ describe("BuilderMemorialPage — granted access", () => {
           ...base,
           content: {
             ...base.content,
+            personWords: { text: "Un texte fictif déjà commencé." },
             guidedFlow: { ...(base.content as { guidedFlow: object }).guidedFlow, A04: { status: "completed", answer: "no" } },
           } as MemorialVersion["content"],
         },

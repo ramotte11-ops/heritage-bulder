@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
 import { resolveJourney } from "@/lib/builder/guided-flow/journey";
-import { throughA02 } from "@/lib/memorial/assembly/test-fixtures";
+import { fullAnnouncementWithTraditions, throughA02 } from "@/lib/memorial/assembly/test-fixtures";
+import { commitA00 } from "@/lib/builder/guided-flow/announcement-choice-step";
+import { commitA09 } from "@/lib/builder/guided-flow/traditions-step";
+import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { DraftRevisionProvider, useDraftRevisionCoordinator } from "@/lib/builder/draft-revision";
 import { DraftConflictNotice } from "@/components/builder/DraftConflictNotice";
@@ -556,7 +559,7 @@ describe("B03 — incomplete input: never a silent loss", () => {
 });
 
 describe("B03 — A00 « Plus tard » reads « À décider »", () => {
-  it("the notice and traditions sections show « À décider » with their note, never « Non concernée »", async () => {
+  it("the notice section shows « À décider » with its note, never « Non concernée »", async () => {
     const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
     const later = commitA00(PARTIAL, "later");
     if (!later.ok) throw new Error("fixture");
@@ -567,13 +570,31 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
     );
     openPanel();
     const section = (title: string) => blockToggle(title).closest("li") as HTMLElement;
-    for (const title of ["L'annonce de décès", "Traditions & repères"]) {
-      expect(section(title).dataset.status).toBe("deferred");
-      expect(section(title).textContent).toContain("À décider");
-      expect(section(title).textContent).not.toContain("Non concernée");
-      expect(section(title).textContent).toMatch(/choisi de décider plus tard/);
-    }
+    expect(section("L'annonce de décès").dataset.status).toBe("deferred");
+    expect(section("L'annonce de décès").textContent).toContain("À décider");
+    expect(section("L'annonce de décès").textContent).not.toContain("Non concernée");
+    expect(section("L'annonce de décès").textContent).toMatch(/choisi de décider plus tard/);
   });
+
+  it.each(["later", "no"] as const)(
+    "Chef 03 / O03 — A00 = %s: « Traditions & repères » is never « À décider » nor « Non concernée »",
+    async (answer) => {
+      const { commitA00 } = await import("@/lib/builder/guided-flow/announcement-choice-step");
+      const changed = commitA00(PARTIAL, answer);
+      if (!changed.ok) throw new Error("fixture");
+      render(
+        <RouteJourneyProvider language="fr" snapshot={resolveJourney(changed.content)} builderPath="/builder/m-1">
+          <BuilderScreenNav />
+        </RouteJourneyProvider>,
+      );
+      openPanel();
+      const traditions = blockToggle("Traditions & repères").closest("li") as HTMLElement;
+      expect(["upcoming", "inProgress", "done"]).toContain(traditions.dataset.status);
+      expect(traditions.textContent).not.toContain("À décider");
+      expect(traditions.textContent).not.toContain("Non concernée");
+      expect(traditions.querySelector('[data-screen="traditions"]')).not.toBeNull();
+    },
+  );
 
   it.each([
     ["en", "To decide"],
@@ -588,7 +609,8 @@ describe("B03 — A00 « Plus tard » reads « À décider »", () => {
       </RouteJourneyProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: language === "en" ? /My journey/ : /Mi recorrido/ }));
-    expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(2);
+    // Chef 03 / O03 — only the death notice is « to decide » now.
+    expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -916,3 +938,52 @@ describe("recette Builder V1 — T08 opened from the Preview: the way back is th
     expect(screen.getByRole("button", { name: label })).toBeTruthy();
   });
 });
+
+describe("Chef 03 / O03 — Traditions with repères not confirmed yet", () => {
+  /** A00 = no, repères present, A09 resolved without a matching confirmation. */
+  function unconfirmed(): MemorialContent {
+    const no = commitA00(fullAnnouncementWithTraditions(), "no");
+    if (!no.ok) throw new Error("fixture");
+    return JSON.parse(
+      JSON.stringify({ ...no.content, guidedFlow: { ...readGuidedFlowState(no.content), A09: { status: "completed" } } }),
+    ) as MemorialContent;
+  }
+  function renderPanel(content: MemorialContent, language: "fr" | "en" | "es" = "fr") {
+    render(
+      <RouteJourneyProvider language={language} snapshot={resolveJourney(content)} builderPath="/builder/m-1">
+        <BuilderScreenNav />
+      </RouteJourneyProvider>,
+    );
+  }
+  const row = () => document.querySelector('[data-screen="traditions"]') as HTMLElement;
+
+  it("reads « À compléter », says why, and keeps « Revoir »", () => {
+    renderPanel(unconfirmed());
+    openPanel();
+    openBlock("Traditions & repères");
+    expect(row().dataset.status).toBe("toComplete");
+    expect(row().textContent).toContain("À compléter");
+    expect(row().textContent).toContain("Non incluse dans l'hommage tant que vous n'avez pas confirmé vos repères avec « Continuer ».");
+    expect(within(row()).getByRole("button", { name: /Revoir/ })).toBeTruthy();
+  });
+
+  it("once confirmed: « Terminée », no note", () => {
+    const confirmed = commitA09(unconfirmed());
+    if (!confirmed.ok) throw new Error("fixture");
+    renderPanel(confirmed.content);
+    openPanel();
+    openBlock("Traditions & repères");
+    expect(row().dataset.status).toBe("done");
+    expect(row().querySelector("[data-pending-confirmation]")).toBeNull();
+  });
+
+  it.each([
+    ["en", /My journey/, "Not included in the tribute until you confirm your traditions with “Continue”."],
+    ["es", /Mi recorrido/, "No se incluye en el homenaje hasta que confirme sus referencias con «Continuar»."],
+  ] as const)("is translated (%s)", (language, entry, note) => {
+    renderPanel(unconfirmed(), language);
+    fireEvent.click(screen.getByRole("button", { name: entry }));
+    expect(row().textContent).toContain(note);
+  });
+});
+

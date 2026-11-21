@@ -120,33 +120,45 @@ describe("needsPersonSheet — A09 not yet resolved", () => {
   });
 });
 
-describe("needsPersonSheet — B02-L2: without a death notice, the sheet follows the ceremony directly", () => {
+describe("needsPersonSheet — Chef 03 / O03: A09 precedes the sheet whatever A00", () => {
   const withA00 = (record: object) =>
     ({ guidedFlow: { A00: record } }) as unknown as MemorialContent;
 
   it.each([
     ["no", { status: "completed", answer: "no" }],
     ["later", { status: "skipped", answer: "later" }],
-  ])("A00 = %s, A04 = no: reachable right after A04, A09 never asked", (_answer, record) => {
+  ])("A00 = %s, A04 = no: A09 comes first, then the sheet", (_answer, record) => {
     const content = requireOk(commitA04(withA00(record), "no"));
-    expect(needsPersonSheet(content)).toBe(true);
+    expect(needsPersonSheet(content)).toBe(false);
+    expect(needsPersonSheet(requireOk(skipA09(content)))).toBe(true);
   });
 
-  it("A00 = no, A04 = yes: reachable only once A05-A08 are resolved", () => {
+  it("A00 = no, A04 = yes: reachable only once A05-A08 and then A09 are resolved", () => {
     let content = requireOk(commitA04(withA00({ status: "completed", answer: "no" }), "yes"));
     expect(needsPersonSheet(content)).toBe(false);
     content = requireOk(skipA05(content));
     content = requireOk(skipA06(content));
     content = requireOk(skipA07(content));
-    expect(needsPersonSheet(content)).toBe(false);
     content = requireOk(skipA14(content));
-    expect(needsPersonSheet(content)).toBe(false);
     content = requireOk(skipA08(content));
+    expect(needsPersonSheet(content)).toBe(false);
+    content = requireOk(skipA09(content));
     expect(needsPersonSheet(content)).toBe(true);
   });
 
   it("A00 = no: never before A04 itself is answered", () => {
     expect(needsPersonSheet(withA00({ status: "completed", answer: "no" }))).toBe(false);
+  });
+
+  it("a pre-O03 draft (A00 = no) that already started its sheet keeps it, without being sent back to A09", () => {
+    const base = requireOk(commitA04(withA00({ status: "completed", answer: "no" }), "no"));
+    const started = requireOk(writePersonWordsFieldText(base, "Un texte fictif déjà commencé."));
+    expect(needsPersonSheet(started)).toBe(true);
+  });
+
+  it("never before the ceremony block is behind the family, even with a started sheet", () => {
+    const started = requireOk(writePersonWordsFieldText(withA00({ status: "completed", answer: "no" }), "Un texte fictif."));
+    expect(needsPersonSheet(started)).toBe(false);
   });
 });
 
