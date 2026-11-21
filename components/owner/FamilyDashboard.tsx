@@ -11,6 +11,7 @@ import {
   OfferingsCard,
   TributeSwitcher,
   type FamilyAttentions,
+  type FamilyContributionsSummary,
 } from "./FamilyFeatures";
 import { FamilyShell } from "./FamilyShell";
 import { TributeCard } from "./TributeCard";
@@ -74,6 +75,8 @@ export type FamilyDashboardView =
       photos: ReadonlyMap<string, FamilyTributePhoto>;
       selected: FamilyTribute;
       attentions: FamilyAttentions;
+      /** Lot 3 — stories and photographs awaiting the family's approval. */
+      contributions: FamilyContributionsSummary;
     }
   | { status: "none" }
   | { status: "error" };
@@ -204,7 +207,11 @@ export function FamilyDashboard({
             hrefFor={(tributeId) => `/owner${query({ hommage: tributeId })}`}
           />
           <div className={styles.features} data-family-features={view.selected.id}>
-            <ContributionsCard language={language} />
+            <ContributionsCard
+              language={language}
+              summary={view.contributions}
+              href={`/owner/hommages/${encodeURIComponent(view.selected.id)}/contributions${query({})}`}
+            />
             <OfferingsCard attentions={view.attentions} language={language} />
             <AttentionsCard
               attentions={view.attentions}

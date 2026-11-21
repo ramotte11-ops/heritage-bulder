@@ -53,6 +53,9 @@ vi.mock("@/lib/media/server-media-engine", () => ({ createServerMediaEngineDeps 
 vi.mock("@/lib/media/read-media", () => ({ createMediaReadUrl }));
 
 vi.mock("@/app/auth/actions", () => ({ signOut: vi.fn() }));
+// Lot 3 — the E5 Server Action (its own tests prove the session and ownership rules).
+const { getPendingContributionCounts } = vi.hoisted(() => ({ getPendingContributionCounts: vi.fn() }));
+vi.mock("@/lib/memorial/contributions/family-contribution-actions", () => ({ getPendingContributionCounts }));
 vi.mock("@/components/builder/fonts", () => ({
   playfairDisplay: { variable: "serif" },
   inter: { variable: "sans" },
@@ -114,7 +117,7 @@ function cardOf(html: string, memorialId: string): string {
 beforeEach(() => {
   for (const mock of [
     getHeritageActor, listOwnedMemorials, listTributeDetails, countOfferings, listOfferings,
-    loadOwnerFreePublicationStatus, createMediaReadUrl,
+    loadOwnerFreePublicationStatus, createMediaReadUrl, getPendingContributionCounts,
   ]) {
     mock.mockReset();
   }
@@ -124,6 +127,7 @@ beforeEach(() => {
   createServerMediaEngineDeps.mockClear();
   redirect.mockClear();
   loadOwnerFreePublicationStatus.mockResolvedValue({ status: "opens_on_next_save", activeFreeDrafts: 0, maxFreeDrafts: 3 });
+  getPendingContributionCounts.mockResolvedValue({ status: "ok", counts: [] });
   listTributeDetails.mockResolvedValue(new Map());
   countOfferings.mockResolvedValue({ coeur: 0, bougie: 0, lys: 0 });
   listOfferings.mockResolvedValue({ offerings: [], hasMore: false });
@@ -470,15 +474,45 @@ describe("OwnerPage — real attentions of the selected tribute", () => {
     expect(cardOf(html, ID_1)).toContain("/hommage/95bd2601eac8");
   });
 
-  it("contributions are announced, not simulated: no link, « Bientôt disponible »", async () => {
+  it("Lot 3 — « Gérer les contributions »: the real pending count of the SELECTED tribute and the way to its page", async () => {
     getHeritageActor.mockResolvedValue(OWNER);
-    listOwnedMemorials.mockResolvedValue([PUBLISHED]);
+    listOwnedMemorials.mockResolvedValue([PUBLISHED, DRAFT]);
+    getPendingContributionCounts.mockResolvedValue({
+      status: "ok",
+      counts: [{ memorialId: ID_1, pendingStories: 2, pendingPhotos: 1, pendingTotal: 3 }],
+    });
 
     const html = await render();
 
-    expect(html).toContain('data-feature="contributions" data-available="false"');
-    expect(html).toContain("Bientôt disponible");
-    expect(html).not.toContain("/contributions");
+    // Only the validated tribute id is passed; the session is the action's business.
+    expect(getPendingContributionCounts).toHaveBeenCalledWith(ID_1);
+    expect(html).toContain('data-feature="contributions" data-available="true"');
+    expect(html).not.toContain("Bientôt disponible");
+    expect(html).toContain("Les récits et les photographies de vos proches n’apparaissent dans l’hommage qu’avec votre accord.");
+    expect(html).toMatch(/data-contributions-pending="3"[^>]*>3 contributions à examiner</);
+    expect(html).toContain(`href="/owner/hommages/${ID_1}/contributions"`);
+  });
+
+  it("Lot 3 — no pending contribution, one, an unreadable count, and the language kept on the link", async () => {
+    getHeritageActor.mockResolvedValue(OWNER);
+    listOwnedMemorials.mockResolvedValue([PUBLISHED]);
+
+    getPendingContributionCounts.mockResolvedValueOnce({ status: "ok", counts: [] });
+    expect(await render()).toMatch(/data-contributions-pending="0"[^>]*>Aucune contribution à examiner\.</);
+
+    getPendingContributionCounts.mockResolvedValueOnce({ status: "ok", counts: [{ memorialId: ID_1, pendingStories: 0, pendingPhotos: 1, pendingTotal: 1 }] });
+    expect(await render({ langue: "en" })).toMatch(/1 contribution to review/);
+
+    getPendingContributionCounts.mockResolvedValueOnce({ status: "unavailable" });
+    const unavailable = await render({ langue: "es" });
+    expect(unavailable).toContain('data-contributions-pending="unavailable"');
+    expect(unavailable).toContain("No se ha podido cargar el número de contribuciones por revisar.");
+    expect(unavailable).toContain(`href="/owner/hommages/${ID_1}/contributions?langue=es"`);
+
+    getPendingContributionCounts.mockRejectedValueOnce(new Error("boom"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await render()).toContain('data-contributions-pending="unavailable"');
+    log.mockRestore();
   });
 });
 
