@@ -27,157 +27,132 @@ declare
   c_count    constant integer := 48;
   c_sha256   constant text := '5c143aafc8d5d747f9cac0ef2add9280b569525f9309145e268c5ec7573717e0';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E4 : lectures publiques ciblées des Contributions.
---
--- Écrite et testée en local (npm run db:test) ; NON appliquée. Son
--- application relève de E6, avec les migrations E1, E2 et E3.
--- Retour arrière : supabase/rollbacks/20261122090000_m8_e4_public_contributions_reads.down.sql.
---
--- Pourquoi : l'Album ne doit avoir AUCUN plafond (directive du chef de projet
--- n° 02). La page publique ne charge donc plus « tout » d'avance : elle lit
--- une page, puis les suivantes à la demande. Deux besoins restaient sans
--- lecture adaptée :
---  1. la scène O8 doit représenter chaque catégorie disponible, même si sa
---     contribution la plus récente est très ancienne (hors des pages lues) :
---     read_public_contributions_v2 accepte un filtre de types ;
---  2. renouveler le lien d'une photo profonde dans l'Album sans relire tout
---     l'Album : read_public_contributions_by_ids_v1 relit des contributions
---     précises.
--- Les deux appliquent EXACTEMENT les règles de read_public_contributions_v1
--- (E1) : hommage public, rubrique non masquée, catégories en vigueur, statut
--- published, photo ready ; ordre P1 ; jamais idempotency_key ni chemin hors
--- de l'objet `media` (le serveur le signe, ne le transmet pas).
-
-begin;
-
-create or replace function public.read_public_contributions_v2(
-  p_slug text,
-  p_limit integer default 24,
-  p_before_published_at timestamptz default null,
-  p_before_id uuid default null,
-  p_types text[] default null
-)
-returns table (
-  contribution_id uuid,
-  message_type text,
-  author_name text,
-  content text,
-  caption text,
-  published_at timestamptz,
-  media jsonb
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-#variable_conflict use_column
-declare
-  v_memorial_id uuid;
-  v_categories jsonb;
-  v_limit integer := least(greatest(coalesce(p_limit, 24), 1), 100);
-begin
-  if p_slug is null
-     or ((p_before_published_at is null) <> (p_before_id is null))
-     or (p_types is not null and (cardinality(p_types) = 0
-         or not (p_types <@ array['condolence', 'testimonial', 'photo']))) then
-    return;
-  end if;
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null or not public.contributions_rubric_public_v1(v_memorial_id, now()) then
-    return;
-  end if;
-  v_categories := public.contribution_categories_in_effect_v1(v_memorial_id);
-
-  return query
-    select msg.id, msg.message_type, msg.author_name, msg.content, msg.caption, msg.published_at,
-           case when msg.message_type = 'photo' then
-             jsonb_build_object('media_id', md.id, 'storage_path', md.storage_path,
-                                'width', md.width, 'height', md.height)
-           end
-      from public.messages msg
-      left join public.media md
-        on md.id = msg.media_id and md.memorial_id = msg.memorial_id
-     where msg.memorial_id = v_memorial_id
-       and msg.status = 'published'
-       and (p_types is null or msg.message_type = any (p_types))
-       and ((msg.message_type = 'condolence' and (v_categories ->> 'condolences')::boolean)
-         or (msg.message_type = 'testimonial' and (v_categories ->> 'stories')::boolean)
-         or (msg.message_type = 'photo' and (v_categories ->> 'photos')::boolean
-             and md.status = 'ready' and md.purpose = 'contribution'))
-       and (p_before_published_at is null
-            or (msg.published_at, msg.id) < (p_before_published_at, p_before_id))
-     order by msg.published_at desc, msg.id desc
-     limit v_limit;
-end;
-$$;
-
-create or replace function public.read_public_contributions_by_ids_v1(p_slug text, p_ids uuid[])
-returns table (
-  contribution_id uuid,
-  message_type text,
-  author_name text,
-  content text,
-  caption text,
-  published_at timestamptz,
-  media jsonb
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-#variable_conflict use_column
-declare
-  v_memorial_id uuid;
-  v_categories jsonb;
-begin
-  if p_slug is null or p_ids is null or cardinality(p_ids) = 0 or cardinality(p_ids) > 100 then
-    return;
-  end if;
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null or not public.contributions_rubric_public_v1(v_memorial_id, now()) then
-    return;
-  end if;
-  v_categories := public.contribution_categories_in_effect_v1(v_memorial_id);
-
-  return query
-    select msg.id, msg.message_type, msg.author_name, msg.content, msg.caption, msg.published_at,
-           case when msg.message_type = 'photo' then
-             jsonb_build_object('media_id', md.id, 'storage_path', md.storage_path,
-                                'width', md.width, 'height', md.height)
-           end
-      from public.messages msg
-      left join public.media md
-        on md.id = msg.media_id and md.memorial_id = msg.memorial_id
-     where msg.memorial_id = v_memorial_id
-       and msg.id = any (p_ids)
-       and msg.status = 'published'
-       and ((msg.message_type = 'condolence' and (v_categories ->> 'condolences')::boolean)
-         or (msg.message_type = 'testimonial' and (v_categories ->> 'stories')::boolean)
-         or (msg.message_type = 'photo' and (v_categories ->> 'photos')::boolean
-             and md.status = 'ready' and md.purpose = 'contribution'))
-     order by msg.published_at desc, msg.id desc;
-end;
-$$;
-
-revoke all on function public.read_public_contributions_v2(text, integer, timestamptz, uuid, text[]) from public, anon, authenticated;
-revoke all on function public.read_public_contributions_by_ids_v1(text, uuid[]) from public, anon, authenticated;
-grant execute on function public.read_public_contributions_v2(text, integer, timestamptz, uuid, text[]) to service_role;
-grant execute on function public.read_public_contributions_by_ids_v1(text, uuid[]) to service_role;
-
-comment on function public.read_public_contributions_v2(text, integer, timestamptz, uuid, text[]) is
-  'M8-E4. read_public_contributions_v1 + filtre de types facultatif (scène O8 : la plus récente de chaque catégorie, sans lire tout l''Album). Mêmes règles, ordre P1, curseur. service_role seul.';
-comment on function public.read_public_contributions_by_ids_v1(text, uuid[]) is
-  'M8-E4. Relecture de 1 à 100 contributions précises, aux règles de la lecture publique (renouvellement des liens photo expirés). service_role seul.';
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/migrations/20261122090000_m8_e4_public_contributions_reads.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTQgOiBsZWN0dXJlcyBwdWJsaXF1ZXMgY2libMOp
+ZXMgZGVzIENvbnRyaWJ1dGlvbnMuCi0tCi0tIMOJY3JpdGUgZXQgdGVzdMOpZSBlbiBsb2NhbCAo
+bnBtIHJ1biBkYjp0ZXN0KSA7IE5PTiBhcHBsaXF1w6llLiBTb24KLS0gYXBwbGljYXRpb24gcmVs
+w6h2ZSBkZSBFNiwgYXZlYyBsZXMgbWlncmF0aW9ucyBFMSwgRTIgZXQgRTMuCi0tIFJldG91ciBh
+cnJpw6hyZSA6IHN1cGFiYXNlL3JvbGxiYWNrcy8yMDI2MTEyMjA5MDAwMF9tOF9lNF9wdWJsaWNf
+Y29udHJpYnV0aW9uc19yZWFkcy5kb3duLnNxbC4KLS0KLS0gUG91cnF1b2kgOiBsJ0FsYnVtIG5l
+IGRvaXQgYXZvaXIgQVVDVU4gcGxhZm9uZCAoZGlyZWN0aXZlIGR1IGNoZWYgZGUgcHJvamV0Ci0t
+IG7CsCAwMikuIExhIHBhZ2UgcHVibGlxdWUgbmUgY2hhcmdlIGRvbmMgcGx1cyDCqyB0b3V0IMK7
+IGQnYXZhbmNlIDogZWxsZSBsaXQKLS0gdW5lIHBhZ2UsIHB1aXMgbGVzIHN1aXZhbnRlcyDDoCBs
+YSBkZW1hbmRlLiBEZXV4IGJlc29pbnMgcmVzdGFpZW50IHNhbnMKLS0gbGVjdHVyZSBhZGFwdMOp
+ZSA6Ci0tICAxLiBsYSBzY8OobmUgTzggZG9pdCByZXByw6lzZW50ZXIgY2hhcXVlIGNhdMOpZ29y
+aWUgZGlzcG9uaWJsZSwgbcOqbWUgc2kgc2EKLS0gICAgIGNvbnRyaWJ1dGlvbiBsYSBwbHVzIHLD
+qWNlbnRlIGVzdCB0csOocyBhbmNpZW5uZSAoaG9ycyBkZXMgcGFnZXMgbHVlcykgOgotLSAgICAg
+cmVhZF9wdWJsaWNfY29udHJpYnV0aW9uc192MiBhY2NlcHRlIHVuIGZpbHRyZSBkZSB0eXBlcyA7
+Ci0tICAyLiByZW5vdXZlbGVyIGxlIGxpZW4gZCd1bmUgcGhvdG8gcHJvZm9uZGUgZGFucyBsJ0Fs
+YnVtIHNhbnMgcmVsaXJlIHRvdXQKLS0gICAgIGwnQWxidW0gOiByZWFkX3B1YmxpY19jb250cmli
+dXRpb25zX2J5X2lkc192MSByZWxpdCBkZXMgY29udHJpYnV0aW9ucwotLSAgICAgcHLDqWNpc2Vz
+LgotLSBMZXMgZGV1eCBhcHBsaXF1ZW50IEVYQUNURU1FTlQgbGVzIHLDqGdsZXMgZGUgcmVhZF9w
+dWJsaWNfY29udHJpYnV0aW9uc192MQotLSAoRTEpIDogaG9tbWFnZSBwdWJsaWMsIHJ1YnJpcXVl
+IG5vbiBtYXNxdcOpZSwgY2F0w6lnb3JpZXMgZW4gdmlndWV1ciwgc3RhdHV0Ci0tIHB1Ymxpc2hl
+ZCwgcGhvdG8gcmVhZHkgOyBvcmRyZSBQMSA7IGphbWFpcyBpZGVtcG90ZW5jeV9rZXkgbmkgY2hl
+bWluIGhvcnMKLS0gZGUgbCdvYmpldCBgbWVkaWFgIChsZSBzZXJ2ZXVyIGxlIHNpZ25lLCBuZSBs
+ZSB0cmFuc21ldCBwYXMpLgoKYmVnaW47CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJs
+aWMucmVhZF9wdWJsaWNfY29udHJpYnV0aW9uc192MigKICBwX3NsdWcgdGV4dCwKICBwX2xpbWl0
+IGludGVnZXIgZGVmYXVsdCAyNCwKICBwX2JlZm9yZV9wdWJsaXNoZWRfYXQgdGltZXN0YW1wdHog
+ZGVmYXVsdCBudWxsLAogIHBfYmVmb3JlX2lkIHV1aWQgZGVmYXVsdCBudWxsLAogIHBfdHlwZXMg
+dGV4dFtdIGRlZmF1bHQgbnVsbAopCnJldHVybnMgdGFibGUgKAogIGNvbnRyaWJ1dGlvbl9pZCB1
+dWlkLAogIG1lc3NhZ2VfdHlwZSB0ZXh0LAogIGF1dGhvcl9uYW1lIHRleHQsCiAgY29udGVudCB0
+ZXh0LAogIGNhcHRpb24gdGV4dCwKICBwdWJsaXNoZWRfYXQgdGltZXN0YW1wdHosCiAgbWVkaWEg
+anNvbmIKKQpsYW5ndWFnZSBwbHBnc3FsCnN0YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFy
+Y2hfcGF0aCA9ICcnCmFzICQkCiN2YXJpYWJsZV9jb25mbGljdCB1c2VfY29sdW1uCmRlY2xhcmUK
+ICB2X21lbW9yaWFsX2lkIHV1aWQ7CiAgdl9jYXRlZ29yaWVzIGpzb25iOwogIHZfbGltaXQgaW50
+ZWdlciA6PSBsZWFzdChncmVhdGVzdChjb2FsZXNjZShwX2xpbWl0LCAyNCksIDEpLCAxMDApOwpi
+ZWdpbgogIGlmIHBfc2x1ZyBpcyBudWxsCiAgICAgb3IgKChwX2JlZm9yZV9wdWJsaXNoZWRfYXQg
+aXMgbnVsbCkgPD4gKHBfYmVmb3JlX2lkIGlzIG51bGwpKQogICAgIG9yIChwX3R5cGVzIGlzIG5v
+dCBudWxsIGFuZCAoY2FyZGluYWxpdHkocF90eXBlcykgPSAwCiAgICAgICAgIG9yIG5vdCAocF90
+eXBlcyA8QCBhcnJheVsnY29uZG9sZW5jZScsICd0ZXN0aW1vbmlhbCcsICdwaG90byddKSkpIHRo
+ZW4KICAgIHJldHVybjsKICBlbmQgaWY7CiAgc2VsZWN0IG0uaWQgaW50byB2X21lbW9yaWFsX2lk
+IGZyb20gcHVibGljLm1lbW9yaWFscyBtIHdoZXJlIG0uc2x1ZyA9IHBfc2x1ZzsKICBpZiB2X21l
+bW9yaWFsX2lkIGlzIG51bGwgb3Igbm90IHB1YmxpYy5jb250cmlidXRpb25zX3J1YnJpY19wdWJs
+aWNfdjEodl9tZW1vcmlhbF9pZCwgbm93KCkpIHRoZW4KICAgIHJldHVybjsKICBlbmQgaWY7CiAg
+dl9jYXRlZ29yaWVzIDo9IHB1YmxpYy5jb250cmlidXRpb25fY2F0ZWdvcmllc19pbl9lZmZlY3Rf
+djEodl9tZW1vcmlhbF9pZCk7CgogIHJldHVybiBxdWVyeQogICAgc2VsZWN0IG1zZy5pZCwgbXNn
+Lm1lc3NhZ2VfdHlwZSwgbXNnLmF1dGhvcl9uYW1lLCBtc2cuY29udGVudCwgbXNnLmNhcHRpb24s
+IG1zZy5wdWJsaXNoZWRfYXQsCiAgICAgICAgICAgY2FzZSB3aGVuIG1zZy5tZXNzYWdlX3R5cGUg
+PSAncGhvdG8nIHRoZW4KICAgICAgICAgICAgIGpzb25iX2J1aWxkX29iamVjdCgnbWVkaWFfaWQn
+LCBtZC5pZCwgJ3N0b3JhZ2VfcGF0aCcsIG1kLnN0b3JhZ2VfcGF0aCwKICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAnd2lkdGgnLCBtZC53aWR0aCwgJ2hlaWdodCcsIG1kLmhlaWdodCkK
+ICAgICAgICAgICBlbmQKICAgICAgZnJvbSBwdWJsaWMubWVzc2FnZXMgbXNnCiAgICAgIGxlZnQg
+am9pbiBwdWJsaWMubWVkaWEgbWQKICAgICAgICBvbiBtZC5pZCA9IG1zZy5tZWRpYV9pZCBhbmQg
+bWQubWVtb3JpYWxfaWQgPSBtc2cubWVtb3JpYWxfaWQKICAgICB3aGVyZSBtc2cubWVtb3JpYWxf
+aWQgPSB2X21lbW9yaWFsX2lkCiAgICAgICBhbmQgbXNnLnN0YXR1cyA9ICdwdWJsaXNoZWQnCiAg
+ICAgICBhbmQgKHBfdHlwZXMgaXMgbnVsbCBvciBtc2cubWVzc2FnZV90eXBlID0gYW55IChwX3R5
+cGVzKSkKICAgICAgIGFuZCAoKG1zZy5tZXNzYWdlX3R5cGUgPSAnY29uZG9sZW5jZScgYW5kICh2
+X2NhdGVnb3JpZXMgLT4+ICdjb25kb2xlbmNlcycpOjpib29sZWFuKQogICAgICAgICBvciAobXNn
+Lm1lc3NhZ2VfdHlwZSA9ICd0ZXN0aW1vbmlhbCcgYW5kICh2X2NhdGVnb3JpZXMgLT4+ICdzdG9y
+aWVzJyk6OmJvb2xlYW4pCiAgICAgICAgIG9yIChtc2cubWVzc2FnZV90eXBlID0gJ3Bob3RvJyBh
+bmQgKHZfY2F0ZWdvcmllcyAtPj4gJ3Bob3RvcycpOjpib29sZWFuCiAgICAgICAgICAgICBhbmQg
+bWQuc3RhdHVzID0gJ3JlYWR5JyBhbmQgbWQucHVycG9zZSA9ICdjb250cmlidXRpb24nKSkKICAg
+ICAgIGFuZCAocF9iZWZvcmVfcHVibGlzaGVkX2F0IGlzIG51bGwKICAgICAgICAgICAgb3IgKG1z
+Zy5wdWJsaXNoZWRfYXQsIG1zZy5pZCkgPCAocF9iZWZvcmVfcHVibGlzaGVkX2F0LCBwX2JlZm9y
+ZV9pZCkpCiAgICAgb3JkZXIgYnkgbXNnLnB1Ymxpc2hlZF9hdCBkZXNjLCBtc2cuaWQgZGVzYwog
+ICAgIGxpbWl0IHZfbGltaXQ7CmVuZDsKJCQ7CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBw
+dWJsaWMucmVhZF9wdWJsaWNfY29udHJpYnV0aW9uc19ieV9pZHNfdjEocF9zbHVnIHRleHQsIHBf
+aWRzIHV1aWRbXSkKcmV0dXJucyB0YWJsZSAoCiAgY29udHJpYnV0aW9uX2lkIHV1aWQsCiAgbWVz
+c2FnZV90eXBlIHRleHQsCiAgYXV0aG9yX25hbWUgdGV4dCwKICBjb250ZW50IHRleHQsCiAgY2Fw
+dGlvbiB0ZXh0LAogIHB1Ymxpc2hlZF9hdCB0aW1lc3RhbXB0eiwKICBtZWRpYSBqc29uYgopCmxh
+bmd1YWdlIHBscGdzcWwKc3RhYmxlCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0g
+JycKYXMgJCQKI3ZhcmlhYmxlX2NvbmZsaWN0IHVzZV9jb2x1bW4KZGVjbGFyZQogIHZfbWVtb3Jp
+YWxfaWQgdXVpZDsKICB2X2NhdGVnb3JpZXMganNvbmI7CmJlZ2luCiAgaWYgcF9zbHVnIGlzIG51
+bGwgb3IgcF9pZHMgaXMgbnVsbCBvciBjYXJkaW5hbGl0eShwX2lkcykgPSAwIG9yIGNhcmRpbmFs
+aXR5KHBfaWRzKSA+IDEwMCB0aGVuCiAgICByZXR1cm47CiAgZW5kIGlmOwogIHNlbGVjdCBtLmlk
+IGludG8gdl9tZW1vcmlhbF9pZCBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbSB3aGVyZSBtLnNsdWcg
+PSBwX3NsdWc7CiAgaWYgdl9tZW1vcmlhbF9pZCBpcyBudWxsIG9yIG5vdCBwdWJsaWMuY29udHJp
+YnV0aW9uc19ydWJyaWNfcHVibGljX3YxKHZfbWVtb3JpYWxfaWQsIG5vdygpKSB0aGVuCiAgICBy
+ZXR1cm47CiAgZW5kIGlmOwogIHZfY2F0ZWdvcmllcyA6PSBwdWJsaWMuY29udHJpYnV0aW9uX2Nh
+dGVnb3JpZXNfaW5fZWZmZWN0X3YxKHZfbWVtb3JpYWxfaWQpOwoKICByZXR1cm4gcXVlcnkKICAg
+IHNlbGVjdCBtc2cuaWQsIG1zZy5tZXNzYWdlX3R5cGUsIG1zZy5hdXRob3JfbmFtZSwgbXNnLmNv
+bnRlbnQsIG1zZy5jYXB0aW9uLCBtc2cucHVibGlzaGVkX2F0LAogICAgICAgICAgIGNhc2Ugd2hl
+biBtc2cubWVzc2FnZV90eXBlID0gJ3Bob3RvJyB0aGVuCiAgICAgICAgICAgICBqc29uYl9idWls
+ZF9vYmplY3QoJ21lZGlhX2lkJywgbWQuaWQsICdzdG9yYWdlX3BhdGgnLCBtZC5zdG9yYWdlX3Bh
+dGgsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgJ3dpZHRoJywgbWQud2lkdGgsICdo
+ZWlnaHQnLCBtZC5oZWlnaHQpCiAgICAgICAgICAgZW5kCiAgICAgIGZyb20gcHVibGljLm1lc3Nh
+Z2VzIG1zZwogICAgICBsZWZ0IGpvaW4gcHVibGljLm1lZGlhIG1kCiAgICAgICAgb24gbWQuaWQg
+PSBtc2cubWVkaWFfaWQgYW5kIG1kLm1lbW9yaWFsX2lkID0gbXNnLm1lbW9yaWFsX2lkCiAgICAg
+d2hlcmUgbXNnLm1lbW9yaWFsX2lkID0gdl9tZW1vcmlhbF9pZAogICAgICAgYW5kIG1zZy5pZCA9
+IGFueSAocF9pZHMpCiAgICAgICBhbmQgbXNnLnN0YXR1cyA9ICdwdWJsaXNoZWQnCiAgICAgICBh
+bmQgKChtc2cubWVzc2FnZV90eXBlID0gJ2NvbmRvbGVuY2UnIGFuZCAodl9jYXRlZ29yaWVzIC0+
+PiAnY29uZG9sZW5jZXMnKTo6Ym9vbGVhbikKICAgICAgICAgb3IgKG1zZy5tZXNzYWdlX3R5cGUg
+PSAndGVzdGltb25pYWwnIGFuZCAodl9jYXRlZ29yaWVzIC0+PiAnc3RvcmllcycpOjpib29sZWFu
+KQogICAgICAgICBvciAobXNnLm1lc3NhZ2VfdHlwZSA9ICdwaG90bycgYW5kICh2X2NhdGVnb3Jp
+ZXMgLT4+ICdwaG90b3MnKTo6Ym9vbGVhbgogICAgICAgICAgICAgYW5kIG1kLnN0YXR1cyA9ICdy
+ZWFkeScgYW5kIG1kLnB1cnBvc2UgPSAnY29udHJpYnV0aW9uJykpCiAgICAgb3JkZXIgYnkgbXNn
+LnB1Ymxpc2hlZF9hdCBkZXNjLCBtc2cuaWQgZGVzYzsKZW5kOwokJDsKCnJldm9rZSBhbGwgb24g
+ZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjIodGV4dCwgaW50ZWdl
+ciwgdGltZXN0YW1wdHosIHV1aWQsIHRleHRbXSkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRp
+Y2F0ZWQ7CnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1
+dGlvbnNfYnlfaWRzX3YxKHRleHQsIHV1aWRbXSkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRp
+Y2F0ZWQ7CmdyYW50IGV4ZWN1dGUgb24gZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX2NvbnRy
+aWJ1dGlvbnNfdjIodGV4dCwgaW50ZWdlciwgdGltZXN0YW1wdHosIHV1aWQsIHRleHRbXSkgdG8g
+c2VydmljZV9yb2xlOwpncmFudCBleGVjdXRlIG9uIGZ1bmN0aW9uIHB1YmxpYy5yZWFkX3B1Ymxp
+Y19jb250cmlidXRpb25zX2J5X2lkc192MSh0ZXh0LCB1dWlkW10pIHRvIHNlcnZpY2Vfcm9sZTsK
+CmNvbW1lbnQgb24gZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjIo
+dGV4dCwgaW50ZWdlciwgdGltZXN0YW1wdHosIHV1aWQsIHRleHRbXSkgaXMKICAnTTgtRTQuIHJl
+YWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjEgKyBmaWx0cmUgZGUgdHlwZXMgZmFjdWx0YXRpZiAo
+c2PDqG5lIE84IDogbGEgcGx1cyByw6ljZW50ZSBkZSBjaGFxdWUgY2F0w6lnb3JpZSwgc2FucyBs
+aXJlIHRvdXQgbCcnQWxidW0pLiBNw6ptZXMgcsOoZ2xlcywgb3JkcmUgUDEsIGN1cnNldXIuIHNl
+cnZpY2Vfcm9sZSBzZXVsLic7CmNvbW1lbnQgb24gZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGlj
+X2NvbnRyaWJ1dGlvbnNfYnlfaWRzX3YxKHRleHQsIHV1aWRbXSkgaXMKICAnTTgtRTQuIFJlbGVj
+dHVyZSBkZSAxIMOgIDEwMCBjb250cmlidXRpb25zIHByw6ljaXNlcywgYXV4IHLDqGdsZXMgZGUg
+bGEgbGVjdHVyZSBwdWJsaXF1ZSAocmVub3V2ZWxsZW1lbnQgZGVzIGxpZW5zIHBob3RvIGV4cGly
+w6lzKS4gc2VydmljZV9yb2xlIHNldWwuJzsKCm5vdGlmeSBwZ3JzdCwgJ3JlbG9hZCBzY2hlbWEn
+OwoKY29tbWl0Owo=
+';
+  c_source   text;
   v_lines    integer;
 begin
-  -- 1. Le texte collé est exactement le fichier de GitHub.
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261122090000] : texte de la migration illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
+  -- Le texte décodé est exactement le fichier de GitHub.
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
   end if;

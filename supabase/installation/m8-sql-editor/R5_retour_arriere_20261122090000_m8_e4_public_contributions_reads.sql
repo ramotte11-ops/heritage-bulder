@@ -22,24 +22,29 @@ declare
   c_count    constant integer := 49;
   c_sha256   constant text := 'b8de8d1f35d07f261dd661c13c8729e1b4f64c6065ffa9a36cc9adae2be55913';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E4 : RETOUR ARRIÈRE de
--- supabase/migrations/20261122090000_m8_e4_public_contributions_reads.sql.
---
--- NE FAIT PAS PARTIE DES MIGRATIONS : jamais appliqué automatiquement,
--- seulement sur décision explicite du QG. À appliquer AVANT ceux de E3, E2
--- et E1. Lecture seule : aucune donnée n'est touchée.
-
-begin;
-
-drop function if exists public.read_public_contributions_by_ids_v1(text, uuid[]);
-drop function if exists public.read_public_contributions_v2(text, integer, timestamptz, uuid, text[]);
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/rollbacks/20261122090000_m8_e4_public_contributions_reads.down.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTQgOiBSRVRPVVIgQVJSScOIUkUgZGUKLS0gc3Vw
+YWJhc2UvbWlncmF0aW9ucy8yMDI2MTEyMjA5MDAwMF9tOF9lNF9wdWJsaWNfY29udHJpYnV0aW9u
+c19yZWFkcy5zcWwuCi0tCi0tIE5FIEZBSVQgUEFTIFBBUlRJRSBERVMgTUlHUkFUSU9OUyA6IGph
+bWFpcyBhcHBsaXF1w6kgYXV0b21hdGlxdWVtZW50LAotLSBzZXVsZW1lbnQgc3VyIGTDqWNpc2lv
+biBleHBsaWNpdGUgZHUgUUcuIMOAIGFwcGxpcXVlciBBVkFOVCBjZXV4IGRlIEUzLCBFMgotLSBl
+dCBFMS4gTGVjdHVyZSBzZXVsZSA6IGF1Y3VuZSBkb25uw6llIG4nZXN0IHRvdWNow6llLgoKYmVn
+aW47Cgpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0cyBwdWJsaWMucmVhZF9wdWJsaWNfY29udHJpYnV0
+aW9uc19ieV9pZHNfdjEodGV4dCwgdXVpZFtdKTsKZHJvcCBmdW5jdGlvbiBpZiBleGlzdHMgcHVi
+bGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjIodGV4dCwgaW50ZWdlciwgdGltZXN0YW1w
+dHosIHV1aWQsIHRleHRbXSk7Cgpub3RpZnkgcGdyc3QsICdyZWxvYWQgc2NoZW1hJzsKCmNvbW1p
+dDsK
+';
+  c_source   text;
   v_lines    integer;
 begin
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261122090000] : texte du retour arrière illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte du retour arrière altéré au copier-coller. Rien n''a été modifié.', c_version;
   end if;

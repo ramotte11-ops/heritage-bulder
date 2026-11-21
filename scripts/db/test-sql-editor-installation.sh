@@ -83,6 +83,27 @@ koc()   { rows "$1" "$2" | grep -c -E 'ECHEC|\|STOP' || true; }
 hist()  { $P -d "$1" -t -A -c "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"; }
 schema(){ "$PGB/pg_dump" -h "$SOCK" -U postgres -s --exclude-schema=supabase_migrations "$1" | grep -v -E '^\\(un)?restrict ' ; }
 F() { ls "$INST"/$1; }
+# Altérations de transport (presse-papiers, navigateur, éditeur) — arrêt M8-DB-02 1/5.
+alter_file() {
+  python3 -I - "$1" "$2" "$3" <<'PY'
+import re, sys, unicodedata
+mode, src, dst = sys.argv[1:]
+t = open(src, encoding="utf-8").read()
+lines = t.split("\n")
+pay = [i for i, l in enumerate(lines) if re.fullmatch(r"[A-Za-z0-9+/=]{76}", l)]
+if mode == "crlf":        t = t.replace("\n", "\r\n")
+elif mode == "nfd":       t = unicodedata.normalize("NFD", t)
+elif mode == "nocomments":t = re.sub(r"--[^\n]*", "", t)
+elif mode == "noindent":  t = "\n".join(l.lstrip(" ") for l in lines)
+elif mode == "trailing":  t = "\n".join(l + " " for l in lines)
+elif mode == "all":       t = unicodedata.normalize("NFD", "\r\n".join(l.lstrip(" ") + " " for l in re.sub(r"--[^\n]*", "", t).split("\n")))
+elif mode == "b64swap":   i = pay[3]; l = lines[i]; lines[i] = l[:10] + ("A" if l[10] != "A" else "B") + l[11:]; t = "\n".join(lines)
+elif mode == "b64junk":   i = pay[3]; lines[i] = lines[i][:10] + "*" + lines[i][11:]; t = "\n".join(lines)
+elif mode == "b64cut":    del lines[pay[3]]; t = "\n".join(lines)
+else: raise SystemExit("mode inconnu " + mode)
+open(dst, "w", encoding="utf-8", newline="").write(t)
+PY
+}
 
 echo "== 1. État avant installation (base au niveau de la production)"
 clone ed base44
@@ -97,8 +118,12 @@ clone neg ed
 S0="$(schema neg)"
 check "étape 2 avant l'étape 1 : STOP ordre" "1" "$(run neg "$(F '02_*')" | grep -c 'STOP \[20261119090000\] : ordre' || true)"
 check "étape 5 avant l'étape 1 : STOP prérequis/ordre" "1" "$(run neg "$(F '05_*')" | grep -c 'STOP \[20261122090000\]' || true)"
-sed 's/^  add column if not exists signature text,$/  add column if not exists signature varchar,/' "$(F '01_*')" > "$WORK/altere.sql"
-check "texte altéré au copier-coller : STOP empreinte" "1" "$(run neg "$WORK/altere.sql" | grep -c 'STOP \[20261116120000\] : texte' || true)"
+alter_file b64swap "$(F '01_*')" "$WORK/altere.sql"
+check "base64 altéré (un caractère changé) : STOP texte" "1" "$(run neg "$WORK/altere.sql" | grep -m1 -c 'STOP \[20261116120000\] : texte' || true)"
+alter_file b64junk "$(F '01_*')" "$WORK/altere.sql"
+check "base64 altéré (caractère étranger) : STOP texte illisible" "1" "$(run neg "$WORK/altere.sql" | grep -m1 -c 'STOP \[20261116120000\] : texte de la migration illisible' || true)"
+alter_file b64cut "$(F '01_*')" "$WORK/altere.sql"
+check "base64 tronqué (une ligne perdue) : STOP texte" "1" "$(run neg "$WORK/altere.sql" | grep -m1 -c 'STOP \[20261116120000\] : texte' || true)"
 $P -d neg -c "alter table symbolic_offerings add column signature text;"
 check "objet déjà présent sans historique : STOP" "1" "$(run neg "$(F '01_*')" | grep -c 'existe déjà' || true)"
 $P -d neg -c "alter table symbolic_offerings drop column signature;"
@@ -166,6 +191,36 @@ check "après R5 → R1 : schéma identique à l'état initial" "identique" \
 check "après R5 → R1 : historique revenu à 44, état « avant » tout OK" "44|20261116100000|0" "$(hist rb)|$(koc rb "$(F '00_*')")"
 check "réinstallation complète après retour arrière : 5 verdicts OK" "5" \
   "$(for n in 1 2 3 4 5; do run rb "$(F "0${n}_*")"; done | grep -c 'OK — étape' || true)"
+
+echo "== 6. Transport altéré (arrêt M8-DB-02 1/5) : procédure corrigée et diagnostic"
+diag_marker() {
+  case "$1" in
+    ident)      echo 'OK : texte intact' ;;
+    crlf)       echo 'CAUSE : fins de ligne CRLF' ;;
+    nfd)        echo 'CAUSE : normalisation Unicode' ;;
+    nocomments) echo 'ECART : commentaires retir' ;;
+    *)          echo 'non : autre alt' ;;
+  esac
+}
+for mode in ident crlf nfd nocomments noindent trailing all; do
+  if [ "$mode" = ident ]; then cp "$(F '00a_*')" "$WORK/d.sql"; cp "$(F '01_*')" "$WORK/i.sql"; cp "$(F '00b_*')" "$WORK/t.sql"
+  else alter_file "$mode" "$(F '00a_*')" "$WORK/d.sql"; alter_file "$mode" "$(F '01_*')" "$WORK/i.sql"; alter_file "$mode" "$(F '00b_*')" "$WORK/t.sql"; fi
+  D="$(rows base44 "$WORK/d.sql")"
+  check "[$mode] diagnostic : cause identifiée" "1" "$(echo "$D" | grep -m1 -c "$(diag_marker "$mode")" || true)"
+  check "[$mode] diagnostic : transport base64 OK" "1" "$(echo "$D" | grep -c 'OK : la proc' || true)"
+  check "[$mode] test de transport : 5 migrations OK" "5" "$(rows base44 "$WORK/t.sql" | grep -c '|OK$' || true)"
+  clone tr base44
+  check "[$mode] étape 1 corrigée : verdict OK" "1" "$(run tr "$WORK/i.sql" | grep -c 'OK — .*1/5' || true)"
+  $P -d postgres -c "drop database tr;"
+done
+clone tr base44
+for n in 1 2 3 4 5; do alter_file all "$(F "0${n}_*")" "$WORK/s$n.sql"; done
+check "toutes altérations cumulées, étapes 1 à 5 : 5 verdicts OK" "5" \
+  "$(for n in 1 2 3 4 5; do run tr "$WORK/s$n.sql"; done | grep -c 'OK — ' || true)"
+check "toutes altérations cumulées : schéma et droits identiques à psql -f" "identique" \
+  "$(diff <(schema ref) <(schema tr) >/dev/null && echo identique || echo DIFFERENT)"
+check "toutes altérations cumulées : 99_etat_apres tout OK" "0|66" "$(koc tr "$(F '99_*')")|$(okc tr "$(F '99_*')")"
+$P -d postgres -c "drop database tr;"
 
 echo ""
 echo "== Résultat : $PASS réussis, $FAIL échoués =="

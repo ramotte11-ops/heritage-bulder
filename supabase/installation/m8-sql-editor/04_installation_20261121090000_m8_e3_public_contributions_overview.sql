@@ -27,86 +27,80 @@ declare
   c_count    constant integer := 47;
   c_sha256   constant text := '96c653f9c9b81f0700cc99e867b406d20892b59875ac9cc4e125a0d267932077';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E3 : vue d'ensemble publique de la rubrique
--- « Contributions des proches ».
---
--- Écrite et testée en local (npm run db:test) ; NON appliquée. Son
--- application relève de E6, avec 20261119090000 (E1) et 20261120090000 (E2).
--- Retour arrière : supabase/rollbacks/20261121090000_m8_e3_public_contributions_overview.down.sql.
---
--- Pourquoi : la page publique doit savoir, AU MOMENT DE LA VISITE, quelles
--- catégories sont en vigueur (O9 : une désactivation par la famille prend
--- effet immédiatement, sans republication) et combien de contributions
--- publiées chacune compte (O8 : chaque catégorie disponible représentée sur
--- la scène ; état vide M0 si aucune). read_public_contributions_v1 (E1) ne
--- rend que les contributions, pas les catégories.
---
--- Mêmes règles que les dépôts et la lecture E1 : hommage public, rubrique
--- non masquée dans la copie publiée ; sinon AUCUNE ligne (indistinct).
--- Aucune donnée de proche : des booléens et des nombres.
-
-begin;
-
-create or replace function public.read_public_contributions_overview_v1(p_slug text)
-returns table (
-  condolences boolean,
-  stories boolean,
-  photos boolean,
-  published_condolences integer,
-  published_stories integer,
-  published_photos integer
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  v_memorial_id uuid;
-  v_categories jsonb;
-begin
-  if p_slug is null then
-    return;
-  end if;
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null or not public.contributions_rubric_public_v1(v_memorial_id, now()) then
-    return;
-  end if;
-  v_categories := public.contribution_categories_in_effect_v1(v_memorial_id);
-  return query
-    select (v_categories ->> 'condolences')::boolean,
-           (v_categories ->> 'stories')::boolean,
-           (v_categories ->> 'photos')::boolean,
-           case when (v_categories ->> 'condolences')::boolean then
-             (select count(*)::integer from public.messages msg
-               where msg.memorial_id = v_memorial_id and msg.status = 'published' and msg.message_type = 'condolence')
-           else 0 end,
-           case when (v_categories ->> 'stories')::boolean then
-             (select count(*)::integer from public.messages msg
-               where msg.memorial_id = v_memorial_id and msg.status = 'published' and msg.message_type = 'testimonial')
-           else 0 end,
-           case when (v_categories ->> 'photos')::boolean then
-             (select count(*)::integer from public.messages msg
-               join public.media md on md.id = msg.media_id and md.memorial_id = msg.memorial_id
-               where msg.memorial_id = v_memorial_id and msg.status = 'published' and msg.message_type = 'photo'
-                 and md.status = 'ready' and md.purpose = 'contribution')
-           else 0 end;
-end;
-$$;
-
-revoke all on function public.read_public_contributions_overview_v1(text) from public, anon, authenticated;
-grant execute on function public.read_public_contributions_overview_v1(text) to service_role;
-
-comment on function public.read_public_contributions_overview_v1(text) is
-  'M8-E3. Page publique : catégories EN VIGUEUR (O9) et nombre de contributions publiées lisibles par catégorie (O8, état vide M0). Aucune ligne si l''hommage n''est pas public ou si la rubrique est masquée. service_role seul.';
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/migrations/20261121090000_m8_e3_public_contributions_overview.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTMgOiB2dWUgZCdlbnNlbWJsZSBwdWJsaXF1ZSBk
+ZSBsYSBydWJyaXF1ZQotLSDCqyBDb250cmlidXRpb25zIGRlcyBwcm9jaGVzIMK7LgotLQotLSDD
+iWNyaXRlIGV0IHRlc3TDqWUgZW4gbG9jYWwgKG5wbSBydW4gZGI6dGVzdCkgOyBOT04gYXBwbGlx
+dcOpZS4gU29uCi0tIGFwcGxpY2F0aW9uIHJlbMOodmUgZGUgRTYsIGF2ZWMgMjAyNjExMTkwOTAw
+MDAgKEUxKSBldCAyMDI2MTEyMDA5MDAwMCAoRTIpLgotLSBSZXRvdXIgYXJyacOocmUgOiBzdXBh
+YmFzZS9yb2xsYmFja3MvMjAyNjExMjEwOTAwMDBfbThfZTNfcHVibGljX2NvbnRyaWJ1dGlvbnNf
+b3ZlcnZpZXcuZG93bi5zcWwuCi0tCi0tIFBvdXJxdW9pIDogbGEgcGFnZSBwdWJsaXF1ZSBkb2l0
+IHNhdm9pciwgQVUgTU9NRU5UIERFIExBIFZJU0lURSwgcXVlbGxlcwotLSBjYXTDqWdvcmllcyBz
+b250IGVuIHZpZ3VldXIgKE85IDogdW5lIGTDqXNhY3RpdmF0aW9uIHBhciBsYSBmYW1pbGxlIHBy
+ZW5kCi0tIGVmZmV0IGltbcOpZGlhdGVtZW50LCBzYW5zIHJlcHVibGljYXRpb24pIGV0IGNvbWJp
+ZW4gZGUgY29udHJpYnV0aW9ucwotLSBwdWJsacOpZXMgY2hhY3VuZSBjb21wdGUgKE84IDogY2hh
+cXVlIGNhdMOpZ29yaWUgZGlzcG9uaWJsZSByZXByw6lzZW50w6llIHN1cgotLSBsYSBzY8OobmUg
+OyDDqXRhdCB2aWRlIE0wIHNpIGF1Y3VuZSkuIHJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjEg
+KEUxKSBuZQotLSByZW5kIHF1ZSBsZXMgY29udHJpYnV0aW9ucywgcGFzIGxlcyBjYXTDqWdvcmll
+cy4KLS0KLS0gTcOqbWVzIHLDqGdsZXMgcXVlIGxlcyBkw6lww7R0cyBldCBsYSBsZWN0dXJlIEUx
+IDogaG9tbWFnZSBwdWJsaWMsIHJ1YnJpcXVlCi0tIG5vbiBtYXNxdcOpZSBkYW5zIGxhIGNvcGll
+IHB1Ymxpw6llIDsgc2lub24gQVVDVU5FIGxpZ25lIChpbmRpc3RpbmN0KS4KLS0gQXVjdW5lIGRv
+bm7DqWUgZGUgcHJvY2hlIDogZGVzIGJvb2zDqWVucyBldCBkZXMgbm9tYnJlcy4KCmJlZ2luOwoK
+Y3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlv
+bnNfb3ZlcnZpZXdfdjEocF9zbHVnIHRleHQpCnJldHVybnMgdGFibGUgKAogIGNvbmRvbGVuY2Vz
+IGJvb2xlYW4sCiAgc3RvcmllcyBib29sZWFuLAogIHBob3RvcyBib29sZWFuLAogIHB1Ymxpc2hl
+ZF9jb25kb2xlbmNlcyBpbnRlZ2VyLAogIHB1Ymxpc2hlZF9zdG9yaWVzIGludGVnZXIsCiAgcHVi
+bGlzaGVkX3Bob3RvcyBpbnRlZ2VyCikKbGFuZ3VhZ2UgcGxwZ3NxbApzdGFibGUKc2VjdXJpdHkg
+ZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAnJwphcyAkJApkZWNsYXJlCiAgdl9tZW1vcmlhbF9p
+ZCB1dWlkOwogIHZfY2F0ZWdvcmllcyBqc29uYjsKYmVnaW4KICBpZiBwX3NsdWcgaXMgbnVsbCB0
+aGVuCiAgICByZXR1cm47CiAgZW5kIGlmOwogIHNlbGVjdCBtLmlkIGludG8gdl9tZW1vcmlhbF9p
+ZCBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbSB3aGVyZSBtLnNsdWcgPSBwX3NsdWc7CiAgaWYgdl9t
+ZW1vcmlhbF9pZCBpcyBudWxsIG9yIG5vdCBwdWJsaWMuY29udHJpYnV0aW9uc19ydWJyaWNfcHVi
+bGljX3YxKHZfbWVtb3JpYWxfaWQsIG5vdygpKSB0aGVuCiAgICByZXR1cm47CiAgZW5kIGlmOwog
+IHZfY2F0ZWdvcmllcyA6PSBwdWJsaWMuY29udHJpYnV0aW9uX2NhdGVnb3JpZXNfaW5fZWZmZWN0
+X3YxKHZfbWVtb3JpYWxfaWQpOwogIHJldHVybiBxdWVyeQogICAgc2VsZWN0ICh2X2NhdGVnb3Jp
+ZXMgLT4+ICdjb25kb2xlbmNlcycpOjpib29sZWFuLAogICAgICAgICAgICh2X2NhdGVnb3JpZXMg
+LT4+ICdzdG9yaWVzJyk6OmJvb2xlYW4sCiAgICAgICAgICAgKHZfY2F0ZWdvcmllcyAtPj4gJ3Bo
+b3RvcycpOjpib29sZWFuLAogICAgICAgICAgIGNhc2Ugd2hlbiAodl9jYXRlZ29yaWVzIC0+PiAn
+Y29uZG9sZW5jZXMnKTo6Ym9vbGVhbiB0aGVuCiAgICAgICAgICAgICAoc2VsZWN0IGNvdW50KCop
+OjppbnRlZ2VyIGZyb20gcHVibGljLm1lc3NhZ2VzIG1zZwogICAgICAgICAgICAgICB3aGVyZSBt
+c2cubWVtb3JpYWxfaWQgPSB2X21lbW9yaWFsX2lkIGFuZCBtc2cuc3RhdHVzID0gJ3B1Ymxpc2hl
+ZCcgYW5kIG1zZy5tZXNzYWdlX3R5cGUgPSAnY29uZG9sZW5jZScpCiAgICAgICAgICAgZWxzZSAw
+IGVuZCwKICAgICAgICAgICBjYXNlIHdoZW4gKHZfY2F0ZWdvcmllcyAtPj4gJ3N0b3JpZXMnKTo6
+Ym9vbGVhbiB0aGVuCiAgICAgICAgICAgICAoc2VsZWN0IGNvdW50KCopOjppbnRlZ2VyIGZyb20g
+cHVibGljLm1lc3NhZ2VzIG1zZwogICAgICAgICAgICAgICB3aGVyZSBtc2cubWVtb3JpYWxfaWQg
+PSB2X21lbW9yaWFsX2lkIGFuZCBtc2cuc3RhdHVzID0gJ3B1Ymxpc2hlZCcgYW5kIG1zZy5tZXNz
+YWdlX3R5cGUgPSAndGVzdGltb25pYWwnKQogICAgICAgICAgIGVsc2UgMCBlbmQsCiAgICAgICAg
+ICAgY2FzZSB3aGVuICh2X2NhdGVnb3JpZXMgLT4+ICdwaG90b3MnKTo6Ym9vbGVhbiB0aGVuCiAg
+ICAgICAgICAgICAoc2VsZWN0IGNvdW50KCopOjppbnRlZ2VyIGZyb20gcHVibGljLm1lc3NhZ2Vz
+IG1zZwogICAgICAgICAgICAgICBqb2luIHB1YmxpYy5tZWRpYSBtZCBvbiBtZC5pZCA9IG1zZy5t
+ZWRpYV9pZCBhbmQgbWQubWVtb3JpYWxfaWQgPSBtc2cubWVtb3JpYWxfaWQKICAgICAgICAgICAg
+ICAgd2hlcmUgbXNnLm1lbW9yaWFsX2lkID0gdl9tZW1vcmlhbF9pZCBhbmQgbXNnLnN0YXR1cyA9
+ICdwdWJsaXNoZWQnIGFuZCBtc2cubWVzc2FnZV90eXBlID0gJ3Bob3RvJwogICAgICAgICAgICAg
+ICAgIGFuZCBtZC5zdGF0dXMgPSAncmVhZHknIGFuZCBtZC5wdXJwb3NlID0gJ2NvbnRyaWJ1dGlv
+bicpCiAgICAgICAgICAgZWxzZSAwIGVuZDsKZW5kOwokJDsKCnJldm9rZSBhbGwgb24gZnVuY3Rp
+b24gcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfb3ZlcnZpZXdfdjEodGV4dCkgZnJv
+bSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQ7CmdyYW50IGV4ZWN1dGUgb24gZnVuY3Rpb24g
+cHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfb3ZlcnZpZXdfdjEodGV4dCkgdG8gc2Vy
+dmljZV9yb2xlOwoKY29tbWVudCBvbiBmdW5jdGlvbiBwdWJsaWMucmVhZF9wdWJsaWNfY29udHJp
+YnV0aW9uc19vdmVydmlld192MSh0ZXh0KSBpcwogICdNOC1FMy4gUGFnZSBwdWJsaXF1ZSA6IGNh
+dMOpZ29yaWVzIEVOIFZJR1VFVVIgKE85KSBldCBub21icmUgZGUgY29udHJpYnV0aW9ucyBwdWJs
+acOpZXMgbGlzaWJsZXMgcGFyIGNhdMOpZ29yaWUgKE84LCDDqXRhdCB2aWRlIE0wKS4gQXVjdW5l
+IGxpZ25lIHNpIGwnJ2hvbW1hZ2UgbicnZXN0IHBhcyBwdWJsaWMgb3Ugc2kgbGEgcnVicmlxdWUg
+ZXN0IG1hc3F1w6llLiBzZXJ2aWNlX3JvbGUgc2V1bC4nOwoKbm90aWZ5IHBncnN0LCAncmVsb2Fk
+IHNjaGVtYSc7Cgpjb21taXQ7Cg==
+';
+  c_source   text;
   v_lines    integer;
 begin
-  -- 1. Le texte collé est exactement le fichier de GitHub.
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261121090000] : texte de la migration illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
+  -- Le texte décodé est exactement le fichier de GitHub.
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
   end if;

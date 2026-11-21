@@ -30,6 +30,8 @@ Ils se trouvent dans `supabase/installation/m8-sql-editor/`. Ils sont générés
 | Ordre | Fichier | Rôle |
 |---|---|---|
 | A | `00_etat_avant_installation.sql` | Contrôle en lecture seule avant de commencer |
+| D1 | `00a_diagnostic_copier_coller.sql` | Lecture seule : identifie ce que le SQL Editor modifie dans le texte collé (§ 8) |
+| D2 | `00b_test_transport.sql` | Lecture seule : vérifie que les cinq textes encodés arrivent intacts, y compris le plus gros (E1) |
 | 1 | `01_installation_20261116120000_lot2_offering_signature.sql` | Signature des offrandes (Lot 2) |
 | 2 | `02_installation_20261119090000_m8_e1_contributions.sql` | Contributions des proches : données |
 | 3 | `03_installation_20261120090000_m8_e2_owner_contribution_settings.sql` | Réglages de la famille (lecture) |
@@ -40,7 +42,7 @@ Ils se trouvent dans `supabase/installation/m8-sql-editor/`. Ils sont générés
 
 ## 3. Comment chaque fichier se protège
 
-1. **Le texte est le bon.** Le fichier contient le texte exact de la migration GitHub et son empreinte SHA-256. Un copier-coller incomplet ou altéré donne un STOP.
+1. **Le texte est le bon.** Le fichier contient le texte exact de la migration GitHub, **encodé en base64** : uniquement des lettres, des chiffres et `+ / =`. Il contient aussi son empreinte SHA-256. Une fois décodé, le texte doit avoir exactement cette empreinte. L'encodage résiste à ce qui a provoqué l'arrêt 1/5 (§ 8) : fins de ligne Windows, espaces, indentation, normalisation des accents, retrait des commentaires. Toute autre altération (caractère changé, ligne perdue, collage incomplet) donne un STOP. Le texte exécuté est donc toujours le fichier GitHub, à l'octet près.
 2. **Pas de double installation.** Si la version figure déjà dans `supabase_migrations.schema_migrations`, c'est un STOP.
 3. **L'ordre est respecté.** La dernière version enregistrée doit être exactement la précédente : `20261116100000` avant l'étape 1, puis chaque étape à son tour. Le nombre de versions doit aussi être exact : 44, puis 45 et ainsi de suite. Sinon, c'est un STOP. Ce contrôle aide aussi à détecter une mauvaise base, sans remplacer la vérification de l'adresse.
 4. **Aucun objet de la migration n'existe déjà.** S'il en existe un, c'est qu'il a été créé sans être inscrit dans l'historique : STOP.
@@ -78,6 +80,8 @@ Les droits de sécurité ne sont pas touchés. Le schéma obtenu, droits compris
 
 | # | Coller ce fichier | Résultat attendu | STOP si |
 |---|---|---|---|
+| D1 | `00a_diagnostic_copier_coller.sql` | Tableau complet à transmettre au QG. La **dernière ligne (99)** doit indiquer « OK : la procédure corrigée passera » | La ligne 99 n'est pas OK, ou erreur |
+| D2 | `00b_test_transport.sql` | **5 lignes OK** | Une ligne ECHEC, ou erreur (fichier trop gros pour l'éditeur, par exemple) |
 | A1 | `00_etat_avant_installation.sql` | **61 lignes OK**, aucune ligne ECHEC ; les lignes INFO sont à transmettre au QG | Une ligne ECHEC |
 | A2 | `supabase/checks/030_postflight.sql` | Aucune ligne ECHEC (aucune politique sur `storage.objects`) | Une ligne ECHEC |
 | A3 | `supabase/verifications/lot2_signature_preflight.sql` | **9 OK**, 0 ECHEC (déjà constaté par le QG) | Un ECHEC |
@@ -112,7 +116,7 @@ Après R5 → R1, la base revient **à l'identique** à son état d'avant l'éta
 
 ## 7. Preuves (essai local)
 
-`bash scripts/db/test-sql-editor-installation.sh` rejoue tout sur un PostgreSQL jetable : base au niveau de la production (44 versions, 3 offrandes, aucun message). Chaque fichier y est envoyé en **une seule requête**, comme le fait le SQL Editor. Résultat : **45 contrôles réussis sur 45**.
+`bash scripts/db/test-sql-editor-installation.sh` rejoue tout sur un PostgreSQL jetable : base au niveau de la production (44 versions, 3 offrandes, aucun message). Chaque fichier y est envoyé en **une seule requête**, comme le fait le SQL Editor. Résultat : **78 contrôles réussis sur 78**, transport altéré compris (§ 8).
 - **Fichiers générés :** ils sont à jour.
 - **État avant :** 61 OK.
 - **Refus sans aucune trace :**
@@ -131,6 +135,35 @@ Après R5 → R1, la base revient **à l'identique** à son état d'avant l'éta
 
 **Différence avec la vraie production :** l'essai tourne avec un compte administrateur local. Dans le SQL Editor, le rôle est `postgres`, celui-là même qu'utilise la CLI Supabase. Le fichier `00` vérifie que ce rôle peut écrire dans l'historique : c'est la ligne « droits du rôle courant ».
 
-## 8. Après l'installation
+## 8. Incident du 21/11/2026 : arrêt de l'installation 1/5
+
+**Constat.** Le fichier `01` a répondu :
+
+> STOP [20261116120000] : texte de la migration altéré au copier-coller (empreinte différente). Rien n'a été modifié.
+
+L'erreur se situe à la ligne 169 du bloc `DO`. **La protection a joué son rôle : la base n'a pas été modifiée.**
+
+**Diagnostic.**
+- **Le fichier publié est correct.** Le fichier sur GitHub est identique, octet pour octet, au fichier généré et testé. Les cinq migrations sont propres : UTF-8, fins de ligne LF uniquement, aucune tabulation, aucun espace en fin de ligne, aucun BOM, aucun caractère invisible. Elles contiennent en revanche des accents et des tirets (é, è, —, œ, «, », →).
+- **Le texte est arrivé avec le même nombre de lignes.** La ligne 169 est exactement le contrôle d'empreinte du fichier d'origine. Aucune ligne n'a donc été perdue, ajoutée ou fusionnée : l'altération s'est produite **à l'intérieur des lignes**, entre GitHub, le presse-papiers, le SQL Editor et PostgreSQL.
+- **Reproduction locale.** Cinq altérations de ce type, appliquées à l'ancien fichier `01`, produisent **exactement** ce message, à la ligne 169 :
+  - fins de ligne Windows (CRLF) ;
+  - accents décomposés (Unicode NFD) ;
+  - commentaires retirés ;
+  - indentation retirée ;
+  - espaces ajoutés en fin de ligne.
+
+  Le fichier intact, lui, s'installe normalement. La plus probable est la conversion en fins de ligne Windows (CRLF) lors d'un copier-coller sous Windows. Le fichier `00a`, collé de la même façon, **identifie la cause réelle** sur le poste de la PO, en lecture seule.
+
+**Correction.**
+- Le texte des migrations et des retours arrière voyage désormais en base64, et l'empreinte SHA-256 est vérifiée sur le texte décodé. La protection garde donc toute sa force : le texte exécuté est le fichier GitHub à l'octet près, et toute autre altération donne un STOP.
+- Les cinq migrations, les contrôles et les retours arrière sont inchangés.
+- L'essai local (§ 7) comprend désormais la section « transport altéré ». Sous chacune des cinq altérations, et sous leur cumul :
+  - le diagnostic nomme la cause ;
+  - le test de transport donne 5 OK ;
+  - l'étape 1 s'installe ;
+  - les étapes 1 à 5 cumulées donnent un schéma et des droits identiques à une application classique.
+
+## 9. Après l'installation
 
 La base est prête, mais rien n'est encore visible : Netlify publie toujours l'ancien déploiement verrouillé. La suite est décrite dans `docs/contributions-e6r-dossier-operationnel.md` § 4 (secret du formulaire, puis une seule publication). Chaque opération y exige son propre GO.

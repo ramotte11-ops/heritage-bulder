@@ -6,8 +6,13 @@ dans le SQL Editor Supabase (aucune CLI) :
 
   * UNE seule instruction DO (donc tout ou rien, quel que soit le mode d'envoi
     de l'éditeur) qui :
-      1. vérifie l'empreinte SHA-256 du texte de la migration embarqué
-         (copier-coller altéré = STOP, rien n'est modifié) ;
+      1. décode le texte de la migration, embarqué en base64 (ASCII pur :
+         insensible aux fins de ligne CRLF, aux espaces, à l'indentation, à la
+         normalisation Unicode et au retrait des commentaires « -- » que
+         peuvent appliquer le presse-papiers ou l'éditeur — cause de l'arrêt
+         M8-DB-02 1/5), puis vérifie son empreinte SHA-256 : le texte exécuté
+         est le fichier GitHub à l'octet près, sinon STOP et rien n'est
+         modifié ;
       2. vérifie la table d'historique, l'ordre (version précédente, nombre
          de lignes) et l'absence de double application ;
       3. vérifie qu'aucun objet de la migration n'existe déjà ;
@@ -23,9 +28,11 @@ deux contrôles d'état en lecture seule (avant / après).
 Usage : python3 scripts/db/build-sql-editor-installation.py [--check]
   --check : n'écrit rien, échoue si les fichiers générés ne sont pas à jour.
 """
+import base64
 import hashlib
 import pathlib
 import sys
+import textwrap
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MIG = ROOT / "supabase" / "migrations"
@@ -94,6 +101,27 @@ def source_block(tag: str, text: str) -> str:
     return f"${tag}${text}${tag}$"
 
 
+def b64_literal(text: str) -> str:
+    """Littéral SQL ASCII : base64 du texte UTF-8, par lignes de 76 caractères.
+
+    decode(..., 'base64') ignore les fins de ligne, \\r, espaces et tabulations :
+    le littéral survit à tout transport qui ne touche qu'aux blancs, et toute
+    autre altération fait échouer le décodage ou l'empreinte (STOP).
+    """
+    b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return "'\n" + "\n".join(textwrap.wrap(b64, 76)) + "\n'"
+
+
+def decode_block(version: str, what: str) -> str:
+    return (
+        "  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.\n"
+        "  begin\n"
+        "    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');\n"
+        "  exception when others then\n"
+        f"    raise exception 'STOP [{version}] : texte {what} illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';\n"
+        "  end;\n")
+
+
 def header(title: str, lines: list[str]) -> str:
     body = "\n".join(f"-- {l}" if l else "--" for l in lines)
     return (
@@ -155,10 +183,12 @@ declare
   c_count    constant integer := {before};
   c_sha256   constant text := {lit(sha(text))};
   c_txn      constant integer := {txn_lines};
-  c_source   constant text := {source_block('heritage_source', text)};
+  -- Texte exact de supabase/migrations/{fname}, encodé en base64.
+  c_payload  constant text := {b64_literal(text)};
+  c_source   text;
   v_lines    integer;
 begin
-  -- 1. Le texte collé est exactement le fichier de GitHub.
+{decode_block(version, 'de la migration')}  -- Le texte décodé est exactement le fichier de GitHub.
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
   end if;
@@ -241,10 +271,12 @@ declare
   c_count    constant integer := {after};
   c_sha256   constant text := {lit(sha(text))};
   c_txn      constant integer := {txn_lines};
-{extra_decl}  c_source   constant text := {source_block('heritage_source', text)};
+{extra_decl}  -- Texte exact de supabase/rollbacks/{fname}, encodé en base64.
+  c_payload  constant text := {b64_literal(text)};
+  c_source   text;
   v_lines    integer;
 begin
-  if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
+{decode_block(version, 'du retour arrière')}  if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte du retour arrière altéré au copier-coller. Rien n''a été modifié.', c_version;
   end if;
   select count(*) into v_lines from regexp_matches(c_source, '{TXN_LINE}', 'gn');
@@ -370,9 +402,137 @@ order by controle;
 """
 
 
+def diagnostic_file() -> str:
+    """Lecture seule : ce que le SQL Editor transmet réellement à PostgreSQL.
+
+    Embarque le fichier Lot 2 DEUX fois : en clair (comme l'ancien bloc 01, qui
+    a été altéré) et en base64 (référence). Compare ligne à ligne et nomme la
+    cause. Aucune écriture, aucune donnée de famille.
+    """
+    version, name = STEPS[0][0], STEPS[0][1]
+    fname = f"{version}_{name}.sql"
+    text = (MIG / fname).read_text(encoding="utf-8")
+    h = sha(text)
+    n_lines = len(text.split("\n"))
+    n_comments = text.count("--")
+    head = header("DIAGNOSTIC DU COPIER-COLLER (LECTURE SEULE)", [
+        "Ne modifie RIEN : une seule requête SELECT, aucune donnée de famille.",
+        f"Compare le texte de supabase/migrations/{fname} tel que le SQL Editor",
+        "le transmet (en clair) avec sa référence exacte (en base64).",
+        "Coller ce fichier EXACTEMENT comme le fichier 01 (même navigateur, même",
+        "méthode), puis « Run ». Envoyer au QG une capture du tableau complet.",
+        "",
+        "Lecture : la colonne « verdict » nomme la cause. La dernière ligne",
+        "(transport base64) doit être OK : elle prouve que la procédure corrigée",
+        "fonctionne dans cet éditeur.",
+        "",
+        *COMMON[:4]])
+    return f"""{head}
+with
+recu as (select {source_block('heritage_source', text)}::text as t),
+reference as (select convert_from(decode({b64_literal(text)}, 'base64'), 'UTF8') as t),
+lr as (select x.n, x.l from recu, regexp_split_to_table(recu.t, E'\\n') with ordinality as x(l, n)),
+la as (select x.n, x.l from reference, regexp_split_to_table(reference.t, E'\\n') with ordinality as x(l, n)),
+diff as (
+  select coalesce(a.n, r.n) as n, a.l as la, r.l as lr
+    from la a full join lr r using (n)
+   where a.l is distinct from r.l),
+pos as (
+  select d.n, d.la, d.lr,
+         (select min(i) from generate_series(1, greatest(coalesce(length(d.la), 0), coalesce(length(d.lr), 0)) + 1) as i
+           where substr(coalesce(d.la, ''), i, 1) is distinct from substr(coalesce(d.lr, ''), i, 1)) as p
+    from diff d),
+m as (
+  select r.t as recu, f.t as ref,
+         encode(sha256(convert_to(r.t, 'UTF8')), 'hex') as h_recu,
+         encode(sha256(convert_to(replace(r.t, E'\\r', ''), 'UTF8')), 'hex') as h_sans_cr,
+         encode(sha256(convert_to(normalize(replace(r.t, E'\\r', ''), NFC), 'UTF8')), 'hex') as h_nfc,
+         encode(sha256(convert_to(f.t, 'UTF8')), 'hex') as h_ref
+    from recu r, reference f)
+select ordre, controle, attendu, recu, verdict from (
+  select 1 as ordre, 'texte reçu : octets' as controle, '{len(text.encode('utf-8'))}' as attendu,
+         octet_length(convert_to(recu, 'UTF8'))::text as recu,
+         case when octet_length(convert_to(recu, 'UTF8')) = {len(text.encode('utf-8'))} then 'OK' else 'ECART' end as verdict from m
+  union all
+  select 2, 'texte reçu : lignes', '{n_lines}', (select count(*)::text from lr),
+         case when (select count(*) from lr) = {n_lines} then 'OK' else 'ECART' end from m
+  union all
+  select 3, 'texte reçu : retours chariot (\\r)', '0', (length(recu) - length(replace(recu, E'\\r', '')))::text,
+         case when position(E'\\r' in recu) = 0 then 'OK' else 'ECART : fins de ligne Windows (CRLF)' end from m
+  union all
+  select 4, 'texte reçu : commentaires (double tiret)', '{n_comments}',
+         ((length(recu) - length(replace(recu, chr(45) || chr(45), ''))) / 2)::text,
+         case when (length(recu) - length(replace(recu, chr(45) || chr(45), ''))) / 2 = {n_comments} then 'OK'
+              else 'ECART : commentaires retirés ou modifiés par l''éditeur' end from m
+  union all
+  select 5, 'texte reçu : forme Unicode NFC', 'oui', case when recu is nfc normalized then 'oui' else 'non' end,
+         case when recu is nfc normalized then 'OK' else 'ECART : accents décomposés (Unicode NFD)' end from m
+  union all
+  select 6, 'empreinte du texte reçu', '{h[:16]}…', left(h_recu, 16) || '…',
+         case when h_recu = '{h}' then 'OK : texte intact' else 'ECART' end from m
+  union all
+  select 7, 'empreinte après retrait des \\r', '{h[:16]}…', left(h_sans_cr, 16) || '…',
+         case when h_recu = '{h}' then 'sans objet'
+              when h_sans_cr = '{h}' then 'CAUSE : fins de ligne CRLF, seule altération'
+              else 'non' end from m
+  union all
+  select 8, 'empreinte après retrait des \\r et NFC', '{h[:16]}…', left(h_nfc, 16) || '…',
+         case when h_recu = '{h}' or h_sans_cr = '{h}' then 'sans objet'
+              when h_nfc = '{h}' then 'CAUSE : normalisation Unicode (et/ou CRLF)'
+              else 'non : autre altération (voir lignes 20 et suivantes)' end from m
+  union all
+  select 9, 'lignes différentes', '0', (select count(*)::text from diff),
+         case when (select count(*) from diff) = 0 then 'OK' else 'ECART' end from m
+  union all
+  select * from (
+    select 20 + row_number() over (order by p.n) as ordre,
+           'ligne ' || p.n || ', caractère ' || p.p as controle,
+           'longueur ' || coalesce(length(p.la), 0) || ', hex ' || coalesce(encode(convert_to(substr(p.la, p.p, 8), 'UTF8'), 'hex'), '-') as attendu,
+           'longueur ' || coalesce(length(p.lr), 0) || ', hex ' || coalesce(encode(convert_to(substr(p.lr, p.p, 8), 'UTF8'), 'hex'), '-') as recu,
+           'ECART' as verdict
+      from pos p order by p.n limit 5) premiers
+  union all
+  select 99, 'transport base64 (procédure corrigée)', '{h[:16]}…', left(h_ref, 16) || '…',
+         case when h_ref = '{h}' then 'OK : la procédure corrigée passera' else 'ECHEC : prévenir le QG' end from m
+) t
+order by ordre;
+"""
+
+
+def transport_file() -> str:
+    """Lecture seule : les cinq textes en base64 arrivent intacts (taille comprise)."""
+    rows = []
+    for version, name, _a, _p in STEPS:
+        text = (MIG / f"{version}_{name}.sql").read_text(encoding="utf-8")
+        rows.append(f"  ({lit(version + '_' + name)}, {lit(sha(text))},\n   {b64_literal(text)})")
+    head = header("TEST DE TRANSPORT DES CINQ MIGRATIONS (LECTURE SEULE)", [
+        "Ne modifie RIEN : une seule requête SELECT, aucune donnée de famille.",
+        "Vérifie que les cinq textes, encodés comme dans les fichiers 01 à 05,",
+        "arrivent intacts dans PostgreSQL (y compris le plus gros, E1).",
+        "Attendu : 5 lignes OK. Une ligne ECHEC ou une erreur : STOP, prévenir le QG.",
+        "",
+        *COMMON[:4]])
+    return f"""{head}
+select migration,
+       left(empreinte, 16) || '…' as empreinte_attendue,
+       verdict
+  from (
+    select migration, empreinte,
+           case when encode(sha256(decode(texte, 'base64')), 'hex') = empreinte
+                then 'OK' else 'ECHEC' end as verdict
+      from (values
+{("," + chr(10)).join(rows)}
+      ) as v(migration, empreinte, texte)
+  ) t
+ order by migration;
+"""
+
+
 def main() -> int:
     check = "--check" in sys.argv
     files = {"00_etat_avant_installation.sql": state_file(False),
+             "00a_diagnostic_copier_coller.sql": diagnostic_file(),
+             "00b_test_transport.sql": transport_file(),
              "99_etat_apres_installation.sql": state_file(True)}
     for n in range(1, 6):
         v, name = STEPS[n - 1][0], STEPS[n - 1][1]

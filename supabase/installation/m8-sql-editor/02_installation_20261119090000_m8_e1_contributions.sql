@@ -27,1436 +27,1130 @@ declare
   c_count    constant integer := 45;
   c_sha256   constant text := 'afa1578db21f52a30034fa9590eaea412f4c27719e8427c72d97d866723b2d80';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E1 : Contributions des proches (données et RPC).
---
--- Contrat : M8-P final, § 14 (GO technique E1 du QG : Q1, Q2, Q7-B).
--- Écrite et testée en local (npm run db:test) ; NON appliquée. Son
--- application sur nudqzbdfnjzlnyffllgs relève de E6, sous un GO distinct.
--- Préflight : supabase/verifications/m8_e1_preflight.sql.
--- Postflight : supabase/verifications/m8_e1_postflight.sql.
--- Retour arrière : supabase/rollbacks/20261119090000_m8_e1_contributions.down.sql.
---
--- Additive : aucune colonne, table, politique ni fonction existante n'est
--- supprimée. Deux fonctions QG 017 reçoivent une nouvelle version (Q7-B) ;
--- le retour arrière restaure leur version QG 017 à l'identique.
---
--- Écarts au § 14.3, imposés par l'existant et signalés au rapport E1 :
---  * Les politiques messages_insert_public et messages_moderate_own sont
---    CONSERVÉES (le contrat prévoyait leur suppression). Sans privilège de
---    table client sur messages (Mission 013C), elles sont inertes ; les
---    supprimer casserait des blocs historiques du harnais (Mission 002,
---    QG 008) que le GO interdit de toucher. Pour la même raison,
---    public_memorial_message_allowed_v1 garde son ACL C3 (anon,
---    authenticated) : la politique conservée l'évalue.
---  * Les RPC familiales sont service_role avec p_owner_id résolu côté
---    serveur (modèle de commit_memorial_draft_edit_v1), et non
---    authenticated avec current_owner_id() : le durcissement C3 (test C5)
---    n'autorise que trois fonctions publiques exécutables par un client.
---
--- Ordre des verrous (inchangé) : memorials, puis brouillon, média,
--- catégories ; un dépôt de visiteur ne prend jamais de verrou sur
--- memorials (seulement le verrou consultatif de l'hommage et la ligne de
--- plafond), si bien qu'aucun cycle n'est possible avec la publication.
-
-begin;
-
--- =====================================================================
--- 1. messages : extension additive
--- =====================================================================
-
-alter table public.messages
-  add column status text not null default 'pending',
-  add column caption text,
-  add column media_id uuid references public.media (id),
-  add column idempotency_key uuid,
-  add column published_at timestamptz,
-  add column moderated_at timestamptz;
-
--- Reprise des lignes historiques selon visible (E0 : table vide en
--- production ; la reprise reste correcte si des lignes existent).
-update public.messages
-   set status = case when visible then 'published' else 'pending' end,
-       published_at = case when visible then created_at end;
-
-alter table public.messages
-  add constraint messages_status_check
-  check (status in ('pending', 'published', 'hidden', 'rejected'));
-
-alter table public.messages drop constraint messages_message_type_check;
-alter table public.messages
-  add constraint messages_message_type_check
-  check (message_type in ('condolence', 'memory_message', 'testimonial', 'photo'));
-
--- Une photo n'a pas de texte : la colonne devient facultative ; la
--- contrainte historique messages_content_check (texte non vide) reste en
--- place et continue de s'appliquer à tout texte présent.
-alter table public.messages alter column content drop not null;
-
-alter table public.messages
-  add constraint messages_shape_check
-  check (
-    case when message_type = 'photo'
-      then content is null and media_id is not null
-      else content is not null and media_id is null and caption is null
-    end
-  );
-
-alter table public.messages
-  add constraint messages_visible_matches_status
-  check (visible = (status = 'published'));
-
-alter table public.messages
-  add constraint messages_published_at_required
-  check (status not in ('published', 'hidden') or published_at is not null);
-
--- Q2 : filet en points de code (10 N, jamais plus strict que le compteur
--- de caractères visibles de l'application), forme NFC, aucun \r.
--- memory_message (offre complète, hors Contributions) est inchangé.
-alter table public.messages
-  add constraint messages_author_name_q2
-  check (
-    message_type = 'memory_message'
-    or (char_length(author_name) <= 600
-        and author_name is nfc normalized
-        and strpos(author_name, chr(13)) = 0)
-  );
-
-alter table public.messages
-  add constraint messages_content_q2
-  check (
-    message_type in ('memory_message', 'photo')
-    or (content is nfc normalized
-        and strpos(content, chr(13)) = 0
-        and char_length(content) <= case message_type when 'condolence' then 5000 else 20000 end)
-  );
-
-alter table public.messages
-  add constraint messages_caption_q2
-  check (
-    caption is null
-    or (char_length(btrim(caption)) > 0
-        and char_length(caption) <= 1500
-        and caption is nfc normalized
-        and strpos(caption, chr(13)) = 0)
-  );
-
-alter table public.messages
-  add constraint messages_memorial_idempotency_key unique (memorial_id, idempotency_key);
-alter table public.messages
-  add constraint messages_media_id_key unique (media_id);
-
-create index messages_memorial_status_published_idx
-  on public.messages (memorial_id, status, published_at desc, id desc);
-create index messages_memorial_created_idx
-  on public.messages (memorial_id, message_type, created_at desc);
-
--- visible suit status. Une modération passe par status (les RPC) ; si une
--- écriture historique ne change que visible, status suit (true :
--- publiée ; false : masquée si elle l'était, sinon inchangée).
-create or replace function public.messages_align_visible_v1()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if new.status is distinct from old.status then
-    new.visible := new.status = 'published';
-  elsif new.visible is distinct from old.visible then
-    new.status := case
-                    when new.visible then 'published'
-                    when old.status = 'published' then 'hidden'
-                    else old.status
-                  end;
-  end if;
-  if new.status = 'published' and new.published_at is null then
-    new.published_at := clock_timestamp();
-  end if;
-  return new;
-end;
-$$;
-
-create trigger messages_align_visible
-  before update of status, visible on public.messages
-  for each row execute function public.messages_align_visible_v1();
-
-comment on column public.messages.status is
-  'M8-E1. pending (à examiner), published, hidden (masquée par la famille, réaffichable), rejected. visible = (status = published), contrainte messages_visible_matches_status.';
-comment on column public.messages.media_id is
-  'M8-E1. Photo d''un proche : média purpose = contribution (une photo par message). NULL pour un texte.';
-comment on column public.messages.idempotency_key is
-  'M8-E1. Clé de dépôt du navigateur, unique par hommage. NULL pour les lignes antérieures. Jamais lisible par un client.';
-comment on column public.messages.published_at is
-  'M8-E1. Première mise en ligne ; conservée par un masquage, pour qu''un réaffichage retrouve sa place (ordre P1 : published_at desc, id desc).';
-
--- =====================================================================
--- 2. media : purpose contribution
--- =====================================================================
-
-alter table public.media drop constraint media_purpose_check;
-alter table public.media
-  add constraint media_purpose_check check (purpose in ('hero', 'gallery', 'contribution'));
-
-comment on column public.media.purpose is
-  'What this media is for: hero, gallery or contribution (photo d''un proche, M8-E1). Mirrors MEDIA_PURPOSES in config/media.ts. A label only — it never changes how the object is stored, pathed, authorized or validated (Mission 030).';
-
--- =====================================================================
--- 3. Plafonds R2 et R3
--- =====================================================================
-
-create table public.contribution_settings (
-  id boolean primary key default true check (id),
-  condolences_per_hour integer not null check (condolences_per_hour > 0),
-  condolences_per_day integer not null check (condolences_per_day > 0),
-  stories_per_hour integer not null check (stories_per_hour > 0),
-  stories_per_day integer not null check (stories_per_day > 0),
-  photo_reservations_per_hour integer not null check (photo_reservations_per_hour > 0),
-  photo_reservations_per_day integer not null check (photo_reservations_per_day > 0),
-  max_pending_photos integer not null check (max_pending_photos > 0),
-  duplicate_window interval not null check (duplicate_window > interval '0'),
-  photo_reservation_window interval not null check (photo_reservation_window > interval '0'),
-  max_photo_bytes bigint not null check (max_photo_bytes > 0),
-  updated_at timestamptz not null default now(),
-  constraint contribution_settings_hour_within_day check (
-    condolences_per_hour <= condolences_per_day
-    and stories_per_hour <= stories_per_day
-    and photo_reservations_per_hour <= photo_reservations_per_day)
-);
-
-insert into public.contribution_settings (
-  condolences_per_hour, condolences_per_day, stories_per_hour, stories_per_day,
-  photo_reservations_per_hour, photo_reservations_per_day, max_pending_photos,
-  duplicate_window, photo_reservation_window, max_photo_bytes)
-values (120, 1000, 60, 400, 30, 200, 200, interval '10 minutes', interval '1 hour', 15728640);
-
--- Réglage par hommage (R2) : NULL = valeur générale. Modifiable seulement
--- par SQL revu ou un outil QG ; aucune RPC ne l'écrit.
-create table public.contribution_limits_override (
-  memorial_id uuid primary key references public.memorials (id) on delete cascade,
-  condolences_per_hour integer check (condolences_per_hour > 0),
-  condolences_per_day integer check (condolences_per_day > 0),
-  stories_per_hour integer check (stories_per_hour > 0),
-  stories_per_day integer check (stories_per_day > 0),
-  photo_reservations_per_hour integer check (photo_reservations_per_hour > 0),
-  photo_reservations_per_day integer check (photo_reservations_per_day > 0),
-  max_pending_photos integer check (max_pending_photos > 0),
-  reason text,
-  updated_at timestamptz not null default now()
-);
-
--- Fenêtres fixes par hommage et par type (R1 : jamais par source).
-create table public.contribution_rate_limits (
-  memorial_id uuid not null references public.memorials (id) on delete cascade,
-  kind text not null check (kind in ('condolence', 'story', 'photo')),
-  hour_window_started_at timestamptz not null,
-  hour_count integer not null default 0 check (hour_count >= 0),
-  day_window_started_at timestamptz not null,
-  day_count integer not null default 0 check (day_count >= 0),
-  updated_at timestamptz not null default now(),
-  primary key (memorial_id, kind)
-);
-
-alter table public.contribution_settings enable row level security;
-alter table public.contribution_limits_override enable row level security;
-alter table public.contribution_rate_limits enable row level security;
-
-comment on table public.contribution_settings is
-  'M8-E1, R2/R3. Valeurs générales des plafonds techniques des Contributions (une ligne). Aucun privilège client.';
-comment on table public.contribution_limits_override is
-  'M8-E1, R2. Réglage par hommage (NULL = valeur générale). Écrit seulement par SQL revu ou outil QG.';
-comment on table public.contribution_rate_limits is
-  'M8-E1, R2. Compteurs à fenêtres fixes (heure, jour) par hommage et par type. Un refus n''est jamais compté.';
-
--- =====================================================================
--- 4. Catégories en vigueur (O9, Q1)
--- =====================================================================
-
-create table public.memorial_contribution_categories (
-  memorial_id uuid primary key references public.memorials (id) on delete cascade,
-  condolences boolean not null,
-  stories boolean not null,
-  photos boolean not null,
-  updated_at timestamptz not null default now(),
-  -- NULL : posé par une publication ; sinon le propriétaire qui l'a changé.
-  updated_by uuid references public.owners (id)
-);
-
-alter table public.memorial_contribution_categories enable row level security;
-
-comment on table public.memorial_contribution_categories is
-  'M8-E1, O9/Q1. Réglage EN VIGUEUR des trois catégories, lu par les dépôts et la lecture publique. Initialisé par la publication (déclencheur), changé immédiatement par set_contribution_categories_v1 ; la copie publiée n''est jamais réécrite. Sans ligne : les choix de la copie publiée.';
-
--- Lecture défensive de content.contributions.features, miroir exact de
--- inspectContributionsSettings (lib/memorial/contributions/contributions-settings.ts) :
--- absent = tout fermé ; mal formé = NULL (aucune écriture, tout fermé).
-create or replace function public.contribution_features_v1(p_content jsonb)
-returns jsonb
-language plpgsql
-immutable
-security definer
-set search_path = ''
-as $$
-declare
-  v_raw jsonb;
-  v_features jsonb;
-  v_out jsonb := '{"condolences": false, "stories": false, "photos": false}'::jsonb;
-  v_key text;
-begin
-  if p_content is null or jsonb_typeof(p_content) <> 'object' then
-    return null;
-  end if;
-  if not (p_content ? 'contributions') then
-    return v_out;
-  end if;
-  v_raw := p_content -> 'contributions';
-  if jsonb_typeof(v_raw) <> 'object' then
-    return null;
-  end if;
-  v_features := v_raw -> 'features';
-  if v_features is null or jsonb_typeof(v_features) <> 'object' then
-    return null;
-  end if;
-  foreach v_key in array array['condolences', 'stories', 'photos'] loop
-    if v_features ? v_key then
-      if jsonb_typeof(v_features -> v_key) <> 'boolean' then
-        return null;
-      end if;
-      v_out := jsonb_set(v_out, array[v_key], v_features -> v_key);
-    end if;
-  end loop;
-  return v_out;
-end;
-$$;
-
-create or replace function public.sync_contribution_categories_on_publication_v1()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_new jsonb := public.contribution_features_v1(new.content);
-begin
-  if v_new is null then
-    return null;
-  end if;
-  if tg_op = 'INSERT' then
-    insert into public.memorial_contribution_categories (memorial_id, condolences, stories, photos)
-    values (new.memorial_id, (v_new ->> 'condolences')::boolean, (v_new ->> 'stories')::boolean, (v_new ->> 'photos')::boolean)
-    on conflict (memorial_id) do nothing;
-  elsif v_new is distinct from public.contribution_features_v1(old.content) then
-    -- Republication explicite de nouveaux choix : elle l'emporte. Sinon
-    -- rien ne change, et un réglage immédiat O9 est préservé.
-    insert into public.memorial_contribution_categories (memorial_id, condolences, stories, photos)
-    values (new.memorial_id, (v_new ->> 'condolences')::boolean, (v_new ->> 'stories')::boolean, (v_new ->> 'photos')::boolean)
-    on conflict (memorial_id) do update
-      set condolences = excluded.condolences,
-          stories = excluded.stories,
-          photos = excluded.photos,
-          updated_at = now(),
-          updated_by = null;
-  end if;
-  return null;
-end;
-$$;
-
-create trigger memorial_published_snapshots_sync_contribution_categories
-  after insert or update of content on public.memorial_published_snapshots
-  for each row execute function public.sync_contribution_categories_on_publication_v1();
-
--- Hommage publié et public, copie publiée présente, rubrique non masquée.
-create or replace function public.contributions_rubric_public_v1(p_memorial_id uuid, p_now timestamptz)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select coalesce((
-    select public.memorial_publicly_visible_v1(s.memorial_id, p_now)
-           and not coalesce(jsonb_typeof(s.content #> '{presentation,hiddenSections}') = 'array'
-                            and (s.content #> '{presentation,hiddenSections}') ? 'testimonials', false)
-      from public.memorial_published_snapshots s
-     where s.memorial_id = p_memorial_id
-  ), false);
-$$;
-
--- Réglage en vigueur : la ligne O9, sinon les choix de la copie publiée,
--- sinon tout fermé.
-create or replace function public.contribution_categories_in_effect_v1(p_memorial_id uuid)
-returns jsonb
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select coalesce(
-    (select jsonb_build_object('condolences', c.condolences, 'stories', c.stories, 'photos', c.photos)
-       from public.memorial_contribution_categories c
-      where c.memorial_id = p_memorial_id),
-    (select public.contribution_features_v1(s.content)
-       from public.memorial_published_snapshots s
-      where s.memorial_id = p_memorial_id),
-    '{"condolences": false, "stories": false, "photos": false}'::jsonb);
-$$;
-
--- =====================================================================
--- 5. Q7-B : les photos des proches hors du budget gratuit de 300 Mo
--- =====================================================================
--- Seule différence avec la version QG 017 : purpose = 'contribution' est
--- ignoré. La règle reste entière pour les médias de la famille.
-
-create or replace function public.owner_free_storage_bytes_v1(p_owner_id uuid)
-returns bigint
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select coalesce(sum(md.size_bytes), 0)::bigint
-    from public.media md
-    join public.memorials m on m.id = md.memorial_id
-   where m.owner_id = p_owner_id
-     and m.access_level = 'avis'
-     and md.status = 'ready'
-     and md.purpose <> 'contribution';
-$$;
-
-create or replace function public.guard_free_storage_budget_v1()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_owner uuid;
-  v_level text;
-  v_budget bigint;
-  v_used bigint;
-begin
-  if new.purpose = 'contribution' then
-    return new;
-  end if;
-  if tg_op = 'UPDATE' and not (old.status = 'pending' and new.status = 'ready') then
-    return new;
-  end if;
-  select m.owner_id, m.access_level into v_owner, v_level
-    from public.memorials m where m.id = new.memorial_id;
-  if v_level is distinct from 'avis' or v_owner is null then
-    return new;
-  end if;
-  select s.free_storage_bytes_per_owner into v_budget
-    from public.memorial_access_settings s where s.id;
-  if v_budget is null then
-    return new;
-  end if;
-  -- Sérialise les finalisations d'un même compte (verrou dédié : aucun
-  -- autre verrou n'est pris dans un ordre différent).
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('heritage-owner-storage:' || v_owner::text, 0));
-  v_used := public.owner_free_storage_bytes_v1(v_owner);
-  if tg_op = 'INSERT' then
-    -- Pré-contrôle à la réservation : budget déjà épuisé, inutile d'envoyer.
-    if v_used >= v_budget then
-      raise exception 'free storage budget reached' using errcode = 'HD507';
-    end if;
-  elsif v_used + coalesce(new.size_bytes, 0) > v_budget then
-    raise exception 'free storage budget reached' using errcode = 'HD507';
-  end if;
-  return new;
-end;
-$$;
-
--- =====================================================================
--- 6. Offre gratuite (D1) : la copie « avis » peut porter contributions
--- =====================================================================
-
-update public.memorial_access_settings
-   set avis_snapshot_keys = array_append(avis_snapshot_keys, 'contributions'),
-       updated_at = now()
- where id
-   and not ('contributions' = any (avis_snapshot_keys));
-
--- =====================================================================
--- 7. Autorisation de dépôt v2
--- =====================================================================
--- Hommage public, rubrique non masquée, catégorie en vigueur ; les trois
--- types des Contributions dans les deux offres ; memory_message garde la
--- règle QG 008 (offre complète, rubrique activée). La v1 est conservée
--- (politique historique), sans changement.
-
-create or replace function public.public_memorial_message_allowed_v2(p_memorial_id uuid, p_message_type text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select coalesce((
-    select case p_message_type
-             when 'memory_message' then
-               public.memorial_publicly_visible_v1(m.id, now())
-               and m.access_level = 'complet'
-               and 'memoryMessage' = any (m.enabled_sections)
-             when 'condolence' then
-               public.contributions_rubric_public_v1(m.id, now())
-               and (public.contribution_categories_in_effect_v1(m.id) ->> 'condolences')::boolean
-             when 'testimonial' then
-               public.contributions_rubric_public_v1(m.id, now())
-               and (public.contribution_categories_in_effect_v1(m.id) ->> 'stories')::boolean
-             when 'photo' then
-               public.contributions_rubric_public_v1(m.id, now())
-               and (public.contribution_categories_in_effect_v1(m.id) ->> 'photos')::boolean
-             else false
-           end
-      from public.memorials m
-     where m.id = p_memorial_id
-  ), false);
-$$;
-
--- =====================================================================
--- 8. Dépôts des visiteurs (service_role)
--- =====================================================================
-
--- Texte conforme au filet Q2 (le serveur applicatif a déjà normalisé et
--- compté les caractères visibles).
-create or replace function public.contribution_text_valid_v1(p_text text, p_max_code_points integer)
-returns boolean
-language sql
-immutable
-security definer
-set search_path = ''
-as $$
-  select p_text is not null
-         and char_length(btrim(p_text)) > 0
-         and char_length(p_text) <= p_max_code_points
-         and p_text is nfc normalized
-         and strpos(p_text, chr(13)) = 0;
-$$;
-
--- Plafonds applicables à un hommage pour un type (réglage par hommage,
--- sinon valeur générale).
-create or replace function public.contribution_limits_v1(p_memorial_id uuid, p_kind text)
-returns table (per_hour integer, per_day integer, max_pending_photos integer)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select case p_kind
-           when 'condolence' then coalesce(o.condolences_per_hour, s.condolences_per_hour)
-           when 'story' then coalesce(o.stories_per_hour, s.stories_per_hour)
-           when 'photo' then coalesce(o.photo_reservations_per_hour, s.photo_reservations_per_hour)
-         end,
-         case p_kind
-           when 'condolence' then coalesce(o.condolences_per_day, s.condolences_per_day)
-           when 'story' then coalesce(o.stories_per_day, s.stories_per_day)
-           when 'photo' then coalesce(o.photo_reservations_per_day, s.photo_reservations_per_day)
-         end,
-         coalesce(o.max_pending_photos, s.max_pending_photos)
-    from public.contribution_settings s
-    left join public.contribution_limits_override o on o.memorial_id = p_memorial_id
-   where s.id;
-$$;
-
--- R2 : verrouille la ligne (hommage, type), remet les fenêtres échues à
--- zéro et dit si un dépôt de plus est permis. Ne compte rien.
-create or replace function public.contribution_rate_open_v1(p_memorial_id uuid, p_kind text, p_now timestamptz)
-returns boolean
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_row public.contribution_rate_limits%rowtype;
-  v_per_hour integer;
-  v_per_day integer;
-begin
-  select l.per_hour, l.per_day into v_per_hour, v_per_day
-    from public.contribution_limits_v1(p_memorial_id, p_kind) l;
-  if v_per_hour is null or v_per_day is null then
-    return false;
-  end if;
-  insert into public.contribution_rate_limits (memorial_id, kind, hour_window_started_at, day_window_started_at)
-  values (p_memorial_id, p_kind, p_now, p_now)
-  on conflict (memorial_id, kind) do nothing;
-  select * into v_row from public.contribution_rate_limits
-   where memorial_id = p_memorial_id and kind = p_kind
-   for update;
-  if v_row.hour_window_started_at <= p_now - interval '1 hour' then
-    v_row.hour_window_started_at := p_now;
-    v_row.hour_count := 0;
-  end if;
-  if v_row.day_window_started_at <= p_now - interval '1 day' then
-    v_row.day_window_started_at := p_now;
-    v_row.day_count := 0;
-  end if;
-  update public.contribution_rate_limits
-     set hour_window_started_at = v_row.hour_window_started_at,
-         hour_count = v_row.hour_count,
-         day_window_started_at = v_row.day_window_started_at,
-         day_count = v_row.day_count,
-         updated_at = p_now
-   where memorial_id = p_memorial_id and kind = p_kind;
-  return v_row.hour_count < v_per_hour and v_row.day_count < v_per_day;
-end;
-$$;
-
-create or replace function public.contribution_rate_count_v1(p_memorial_id uuid, p_kind text)
-returns void
-language sql
-security definer
-set search_path = ''
-as $$
-  update public.contribution_rate_limits
-     set hour_count = hour_count + 1,
-         day_count = day_count + 1
-   where memorial_id = p_memorial_id and kind = p_kind;
-$$;
-
--- R3 : photos en attente d'examen + réservations encore actives (ni
--- finalisées, ni réclamées pour nettoyage, plus récentes que la fenêtre).
-create or replace function public.contribution_pending_photos_v1(p_memorial_id uuid, p_now timestamptz)
-returns integer
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select (
-    (select count(*) from public.messages msg
-      where msg.memorial_id = p_memorial_id
-        and msg.message_type = 'photo'
-        and msg.status = 'pending')
-    +
-    (select count(*) from public.media md
-      where md.memorial_id = p_memorial_id
-        and md.purpose = 'contribution'
-        and md.status = 'pending'
-        and md.created_at > p_now - (select s.photo_reservation_window from public.contribution_settings s where s.id)
-        and not exists (select 1 from public.messages msg where msg.media_id = md.id)
-        and not exists (select 1 from public.pending_media_cleanup_claims c
-                         where c.media_id = md.id and c.completed_at is null))
-  )::integer;
-$$;
-
--- Dépôt d'un texte : condoléance (publiée tout de suite, D2) ou récit
--- (en attente d'approbation). Contrôles dans l'ordre du contrat § 2.
--- Résultats : published, pending, duplicate (avec l'état de la première),
--- rate_limited, refused. Une demande mal formée lève 22023.
-create or replace function public.submit_contribution_v1(
-  p_slug text,
-  p_message_type text,
-  p_author_name text,
-  p_content text,
-  p_idempotency_key uuid
-)
-returns table (outcome text, contribution_id uuid, contribution_status text)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_now timestamptz := clock_timestamp();
-  v_memorial_id uuid;
-  v_kind text;
-  v_existing public.messages%rowtype;
-  v_window interval;
-  v_status text;
-  v_id uuid;
-begin
-  if nullif(btrim(p_slug), '') is null
-     or p_message_type is null
-     or p_message_type not in ('condolence', 'testimonial')
-     or p_idempotency_key is null then
-    raise exception 'invalid contribution request' using errcode = '22023';
-  end if;
-
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null
-     or not public.public_memorial_message_allowed_v2(v_memorial_id, p_message_type) then
-    return query select 'refused'::text, null::uuid, null::text;
-    return;
-  end if;
-
-  if not public.contribution_text_valid_v1(p_author_name, 600)
-     or not public.contribution_text_valid_v1(p_content, case p_message_type when 'condolence' then 5000 else 20000 end) then
-    raise exception 'invalid contribution request' using errcode = '22023';
-  end if;
-
-  -- Un dépôt à la fois par hommage, jusqu'à la fin de la transaction.
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('heritage-contributions:' || v_memorial_id::text, 0));
-
-  select * into v_existing from public.messages
-   where memorial_id = v_memorial_id and idempotency_key = p_idempotency_key;
-  if found then
-    return query select 'duplicate'::text, v_existing.id, v_existing.status;
-    return;
-  end if;
-
-  select s.duplicate_window into v_window from public.contribution_settings s where s.id;
-  select * into v_existing from public.messages
-   where memorial_id = v_memorial_id
-     and message_type = p_message_type
-     and author_name = p_author_name
-     and content = p_content
-     and created_at > v_now - v_window
-   order by created_at desc
-   limit 1;
-  if found then
-    return query select 'duplicate'::text, v_existing.id, v_existing.status;
-    return;
-  end if;
-
-  v_kind := case p_message_type when 'condolence' then 'condolence' else 'story' end;
-  if not public.contribution_rate_open_v1(v_memorial_id, v_kind, v_now) then
-    return query select 'rate_limited'::text, null::uuid, null::text;
-    return;
-  end if;
-  perform public.contribution_rate_count_v1(v_memorial_id, v_kind);
-
-  v_status := case p_message_type when 'condolence' then 'published' else 'pending' end;
-  insert into public.messages
-    (memorial_id, message_type, author_name, content, status, visible, published_at, idempotency_key, created_at)
-  values
-    (v_memorial_id, p_message_type, p_author_name, p_content, v_status, v_status = 'published',
-     case when v_status = 'published' then v_now end, p_idempotency_key, v_now)
-  returning id into v_id;
-
-  return query select v_status, v_id, v_status;
-end;
-$$;
-
--- Réservation d'une photo : R2 (réservations) et R3 (en attente), puis
--- un média contribution pending sous <memorial_id>/<media_id>/original.*.
--- Résultats : reserved (avec memorial_id), rate_limited, pending_full,
--- refused. Rejouer la même réservation renvoie reserved, sans doublon.
-create or replace function public.reserve_contribution_photo_v1(
-  p_slug text,
-  p_media_id uuid,
-  p_storage_path text,
-  p_declared_mime_type text
-)
-returns table (outcome text, memorial_id uuid)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_now timestamptz := clock_timestamp();
-  v_memorial public.memorials%rowtype;
-  v_media public.media%rowtype;
-  v_max_pending integer;
-begin
-  if nullif(btrim(p_slug), '') is null
-     or p_media_id is null
-     or p_declared_mime_type is null
-     or p_declared_mime_type not in ('image/jpeg', 'image/png', 'image/webp') then
-    raise exception 'invalid contribution photo reservation' using errcode = '22023';
-  end if;
-
-  select * into v_memorial from public.memorials m where m.slug = p_slug;
-  if v_memorial.id is null
-     or not public.public_memorial_message_allowed_v2(v_memorial.id, 'photo') then
-    return query select 'refused'::text, null::uuid;
-    return;
-  end if;
-  if p_storage_path is null
-     or p_storage_path not like v_memorial.id::text || '/' || p_media_id::text || '/original.%' then
-    raise exception 'invalid contribution photo reservation' using errcode = '22023';
-  end if;
-
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('heritage-contributions:' || v_memorial.id::text, 0));
-
-  select * into v_media from public.media where id = p_media_id;
-  if found then
-    if v_media.memorial_id = v_memorial.id and v_media.purpose = 'contribution'
-       and v_media.status = 'pending' and v_media.storage_path = p_storage_path
-       and not exists (select 1 from public.pending_media_cleanup_claims c
-                        where c.media_id = p_media_id and c.completed_at is null) then
-      return query select 'reserved'::text, v_memorial.id;
-      return;
-    end if;
-    return query select 'refused'::text, null::uuid;
-    return;
-  end if;
-
-  if not public.contribution_rate_open_v1(v_memorial.id, 'photo', v_now) then
-    return query select 'rate_limited'::text, null::uuid;
-    return;
-  end if;
-  select l.max_pending_photos into v_max_pending from public.contribution_limits_v1(v_memorial.id, 'photo') l;
-  if v_max_pending is null or public.contribution_pending_photos_v1(v_memorial.id, v_now) >= v_max_pending then
-    return query select 'pending_full'::text, null::uuid;
-    return;
-  end if;
-  perform public.contribution_rate_count_v1(v_memorial.id, 'photo');
-
-  insert into public.media
-    (id, memorial_id, owner_id, storage_path, media_type, purpose, status, mime_type, created_at)
-  values
-    (p_media_id, v_memorial.id, v_memorial.owner_id, p_storage_path, 'photo', 'contribution', 'pending',
-     p_declared_mime_type, v_now);
-
-  return query select 'reserved'::text, v_memorial.id;
-end;
-$$;
-
--- Finalisation : le serveur applicatif a mesuré (et, en E2, ré-encodé,
--- O5) le fichier ; le média passe à ready et le message photo est créé
--- en attente d'approbation (D2). Résultats : pending, duplicate, refused.
-create or replace function public.finalize_contribution_photo_v1(
-  p_slug text,
-  p_media_id uuid,
-  p_author_name text,
-  p_caption text,
-  p_idempotency_key uuid,
-  p_mime_type text,
-  p_size_bytes bigint,
-  p_width integer,
-  p_height integer
-)
-returns table (outcome text, contribution_id uuid, contribution_status text)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_now timestamptz := clock_timestamp();
-  v_memorial_id uuid;
-  v_media public.media%rowtype;
-  v_existing public.messages%rowtype;
-  v_caption text := case when p_caption is null or btrim(p_caption) = '' then null else p_caption end;
-  v_max_bytes bigint;
-  v_id uuid;
-begin
-  if nullif(btrim(p_slug), '') is null
-     or p_media_id is null
-     or p_idempotency_key is null
-     or p_mime_type is null
-     or p_mime_type not in ('image/jpeg', 'image/png', 'image/webp')
-     or p_size_bytes is null or p_size_bytes <= 0
-     or p_width is null or p_width <= 0
-     or p_height is null or p_height <= 0 then
-    raise exception 'invalid contribution photo finalization' using errcode = '22023';
-  end if;
-
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null
-     or not public.public_memorial_message_allowed_v2(v_memorial_id, 'photo') then
-    return query select 'refused'::text, null::uuid, null::text;
-    return;
-  end if;
-
-  if not public.contribution_text_valid_v1(p_author_name, 600)
-     or (v_caption is not null and not public.contribution_text_valid_v1(v_caption, 1500)) then
-    raise exception 'invalid contribution photo finalization' using errcode = '22023';
-  end if;
-  select s.max_photo_bytes into v_max_bytes from public.contribution_settings s where s.id;
-  if p_size_bytes > v_max_bytes then
-    raise exception 'invalid contribution photo finalization' using errcode = '22023';
-  end if;
-
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('heritage-contributions:' || v_memorial_id::text, 0));
-
-  select * into v_existing from public.messages
-   where memorial_id = v_memorial_id
-     and (idempotency_key = p_idempotency_key or media_id = p_media_id)
-   limit 1;
-  if found then
-    return query select 'duplicate'::text, v_existing.id, v_existing.status;
-    return;
-  end if;
-
-  select * into v_media from public.media
-   where id = p_media_id and memorial_id = v_memorial_id
-   for update;
-  if not found or v_media.purpose <> 'contribution' or v_media.status <> 'pending'
-     or exists (select 1 from public.pending_media_cleanup_claims c
-                 where c.media_id = p_media_id and c.completed_at is null) then
-    return query select 'refused'::text, null::uuid, null::text;
-    return;
-  end if;
-
-  update public.media
-     set status = 'ready', mime_type = p_mime_type, size_bytes = p_size_bytes,
-         width = p_width, height = p_height
-   where id = p_media_id;
-
-  insert into public.messages
-    (memorial_id, message_type, author_name, content, caption, media_id, status, visible, idempotency_key, created_at)
-  values
-    (v_memorial_id, 'photo', p_author_name, null, v_caption, p_media_id, 'pending', false, p_idempotency_key, v_now)
-  returning id into v_id;
-
-  return query select 'pending'::text, v_id, 'pending'::text;
-end;
-$$;
-
--- Lecture publique : contributions publiées des catégories EN VIGUEUR
--- d'un hommage public dont la rubrique n'est pas masquée ; ordre P1
--- (published_at desc, id desc) ; curseur (p_before_published_at,
--- p_before_id) exclusif ; photos ready seulement. Jamais idempotency_key.
-create or replace function public.read_public_contributions_v1(
-  p_slug text,
-  p_limit integer default 24,
-  p_before_published_at timestamptz default null,
-  p_before_id uuid default null
-)
-returns table (
-  contribution_id uuid,
-  message_type text,
-  author_name text,
-  content text,
-  caption text,
-  published_at timestamptz,
-  media jsonb
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  v_memorial_id uuid;
-  v_categories jsonb;
-  v_limit integer := least(greatest(coalesce(p_limit, 24), 1), 100);
-begin
-  if p_slug is null
-     or ((p_before_published_at is null) <> (p_before_id is null)) then
-    return;
-  end if;
-  select m.id into v_memorial_id from public.memorials m where m.slug = p_slug;
-  if v_memorial_id is null or not public.contributions_rubric_public_v1(v_memorial_id, now()) then
-    return;
-  end if;
-  v_categories := public.contribution_categories_in_effect_v1(v_memorial_id);
-
-  return query
-    select msg.id, msg.message_type, msg.author_name, msg.content, msg.caption, msg.published_at,
-           case when msg.message_type = 'photo' then
-             jsonb_build_object('media_id', md.id, 'storage_path', md.storage_path,
-                                'width', md.width, 'height', md.height)
-           end
-      from public.messages msg
-      left join public.media md
-        on md.id = msg.media_id and md.memorial_id = msg.memorial_id
-     where msg.memorial_id = v_memorial_id
-       and msg.status = 'published'
-       and ((msg.message_type = 'condolence' and (v_categories ->> 'condolences')::boolean)
-         or (msg.message_type = 'testimonial' and (v_categories ->> 'stories')::boolean)
-         or (msg.message_type = 'photo' and (v_categories ->> 'photos')::boolean
-             and md.status = 'ready' and md.purpose = 'contribution'))
-       and (p_before_published_at is null
-            or (msg.published_at, msg.id) < (p_before_published_at, p_before_id))
-     order by msg.published_at desc, msg.id desc
-     limit v_limit;
-end;
-$$;
-
--- =====================================================================
--- 9. Actions de la famille (service_role, p_owner_id résolu côté serveur)
--- =====================================================================
-
--- approve : pending → published ; reject : pending → rejected ;
--- hide : published → hidden ; unhide : hidden → published.
--- Jamais de réécriture du nom ni du texte. Résultats : updated,
--- unchanged (déjà dans l'état visé), invalid_transition, refused.
-create or replace function public.moderate_contribution_v1(p_owner_id uuid, p_contribution_id uuid, p_action text)
-returns table (outcome text, contribution_status text)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_memorial_id uuid;
-  v_memorial public.memorials%rowtype;
-  v_message public.messages%rowtype;
-  v_from text;
-  v_to text;
-begin
-  if p_owner_id is null or p_contribution_id is null
-     or p_action is null or p_action not in ('approve', 'reject', 'hide', 'unhide') then
-    raise exception 'invalid contribution moderation' using errcode = '22023';
-  end if;
-  select msg.memorial_id into v_memorial_id from public.messages msg where msg.id = p_contribution_id;
-  if v_memorial_id is null then
-    return query select 'refused'::text, null::text;
-    return;
-  end if;
-  select * into v_memorial from public.memorials where id = v_memorial_id for update;
-  if not found or v_memorial.owner_id is distinct from p_owner_id then
-    return query select 'refused'::text, null::text;
-    return;
-  end if;
-  select * into v_message from public.messages
-   where id = p_contribution_id and memorial_id = v_memorial_id for update;
-  if not found then
-    return query select 'refused'::text, null::text;
-    return;
-  end if;
-
-  v_from := case p_action when 'approve' then 'pending' when 'reject' then 'pending'
-                          when 'hide' then 'published' else 'hidden' end;
-  v_to := case p_action when 'approve' then 'published' when 'reject' then 'rejected'
-                        when 'hide' then 'hidden' else 'published' end;
-  if v_message.status = v_to then
-    return query select 'unchanged'::text, v_message.status;
-    return;
-  end if;
-  if v_message.status <> v_from then
-    return query select 'invalid_transition'::text, v_message.status;
-    return;
-  end if;
-
-  update public.messages
-     set status = v_to,
-         visible = v_to = 'published',
-         published_at = case when v_to = 'published' then coalesce(published_at, clock_timestamp()) else published_at end,
-         moderated_at = clock_timestamp()
-   where id = p_contribution_id;
-  return query select 'updated'::text, v_to;
-end;
-$$;
-
--- Suppression définitive d'une contribution. Pour une photo, le média
--- repasse pending et une réclamation de nettoyage est posée (circuit
--- existant) : le serveur supprime l'objet puis appelle
--- finish_pending_media_cleanup_v1(memorial_id, owner_id, cleanup_claim_id).
--- Résultats : removed (avec la réclamation éventuelle), refused.
-create or replace function public.remove_contribution_v1(p_owner_id uuid, p_contribution_id uuid)
-returns table (outcome text, memorial_id uuid, cleanup_claim_id uuid, storage_path text)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-#variable_conflict use_column
-declare
-  v_memorial_id uuid;
-  v_memorial public.memorials%rowtype;
-  v_message public.messages%rowtype;
-  v_media public.media%rowtype;
-  v_claim uuid;
-begin
-  if p_owner_id is null or p_contribution_id is null then
-    raise exception 'invalid contribution removal' using errcode = '22023';
-  end if;
-  select msg.memorial_id into v_memorial_id from public.messages msg where msg.id = p_contribution_id;
-  if v_memorial_id is null then
-    return query select 'refused'::text, null::uuid, null::uuid, null::text;
-    return;
-  end if;
-  select * into v_memorial from public.memorials where id = v_memorial_id for update;
-  if not found or v_memorial.owner_id is distinct from p_owner_id then
-    return query select 'refused'::text, null::uuid, null::uuid, null::text;
-    return;
-  end if;
-  select * into v_message from public.messages
-   where id = p_contribution_id and memorial_id = v_memorial_id for update;
-  if not found then
-    return query select 'refused'::text, null::uuid, null::uuid, null::text;
-    return;
-  end if;
-  if v_message.media_id is not null then
-    select * into v_media from public.media
-     where id = v_message.media_id and memorial_id = v_memorial_id for update;
-  end if;
-
-  delete from public.messages where id = p_contribution_id;
-
-  if v_media.id is not null then
-    update public.media set status = 'pending' where id = v_media.id;
-    select c.id into v_claim from public.pending_media_cleanup_claims c
-     where c.media_id = v_media.id and c.completed_at is null;
-    if v_claim is null then
-      insert into public.pending_media_cleanup_claims (memorial_id, media_id, owner_id)
-      values (v_memorial_id, v_media.id, v_memorial.owner_id)
-      returning id into v_claim;
-    end if;
-  end if;
-
-  return query select 'removed'::text, v_memorial_id, v_claim, v_media.storage_path;
-end;
-$$;
-
--- Compteur du Tableau de bord (O12) : contributions à examiner, par
--- hommage du propriétaire (tous, ou un seul).
-create or replace function public.count_pending_contributions_v1(p_owner_id uuid, p_memorial_id uuid default null)
-returns table (memorial_id uuid, pending_stories integer, pending_photos integer, pending_total integer)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select m.id,
-         count(msg.id) filter (where msg.message_type = 'testimonial')::integer,
-         count(msg.id) filter (where msg.message_type = 'photo')::integer,
-         count(msg.id)::integer
-    from public.memorials m
-    left join public.messages msg on msg.memorial_id = m.id and msg.status = 'pending'
-   where p_owner_id is not null
-     and m.owner_id = p_owner_id
-     and (p_memorial_id is null or m.id = p_memorial_id)
-   group by m.id
-   order by m.id;
-$$;
-
--- O9 : changement immédiat des catégories, et brouillon aligné
--- (content.contributions.features, révision + 1, mêmes clés préservées
--- que writeContributionsSettings). La copie publiée n'est pas touchée.
--- p_expected_revision NULL : pas de contrôle (Tableau de bord) ; sinon
--- stale_revision en cas d'écart (Builder ouvert ailleurs).
--- Résultats : updated, unchanged, stale_revision, refused.
-create or replace function public.set_contribution_categories_v1(
-  p_owner_id uuid,
-  p_memorial_id uuid,
-  p_condolences boolean,
-  p_stories boolean,
-  p_photos boolean,
-  p_expected_revision bigint default null
-)
-returns table (outcome text, draft_revision bigint)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_memorial public.memorials%rowtype;
-  v_draft public.memorial_drafts%rowtype;
-  v_raw jsonb;
-  v_previous jsonb;
-  v_features jsonb;
-  v_next_features jsonb;
-  v_next_content jsonb;
-  v_category public.memorial_contribution_categories%rowtype;
-  v_category_changed boolean;
-  v_draft_changed boolean;
-begin
-  if p_owner_id is null or p_memorial_id is null
-     or p_condolences is null or p_stories is null or p_photos is null then
-    raise exception 'invalid contribution categories request' using errcode = '22023';
-  end if;
-  select * into v_memorial from public.memorials where id = p_memorial_id for update;
-  if not found or v_memorial.owner_id is distinct from p_owner_id or v_memorial.status = 'archived' then
-    return query select 'refused'::text, null::bigint;
-    return;
-  end if;
-  select * into v_draft from public.memorial_drafts where memorial_id = p_memorial_id for update;
-  if not found then
-    return query select 'refused'::text, null::bigint;
-    return;
-  end if;
-  if p_expected_revision is not null and v_draft.revision <> p_expected_revision then
-    return query select 'stale_revision'::text, v_draft.revision;
-    return;
-  end if;
-
-  v_raw := v_draft.content -> 'contributions';
-  v_previous := case when jsonb_typeof(v_raw) = 'object' then v_raw else '{}'::jsonb end;
-  v_features := case when jsonb_typeof(v_previous -> 'features') = 'object' then v_previous -> 'features' else '{}'::jsonb end;
-  v_next_features := v_features || jsonb_build_object('condolences', p_condolences, 'stories', p_stories, 'photos', p_photos);
-  v_next_content := jsonb_set(
-    case when jsonb_typeof(v_draft.content) = 'object' then v_draft.content else '{}'::jsonb end,
-    '{contributions}',
-    v_previous || jsonb_build_object('features', v_next_features));
-  v_draft_changed := v_next_content is distinct from v_draft.content;
-
-  v_category_changed := false;
-  if v_memorial.first_published_at is not null then
-    select * into v_category from public.memorial_contribution_categories
-     where memorial_id = p_memorial_id for update;
-    if not found
-       or v_category.condolences <> p_condolences
-       or v_category.stories <> p_stories
-       or v_category.photos <> p_photos then
-      insert into public.memorial_contribution_categories
-        (memorial_id, condolences, stories, photos, updated_at, updated_by)
-      values (p_memorial_id, p_condolences, p_stories, p_photos, now(), p_owner_id)
-      on conflict (memorial_id) do update
-        set condolences = excluded.condolences, stories = excluded.stories, photos = excluded.photos,
-            updated_at = excluded.updated_at, updated_by = excluded.updated_by;
-      v_category_changed := true;
-    end if;
-  end if;
-
-  if not v_draft_changed and not v_category_changed then
-    return query select 'unchanged'::text, v_draft.revision;
-    return;
-  end if;
-
-  if v_draft_changed then
-    update public.memorial_drafts
-       set content = v_next_content, revision = revision + 1
-     where memorial_id = p_memorial_id
-     returning * into v_draft;
-  end if;
-  if v_memorial.first_published_at is not null then
-    insert into public.memorial_edit_audit_events
-      (memorial_id, actor_owner_id, operation, mutation_targets, memorial_status, draft_revision)
-    values
-      (p_memorial_id, p_owner_id, 'contributions.categories', array['contributions.features'],
-       v_memorial.status, v_draft.revision);
-  end if;
-  return query select 'updated'::text, v_draft.revision;
-end;
-$$;
-
--- =====================================================================
--- 10. Préparation O12 : préférence et journal du récapitulatif
--- =====================================================================
--- Rien n'est envoyé ici : l'envoi relève de Q4/Q5, après E7.
-
-create table public.owner_notification_preferences (
-  owner_id uuid primary key references public.owners (id) on delete cascade,
-  contributions_digest boolean not null default false,
-  updated_at timestamptz not null default now()
-);
-
-create table public.contributions_digest_log (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references public.owners (id) on delete cascade,
-  digest_day date not null,
-  status text not null check (status in ('claimed', 'sent', 'failed')),
-  attempts integer not null default 1 check (attempts between 1 and 2),
-  covered_until timestamptz not null,
-  claimed_at timestamptz not null default now(),
-  sent_at timestamptz,
-  provider_message_id text check (provider_message_id is null or char_length(provider_message_id) between 1 and 200),
-  constraint contributions_digest_log_owner_day unique (owner_id, digest_day),
-  constraint contributions_digest_log_sent_coherent check ((status = 'sent') = (sent_at is not null))
-);
-
-alter table public.owner_notification_preferences enable row level security;
-alter table public.contributions_digest_log enable row level security;
-
-comment on table public.owner_notification_preferences is
-  'M8-E1, O12. Récapitulatif quotidien des contributions à examiner : désactivé par défaut, réversible. Écrit par set_contributions_digest_preference_v1.';
-comment on table public.contributions_digest_log is
-  'M8-E1, O12/Q5. Au plus un récapitulatif par propriétaire et par jour (Europe/Paris). Une issue inconnue reste claimed et n''est pas renvoyée le même jour. Ne contient aucune donnée de proche.';
-
-create or replace function public.set_contributions_digest_preference_v1(p_owner_id uuid, p_enabled boolean)
-returns table (contributions_digest boolean)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if p_owner_id is null or p_enabled is null then
-    raise exception 'invalid notification preference' using errcode = '22023';
-  end if;
-  if not exists (select 1 from public.owners o where o.id = p_owner_id) then
-    raise exception 'notification preference refused' using errcode = '42501';
-  end if;
-  return query
-    insert into public.owner_notification_preferences as p (owner_id, contributions_digest, updated_at)
-    values (p_owner_id, p_enabled, now())
-    on conflict (owner_id) do update
-      set contributions_digest = excluded.contributions_digest, updated_at = excluded.updated_at
-    returning p.contributions_digest;
-end;
-$$;
-
--- Réserve, pour le jour de p_now (Europe/Paris), les récapitulatifs à
--- envoyer : propriétaires abonnés À CET INSTANT, ayant au moins un récit
--- ou une photo en attente reçu depuis le dernier envoi réussi, sur un
--- hommage public dont la catégorie est en vigueur ; ni envoyé ni réservé
--- ce jour (un échec explicite est réessayé une fois). Renvoie des
--- nombres seulement, jamais un nom ni un texte de proche.
-create or replace function public.claim_contributions_digests_v1(p_now timestamptz, p_limit integer)
-returns table (
-  digest_id uuid,
-  owner_id uuid,
-  email text,
-  covered_until timestamptz,
-  memorials jsonb
-)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-#variable_conflict use_column
-declare
-  v_day date;
-  v_limit integer;
-  v_owner record;
-  v_log public.contributions_digest_log%rowtype;
-  v_summary jsonb;
-begin
-  if p_now is null or p_limit is null or p_limit < 1 then
-    raise exception 'invalid digest claim' using errcode = '22023';
-  end if;
-  v_day := (p_now at time zone 'Europe/Paris')::date;
-  v_limit := least(p_limit, 500);
-
-  for v_owner in
-    select o.id, o.email,
-           coalesce((select max(l.covered_until) from public.contributions_digest_log l
-                      where l.owner_id = o.id and l.status = 'sent'), '-infinity'::timestamptz) as since
-      from public.owner_notification_preferences p
-      join public.owners o on o.id = p.owner_id
-     where p.contributions_digest
-       and not exists (select 1 from public.contributions_digest_log l
-                        where l.owner_id = o.id and l.digest_day = v_day
-                          and (l.status in ('sent', 'claimed') or l.attempts >= 2))
-     order by o.id
-  loop
-    exit when v_limit <= 0;
-    select jsonb_agg(jsonb_build_object(
-             'memorial_id', x.memorial_id, 'display_name', x.display_name,
-             'pending_stories', x.stories, 'pending_photos', x.photos)
-           order by x.memorial_id)
-      into v_summary
-      from (
-        select m.id as memorial_id,
-               s.content #>> '{hero,displayName}' as display_name,
-               count(*) filter (where msg.message_type = 'testimonial'
-                                  and (public.contribution_categories_in_effect_v1(m.id) ->> 'stories')::boolean) as stories,
-               count(*) filter (where msg.message_type = 'photo'
-                                  and (public.contribution_categories_in_effect_v1(m.id) ->> 'photos')::boolean) as photos
-          from public.memorials m
-          join public.memorial_published_snapshots s on s.memorial_id = m.id
-          join public.messages msg on msg.memorial_id = m.id
-         where m.owner_id = v_owner.id
-           and msg.status = 'pending'
-           and msg.message_type in ('testimonial', 'photo')
-           and msg.created_at > v_owner.since
-           and msg.created_at <= p_now
-           and public.contributions_rubric_public_v1(m.id, p_now)
-         group by m.id, s.content #>> '{hero,displayName}'
-      ) x
-     where x.stories + x.photos > 0;
-    continue when v_summary is null;
-
-    insert into public.contributions_digest_log (owner_id, digest_day, status, covered_until, claimed_at)
-    values (v_owner.id, v_day, 'claimed', p_now, now())
-    on conflict (owner_id, digest_day) do update
-      set status = 'claimed', attempts = public.contributions_digest_log.attempts + 1,
-          covered_until = excluded.covered_until, claimed_at = excluded.claimed_at
-      where public.contributions_digest_log.status = 'failed'
-        and public.contributions_digest_log.attempts < 2
-    returning * into v_log;
-    continue when v_log.id is null;
-
-    v_limit := v_limit - 1;
-    return query select v_log.id, v_owner.id, v_owner.email, v_log.covered_until, v_summary;
-    v_log := null;
-  end loop;
-end;
-$$;
-
--- Issue d'un envoi : sent (identifiant du fournisseur) ou failed (refus
--- explicite). Seule une ligne claimed change. Résultats : updated, refused.
-create or replace function public.mark_contributions_digest_v1(p_digest_id uuid, p_status text, p_provider_message_id text default null)
-returns table (outcome text)
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if p_digest_id is null or p_status is null or p_status not in ('sent', 'failed') then
-    raise exception 'invalid digest outcome' using errcode = '22023';
-  end if;
-  update public.contributions_digest_log
-     set status = p_status,
-         sent_at = case when p_status = 'sent' then now() end,
-         provider_message_id = case when p_status = 'sent' then p_provider_message_id end
-   where id = p_digest_id and status = 'claimed';
-  if not found then
-    return query select 'refused'::text;
-    return;
-  end if;
-  return query select 'updated'::text;
-end;
-$$;
-
--- =====================================================================
--- 11. Privilèges
--- =====================================================================
--- Tables nouvelles : aucun privilège pour aucun rôle client (accès par
--- les RPC SECURITY DEFINER seulement). messages : lecture colonne par
--- colonne pour authenticated, sous la politique RLS existante
--- messages_select_own ; jamais idempotency_key ; aucune écriture client.
-
-revoke all on table public.contribution_settings from public, anon, authenticated, service_role;
-revoke all on table public.contribution_limits_override from public, anon, authenticated, service_role;
-revoke all on table public.contribution_rate_limits from public, anon, authenticated, service_role;
-revoke all on table public.memorial_contribution_categories from public, anon, authenticated, service_role;
-revoke all on table public.owner_notification_preferences from public, anon, authenticated, service_role;
-revoke all on table public.contributions_digest_log from public, anon, authenticated, service_role;
-
-grant select (id, memorial_id, message_type, author_name, content, visible, created_at,
-              status, caption, media_id, published_at, moderated_at)
-  on table public.messages to authenticated;
-
--- Fonctions internes : exécutables par aucun rôle.
-revoke all on function public.messages_align_visible_v1() from public, anon, authenticated, service_role;
-revoke all on function public.contribution_features_v1(jsonb) from public, anon, authenticated, service_role;
-revoke all on function public.sync_contribution_categories_on_publication_v1() from public, anon, authenticated, service_role;
-revoke all on function public.contributions_rubric_public_v1(uuid, timestamptz) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_categories_in_effect_v1(uuid) from public, anon, authenticated, service_role;
-revoke all on function public.public_memorial_message_allowed_v2(uuid, text) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_text_valid_v1(text, integer) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_limits_v1(uuid, text) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_rate_open_v1(uuid, text, timestamptz) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_rate_count_v1(uuid, text) from public, anon, authenticated, service_role;
-revoke all on function public.contribution_pending_photos_v1(uuid, timestamptz) from public, anon, authenticated, service_role;
--- QG 017 : mêmes privilèges qu'avant (aucun rôle), réaffirmés après le
--- create or replace.
-revoke all on function public.owner_free_storage_bytes_v1(uuid) from public, anon, authenticated, service_role;
-revoke all on function public.guard_free_storage_budget_v1() from public, anon, authenticated, service_role;
-
--- RPC : service_role seul.
-revoke all on function public.submit_contribution_v1(text, text, text, text, uuid) from public, anon, authenticated;
-revoke all on function public.reserve_contribution_photo_v1(text, uuid, text, text) from public, anon, authenticated;
-revoke all on function public.finalize_contribution_photo_v1(text, uuid, text, text, uuid, text, bigint, integer, integer) from public, anon, authenticated;
-revoke all on function public.read_public_contributions_v1(text, integer, timestamptz, uuid) from public, anon, authenticated;
-revoke all on function public.moderate_contribution_v1(uuid, uuid, text) from public, anon, authenticated;
-revoke all on function public.remove_contribution_v1(uuid, uuid) from public, anon, authenticated;
-revoke all on function public.count_pending_contributions_v1(uuid, uuid) from public, anon, authenticated;
-revoke all on function public.set_contribution_categories_v1(uuid, uuid, boolean, boolean, boolean, bigint) from public, anon, authenticated;
-revoke all on function public.set_contributions_digest_preference_v1(uuid, boolean) from public, anon, authenticated;
-revoke all on function public.claim_contributions_digests_v1(timestamptz, integer) from public, anon, authenticated;
-revoke all on function public.mark_contributions_digest_v1(uuid, text, text) from public, anon, authenticated;
-
-grant execute on function public.submit_contribution_v1(text, text, text, text, uuid) to service_role;
-grant execute on function public.reserve_contribution_photo_v1(text, uuid, text, text) to service_role;
-grant execute on function public.finalize_contribution_photo_v1(text, uuid, text, text, uuid, text, bigint, integer, integer) to service_role;
-grant execute on function public.read_public_contributions_v1(text, integer, timestamptz, uuid) to service_role;
-grant execute on function public.moderate_contribution_v1(uuid, uuid, text) to service_role;
-grant execute on function public.remove_contribution_v1(uuid, uuid) to service_role;
-grant execute on function public.count_pending_contributions_v1(uuid, uuid) to service_role;
-grant execute on function public.set_contribution_categories_v1(uuid, uuid, boolean, boolean, boolean, bigint) to service_role;
-grant execute on function public.set_contributions_digest_preference_v1(uuid, boolean) to service_role;
-grant execute on function public.claim_contributions_digests_v1(timestamptz, integer) to service_role;
-grant execute on function public.mark_contributions_digest_v1(uuid, text, text) to service_role;
-
-comment on function public.public_memorial_message_allowed_v2(uuid, text) is
-  'M8-E1. Droit de déposer : hommage public, rubrique Contributions non masquée dans la copie publiée, catégorie en vigueur (O9) ; condoléances, récits et photos dans les deux offres (D1) ; memory_message : règle QG 008 (complet). Interne.';
-comment on function public.submit_contribution_v1(text, text, text, text, uuid) is
-  'M8-E1. Dépôt d''une condoléance (published, D2) ou d''un récit (pending). Idempotent par clé ; doublon de contenu < 10 min ; plafonds R2. service_role seul.';
-comment on function public.reserve_contribution_photo_v1(text, uuid, text, text) is
-  'M8-E1. Réservation d''une photo de proche (média contribution pending) ; R2 et R3 (pending_full). service_role seul.';
-comment on function public.finalize_contribution_photo_v1(text, uuid, text, text, uuid, text, bigint, integer, integer) is
-  'M8-E1. Finalisation : mesures du fichier optimisé (O5 en E2), média ready, message photo pending. service_role seul.';
-comment on function public.read_public_contributions_v1(text, integer, timestamptz, uuid) is
-  'M8-E1. Lecture publique : publiées et autorisées seulement, ordre P1 (published_at desc, id desc), curseur, photos ready. service_role seul.';
-comment on function public.moderate_contribution_v1(uuid, uuid, text) is
-  'M8-E1. Modération familiale : approve, reject, hide, unhide ; jamais de réécriture. service_role seul, p_owner_id résolu par le serveur.';
-comment on function public.remove_contribution_v1(uuid, uuid) is
-  'M8-E1. Suppression familiale ; une photo part au nettoyage par réclamation (pending_media_cleanup_claims). service_role seul.';
-comment on function public.set_contribution_categories_v1(uuid, uuid, boolean, boolean, boolean, bigint) is
-  'M8-E1, O9/Q1. Catégories en vigueur changées immédiatement, brouillon aligné (révision + 1), copie publiée intacte. service_role seul.';
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/migrations/20261119090000_m8_e1_contributions.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTEgOiBDb250cmlidXRpb25zIGRlcyBwcm9jaGVz
+IChkb25uw6llcyBldCBSUEMpLgotLQotLSBDb250cmF0IDogTTgtUCBmaW5hbCwgwqcgMTQgKEdP
+IHRlY2huaXF1ZSBFMSBkdSBRRyA6IFExLCBRMiwgUTctQikuCi0tIMOJY3JpdGUgZXQgdGVzdMOp
+ZSBlbiBsb2NhbCAobnBtIHJ1biBkYjp0ZXN0KSA7IE5PTiBhcHBsaXF1w6llLiBTb24KLS0gYXBw
+bGljYXRpb24gc3VyIG51ZHF6YmRmbmp6bG55ZmZsbGdzIHJlbMOodmUgZGUgRTYsIHNvdXMgdW4g
+R08gZGlzdGluY3QuCi0tIFByw6lmbGlnaHQgOiBzdXBhYmFzZS92ZXJpZmljYXRpb25zL204X2Ux
+X3ByZWZsaWdodC5zcWwuCi0tIFBvc3RmbGlnaHQgOiBzdXBhYmFzZS92ZXJpZmljYXRpb25zL204
+X2UxX3Bvc3RmbGlnaHQuc3FsLgotLSBSZXRvdXIgYXJyacOocmUgOiBzdXBhYmFzZS9yb2xsYmFj
+a3MvMjAyNjExMTkwOTAwMDBfbThfZTFfY29udHJpYnV0aW9ucy5kb3duLnNxbC4KLS0KLS0gQWRk
+aXRpdmUgOiBhdWN1bmUgY29sb25uZSwgdGFibGUsIHBvbGl0aXF1ZSBuaSBmb25jdGlvbiBleGlz
+dGFudGUgbidlc3QKLS0gc3VwcHJpbcOpZS4gRGV1eCBmb25jdGlvbnMgUUcgMDE3IHJlw6dvaXZl
+bnQgdW5lIG5vdXZlbGxlIHZlcnNpb24gKFE3LUIpIDsKLS0gbGUgcmV0b3VyIGFycmnDqHJlIHJl
+c3RhdXJlIGxldXIgdmVyc2lvbiBRRyAwMTcgw6AgbCdpZGVudGlxdWUuCi0tCi0tIMOJY2FydHMg
+YXUgwqcgMTQuMywgaW1wb3PDqXMgcGFyIGwnZXhpc3RhbnQgZXQgc2lnbmFsw6lzIGF1IHJhcHBv
+cnQgRTEgOgotLSAgKiBMZXMgcG9saXRpcXVlcyBtZXNzYWdlc19pbnNlcnRfcHVibGljIGV0IG1l
+c3NhZ2VzX21vZGVyYXRlX293biBzb250Ci0tICAgIENPTlNFUlbDiUVTIChsZSBjb250cmF0IHBy
+w6l2b3lhaXQgbGV1ciBzdXBwcmVzc2lvbikuIFNhbnMgcHJpdmlsw6hnZSBkZQotLSAgICB0YWJs
+ZSBjbGllbnQgc3VyIG1lc3NhZ2VzIChNaXNzaW9uIDAxM0MpLCBlbGxlcyBzb250IGluZXJ0ZXMg
+OyBsZXMKLS0gICAgc3VwcHJpbWVyIGNhc3NlcmFpdCBkZXMgYmxvY3MgaGlzdG9yaXF1ZXMgZHUg
+aGFybmFpcyAoTWlzc2lvbiAwMDIsCi0tICAgIFFHIDAwOCkgcXVlIGxlIEdPIGludGVyZGl0IGRl
+IHRvdWNoZXIuIFBvdXIgbGEgbcOqbWUgcmFpc29uLAotLSAgICBwdWJsaWNfbWVtb3JpYWxfbWVz
+c2FnZV9hbGxvd2VkX3YxIGdhcmRlIHNvbiBBQ0wgQzMgKGFub24sCi0tICAgIGF1dGhlbnRpY2F0
+ZWQpIDogbGEgcG9saXRpcXVlIGNvbnNlcnbDqWUgbCfDqXZhbHVlLgotLSAgKiBMZXMgUlBDIGZh
+bWlsaWFsZXMgc29udCBzZXJ2aWNlX3JvbGUgYXZlYyBwX293bmVyX2lkIHLDqXNvbHUgY8O0dMOp
+Ci0tICAgIHNlcnZldXIgKG1vZMOobGUgZGUgY29tbWl0X21lbW9yaWFsX2RyYWZ0X2VkaXRfdjEp
+LCBldCBub24KLS0gICAgYXV0aGVudGljYXRlZCBhdmVjIGN1cnJlbnRfb3duZXJfaWQoKSA6IGxl
+IGR1cmNpc3NlbWVudCBDMyAodGVzdCBDNSkKLS0gICAgbidhdXRvcmlzZSBxdWUgdHJvaXMgZm9u
+Y3Rpb25zIHB1YmxpcXVlcyBleMOpY3V0YWJsZXMgcGFyIHVuIGNsaWVudC4KLS0KLS0gT3JkcmUg
+ZGVzIHZlcnJvdXMgKGluY2hhbmfDqSkgOiBtZW1vcmlhbHMsIHB1aXMgYnJvdWlsbG9uLCBtw6lk
+aWEsCi0tIGNhdMOpZ29yaWVzIDsgdW4gZMOpcMO0dCBkZSB2aXNpdGV1ciBuZSBwcmVuZCBqYW1h
+aXMgZGUgdmVycm91IHN1cgotLSBtZW1vcmlhbHMgKHNldWxlbWVudCBsZSB2ZXJyb3UgY29uc3Vs
+dGF0aWYgZGUgbCdob21tYWdlIGV0IGxhIGxpZ25lIGRlCi0tIHBsYWZvbmQpLCBzaSBiaWVuIHF1
+J2F1Y3VuIGN5Y2xlIG4nZXN0IHBvc3NpYmxlIGF2ZWMgbGEgcHVibGljYXRpb24uCgpiZWdpbjsK
+Ci0tID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PQotLSAxLiBtZXNzYWdlcyA6IGV4dGVuc2lvbiBhZGRpdGl2ZQotLSA9
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT0KCmFsdGVyIHRhYmxlIHB1YmxpYy5tZXNzYWdlcwogIGFkZCBjb2x1bW4gc3Rh
+dHVzIHRleHQgbm90IG51bGwgZGVmYXVsdCAncGVuZGluZycsCiAgYWRkIGNvbHVtbiBjYXB0aW9u
+IHRleHQsCiAgYWRkIGNvbHVtbiBtZWRpYV9pZCB1dWlkIHJlZmVyZW5jZXMgcHVibGljLm1lZGlh
+IChpZCksCiAgYWRkIGNvbHVtbiBpZGVtcG90ZW5jeV9rZXkgdXVpZCwKICBhZGQgY29sdW1uIHB1
+Ymxpc2hlZF9hdCB0aW1lc3RhbXB0eiwKICBhZGQgY29sdW1uIG1vZGVyYXRlZF9hdCB0aW1lc3Rh
+bXB0ejsKCi0tIFJlcHJpc2UgZGVzIGxpZ25lcyBoaXN0b3JpcXVlcyBzZWxvbiB2aXNpYmxlIChF
+MCA6IHRhYmxlIHZpZGUgZW4KLS0gcHJvZHVjdGlvbiA7IGxhIHJlcHJpc2UgcmVzdGUgY29ycmVj
+dGUgc2kgZGVzIGxpZ25lcyBleGlzdGVudCkuCnVwZGF0ZSBwdWJsaWMubWVzc2FnZXMKICAgc2V0
+IHN0YXR1cyA9IGNhc2Ugd2hlbiB2aXNpYmxlIHRoZW4gJ3B1Ymxpc2hlZCcgZWxzZSAncGVuZGlu
+ZycgZW5kLAogICAgICAgcHVibGlzaGVkX2F0ID0gY2FzZSB3aGVuIHZpc2libGUgdGhlbiBjcmVh
+dGVkX2F0IGVuZDsKCmFsdGVyIHRhYmxlIHB1YmxpYy5tZXNzYWdlcwogIGFkZCBjb25zdHJhaW50
+IG1lc3NhZ2VzX3N0YXR1c19jaGVjawogIGNoZWNrIChzdGF0dXMgaW4gKCdwZW5kaW5nJywgJ3B1
+Ymxpc2hlZCcsICdoaWRkZW4nLCAncmVqZWN0ZWQnKSk7CgphbHRlciB0YWJsZSBwdWJsaWMubWVz
+c2FnZXMgZHJvcCBjb25zdHJhaW50IG1lc3NhZ2VzX21lc3NhZ2VfdHlwZV9jaGVjazsKYWx0ZXIg
+dGFibGUgcHVibGljLm1lc3NhZ2VzCiAgYWRkIGNvbnN0cmFpbnQgbWVzc2FnZXNfbWVzc2FnZV90
+eXBlX2NoZWNrCiAgY2hlY2sgKG1lc3NhZ2VfdHlwZSBpbiAoJ2NvbmRvbGVuY2UnLCAnbWVtb3J5
+X21lc3NhZ2UnLCAndGVzdGltb25pYWwnLCAncGhvdG8nKSk7CgotLSBVbmUgcGhvdG8gbidhIHBh
+cyBkZSB0ZXh0ZSA6IGxhIGNvbG9ubmUgZGV2aWVudCBmYWN1bHRhdGl2ZSA7IGxhCi0tIGNvbnRy
+YWludGUgaGlzdG9yaXF1ZSBtZXNzYWdlc19jb250ZW50X2NoZWNrICh0ZXh0ZSBub24gdmlkZSkg
+cmVzdGUgZW4KLS0gcGxhY2UgZXQgY29udGludWUgZGUgcydhcHBsaXF1ZXIgw6AgdG91dCB0ZXh0
+ZSBwcsOpc2VudC4KYWx0ZXIgdGFibGUgcHVibGljLm1lc3NhZ2VzIGFsdGVyIGNvbHVtbiBjb250
+ZW50IGRyb3Agbm90IG51bGw7CgphbHRlciB0YWJsZSBwdWJsaWMubWVzc2FnZXMKICBhZGQgY29u
+c3RyYWludCBtZXNzYWdlc19zaGFwZV9jaGVjawogIGNoZWNrICgKICAgIGNhc2Ugd2hlbiBtZXNz
+YWdlX3R5cGUgPSAncGhvdG8nCiAgICAgIHRoZW4gY29udGVudCBpcyBudWxsIGFuZCBtZWRpYV9p
+ZCBpcyBub3QgbnVsbAogICAgICBlbHNlIGNvbnRlbnQgaXMgbm90IG51bGwgYW5kIG1lZGlhX2lk
+IGlzIG51bGwgYW5kIGNhcHRpb24gaXMgbnVsbAogICAgZW5kCiAgKTsKCmFsdGVyIHRhYmxlIHB1
+YmxpYy5tZXNzYWdlcwogIGFkZCBjb25zdHJhaW50IG1lc3NhZ2VzX3Zpc2libGVfbWF0Y2hlc19z
+dGF0dXMKICBjaGVjayAodmlzaWJsZSA9IChzdGF0dXMgPSAncHVibGlzaGVkJykpOwoKYWx0ZXIg
+dGFibGUgcHVibGljLm1lc3NhZ2VzCiAgYWRkIGNvbnN0cmFpbnQgbWVzc2FnZXNfcHVibGlzaGVk
+X2F0X3JlcXVpcmVkCiAgY2hlY2sgKHN0YXR1cyBub3QgaW4gKCdwdWJsaXNoZWQnLCAnaGlkZGVu
+Jykgb3IgcHVibGlzaGVkX2F0IGlzIG5vdCBudWxsKTsKCi0tIFEyIDogZmlsZXQgZW4gcG9pbnRz
+IGRlIGNvZGUgKDEwIE4sIGphbWFpcyBwbHVzIHN0cmljdCBxdWUgbGUgY29tcHRldXIKLS0gZGUg
+Y2FyYWN0w6hyZXMgdmlzaWJsZXMgZGUgbCdhcHBsaWNhdGlvbiksIGZvcm1lIE5GQywgYXVjdW4g
+XHIuCi0tIG1lbW9yeV9tZXNzYWdlIChvZmZyZSBjb21wbMOodGUsIGhvcnMgQ29udHJpYnV0aW9u
+cykgZXN0IGluY2hhbmfDqS4KYWx0ZXIgdGFibGUgcHVibGljLm1lc3NhZ2VzCiAgYWRkIGNvbnN0
+cmFpbnQgbWVzc2FnZXNfYXV0aG9yX25hbWVfcTIKICBjaGVjayAoCiAgICBtZXNzYWdlX3R5cGUg
+PSAnbWVtb3J5X21lc3NhZ2UnCiAgICBvciAoY2hhcl9sZW5ndGgoYXV0aG9yX25hbWUpIDw9IDYw
+MAogICAgICAgIGFuZCBhdXRob3JfbmFtZSBpcyBuZmMgbm9ybWFsaXplZAogICAgICAgIGFuZCBz
+dHJwb3MoYXV0aG9yX25hbWUsIGNocigxMykpID0gMCkKICApOwoKYWx0ZXIgdGFibGUgcHVibGlj
+Lm1lc3NhZ2VzCiAgYWRkIGNvbnN0cmFpbnQgbWVzc2FnZXNfY29udGVudF9xMgogIGNoZWNrICgK
+ICAgIG1lc3NhZ2VfdHlwZSBpbiAoJ21lbW9yeV9tZXNzYWdlJywgJ3Bob3RvJykKICAgIG9yIChj
+b250ZW50IGlzIG5mYyBub3JtYWxpemVkCiAgICAgICAgYW5kIHN0cnBvcyhjb250ZW50LCBjaHIo
+MTMpKSA9IDAKICAgICAgICBhbmQgY2hhcl9sZW5ndGgoY29udGVudCkgPD0gY2FzZSBtZXNzYWdl
+X3R5cGUgd2hlbiAnY29uZG9sZW5jZScgdGhlbiA1MDAwIGVsc2UgMjAwMDAgZW5kKQogICk7Cgph
+bHRlciB0YWJsZSBwdWJsaWMubWVzc2FnZXMKICBhZGQgY29uc3RyYWludCBtZXNzYWdlc19jYXB0
+aW9uX3EyCiAgY2hlY2sgKAogICAgY2FwdGlvbiBpcyBudWxsCiAgICBvciAoY2hhcl9sZW5ndGgo
+YnRyaW0oY2FwdGlvbikpID4gMAogICAgICAgIGFuZCBjaGFyX2xlbmd0aChjYXB0aW9uKSA8PSAx
+NTAwCiAgICAgICAgYW5kIGNhcHRpb24gaXMgbmZjIG5vcm1hbGl6ZWQKICAgICAgICBhbmQgc3Ry
+cG9zKGNhcHRpb24sIGNocigxMykpID0gMCkKICApOwoKYWx0ZXIgdGFibGUgcHVibGljLm1lc3Nh
+Z2VzCiAgYWRkIGNvbnN0cmFpbnQgbWVzc2FnZXNfbWVtb3JpYWxfaWRlbXBvdGVuY3lfa2V5IHVu
+aXF1ZSAobWVtb3JpYWxfaWQsIGlkZW1wb3RlbmN5X2tleSk7CmFsdGVyIHRhYmxlIHB1YmxpYy5t
+ZXNzYWdlcwogIGFkZCBjb25zdHJhaW50IG1lc3NhZ2VzX21lZGlhX2lkX2tleSB1bmlxdWUgKG1l
+ZGlhX2lkKTsKCmNyZWF0ZSBpbmRleCBtZXNzYWdlc19tZW1vcmlhbF9zdGF0dXNfcHVibGlzaGVk
+X2lkeAogIG9uIHB1YmxpYy5tZXNzYWdlcyAobWVtb3JpYWxfaWQsIHN0YXR1cywgcHVibGlzaGVk
+X2F0IGRlc2MsIGlkIGRlc2MpOwpjcmVhdGUgaW5kZXggbWVzc2FnZXNfbWVtb3JpYWxfY3JlYXRl
+ZF9pZHgKICBvbiBwdWJsaWMubWVzc2FnZXMgKG1lbW9yaWFsX2lkLCBtZXNzYWdlX3R5cGUsIGNy
+ZWF0ZWRfYXQgZGVzYyk7CgotLSB2aXNpYmxlIHN1aXQgc3RhdHVzLiBVbmUgbW9kw6lyYXRpb24g
+cGFzc2UgcGFyIHN0YXR1cyAobGVzIFJQQykgOyBzaSB1bmUKLS0gw6ljcml0dXJlIGhpc3Rvcmlx
+dWUgbmUgY2hhbmdlIHF1ZSB2aXNpYmxlLCBzdGF0dXMgc3VpdCAodHJ1ZSA6Ci0tIHB1Ymxpw6ll
+IDsgZmFsc2UgOiBtYXNxdcOpZSBzaSBlbGxlIGwnw6l0YWl0LCBzaW5vbiBpbmNoYW5nw6llKS4K
+Y3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLm1lc3NhZ2VzX2FsaWduX3Zpc2libGVf
+djEoKQpyZXR1cm5zIHRyaWdnZXIKbGFuZ3VhZ2UgcGxwZ3NxbApzZWN1cml0eSBkZWZpbmVyCnNl
+dCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmJlZ2luCiAgaWYgbmV3LnN0YXR1cyBpcyBkaXN0aW5j
+dCBmcm9tIG9sZC5zdGF0dXMgdGhlbgogICAgbmV3LnZpc2libGUgOj0gbmV3LnN0YXR1cyA9ICdw
+dWJsaXNoZWQnOwogIGVsc2lmIG5ldy52aXNpYmxlIGlzIGRpc3RpbmN0IGZyb20gb2xkLnZpc2li
+bGUgdGhlbgogICAgbmV3LnN0YXR1cyA6PSBjYXNlCiAgICAgICAgICAgICAgICAgICAgd2hlbiBu
+ZXcudmlzaWJsZSB0aGVuICdwdWJsaXNoZWQnCiAgICAgICAgICAgICAgICAgICAgd2hlbiBvbGQu
+c3RhdHVzID0gJ3B1Ymxpc2hlZCcgdGhlbiAnaGlkZGVuJwogICAgICAgICAgICAgICAgICAgIGVs
+c2Ugb2xkLnN0YXR1cwogICAgICAgICAgICAgICAgICBlbmQ7CiAgZW5kIGlmOwogIGlmIG5ldy5z
+dGF0dXMgPSAncHVibGlzaGVkJyBhbmQgbmV3LnB1Ymxpc2hlZF9hdCBpcyBudWxsIHRoZW4KICAg
+IG5ldy5wdWJsaXNoZWRfYXQgOj0gY2xvY2tfdGltZXN0YW1wKCk7CiAgZW5kIGlmOwogIHJldHVy
+biBuZXc7CmVuZDsKJCQ7CgpjcmVhdGUgdHJpZ2dlciBtZXNzYWdlc19hbGlnbl92aXNpYmxlCiAg
+YmVmb3JlIHVwZGF0ZSBvZiBzdGF0dXMsIHZpc2libGUgb24gcHVibGljLm1lc3NhZ2VzCiAgZm9y
+IGVhY2ggcm93IGV4ZWN1dGUgZnVuY3Rpb24gcHVibGljLm1lc3NhZ2VzX2FsaWduX3Zpc2libGVf
+djEoKTsKCmNvbW1lbnQgb24gY29sdW1uIHB1YmxpYy5tZXNzYWdlcy5zdGF0dXMgaXMKICAnTTgt
+RTEuIHBlbmRpbmcgKMOgIGV4YW1pbmVyKSwgcHVibGlzaGVkLCBoaWRkZW4gKG1hc3F1w6llIHBh
+ciBsYSBmYW1pbGxlLCByw6lhZmZpY2hhYmxlKSwgcmVqZWN0ZWQuIHZpc2libGUgPSAoc3RhdHVz
+ID0gcHVibGlzaGVkKSwgY29udHJhaW50ZSBtZXNzYWdlc192aXNpYmxlX21hdGNoZXNfc3RhdHVz
+Lic7CmNvbW1lbnQgb24gY29sdW1uIHB1YmxpYy5tZXNzYWdlcy5tZWRpYV9pZCBpcwogICdNOC1F
+MS4gUGhvdG8gZCcndW4gcHJvY2hlIDogbcOpZGlhIHB1cnBvc2UgPSBjb250cmlidXRpb24gKHVu
+ZSBwaG90byBwYXIgbWVzc2FnZSkuIE5VTEwgcG91ciB1biB0ZXh0ZS4nOwpjb21tZW50IG9uIGNv
+bHVtbiBwdWJsaWMubWVzc2FnZXMuaWRlbXBvdGVuY3lfa2V5IGlzCiAgJ004LUUxLiBDbMOpIGRl
+IGTDqXDDtHQgZHUgbmF2aWdhdGV1ciwgdW5pcXVlIHBhciBob21tYWdlLiBOVUxMIHBvdXIgbGVz
+IGxpZ25lcyBhbnTDqXJpZXVyZXMuIEphbWFpcyBsaXNpYmxlIHBhciB1biBjbGllbnQuJzsKY29t
+bWVudCBvbiBjb2x1bW4gcHVibGljLm1lc3NhZ2VzLnB1Ymxpc2hlZF9hdCBpcwogICdNOC1FMS4g
+UHJlbWnDqHJlIG1pc2UgZW4gbGlnbmUgOyBjb25zZXJ2w6llIHBhciB1biBtYXNxdWFnZSwgcG91
+ciBxdScndW4gcsOpYWZmaWNoYWdlIHJldHJvdXZlIHNhIHBsYWNlIChvcmRyZSBQMSA6IHB1Ymxp
+c2hlZF9hdCBkZXNjLCBpZCBkZXNjKS4nOwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDIuIG1lZGlhIDog
+cHVycG9zZSBjb250cmlidXRpb24KLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CgphbHRlciB0YWJsZSBwdWJsaWMu
+bWVkaWEgZHJvcCBjb25zdHJhaW50IG1lZGlhX3B1cnBvc2VfY2hlY2s7CmFsdGVyIHRhYmxlIHB1
+YmxpYy5tZWRpYQogIGFkZCBjb25zdHJhaW50IG1lZGlhX3B1cnBvc2VfY2hlY2sgY2hlY2sgKHB1
+cnBvc2UgaW4gKCdoZXJvJywgJ2dhbGxlcnknLCAnY29udHJpYnV0aW9uJykpOwoKY29tbWVudCBv
+biBjb2x1bW4gcHVibGljLm1lZGlhLnB1cnBvc2UgaXMKICAnV2hhdCB0aGlzIG1lZGlhIGlzIGZv
+cjogaGVybywgZ2FsbGVyeSBvciBjb250cmlidXRpb24gKHBob3RvIGQnJ3VuIHByb2NoZSwgTTgt
+RTEpLiBNaXJyb3JzIE1FRElBX1BVUlBPU0VTIGluIGNvbmZpZy9tZWRpYS50cy4gQSBsYWJlbCBv
+bmx5IOKAlCBpdCBuZXZlciBjaGFuZ2VzIGhvdyB0aGUgb2JqZWN0IGlzIHN0b3JlZCwgcGF0aGVk
+LCBhdXRob3JpemVkIG9yIHZhbGlkYXRlZCAoTWlzc2lvbiAwMzApLic7CgotLSA9PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT0KLS0gMy4gUGxhZm9uZHMgUjIgZXQgUjMKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CgpjcmVhdGUgdGFibGUg
+cHVibGljLmNvbnRyaWJ1dGlvbl9zZXR0aW5ncyAoCiAgaWQgYm9vbGVhbiBwcmltYXJ5IGtleSBk
+ZWZhdWx0IHRydWUgY2hlY2sgKGlkKSwKICBjb25kb2xlbmNlc19wZXJfaG91ciBpbnRlZ2VyIG5v
+dCBudWxsIGNoZWNrIChjb25kb2xlbmNlc19wZXJfaG91ciA+IDApLAogIGNvbmRvbGVuY2VzX3Bl
+cl9kYXkgaW50ZWdlciBub3QgbnVsbCBjaGVjayAoY29uZG9sZW5jZXNfcGVyX2RheSA+IDApLAog
+IHN0b3JpZXNfcGVyX2hvdXIgaW50ZWdlciBub3QgbnVsbCBjaGVjayAoc3Rvcmllc19wZXJfaG91
+ciA+IDApLAogIHN0b3JpZXNfcGVyX2RheSBpbnRlZ2VyIG5vdCBudWxsIGNoZWNrIChzdG9yaWVz
+X3Blcl9kYXkgPiAwKSwKICBwaG90b19yZXNlcnZhdGlvbnNfcGVyX2hvdXIgaW50ZWdlciBub3Qg
+bnVsbCBjaGVjayAocGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9ob3VyID4gMCksCiAgcGhvdG9fcmVz
+ZXJ2YXRpb25zX3Blcl9kYXkgaW50ZWdlciBub3QgbnVsbCBjaGVjayAocGhvdG9fcmVzZXJ2YXRp
+b25zX3Blcl9kYXkgPiAwKSwKICBtYXhfcGVuZGluZ19waG90b3MgaW50ZWdlciBub3QgbnVsbCBj
+aGVjayAobWF4X3BlbmRpbmdfcGhvdG9zID4gMCksCiAgZHVwbGljYXRlX3dpbmRvdyBpbnRlcnZh
+bCBub3QgbnVsbCBjaGVjayAoZHVwbGljYXRlX3dpbmRvdyA+IGludGVydmFsICcwJyksCiAgcGhv
+dG9fcmVzZXJ2YXRpb25fd2luZG93IGludGVydmFsIG5vdCBudWxsIGNoZWNrIChwaG90b19yZXNl
+cnZhdGlvbl93aW5kb3cgPiBpbnRlcnZhbCAnMCcpLAogIG1heF9waG90b19ieXRlcyBiaWdpbnQg
+bm90IG51bGwgY2hlY2sgKG1heF9waG90b19ieXRlcyA+IDApLAogIHVwZGF0ZWRfYXQgdGltZXN0
+YW1wdHogbm90IG51bGwgZGVmYXVsdCBub3coKSwKICBjb25zdHJhaW50IGNvbnRyaWJ1dGlvbl9z
+ZXR0aW5nc19ob3VyX3dpdGhpbl9kYXkgY2hlY2sgKAogICAgY29uZG9sZW5jZXNfcGVyX2hvdXIg
+PD0gY29uZG9sZW5jZXNfcGVyX2RheQogICAgYW5kIHN0b3JpZXNfcGVyX2hvdXIgPD0gc3Rvcmll
+c19wZXJfZGF5CiAgICBhbmQgcGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9ob3VyIDw9IHBob3RvX3Jl
+c2VydmF0aW9uc19wZXJfZGF5KQopOwoKaW5zZXJ0IGludG8gcHVibGljLmNvbnRyaWJ1dGlvbl9z
+ZXR0aW5ncyAoCiAgY29uZG9sZW5jZXNfcGVyX2hvdXIsIGNvbmRvbGVuY2VzX3Blcl9kYXksIHN0
+b3JpZXNfcGVyX2hvdXIsIHN0b3JpZXNfcGVyX2RheSwKICBwaG90b19yZXNlcnZhdGlvbnNfcGVy
+X2hvdXIsIHBob3RvX3Jlc2VydmF0aW9uc19wZXJfZGF5LCBtYXhfcGVuZGluZ19waG90b3MsCiAg
+ZHVwbGljYXRlX3dpbmRvdywgcGhvdG9fcmVzZXJ2YXRpb25fd2luZG93LCBtYXhfcGhvdG9fYnl0
+ZXMpCnZhbHVlcyAoMTIwLCAxMDAwLCA2MCwgNDAwLCAzMCwgMjAwLCAyMDAsIGludGVydmFsICcx
+MCBtaW51dGVzJywgaW50ZXJ2YWwgJzEgaG91cicsIDE1NzI4NjQwKTsKCi0tIFLDqWdsYWdlIHBh
+ciBob21tYWdlIChSMikgOiBOVUxMID0gdmFsZXVyIGfDqW7DqXJhbGUuIE1vZGlmaWFibGUgc2V1
+bGVtZW50Ci0tIHBhciBTUUwgcmV2dSBvdSB1biBvdXRpbCBRRyA7IGF1Y3VuZSBSUEMgbmUgbCfD
+qWNyaXQuCmNyZWF0ZSB0YWJsZSBwdWJsaWMuY29udHJpYnV0aW9uX2xpbWl0c19vdmVycmlkZSAo
+CiAgbWVtb3JpYWxfaWQgdXVpZCBwcmltYXJ5IGtleSByZWZlcmVuY2VzIHB1YmxpYy5tZW1vcmlh
+bHMgKGlkKSBvbiBkZWxldGUgY2FzY2FkZSwKICBjb25kb2xlbmNlc19wZXJfaG91ciBpbnRlZ2Vy
+IGNoZWNrIChjb25kb2xlbmNlc19wZXJfaG91ciA+IDApLAogIGNvbmRvbGVuY2VzX3Blcl9kYXkg
+aW50ZWdlciBjaGVjayAoY29uZG9sZW5jZXNfcGVyX2RheSA+IDApLAogIHN0b3JpZXNfcGVyX2hv
+dXIgaW50ZWdlciBjaGVjayAoc3Rvcmllc19wZXJfaG91ciA+IDApLAogIHN0b3JpZXNfcGVyX2Rh
+eSBpbnRlZ2VyIGNoZWNrIChzdG9yaWVzX3Blcl9kYXkgPiAwKSwKICBwaG90b19yZXNlcnZhdGlv
+bnNfcGVyX2hvdXIgaW50ZWdlciBjaGVjayAocGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9ob3VyID4g
+MCksCiAgcGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9kYXkgaW50ZWdlciBjaGVjayAocGhvdG9fcmVz
+ZXJ2YXRpb25zX3Blcl9kYXkgPiAwKSwKICBtYXhfcGVuZGluZ19waG90b3MgaW50ZWdlciBjaGVj
+ayAobWF4X3BlbmRpbmdfcGhvdG9zID4gMCksCiAgcmVhc29uIHRleHQsCiAgdXBkYXRlZF9hdCB0
+aW1lc3RhbXB0eiBub3QgbnVsbCBkZWZhdWx0IG5vdygpCik7CgotLSBGZW7DqnRyZXMgZml4ZXMg
+cGFyIGhvbW1hZ2UgZXQgcGFyIHR5cGUgKFIxIDogamFtYWlzIHBhciBzb3VyY2UpLgpjcmVhdGUg
+dGFibGUgcHVibGljLmNvbnRyaWJ1dGlvbl9yYXRlX2xpbWl0cyAoCiAgbWVtb3JpYWxfaWQgdXVp
+ZCBub3QgbnVsbCByZWZlcmVuY2VzIHB1YmxpYy5tZW1vcmlhbHMgKGlkKSBvbiBkZWxldGUgY2Fz
+Y2FkZSwKICBraW5kIHRleHQgbm90IG51bGwgY2hlY2sgKGtpbmQgaW4gKCdjb25kb2xlbmNlJywg
+J3N0b3J5JywgJ3Bob3RvJykpLAogIGhvdXJfd2luZG93X3N0YXJ0ZWRfYXQgdGltZXN0YW1wdHog
+bm90IG51bGwsCiAgaG91cl9jb3VudCBpbnRlZ2VyIG5vdCBudWxsIGRlZmF1bHQgMCBjaGVjayAo
+aG91cl9jb3VudCA+PSAwKSwKICBkYXlfd2luZG93X3N0YXJ0ZWRfYXQgdGltZXN0YW1wdHogbm90
+IG51bGwsCiAgZGF5X2NvdW50IGludGVnZXIgbm90IG51bGwgZGVmYXVsdCAwIGNoZWNrIChkYXlf
+Y291bnQgPj0gMCksCiAgdXBkYXRlZF9hdCB0aW1lc3RhbXB0eiBub3QgbnVsbCBkZWZhdWx0IG5v
+dygpLAogIHByaW1hcnkga2V5IChtZW1vcmlhbF9pZCwga2luZCkKKTsKCmFsdGVyIHRhYmxlIHB1
+YmxpYy5jb250cmlidXRpb25fc2V0dGluZ3MgZW5hYmxlIHJvdyBsZXZlbCBzZWN1cml0eTsKYWx0
+ZXIgdGFibGUgcHVibGljLmNvbnRyaWJ1dGlvbl9saW1pdHNfb3ZlcnJpZGUgZW5hYmxlIHJvdyBs
+ZXZlbCBzZWN1cml0eTsKYWx0ZXIgdGFibGUgcHVibGljLmNvbnRyaWJ1dGlvbl9yYXRlX2xpbWl0
+cyBlbmFibGUgcm93IGxldmVsIHNlY3VyaXR5OwoKY29tbWVudCBvbiB0YWJsZSBwdWJsaWMuY29u
+dHJpYnV0aW9uX3NldHRpbmdzIGlzCiAgJ004LUUxLCBSMi9SMy4gVmFsZXVycyBnw6luw6lyYWxl
+cyBkZXMgcGxhZm9uZHMgdGVjaG5pcXVlcyBkZXMgQ29udHJpYnV0aW9ucyAodW5lIGxpZ25lKS4g
+QXVjdW4gcHJpdmlsw6hnZSBjbGllbnQuJzsKY29tbWVudCBvbiB0YWJsZSBwdWJsaWMuY29udHJp
+YnV0aW9uX2xpbWl0c19vdmVycmlkZSBpcwogICdNOC1FMSwgUjIuIFLDqWdsYWdlIHBhciBob21t
+YWdlIChOVUxMID0gdmFsZXVyIGfDqW7DqXJhbGUpLiDDiWNyaXQgc2V1bGVtZW50IHBhciBTUUwg
+cmV2dSBvdSBvdXRpbCBRRy4nOwpjb21tZW50IG9uIHRhYmxlIHB1YmxpYy5jb250cmlidXRpb25f
+cmF0ZV9saW1pdHMgaXMKICAnTTgtRTEsIFIyLiBDb21wdGV1cnMgw6AgZmVuw6p0cmVzIGZpeGVz
+IChoZXVyZSwgam91cikgcGFyIGhvbW1hZ2UgZXQgcGFyIHR5cGUuIFVuIHJlZnVzIG4nJ2VzdCBq
+YW1haXMgY29tcHTDqS4nOwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDQuIENhdMOpZ29yaWVzIGVuIHZp
+Z3VldXIgKE85LCBRMSkKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CgpjcmVhdGUgdGFibGUgcHVibGljLm1lbW9y
+aWFsX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzICgKICBtZW1vcmlhbF9pZCB1dWlkIHByaW1hcnkg
+a2V5IHJlZmVyZW5jZXMgcHVibGljLm1lbW9yaWFscyAoaWQpIG9uIGRlbGV0ZSBjYXNjYWRlLAog
+IGNvbmRvbGVuY2VzIGJvb2xlYW4gbm90IG51bGwsCiAgc3RvcmllcyBib29sZWFuIG5vdCBudWxs
+LAogIHBob3RvcyBib29sZWFuIG5vdCBudWxsLAogIHVwZGF0ZWRfYXQgdGltZXN0YW1wdHogbm90
+IG51bGwgZGVmYXVsdCBub3coKSwKICAtLSBOVUxMIDogcG9zw6kgcGFyIHVuZSBwdWJsaWNhdGlv
+biA7IHNpbm9uIGxlIHByb3ByacOpdGFpcmUgcXVpIGwnYSBjaGFuZ8OpLgogIHVwZGF0ZWRfYnkg
+dXVpZCByZWZlcmVuY2VzIHB1YmxpYy5vd25lcnMgKGlkKQopOwoKYWx0ZXIgdGFibGUgcHVibGlj
+Lm1lbW9yaWFsX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzIGVuYWJsZSByb3cgbGV2ZWwgc2VjdXJp
+dHk7Cgpjb21tZW50IG9uIHRhYmxlIHB1YmxpYy5tZW1vcmlhbF9jb250cmlidXRpb25fY2F0ZWdv
+cmllcyBpcwogICdNOC1FMSwgTzkvUTEuIFLDqWdsYWdlIEVOIFZJR1VFVVIgZGVzIHRyb2lzIGNh
+dMOpZ29yaWVzLCBsdSBwYXIgbGVzIGTDqXDDtHRzIGV0IGxhIGxlY3R1cmUgcHVibGlxdWUuIElu
+aXRpYWxpc8OpIHBhciBsYSBwdWJsaWNhdGlvbiAoZMOpY2xlbmNoZXVyKSwgY2hhbmfDqSBpbW3D
+qWRpYXRlbWVudCBwYXIgc2V0X2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX3YxIDsgbGEgY29waWUg
+cHVibGnDqWUgbicnZXN0IGphbWFpcyByw6nDqWNyaXRlLiBTYW5zIGxpZ25lIDogbGVzIGNob2l4
+IGRlIGxhIGNvcGllIHB1Ymxpw6llLic7CgotLSBMZWN0dXJlIGTDqWZlbnNpdmUgZGUgY29udGVu
+dC5jb250cmlidXRpb25zLmZlYXR1cmVzLCBtaXJvaXIgZXhhY3QgZGUKLS0gaW5zcGVjdENvbnRy
+aWJ1dGlvbnNTZXR0aW5ncyAobGliL21lbW9yaWFsL2NvbnRyaWJ1dGlvbnMvY29udHJpYnV0aW9u
+cy1zZXR0aW5ncy50cykgOgotLSBhYnNlbnQgPSB0b3V0IGZlcm3DqSA7IG1hbCBmb3Jtw6kgPSBO
+VUxMIChhdWN1bmUgw6ljcml0dXJlLCB0b3V0IGZlcm3DqSkuCmNyZWF0ZSBvciByZXBsYWNlIGZ1
+bmN0aW9uIHB1YmxpYy5jb250cmlidXRpb25fZmVhdHVyZXNfdjEocF9jb250ZW50IGpzb25iKQpy
+ZXR1cm5zIGpzb25iCmxhbmd1YWdlIHBscGdzcWwKaW1tdXRhYmxlCnNlY3VyaXR5IGRlZmluZXIK
+c2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKZGVjbGFyZQogIHZfcmF3IGpzb25iOwogIHZfZmVh
+dHVyZXMganNvbmI7CiAgdl9vdXQganNvbmIgOj0gJ3siY29uZG9sZW5jZXMiOiBmYWxzZSwgInN0
+b3JpZXMiOiBmYWxzZSwgInBob3RvcyI6IGZhbHNlfSc6Ompzb25iOwogIHZfa2V5IHRleHQ7CmJl
+Z2luCiAgaWYgcF9jb250ZW50IGlzIG51bGwgb3IganNvbmJfdHlwZW9mKHBfY29udGVudCkgPD4g
+J29iamVjdCcgdGhlbgogICAgcmV0dXJuIG51bGw7CiAgZW5kIGlmOwogIGlmIG5vdCAocF9jb250
+ZW50ID8gJ2NvbnRyaWJ1dGlvbnMnKSB0aGVuCiAgICByZXR1cm4gdl9vdXQ7CiAgZW5kIGlmOwog
+IHZfcmF3IDo9IHBfY29udGVudCAtPiAnY29udHJpYnV0aW9ucyc7CiAgaWYganNvbmJfdHlwZW9m
+KHZfcmF3KSA8PiAnb2JqZWN0JyB0aGVuCiAgICByZXR1cm4gbnVsbDsKICBlbmQgaWY7CiAgdl9m
+ZWF0dXJlcyA6PSB2X3JhdyAtPiAnZmVhdHVyZXMnOwogIGlmIHZfZmVhdHVyZXMgaXMgbnVsbCBv
+ciBqc29uYl90eXBlb2Yodl9mZWF0dXJlcykgPD4gJ29iamVjdCcgdGhlbgogICAgcmV0dXJuIG51
+bGw7CiAgZW5kIGlmOwogIGZvcmVhY2ggdl9rZXkgaW4gYXJyYXkgYXJyYXlbJ2NvbmRvbGVuY2Vz
+JywgJ3N0b3JpZXMnLCAncGhvdG9zJ10gbG9vcAogICAgaWYgdl9mZWF0dXJlcyA/IHZfa2V5IHRo
+ZW4KICAgICAgaWYganNvbmJfdHlwZW9mKHZfZmVhdHVyZXMgLT4gdl9rZXkpIDw+ICdib29sZWFu
+JyB0aGVuCiAgICAgICAgcmV0dXJuIG51bGw7CiAgICAgIGVuZCBpZjsKICAgICAgdl9vdXQgOj0g
+anNvbmJfc2V0KHZfb3V0LCBhcnJheVt2X2tleV0sIHZfZmVhdHVyZXMgLT4gdl9rZXkpOwogICAg
+ZW5kIGlmOwogIGVuZCBsb29wOwogIHJldHVybiB2X291dDsKZW5kOwokJDsKCmNyZWF0ZSBvciBy
+ZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5zeW5jX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX29uX3B1
+YmxpY2F0aW9uX3YxKCkKcmV0dXJucyB0cmlnZ2VyCmxhbmd1YWdlIHBscGdzcWwKc2VjdXJpdHkg
+ZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAnJwphcyAkJApkZWNsYXJlCiAgdl9uZXcganNvbmIg
+Oj0gcHVibGljLmNvbnRyaWJ1dGlvbl9mZWF0dXJlc192MShuZXcuY29udGVudCk7CmJlZ2luCiAg
+aWYgdl9uZXcgaXMgbnVsbCB0aGVuCiAgICByZXR1cm4gbnVsbDsKICBlbmQgaWY7CiAgaWYgdGdf
+b3AgPSAnSU5TRVJUJyB0aGVuCiAgICBpbnNlcnQgaW50byBwdWJsaWMubWVtb3JpYWxfY29udHJp
+YnV0aW9uX2NhdGVnb3JpZXMgKG1lbW9yaWFsX2lkLCBjb25kb2xlbmNlcywgc3RvcmllcywgcGhv
+dG9zKQogICAgdmFsdWVzIChuZXcubWVtb3JpYWxfaWQsICh2X25ldyAtPj4gJ2NvbmRvbGVuY2Vz
+Jyk6OmJvb2xlYW4sICh2X25ldyAtPj4gJ3N0b3JpZXMnKTo6Ym9vbGVhbiwgKHZfbmV3IC0+PiAn
+cGhvdG9zJyk6OmJvb2xlYW4pCiAgICBvbiBjb25mbGljdCAobWVtb3JpYWxfaWQpIGRvIG5vdGhp
+bmc7CiAgZWxzaWYgdl9uZXcgaXMgZGlzdGluY3QgZnJvbSBwdWJsaWMuY29udHJpYnV0aW9uX2Zl
+YXR1cmVzX3YxKG9sZC5jb250ZW50KSB0aGVuCiAgICAtLSBSZXB1YmxpY2F0aW9uIGV4cGxpY2l0
+ZSBkZSBub3V2ZWF1eCBjaG9peCA6IGVsbGUgbCdlbXBvcnRlLiBTaW5vbgogICAgLS0gcmllbiBu
+ZSBjaGFuZ2UsIGV0IHVuIHLDqWdsYWdlIGltbcOpZGlhdCBPOSBlc3QgcHLDqXNlcnbDqS4KICAg
+IGluc2VydCBpbnRvIHB1YmxpYy5tZW1vcmlhbF9jb250cmlidXRpb25fY2F0ZWdvcmllcyAobWVt
+b3JpYWxfaWQsIGNvbmRvbGVuY2VzLCBzdG9yaWVzLCBwaG90b3MpCiAgICB2YWx1ZXMgKG5ldy5t
+ZW1vcmlhbF9pZCwgKHZfbmV3IC0+PiAnY29uZG9sZW5jZXMnKTo6Ym9vbGVhbiwgKHZfbmV3IC0+
+PiAnc3RvcmllcycpOjpib29sZWFuLCAodl9uZXcgLT4+ICdwaG90b3MnKTo6Ym9vbGVhbikKICAg
+IG9uIGNvbmZsaWN0IChtZW1vcmlhbF9pZCkgZG8gdXBkYXRlCiAgICAgIHNldCBjb25kb2xlbmNl
+cyA9IGV4Y2x1ZGVkLmNvbmRvbGVuY2VzLAogICAgICAgICAgc3RvcmllcyA9IGV4Y2x1ZGVkLnN0
+b3JpZXMsCiAgICAgICAgICBwaG90b3MgPSBleGNsdWRlZC5waG90b3MsCiAgICAgICAgICB1cGRh
+dGVkX2F0ID0gbm93KCksCiAgICAgICAgICB1cGRhdGVkX2J5ID0gbnVsbDsKICBlbmQgaWY7CiAg
+cmV0dXJuIG51bGw7CmVuZDsKJCQ7CgpjcmVhdGUgdHJpZ2dlciBtZW1vcmlhbF9wdWJsaXNoZWRf
+c25hcHNob3RzX3N5bmNfY29udHJpYnV0aW9uX2NhdGVnb3JpZXMKICBhZnRlciBpbnNlcnQgb3Ig
+dXBkYXRlIG9mIGNvbnRlbnQgb24gcHVibGljLm1lbW9yaWFsX3B1Ymxpc2hlZF9zbmFwc2hvdHMK
+ICBmb3IgZWFjaCByb3cgZXhlY3V0ZSBmdW5jdGlvbiBwdWJsaWMuc3luY19jb250cmlidXRpb25f
+Y2F0ZWdvcmllc19vbl9wdWJsaWNhdGlvbl92MSgpOwoKLS0gSG9tbWFnZSBwdWJsacOpIGV0IHB1
+YmxpYywgY29waWUgcHVibGnDqWUgcHLDqXNlbnRlLCBydWJyaXF1ZSBub24gbWFzcXXDqWUuCmNy
+ZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5jb250cmlidXRpb25zX3J1YnJpY19wdWJs
+aWNfdjEocF9tZW1vcmlhbF9pZCB1dWlkLCBwX25vdyB0aW1lc3RhbXB0eikKcmV0dXJucyBib29s
+ZWFuCmxhbmd1YWdlIHNxbApzdGFibGUKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGgg
+PSAnJwphcyAkJAogIHNlbGVjdCBjb2FsZXNjZSgoCiAgICBzZWxlY3QgcHVibGljLm1lbW9yaWFs
+X3B1YmxpY2x5X3Zpc2libGVfdjEocy5tZW1vcmlhbF9pZCwgcF9ub3cpCiAgICAgICAgICAgYW5k
+IG5vdCBjb2FsZXNjZShqc29uYl90eXBlb2Yocy5jb250ZW50ICM+ICd7cHJlc2VudGF0aW9uLGhp
+ZGRlblNlY3Rpb25zfScpID0gJ2FycmF5JwogICAgICAgICAgICAgICAgICAgICAgICAgICAgYW5k
+IChzLmNvbnRlbnQgIz4gJ3twcmVzZW50YXRpb24saGlkZGVuU2VjdGlvbnN9JykgPyAndGVzdGlt
+b25pYWxzJywgZmFsc2UpCiAgICAgIGZyb20gcHVibGljLm1lbW9yaWFsX3B1Ymxpc2hlZF9zbmFw
+c2hvdHMgcwogICAgIHdoZXJlIHMubWVtb3JpYWxfaWQgPSBwX21lbW9yaWFsX2lkCiAgKSwgZmFs
+c2UpOwokJDsKCi0tIFLDqWdsYWdlIGVuIHZpZ3VldXIgOiBsYSBsaWduZSBPOSwgc2lub24gbGVz
+IGNob2l4IGRlIGxhIGNvcGllIHB1Ymxpw6llLAotLSBzaW5vbiB0b3V0IGZlcm3DqS4KY3JlYXRl
+IG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLmNvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX2luX2Vm
+ZmVjdF92MShwX21lbW9yaWFsX2lkIHV1aWQpCnJldHVybnMganNvbmIKbGFuZ3VhZ2Ugc3FsCnN0
+YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCiAgc2VsZWN0
+IGNvYWxlc2NlKAogICAgKHNlbGVjdCBqc29uYl9idWlsZF9vYmplY3QoJ2NvbmRvbGVuY2VzJywg
+Yy5jb25kb2xlbmNlcywgJ3N0b3JpZXMnLCBjLnN0b3JpZXMsICdwaG90b3MnLCBjLnBob3RvcykK
+ICAgICAgIGZyb20gcHVibGljLm1lbW9yaWFsX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzIGMKICAg
+ICAgd2hlcmUgYy5tZW1vcmlhbF9pZCA9IHBfbWVtb3JpYWxfaWQpLAogICAgKHNlbGVjdCBwdWJs
+aWMuY29udHJpYnV0aW9uX2ZlYXR1cmVzX3YxKHMuY29udGVudCkKICAgICAgIGZyb20gcHVibGlj
+Lm1lbW9yaWFsX3B1Ymxpc2hlZF9zbmFwc2hvdHMgcwogICAgICB3aGVyZSBzLm1lbW9yaWFsX2lk
+ID0gcF9tZW1vcmlhbF9pZCksCiAgICAneyJjb25kb2xlbmNlcyI6IGZhbHNlLCAic3RvcmllcyI6
+IGZhbHNlLCAicGhvdG9zIjogZmFsc2V9Jzo6anNvbmIpOwokJDsKCi0tID09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQot
+LSA1LiBRNy1CIDogbGVzIHBob3RvcyBkZXMgcHJvY2hlcyBob3JzIGR1IGJ1ZGdldCBncmF0dWl0
+IGRlIDMwMCBNbwotLSA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT0KLS0gU2V1bGUgZGlmZsOpcmVuY2UgYXZlYyBsYSB2
+ZXJzaW9uIFFHIDAxNyA6IHB1cnBvc2UgPSAnY29udHJpYnV0aW9uJyBlc3QKLS0gaWdub3LDqS4g
+TGEgcsOoZ2xlIHJlc3RlIGVudGnDqHJlIHBvdXIgbGVzIG3DqWRpYXMgZGUgbGEgZmFtaWxsZS4K
+CmNyZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5vd25lcl9mcmVlX3N0b3JhZ2VfYnl0
+ZXNfdjEocF9vd25lcl9pZCB1dWlkKQpyZXR1cm5zIGJpZ2ludApsYW5ndWFnZSBzcWwKc3RhYmxl
+CnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKICBzZWxlY3QgY29h
+bGVzY2Uoc3VtKG1kLnNpemVfYnl0ZXMpLCAwKTo6YmlnaW50CiAgICBmcm9tIHB1YmxpYy5tZWRp
+YSBtZAogICAgam9pbiBwdWJsaWMubWVtb3JpYWxzIG0gb24gbS5pZCA9IG1kLm1lbW9yaWFsX2lk
+CiAgIHdoZXJlIG0ub3duZXJfaWQgPSBwX293bmVyX2lkCiAgICAgYW5kIG0uYWNjZXNzX2xldmVs
+ID0gJ2F2aXMnCiAgICAgYW5kIG1kLnN0YXR1cyA9ICdyZWFkeScKICAgICBhbmQgbWQucHVycG9z
+ZSA8PiAnY29udHJpYnV0aW9uJzsKJCQ7CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJs
+aWMuZ3VhcmRfZnJlZV9zdG9yYWdlX2J1ZGdldF92MSgpCnJldHVybnMgdHJpZ2dlcgpsYW5ndWFn
+ZSBwbHBnc3FsCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKZGVj
+bGFyZQogIHZfb3duZXIgdXVpZDsKICB2X2xldmVsIHRleHQ7CiAgdl9idWRnZXQgYmlnaW50Owog
+IHZfdXNlZCBiaWdpbnQ7CmJlZ2luCiAgaWYgbmV3LnB1cnBvc2UgPSAnY29udHJpYnV0aW9uJyB0
+aGVuCiAgICByZXR1cm4gbmV3OwogIGVuZCBpZjsKICBpZiB0Z19vcCA9ICdVUERBVEUnIGFuZCBu
+b3QgKG9sZC5zdGF0dXMgPSAncGVuZGluZycgYW5kIG5ldy5zdGF0dXMgPSAncmVhZHknKSB0aGVu
+CiAgICByZXR1cm4gbmV3OwogIGVuZCBpZjsKICBzZWxlY3QgbS5vd25lcl9pZCwgbS5hY2Nlc3Nf
+bGV2ZWwgaW50byB2X293bmVyLCB2X2xldmVsCiAgICBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbSB3
+aGVyZSBtLmlkID0gbmV3Lm1lbW9yaWFsX2lkOwogIGlmIHZfbGV2ZWwgaXMgZGlzdGluY3QgZnJv
+bSAnYXZpcycgb3Igdl9vd25lciBpcyBudWxsIHRoZW4KICAgIHJldHVybiBuZXc7CiAgZW5kIGlm
+OwogIHNlbGVjdCBzLmZyZWVfc3RvcmFnZV9ieXRlc19wZXJfb3duZXIgaW50byB2X2J1ZGdldAog
+ICAgZnJvbSBwdWJsaWMubWVtb3JpYWxfYWNjZXNzX3NldHRpbmdzIHMgd2hlcmUgcy5pZDsKICBp
+ZiB2X2J1ZGdldCBpcyBudWxsIHRoZW4KICAgIHJldHVybiBuZXc7CiAgZW5kIGlmOwogIC0tIFPD
+qXJpYWxpc2UgbGVzIGZpbmFsaXNhdGlvbnMgZCd1biBtw6ptZSBjb21wdGUgKHZlcnJvdSBkw6lk
+acOpIDogYXVjdW4KICAtLSBhdXRyZSB2ZXJyb3Ugbidlc3QgcHJpcyBkYW5zIHVuIG9yZHJlIGRp
+ZmbDqXJlbnQpLgogIHBlcmZvcm0gcGdfY2F0YWxvZy5wZ19hZHZpc29yeV94YWN0X2xvY2soCiAg
+ICBwZ19jYXRhbG9nLmhhc2h0ZXh0ZXh0ZW5kZWQoJ2hlcml0YWdlLW93bmVyLXN0b3JhZ2U6JyB8
+fCB2X293bmVyOjp0ZXh0LCAwKSk7CiAgdl91c2VkIDo9IHB1YmxpYy5vd25lcl9mcmVlX3N0b3Jh
+Z2VfYnl0ZXNfdjEodl9vd25lcik7CiAgaWYgdGdfb3AgPSAnSU5TRVJUJyB0aGVuCiAgICAtLSBQ
+csOpLWNvbnRyw7RsZSDDoCBsYSByw6lzZXJ2YXRpb24gOiBidWRnZXQgZMOpasOgIMOpcHVpc8Op
+LCBpbnV0aWxlIGQnZW52b3llci4KICAgIGlmIHZfdXNlZCA+PSB2X2J1ZGdldCB0aGVuCiAgICAg
+IHJhaXNlIGV4Y2VwdGlvbiAnZnJlZSBzdG9yYWdlIGJ1ZGdldCByZWFjaGVkJyB1c2luZyBlcnJj
+b2RlID0gJ0hENTA3JzsKICAgIGVuZCBpZjsKICBlbHNpZiB2X3VzZWQgKyBjb2FsZXNjZShuZXcu
+c2l6ZV9ieXRlcywgMCkgPiB2X2J1ZGdldCB0aGVuCiAgICByYWlzZSBleGNlcHRpb24gJ2ZyZWUg
+c3RvcmFnZSBidWRnZXQgcmVhY2hlZCcgdXNpbmcgZXJyY29kZSA9ICdIRDUwNyc7CiAgZW5kIGlm
+OwogIHJldHVybiBuZXc7CmVuZDsKJCQ7CgotLSA9PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KLS0gNi4gT2ZmcmUgZ3Jh
+dHVpdGUgKEQxKSA6IGxhIGNvcGllIMKrIGF2aXMgwrsgcGV1dCBwb3J0ZXIgY29udHJpYnV0aW9u
+cwotLSA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT0KCnVwZGF0ZSBwdWJsaWMubWVtb3JpYWxfYWNjZXNzX3NldHRpbmdz
+CiAgIHNldCBhdmlzX3NuYXBzaG90X2tleXMgPSBhcnJheV9hcHBlbmQoYXZpc19zbmFwc2hvdF9r
+ZXlzLCAnY29udHJpYnV0aW9ucycpLAogICAgICAgdXBkYXRlZF9hdCA9IG5vdygpCiB3aGVyZSBp
+ZAogICBhbmQgbm90ICgnY29udHJpYnV0aW9ucycgPSBhbnkgKGF2aXNfc25hcHNob3Rfa2V5cykp
+OwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09Ci0tIDcuIEF1dG9yaXNhdGlvbiBkZSBkw6lww7R0IHYyCi0tID09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PQotLSBIb21tYWdlIHB1YmxpYywgcnVicmlxdWUgbm9uIG1hc3F1w6llLCBjYXTD
+qWdvcmllIGVuIHZpZ3VldXIgOyBsZXMgdHJvaXMKLS0gdHlwZXMgZGVzIENvbnRyaWJ1dGlvbnMg
+ZGFucyBsZXMgZGV1eCBvZmZyZXMgOyBtZW1vcnlfbWVzc2FnZSBnYXJkZSBsYQotLSByw6hnbGUg
+UUcgMDA4IChvZmZyZSBjb21wbMOodGUsIHJ1YnJpcXVlIGFjdGl2w6llKS4gTGEgdjEgZXN0IGNv
+bnNlcnbDqWUKLS0gKHBvbGl0aXF1ZSBoaXN0b3JpcXVlKSwgc2FucyBjaGFuZ2VtZW50LgoKY3Jl
+YXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLnB1YmxpY19tZW1vcmlhbF9tZXNzYWdlX2Fs
+bG93ZWRfdjIocF9tZW1vcmlhbF9pZCB1dWlkLCBwX21lc3NhZ2VfdHlwZSB0ZXh0KQpyZXR1cm5z
+IGJvb2xlYW4KbGFuZ3VhZ2Ugc3FsCnN0YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hf
+cGF0aCA9ICcnCmFzICQkCiAgc2VsZWN0IGNvYWxlc2NlKCgKICAgIHNlbGVjdCBjYXNlIHBfbWVz
+c2FnZV90eXBlCiAgICAgICAgICAgICB3aGVuICdtZW1vcnlfbWVzc2FnZScgdGhlbgogICAgICAg
+ICAgICAgICBwdWJsaWMubWVtb3JpYWxfcHVibGljbHlfdmlzaWJsZV92MShtLmlkLCBub3coKSkK
+ICAgICAgICAgICAgICAgYW5kIG0uYWNjZXNzX2xldmVsID0gJ2NvbXBsZXQnCiAgICAgICAgICAg
+ICAgIGFuZCAnbWVtb3J5TWVzc2FnZScgPSBhbnkgKG0uZW5hYmxlZF9zZWN0aW9ucykKICAgICAg
+ICAgICAgIHdoZW4gJ2NvbmRvbGVuY2UnIHRoZW4KICAgICAgICAgICAgICAgcHVibGljLmNvbnRy
+aWJ1dGlvbnNfcnVicmljX3B1YmxpY192MShtLmlkLCBub3coKSkKICAgICAgICAgICAgICAgYW5k
+IChwdWJsaWMuY29udHJpYnV0aW9uX2NhdGVnb3JpZXNfaW5fZWZmZWN0X3YxKG0uaWQpIC0+PiAn
+Y29uZG9sZW5jZXMnKTo6Ym9vbGVhbgogICAgICAgICAgICAgd2hlbiAndGVzdGltb25pYWwnIHRo
+ZW4KICAgICAgICAgICAgICAgcHVibGljLmNvbnRyaWJ1dGlvbnNfcnVicmljX3B1YmxpY192MSht
+LmlkLCBub3coKSkKICAgICAgICAgICAgICAgYW5kIChwdWJsaWMuY29udHJpYnV0aW9uX2NhdGVn
+b3JpZXNfaW5fZWZmZWN0X3YxKG0uaWQpIC0+PiAnc3RvcmllcycpOjpib29sZWFuCiAgICAgICAg
+ICAgICB3aGVuICdwaG90bycgdGhlbgogICAgICAgICAgICAgICBwdWJsaWMuY29udHJpYnV0aW9u
+c19ydWJyaWNfcHVibGljX3YxKG0uaWQsIG5vdygpKQogICAgICAgICAgICAgICBhbmQgKHB1Ymxp
+Yy5jb250cmlidXRpb25fY2F0ZWdvcmllc19pbl9lZmZlY3RfdjEobS5pZCkgLT4+ICdwaG90b3Mn
+KTo6Ym9vbGVhbgogICAgICAgICAgICAgZWxzZSBmYWxzZQogICAgICAgICAgIGVuZAogICAgICBm
+cm9tIHB1YmxpYy5tZW1vcmlhbHMgbQogICAgIHdoZXJlIG0uaWQgPSBwX21lbW9yaWFsX2lkCiAg
+KSwgZmFsc2UpOwokJDsKCi0tID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQotLSA4LiBEw6lww7R0cyBkZXMgdmlzaXRl
+dXJzIChzZXJ2aWNlX3JvbGUpCi0tID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQoKLS0gVGV4dGUgY29uZm9ybWUgYXUg
+ZmlsZXQgUTIgKGxlIHNlcnZldXIgYXBwbGljYXRpZiBhIGTDqWrDoCBub3JtYWxpc8OpIGV0Ci0t
+IGNvbXB0w6kgbGVzIGNhcmFjdMOocmVzIHZpc2libGVzKS4KY3JlYXRlIG9yIHJlcGxhY2UgZnVu
+Y3Rpb24gcHVibGljLmNvbnRyaWJ1dGlvbl90ZXh0X3ZhbGlkX3YxKHBfdGV4dCB0ZXh0LCBwX21h
+eF9jb2RlX3BvaW50cyBpbnRlZ2VyKQpyZXR1cm5zIGJvb2xlYW4KbGFuZ3VhZ2Ugc3FsCmltbXV0
+YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCiAgc2VsZWN0
+IHBfdGV4dCBpcyBub3QgbnVsbAogICAgICAgICBhbmQgY2hhcl9sZW5ndGgoYnRyaW0ocF90ZXh0
+KSkgPiAwCiAgICAgICAgIGFuZCBjaGFyX2xlbmd0aChwX3RleHQpIDw9IHBfbWF4X2NvZGVfcG9p
+bnRzCiAgICAgICAgIGFuZCBwX3RleHQgaXMgbmZjIG5vcm1hbGl6ZWQKICAgICAgICAgYW5kIHN0
+cnBvcyhwX3RleHQsIGNocigxMykpID0gMDsKJCQ7CgotLSBQbGFmb25kcyBhcHBsaWNhYmxlcyDD
+oCB1biBob21tYWdlIHBvdXIgdW4gdHlwZSAocsOpZ2xhZ2UgcGFyIGhvbW1hZ2UsCi0tIHNpbm9u
+IHZhbGV1ciBnw6luw6lyYWxlKS4KY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLmNv
+bnRyaWJ1dGlvbl9saW1pdHNfdjEocF9tZW1vcmlhbF9pZCB1dWlkLCBwX2tpbmQgdGV4dCkKcmV0
+dXJucyB0YWJsZSAocGVyX2hvdXIgaW50ZWdlciwgcGVyX2RheSBpbnRlZ2VyLCBtYXhfcGVuZGlu
+Z19waG90b3MgaW50ZWdlcikKbGFuZ3VhZ2Ugc3FsCnN0YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNl
+dCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCiAgc2VsZWN0IGNhc2UgcF9raW5kCiAgICAgICAgICAg
+d2hlbiAnY29uZG9sZW5jZScgdGhlbiBjb2FsZXNjZShvLmNvbmRvbGVuY2VzX3Blcl9ob3VyLCBz
+LmNvbmRvbGVuY2VzX3Blcl9ob3VyKQogICAgICAgICAgIHdoZW4gJ3N0b3J5JyB0aGVuIGNvYWxl
+c2NlKG8uc3Rvcmllc19wZXJfaG91ciwgcy5zdG9yaWVzX3Blcl9ob3VyKQogICAgICAgICAgIHdo
+ZW4gJ3Bob3RvJyB0aGVuIGNvYWxlc2NlKG8ucGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9ob3VyLCBz
+LnBob3RvX3Jlc2VydmF0aW9uc19wZXJfaG91cikKICAgICAgICAgZW5kLAogICAgICAgICBjYXNl
+IHBfa2luZAogICAgICAgICAgIHdoZW4gJ2NvbmRvbGVuY2UnIHRoZW4gY29hbGVzY2Uoby5jb25k
+b2xlbmNlc19wZXJfZGF5LCBzLmNvbmRvbGVuY2VzX3Blcl9kYXkpCiAgICAgICAgICAgd2hlbiAn
+c3RvcnknIHRoZW4gY29hbGVzY2Uoby5zdG9yaWVzX3Blcl9kYXksIHMuc3Rvcmllc19wZXJfZGF5
+KQogICAgICAgICAgIHdoZW4gJ3Bob3RvJyB0aGVuIGNvYWxlc2NlKG8ucGhvdG9fcmVzZXJ2YXRp
+b25zX3Blcl9kYXksIHMucGhvdG9fcmVzZXJ2YXRpb25zX3Blcl9kYXkpCiAgICAgICAgIGVuZCwK
+ICAgICAgICAgY29hbGVzY2Uoby5tYXhfcGVuZGluZ19waG90b3MsIHMubWF4X3BlbmRpbmdfcGhv
+dG9zKQogICAgZnJvbSBwdWJsaWMuY29udHJpYnV0aW9uX3NldHRpbmdzIHMKICAgIGxlZnQgam9p
+biBwdWJsaWMuY29udHJpYnV0aW9uX2xpbWl0c19vdmVycmlkZSBvIG9uIG8ubWVtb3JpYWxfaWQg
+PSBwX21lbW9yaWFsX2lkCiAgIHdoZXJlIHMuaWQ7CiQkOwoKLS0gUjIgOiB2ZXJyb3VpbGxlIGxh
+IGxpZ25lIChob21tYWdlLCB0eXBlKSwgcmVtZXQgbGVzIGZlbsOqdHJlcyDDqWNodWVzIMOgCi0t
+IHrDqXJvIGV0IGRpdCBzaSB1biBkw6lww7R0IGRlIHBsdXMgZXN0IHBlcm1pcy4gTmUgY29tcHRl
+IHJpZW4uCmNyZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5jb250cmlidXRpb25fcmF0
+ZV9vcGVuX3YxKHBfbWVtb3JpYWxfaWQgdXVpZCwgcF9raW5kIHRleHQsIHBfbm93IHRpbWVzdGFt
+cHR6KQpyZXR1cm5zIGJvb2xlYW4KbGFuZ3VhZ2UgcGxwZ3NxbApzZWN1cml0eSBkZWZpbmVyCnNl
+dCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmRlY2xhcmUKICB2X3JvdyBwdWJsaWMuY29udHJpYnV0
+aW9uX3JhdGVfbGltaXRzJXJvd3R5cGU7CiAgdl9wZXJfaG91ciBpbnRlZ2VyOwogIHZfcGVyX2Rh
+eSBpbnRlZ2VyOwpiZWdpbgogIHNlbGVjdCBsLnBlcl9ob3VyLCBsLnBlcl9kYXkgaW50byB2X3Bl
+cl9ob3VyLCB2X3Blcl9kYXkKICAgIGZyb20gcHVibGljLmNvbnRyaWJ1dGlvbl9saW1pdHNfdjEo
+cF9tZW1vcmlhbF9pZCwgcF9raW5kKSBsOwogIGlmIHZfcGVyX2hvdXIgaXMgbnVsbCBvciB2X3Bl
+cl9kYXkgaXMgbnVsbCB0aGVuCiAgICByZXR1cm4gZmFsc2U7CiAgZW5kIGlmOwogIGluc2VydCBp
+bnRvIHB1YmxpYy5jb250cmlidXRpb25fcmF0ZV9saW1pdHMgKG1lbW9yaWFsX2lkLCBraW5kLCBo
+b3VyX3dpbmRvd19zdGFydGVkX2F0LCBkYXlfd2luZG93X3N0YXJ0ZWRfYXQpCiAgdmFsdWVzIChw
+X21lbW9yaWFsX2lkLCBwX2tpbmQsIHBfbm93LCBwX25vdykKICBvbiBjb25mbGljdCAobWVtb3Jp
+YWxfaWQsIGtpbmQpIGRvIG5vdGhpbmc7CiAgc2VsZWN0ICogaW50byB2X3JvdyBmcm9tIHB1Ymxp
+Yy5jb250cmlidXRpb25fcmF0ZV9saW1pdHMKICAgd2hlcmUgbWVtb3JpYWxfaWQgPSBwX21lbW9y
+aWFsX2lkIGFuZCBraW5kID0gcF9raW5kCiAgIGZvciB1cGRhdGU7CiAgaWYgdl9yb3cuaG91cl93
+aW5kb3dfc3RhcnRlZF9hdCA8PSBwX25vdyAtIGludGVydmFsICcxIGhvdXInIHRoZW4KICAgIHZf
+cm93LmhvdXJfd2luZG93X3N0YXJ0ZWRfYXQgOj0gcF9ub3c7CiAgICB2X3Jvdy5ob3VyX2NvdW50
+IDo9IDA7CiAgZW5kIGlmOwogIGlmIHZfcm93LmRheV93aW5kb3dfc3RhcnRlZF9hdCA8PSBwX25v
+dyAtIGludGVydmFsICcxIGRheScgdGhlbgogICAgdl9yb3cuZGF5X3dpbmRvd19zdGFydGVkX2F0
+IDo9IHBfbm93OwogICAgdl9yb3cuZGF5X2NvdW50IDo9IDA7CiAgZW5kIGlmOwogIHVwZGF0ZSBw
+dWJsaWMuY29udHJpYnV0aW9uX3JhdGVfbGltaXRzCiAgICAgc2V0IGhvdXJfd2luZG93X3N0YXJ0
+ZWRfYXQgPSB2X3Jvdy5ob3VyX3dpbmRvd19zdGFydGVkX2F0LAogICAgICAgICBob3VyX2NvdW50
+ID0gdl9yb3cuaG91cl9jb3VudCwKICAgICAgICAgZGF5X3dpbmRvd19zdGFydGVkX2F0ID0gdl9y
+b3cuZGF5X3dpbmRvd19zdGFydGVkX2F0LAogICAgICAgICBkYXlfY291bnQgPSB2X3Jvdy5kYXlf
+Y291bnQsCiAgICAgICAgIHVwZGF0ZWRfYXQgPSBwX25vdwogICB3aGVyZSBtZW1vcmlhbF9pZCA9
+IHBfbWVtb3JpYWxfaWQgYW5kIGtpbmQgPSBwX2tpbmQ7CiAgcmV0dXJuIHZfcm93LmhvdXJfY291
+bnQgPCB2X3Blcl9ob3VyIGFuZCB2X3Jvdy5kYXlfY291bnQgPCB2X3Blcl9kYXk7CmVuZDsKJCQ7
+CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJsaWMuY29udHJpYnV0aW9uX3JhdGVfY291
+bnRfdjEocF9tZW1vcmlhbF9pZCB1dWlkLCBwX2tpbmQgdGV4dCkKcmV0dXJucyB2b2lkCmxhbmd1
+YWdlIHNxbApzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCiAgdXBk
+YXRlIHB1YmxpYy5jb250cmlidXRpb25fcmF0ZV9saW1pdHMKICAgICBzZXQgaG91cl9jb3VudCA9
+IGhvdXJfY291bnQgKyAxLAogICAgICAgICBkYXlfY291bnQgPSBkYXlfY291bnQgKyAxCiAgIHdo
+ZXJlIG1lbW9yaWFsX2lkID0gcF9tZW1vcmlhbF9pZCBhbmQga2luZCA9IHBfa2luZDsKJCQ7Cgot
+LSBSMyA6IHBob3RvcyBlbiBhdHRlbnRlIGQnZXhhbWVuICsgcsOpc2VydmF0aW9ucyBlbmNvcmUg
+YWN0aXZlcyAobmkKLS0gZmluYWxpc8OpZXMsIG5pIHLDqWNsYW3DqWVzIHBvdXIgbmV0dG95YWdl
+LCBwbHVzIHLDqWNlbnRlcyBxdWUgbGEgZmVuw6p0cmUpLgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5j
+dGlvbiBwdWJsaWMuY29udHJpYnV0aW9uX3BlbmRpbmdfcGhvdG9zX3YxKHBfbWVtb3JpYWxfaWQg
+dXVpZCwgcF9ub3cgdGltZXN0YW1wdHopCnJldHVybnMgaW50ZWdlcgpsYW5ndWFnZSBzcWwKc3Rh
+YmxlCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKICBzZWxlY3Qg
+KAogICAgKHNlbGVjdCBjb3VudCgqKSBmcm9tIHB1YmxpYy5tZXNzYWdlcyBtc2cKICAgICAgd2hl
+cmUgbXNnLm1lbW9yaWFsX2lkID0gcF9tZW1vcmlhbF9pZAogICAgICAgIGFuZCBtc2cubWVzc2Fn
+ZV90eXBlID0gJ3Bob3RvJwogICAgICAgIGFuZCBtc2cuc3RhdHVzID0gJ3BlbmRpbmcnKQogICAg
+KwogICAgKHNlbGVjdCBjb3VudCgqKSBmcm9tIHB1YmxpYy5tZWRpYSBtZAogICAgICB3aGVyZSBt
+ZC5tZW1vcmlhbF9pZCA9IHBfbWVtb3JpYWxfaWQKICAgICAgICBhbmQgbWQucHVycG9zZSA9ICdj
+b250cmlidXRpb24nCiAgICAgICAgYW5kIG1kLnN0YXR1cyA9ICdwZW5kaW5nJwogICAgICAgIGFu
+ZCBtZC5jcmVhdGVkX2F0ID4gcF9ub3cgLSAoc2VsZWN0IHMucGhvdG9fcmVzZXJ2YXRpb25fd2lu
+ZG93IGZyb20gcHVibGljLmNvbnRyaWJ1dGlvbl9zZXR0aW5ncyBzIHdoZXJlIHMuaWQpCiAgICAg
+ICAgYW5kIG5vdCBleGlzdHMgKHNlbGVjdCAxIGZyb20gcHVibGljLm1lc3NhZ2VzIG1zZyB3aGVy
+ZSBtc2cubWVkaWFfaWQgPSBtZC5pZCkKICAgICAgICBhbmQgbm90IGV4aXN0cyAoc2VsZWN0IDEg
+ZnJvbSBwdWJsaWMucGVuZGluZ19tZWRpYV9jbGVhbnVwX2NsYWltcyBjCiAgICAgICAgICAgICAg
+ICAgICAgICAgICB3aGVyZSBjLm1lZGlhX2lkID0gbWQuaWQgYW5kIGMuY29tcGxldGVkX2F0IGlz
+IG51bGwpKQogICk6OmludGVnZXI7CiQkOwoKLS0gRMOpcMO0dCBkJ3VuIHRleHRlIDogY29uZG9s
+w6lhbmNlIChwdWJsacOpZSB0b3V0IGRlIHN1aXRlLCBEMikgb3UgcsOpY2l0Ci0tIChlbiBhdHRl
+bnRlIGQnYXBwcm9iYXRpb24pLiBDb250csO0bGVzIGRhbnMgbCdvcmRyZSBkdSBjb250cmF0IMKn
+IDIuCi0tIFLDqXN1bHRhdHMgOiBwdWJsaXNoZWQsIHBlbmRpbmcsIGR1cGxpY2F0ZSAoYXZlYyBs
+J8OpdGF0IGRlIGxhIHByZW1pw6hyZSksCi0tIHJhdGVfbGltaXRlZCwgcmVmdXNlZC4gVW5lIGRl
+bWFuZGUgbWFsIGZvcm3DqWUgbMOodmUgMjIwMjMuCmNyZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9u
+IHB1YmxpYy5zdWJtaXRfY29udHJpYnV0aW9uX3YxKAogIHBfc2x1ZyB0ZXh0LAogIHBfbWVzc2Fn
+ZV90eXBlIHRleHQsCiAgcF9hdXRob3JfbmFtZSB0ZXh0LAogIHBfY29udGVudCB0ZXh0LAogIHBf
+aWRlbXBvdGVuY3lfa2V5IHV1aWQKKQpyZXR1cm5zIHRhYmxlIChvdXRjb21lIHRleHQsIGNvbnRy
+aWJ1dGlvbl9pZCB1dWlkLCBjb250cmlidXRpb25fc3RhdHVzIHRleHQpCmxhbmd1YWdlIHBscGdz
+cWwKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAnJwphcyAkJApkZWNsYXJlCiAg
+dl9ub3cgdGltZXN0YW1wdHogOj0gY2xvY2tfdGltZXN0YW1wKCk7CiAgdl9tZW1vcmlhbF9pZCB1
+dWlkOwogIHZfa2luZCB0ZXh0OwogIHZfZXhpc3RpbmcgcHVibGljLm1lc3NhZ2VzJXJvd3R5cGU7
+CiAgdl93aW5kb3cgaW50ZXJ2YWw7CiAgdl9zdGF0dXMgdGV4dDsKICB2X2lkIHV1aWQ7CmJlZ2lu
+CiAgaWYgbnVsbGlmKGJ0cmltKHBfc2x1ZyksICcnKSBpcyBudWxsCiAgICAgb3IgcF9tZXNzYWdl
+X3R5cGUgaXMgbnVsbAogICAgIG9yIHBfbWVzc2FnZV90eXBlIG5vdCBpbiAoJ2NvbmRvbGVuY2Un
+LCAndGVzdGltb25pYWwnKQogICAgIG9yIHBfaWRlbXBvdGVuY3lfa2V5IGlzIG51bGwgdGhlbgog
+ICAgcmFpc2UgZXhjZXB0aW9uICdpbnZhbGlkIGNvbnRyaWJ1dGlvbiByZXF1ZXN0JyB1c2luZyBl
+cnJjb2RlID0gJzIyMDIzJzsKICBlbmQgaWY7CgogIHNlbGVjdCBtLmlkIGludG8gdl9tZW1vcmlh
+bF9pZCBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbSB3aGVyZSBtLnNsdWcgPSBwX3NsdWc7CiAgaWYg
+dl9tZW1vcmlhbF9pZCBpcyBudWxsCiAgICAgb3Igbm90IHB1YmxpYy5wdWJsaWNfbWVtb3JpYWxf
+bWVzc2FnZV9hbGxvd2VkX3YyKHZfbWVtb3JpYWxfaWQsIHBfbWVzc2FnZV90eXBlKSB0aGVuCiAg
+ICByZXR1cm4gcXVlcnkgc2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dXVpZCwgbnVsbDo6
+dGV4dDsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIGlmIG5vdCBwdWJsaWMuY29udHJpYnV0aW9u
+X3RleHRfdmFsaWRfdjEocF9hdXRob3JfbmFtZSwgNjAwKQogICAgIG9yIG5vdCBwdWJsaWMuY29u
+dHJpYnV0aW9uX3RleHRfdmFsaWRfdjEocF9jb250ZW50LCBjYXNlIHBfbWVzc2FnZV90eXBlIHdo
+ZW4gJ2NvbmRvbGVuY2UnIHRoZW4gNTAwMCBlbHNlIDIwMDAwIGVuZCkgdGhlbgogICAgcmFpc2Ug
+ZXhjZXB0aW9uICdpbnZhbGlkIGNvbnRyaWJ1dGlvbiByZXF1ZXN0JyB1c2luZyBlcnJjb2RlID0g
+JzIyMDIzJzsKICBlbmQgaWY7CgogIC0tIFVuIGTDqXDDtHQgw6AgbGEgZm9pcyBwYXIgaG9tbWFn
+ZSwganVzcXUnw6AgbGEgZmluIGRlIGxhIHRyYW5zYWN0aW9uLgogIHBlcmZvcm0gcGdfY2F0YWxv
+Zy5wZ19hZHZpc29yeV94YWN0X2xvY2soCiAgICBwZ19jYXRhbG9nLmhhc2h0ZXh0ZXh0ZW5kZWQo
+J2hlcml0YWdlLWNvbnRyaWJ1dGlvbnM6JyB8fCB2X21lbW9yaWFsX2lkOjp0ZXh0LCAwKSk7Cgog
+IHNlbGVjdCAqIGludG8gdl9leGlzdGluZyBmcm9tIHB1YmxpYy5tZXNzYWdlcwogICB3aGVyZSBt
+ZW1vcmlhbF9pZCA9IHZfbWVtb3JpYWxfaWQgYW5kIGlkZW1wb3RlbmN5X2tleSA9IHBfaWRlbXBv
+dGVuY3lfa2V5OwogIGlmIGZvdW5kIHRoZW4KICAgIHJldHVybiBxdWVyeSBzZWxlY3QgJ2R1cGxp
+Y2F0ZSc6OnRleHQsIHZfZXhpc3RpbmcuaWQsIHZfZXhpc3Rpbmcuc3RhdHVzOwogICAgcmV0dXJu
+OwogIGVuZCBpZjsKCiAgc2VsZWN0IHMuZHVwbGljYXRlX3dpbmRvdyBpbnRvIHZfd2luZG93IGZy
+b20gcHVibGljLmNvbnRyaWJ1dGlvbl9zZXR0aW5ncyBzIHdoZXJlIHMuaWQ7CiAgc2VsZWN0ICog
+aW50byB2X2V4aXN0aW5nIGZyb20gcHVibGljLm1lc3NhZ2VzCiAgIHdoZXJlIG1lbW9yaWFsX2lk
+ID0gdl9tZW1vcmlhbF9pZAogICAgIGFuZCBtZXNzYWdlX3R5cGUgPSBwX21lc3NhZ2VfdHlwZQog
+ICAgIGFuZCBhdXRob3JfbmFtZSA9IHBfYXV0aG9yX25hbWUKICAgICBhbmQgY29udGVudCA9IHBf
+Y29udGVudAogICAgIGFuZCBjcmVhdGVkX2F0ID4gdl9ub3cgLSB2X3dpbmRvdwogICBvcmRlciBi
+eSBjcmVhdGVkX2F0IGRlc2MKICAgbGltaXQgMTsKICBpZiBmb3VuZCB0aGVuCiAgICByZXR1cm4g
+cXVlcnkgc2VsZWN0ICdkdXBsaWNhdGUnOjp0ZXh0LCB2X2V4aXN0aW5nLmlkLCB2X2V4aXN0aW5n
+LnN0YXR1czsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIHZfa2luZCA6PSBjYXNlIHBfbWVzc2Fn
+ZV90eXBlIHdoZW4gJ2NvbmRvbGVuY2UnIHRoZW4gJ2NvbmRvbGVuY2UnIGVsc2UgJ3N0b3J5JyBl
+bmQ7CiAgaWYgbm90IHB1YmxpYy5jb250cmlidXRpb25fcmF0ZV9vcGVuX3YxKHZfbWVtb3JpYWxf
+aWQsIHZfa2luZCwgdl9ub3cpIHRoZW4KICAgIHJldHVybiBxdWVyeSBzZWxlY3QgJ3JhdGVfbGlt
+aXRlZCc6OnRleHQsIG51bGw6OnV1aWQsIG51bGw6OnRleHQ7CiAgICByZXR1cm47CiAgZW5kIGlm
+OwogIHBlcmZvcm0gcHVibGljLmNvbnRyaWJ1dGlvbl9yYXRlX2NvdW50X3YxKHZfbWVtb3JpYWxf
+aWQsIHZfa2luZCk7CgogIHZfc3RhdHVzIDo9IGNhc2UgcF9tZXNzYWdlX3R5cGUgd2hlbiAnY29u
+ZG9sZW5jZScgdGhlbiAncHVibGlzaGVkJyBlbHNlICdwZW5kaW5nJyBlbmQ7CiAgaW5zZXJ0IGlu
+dG8gcHVibGljLm1lc3NhZ2VzCiAgICAobWVtb3JpYWxfaWQsIG1lc3NhZ2VfdHlwZSwgYXV0aG9y
+X25hbWUsIGNvbnRlbnQsIHN0YXR1cywgdmlzaWJsZSwgcHVibGlzaGVkX2F0LCBpZGVtcG90ZW5j
+eV9rZXksIGNyZWF0ZWRfYXQpCiAgdmFsdWVzCiAgICAodl9tZW1vcmlhbF9pZCwgcF9tZXNzYWdl
+X3R5cGUsIHBfYXV0aG9yX25hbWUsIHBfY29udGVudCwgdl9zdGF0dXMsIHZfc3RhdHVzID0gJ3B1
+Ymxpc2hlZCcsCiAgICAgY2FzZSB3aGVuIHZfc3RhdHVzID0gJ3B1Ymxpc2hlZCcgdGhlbiB2X25v
+dyBlbmQsIHBfaWRlbXBvdGVuY3lfa2V5LCB2X25vdykKICByZXR1cm5pbmcgaWQgaW50byB2X2lk
+OwoKICByZXR1cm4gcXVlcnkgc2VsZWN0IHZfc3RhdHVzLCB2X2lkLCB2X3N0YXR1czsKZW5kOwok
+JDsKCi0tIFLDqXNlcnZhdGlvbiBkJ3VuZSBwaG90byA6IFIyIChyw6lzZXJ2YXRpb25zKSBldCBS
+MyAoZW4gYXR0ZW50ZSksIHB1aXMKLS0gdW4gbcOpZGlhIGNvbnRyaWJ1dGlvbiBwZW5kaW5nIHNv
+dXMgPG1lbW9yaWFsX2lkPi88bWVkaWFfaWQ+L29yaWdpbmFsLiouCi0tIFLDqXN1bHRhdHMgOiBy
+ZXNlcnZlZCAoYXZlYyBtZW1vcmlhbF9pZCksIHJhdGVfbGltaXRlZCwgcGVuZGluZ19mdWxsLAot
+LSByZWZ1c2VkLiBSZWpvdWVyIGxhIG3Dqm1lIHLDqXNlcnZhdGlvbiByZW52b2llIHJlc2VydmVk
+LCBzYW5zIGRvdWJsb24uCmNyZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5yZXNlcnZl
+X2NvbnRyaWJ1dGlvbl9waG90b192MSgKICBwX3NsdWcgdGV4dCwKICBwX21lZGlhX2lkIHV1aWQs
+CiAgcF9zdG9yYWdlX3BhdGggdGV4dCwKICBwX2RlY2xhcmVkX21pbWVfdHlwZSB0ZXh0CikKcmV0
+dXJucyB0YWJsZSAob3V0Y29tZSB0ZXh0LCBtZW1vcmlhbF9pZCB1dWlkKQpsYW5ndWFnZSBwbHBn
+c3FsCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKZGVjbGFyZQog
+IHZfbm93IHRpbWVzdGFtcHR6IDo9IGNsb2NrX3RpbWVzdGFtcCgpOwogIHZfbWVtb3JpYWwgcHVi
+bGljLm1lbW9yaWFscyVyb3d0eXBlOwogIHZfbWVkaWEgcHVibGljLm1lZGlhJXJvd3R5cGU7CiAg
+dl9tYXhfcGVuZGluZyBpbnRlZ2VyOwpiZWdpbgogIGlmIG51bGxpZihidHJpbShwX3NsdWcpLCAn
+JykgaXMgbnVsbAogICAgIG9yIHBfbWVkaWFfaWQgaXMgbnVsbAogICAgIG9yIHBfZGVjbGFyZWRf
+bWltZV90eXBlIGlzIG51bGwKICAgICBvciBwX2RlY2xhcmVkX21pbWVfdHlwZSBub3QgaW4gKCdp
+bWFnZS9qcGVnJywgJ2ltYWdlL3BuZycsICdpbWFnZS93ZWJwJykgdGhlbgogICAgcmFpc2UgZXhj
+ZXB0aW9uICdpbnZhbGlkIGNvbnRyaWJ1dGlvbiBwaG90byByZXNlcnZhdGlvbicgdXNpbmcgZXJy
+Y29kZSA9ICcyMjAyMyc7CiAgZW5kIGlmOwoKICBzZWxlY3QgKiBpbnRvIHZfbWVtb3JpYWwgZnJv
+bSBwdWJsaWMubWVtb3JpYWxzIG0gd2hlcmUgbS5zbHVnID0gcF9zbHVnOwogIGlmIHZfbWVtb3Jp
+YWwuaWQgaXMgbnVsbAogICAgIG9yIG5vdCBwdWJsaWMucHVibGljX21lbW9yaWFsX21lc3NhZ2Vf
+YWxsb3dlZF92Mih2X21lbW9yaWFsLmlkLCAncGhvdG8nKSB0aGVuCiAgICByZXR1cm4gcXVlcnkg
+c2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dXVpZDsKICAgIHJldHVybjsKICBlbmQgaWY7
+CiAgaWYgcF9zdG9yYWdlX3BhdGggaXMgbnVsbAogICAgIG9yIHBfc3RvcmFnZV9wYXRoIG5vdCBs
+aWtlIHZfbWVtb3JpYWwuaWQ6OnRleHQgfHwgJy8nIHx8IHBfbWVkaWFfaWQ6OnRleHQgfHwgJy9v
+cmlnaW5hbC4lJyB0aGVuCiAgICByYWlzZSBleGNlcHRpb24gJ2ludmFsaWQgY29udHJpYnV0aW9u
+IHBob3RvIHJlc2VydmF0aW9uJyB1c2luZyBlcnJjb2RlID0gJzIyMDIzJzsKICBlbmQgaWY7Cgog
+IHBlcmZvcm0gcGdfY2F0YWxvZy5wZ19hZHZpc29yeV94YWN0X2xvY2soCiAgICBwZ19jYXRhbG9n
+Lmhhc2h0ZXh0ZXh0ZW5kZWQoJ2hlcml0YWdlLWNvbnRyaWJ1dGlvbnM6JyB8fCB2X21lbW9yaWFs
+LmlkOjp0ZXh0LCAwKSk7CgogIHNlbGVjdCAqIGludG8gdl9tZWRpYSBmcm9tIHB1YmxpYy5tZWRp
+YSB3aGVyZSBpZCA9IHBfbWVkaWFfaWQ7CiAgaWYgZm91bmQgdGhlbgogICAgaWYgdl9tZWRpYS5t
+ZW1vcmlhbF9pZCA9IHZfbWVtb3JpYWwuaWQgYW5kIHZfbWVkaWEucHVycG9zZSA9ICdjb250cmli
+dXRpb24nCiAgICAgICBhbmQgdl9tZWRpYS5zdGF0dXMgPSAncGVuZGluZycgYW5kIHZfbWVkaWEu
+c3RvcmFnZV9wYXRoID0gcF9zdG9yYWdlX3BhdGgKICAgICAgIGFuZCBub3QgZXhpc3RzIChzZWxl
+Y3QgMSBmcm9tIHB1YmxpYy5wZW5kaW5nX21lZGlhX2NsZWFudXBfY2xhaW1zIGMKICAgICAgICAg
+ICAgICAgICAgICAgICAgd2hlcmUgYy5tZWRpYV9pZCA9IHBfbWVkaWFfaWQgYW5kIGMuY29tcGxl
+dGVkX2F0IGlzIG51bGwpIHRoZW4KICAgICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAncmVzZXJ2ZWQn
+Ojp0ZXh0LCB2X21lbW9yaWFsLmlkOwogICAgICByZXR1cm47CiAgICBlbmQgaWY7CiAgICByZXR1
+cm4gcXVlcnkgc2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dXVpZDsKICAgIHJldHVybjsK
+ICBlbmQgaWY7CgogIGlmIG5vdCBwdWJsaWMuY29udHJpYnV0aW9uX3JhdGVfb3Blbl92MSh2X21l
+bW9yaWFsLmlkLCAncGhvdG8nLCB2X25vdykgdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAn
+cmF0ZV9saW1pdGVkJzo6dGV4dCwgbnVsbDo6dXVpZDsKICAgIHJldHVybjsKICBlbmQgaWY7CiAg
+c2VsZWN0IGwubWF4X3BlbmRpbmdfcGhvdG9zIGludG8gdl9tYXhfcGVuZGluZyBmcm9tIHB1Ymxp
+Yy5jb250cmlidXRpb25fbGltaXRzX3YxKHZfbWVtb3JpYWwuaWQsICdwaG90bycpIGw7CiAgaWYg
+dl9tYXhfcGVuZGluZyBpcyBudWxsIG9yIHB1YmxpYy5jb250cmlidXRpb25fcGVuZGluZ19waG90
+b3NfdjEodl9tZW1vcmlhbC5pZCwgdl9ub3cpID49IHZfbWF4X3BlbmRpbmcgdGhlbgogICAgcmV0
+dXJuIHF1ZXJ5IHNlbGVjdCAncGVuZGluZ19mdWxsJzo6dGV4dCwgbnVsbDo6dXVpZDsKICAgIHJl
+dHVybjsKICBlbmQgaWY7CiAgcGVyZm9ybSBwdWJsaWMuY29udHJpYnV0aW9uX3JhdGVfY291bnRf
+djEodl9tZW1vcmlhbC5pZCwgJ3Bob3RvJyk7CgogIGluc2VydCBpbnRvIHB1YmxpYy5tZWRpYQog
+ICAgKGlkLCBtZW1vcmlhbF9pZCwgb3duZXJfaWQsIHN0b3JhZ2VfcGF0aCwgbWVkaWFfdHlwZSwg
+cHVycG9zZSwgc3RhdHVzLCBtaW1lX3R5cGUsIGNyZWF0ZWRfYXQpCiAgdmFsdWVzCiAgICAocF9t
+ZWRpYV9pZCwgdl9tZW1vcmlhbC5pZCwgdl9tZW1vcmlhbC5vd25lcl9pZCwgcF9zdG9yYWdlX3Bh
+dGgsICdwaG90bycsICdjb250cmlidXRpb24nLCAncGVuZGluZycsCiAgICAgcF9kZWNsYXJlZF9t
+aW1lX3R5cGUsIHZfbm93KTsKCiAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAncmVzZXJ2ZWQnOjp0ZXh0
+LCB2X21lbW9yaWFsLmlkOwplbmQ7CiQkOwoKLS0gRmluYWxpc2F0aW9uIDogbGUgc2VydmV1ciBh
+cHBsaWNhdGlmIGEgbWVzdXLDqSAoZXQsIGVuIEUyLCByw6ktZW5jb2TDqSwKLS0gTzUpIGxlIGZp
+Y2hpZXIgOyBsZSBtw6lkaWEgcGFzc2Ugw6AgcmVhZHkgZXQgbGUgbWVzc2FnZSBwaG90byBlc3Qg
+Y3LDqcOpCi0tIGVuIGF0dGVudGUgZCdhcHByb2JhdGlvbiAoRDIpLiBSw6lzdWx0YXRzIDogcGVu
+ZGluZywgZHVwbGljYXRlLCByZWZ1c2VkLgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJs
+aWMuZmluYWxpemVfY29udHJpYnV0aW9uX3Bob3RvX3YxKAogIHBfc2x1ZyB0ZXh0LAogIHBfbWVk
+aWFfaWQgdXVpZCwKICBwX2F1dGhvcl9uYW1lIHRleHQsCiAgcF9jYXB0aW9uIHRleHQsCiAgcF9p
+ZGVtcG90ZW5jeV9rZXkgdXVpZCwKICBwX21pbWVfdHlwZSB0ZXh0LAogIHBfc2l6ZV9ieXRlcyBi
+aWdpbnQsCiAgcF93aWR0aCBpbnRlZ2VyLAogIHBfaGVpZ2h0IGludGVnZXIKKQpyZXR1cm5zIHRh
+YmxlIChvdXRjb21lIHRleHQsIGNvbnRyaWJ1dGlvbl9pZCB1dWlkLCBjb250cmlidXRpb25fc3Rh
+dHVzIHRleHQpCmxhbmd1YWdlIHBscGdzcWwKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3Bh
+dGggPSAnJwphcyAkJApkZWNsYXJlCiAgdl9ub3cgdGltZXN0YW1wdHogOj0gY2xvY2tfdGltZXN0
+YW1wKCk7CiAgdl9tZW1vcmlhbF9pZCB1dWlkOwogIHZfbWVkaWEgcHVibGljLm1lZGlhJXJvd3R5
+cGU7CiAgdl9leGlzdGluZyBwdWJsaWMubWVzc2FnZXMlcm93dHlwZTsKICB2X2NhcHRpb24gdGV4
+dCA6PSBjYXNlIHdoZW4gcF9jYXB0aW9uIGlzIG51bGwgb3IgYnRyaW0ocF9jYXB0aW9uKSA9ICcn
+IHRoZW4gbnVsbCBlbHNlIHBfY2FwdGlvbiBlbmQ7CiAgdl9tYXhfYnl0ZXMgYmlnaW50OwogIHZf
+aWQgdXVpZDsKYmVnaW4KICBpZiBudWxsaWYoYnRyaW0ocF9zbHVnKSwgJycpIGlzIG51bGwKICAg
+ICBvciBwX21lZGlhX2lkIGlzIG51bGwKICAgICBvciBwX2lkZW1wb3RlbmN5X2tleSBpcyBudWxs
+CiAgICAgb3IgcF9taW1lX3R5cGUgaXMgbnVsbAogICAgIG9yIHBfbWltZV90eXBlIG5vdCBpbiAo
+J2ltYWdlL2pwZWcnLCAnaW1hZ2UvcG5nJywgJ2ltYWdlL3dlYnAnKQogICAgIG9yIHBfc2l6ZV9i
+eXRlcyBpcyBudWxsIG9yIHBfc2l6ZV9ieXRlcyA8PSAwCiAgICAgb3IgcF93aWR0aCBpcyBudWxs
+IG9yIHBfd2lkdGggPD0gMAogICAgIG9yIHBfaGVpZ2h0IGlzIG51bGwgb3IgcF9oZWlnaHQgPD0g
+MCB0aGVuCiAgICByYWlzZSBleGNlcHRpb24gJ2ludmFsaWQgY29udHJpYnV0aW9uIHBob3RvIGZp
+bmFsaXphdGlvbicgdXNpbmcgZXJyY29kZSA9ICcyMjAyMyc7CiAgZW5kIGlmOwoKICBzZWxlY3Qg
+bS5pZCBpbnRvIHZfbWVtb3JpYWxfaWQgZnJvbSBwdWJsaWMubWVtb3JpYWxzIG0gd2hlcmUgbS5z
+bHVnID0gcF9zbHVnOwogIGlmIHZfbWVtb3JpYWxfaWQgaXMgbnVsbAogICAgIG9yIG5vdCBwdWJs
+aWMucHVibGljX21lbW9yaWFsX21lc3NhZ2VfYWxsb3dlZF92Mih2X21lbW9yaWFsX2lkLCAncGhv
+dG8nKSB0aGVuCiAgICByZXR1cm4gcXVlcnkgc2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6
+dXVpZCwgbnVsbDo6dGV4dDsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIGlmIG5vdCBwdWJsaWMu
+Y29udHJpYnV0aW9uX3RleHRfdmFsaWRfdjEocF9hdXRob3JfbmFtZSwgNjAwKQogICAgIG9yICh2
+X2NhcHRpb24gaXMgbm90IG51bGwgYW5kIG5vdCBwdWJsaWMuY29udHJpYnV0aW9uX3RleHRfdmFs
+aWRfdjEodl9jYXB0aW9uLCAxNTAwKSkgdGhlbgogICAgcmFpc2UgZXhjZXB0aW9uICdpbnZhbGlk
+IGNvbnRyaWJ1dGlvbiBwaG90byBmaW5hbGl6YXRpb24nIHVzaW5nIGVycmNvZGUgPSAnMjIwMjMn
+OwogIGVuZCBpZjsKICBzZWxlY3Qgcy5tYXhfcGhvdG9fYnl0ZXMgaW50byB2X21heF9ieXRlcyBm
+cm9tIHB1YmxpYy5jb250cmlidXRpb25fc2V0dGluZ3MgcyB3aGVyZSBzLmlkOwogIGlmIHBfc2l6
+ZV9ieXRlcyA+IHZfbWF4X2J5dGVzIHRoZW4KICAgIHJhaXNlIGV4Y2VwdGlvbiAnaW52YWxpZCBj
+b250cmlidXRpb24gcGhvdG8gZmluYWxpemF0aW9uJyB1c2luZyBlcnJjb2RlID0gJzIyMDIzJzsK
+ICBlbmQgaWY7CgogIHBlcmZvcm0gcGdfY2F0YWxvZy5wZ19hZHZpc29yeV94YWN0X2xvY2soCiAg
+ICBwZ19jYXRhbG9nLmhhc2h0ZXh0ZXh0ZW5kZWQoJ2hlcml0YWdlLWNvbnRyaWJ1dGlvbnM6JyB8
+fCB2X21lbW9yaWFsX2lkOjp0ZXh0LCAwKSk7CgogIHNlbGVjdCAqIGludG8gdl9leGlzdGluZyBm
+cm9tIHB1YmxpYy5tZXNzYWdlcwogICB3aGVyZSBtZW1vcmlhbF9pZCA9IHZfbWVtb3JpYWxfaWQK
+ICAgICBhbmQgKGlkZW1wb3RlbmN5X2tleSA9IHBfaWRlbXBvdGVuY3lfa2V5IG9yIG1lZGlhX2lk
+ID0gcF9tZWRpYV9pZCkKICAgbGltaXQgMTsKICBpZiBmb3VuZCB0aGVuCiAgICByZXR1cm4gcXVl
+cnkgc2VsZWN0ICdkdXBsaWNhdGUnOjp0ZXh0LCB2X2V4aXN0aW5nLmlkLCB2X2V4aXN0aW5nLnN0
+YXR1czsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIHNlbGVjdCAqIGludG8gdl9tZWRpYSBmcm9t
+IHB1YmxpYy5tZWRpYQogICB3aGVyZSBpZCA9IHBfbWVkaWFfaWQgYW5kIG1lbW9yaWFsX2lkID0g
+dl9tZW1vcmlhbF9pZAogICBmb3IgdXBkYXRlOwogIGlmIG5vdCBmb3VuZCBvciB2X21lZGlhLnB1
+cnBvc2UgPD4gJ2NvbnRyaWJ1dGlvbicgb3Igdl9tZWRpYS5zdGF0dXMgPD4gJ3BlbmRpbmcnCiAg
+ICAgb3IgZXhpc3RzIChzZWxlY3QgMSBmcm9tIHB1YmxpYy5wZW5kaW5nX21lZGlhX2NsZWFudXBf
+Y2xhaW1zIGMKICAgICAgICAgICAgICAgICB3aGVyZSBjLm1lZGlhX2lkID0gcF9tZWRpYV9pZCBh
+bmQgYy5jb21wbGV0ZWRfYXQgaXMgbnVsbCkgdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAn
+cmVmdXNlZCc6OnRleHQsIG51bGw6OnV1aWQsIG51bGw6OnRleHQ7CiAgICByZXR1cm47CiAgZW5k
+IGlmOwoKICB1cGRhdGUgcHVibGljLm1lZGlhCiAgICAgc2V0IHN0YXR1cyA9ICdyZWFkeScsIG1p
+bWVfdHlwZSA9IHBfbWltZV90eXBlLCBzaXplX2J5dGVzID0gcF9zaXplX2J5dGVzLAogICAgICAg
+ICB3aWR0aCA9IHBfd2lkdGgsIGhlaWdodCA9IHBfaGVpZ2h0CiAgIHdoZXJlIGlkID0gcF9tZWRp
+YV9pZDsKCiAgaW5zZXJ0IGludG8gcHVibGljLm1lc3NhZ2VzCiAgICAobWVtb3JpYWxfaWQsIG1l
+c3NhZ2VfdHlwZSwgYXV0aG9yX25hbWUsIGNvbnRlbnQsIGNhcHRpb24sIG1lZGlhX2lkLCBzdGF0
+dXMsIHZpc2libGUsIGlkZW1wb3RlbmN5X2tleSwgY3JlYXRlZF9hdCkKICB2YWx1ZXMKICAgICh2
+X21lbW9yaWFsX2lkLCAncGhvdG8nLCBwX2F1dGhvcl9uYW1lLCBudWxsLCB2X2NhcHRpb24sIHBf
+bWVkaWFfaWQsICdwZW5kaW5nJywgZmFsc2UsIHBfaWRlbXBvdGVuY3lfa2V5LCB2X25vdykKICBy
+ZXR1cm5pbmcgaWQgaW50byB2X2lkOwoKICByZXR1cm4gcXVlcnkgc2VsZWN0ICdwZW5kaW5nJzo6
+dGV4dCwgdl9pZCwgJ3BlbmRpbmcnOjp0ZXh0OwplbmQ7CiQkOwoKLS0gTGVjdHVyZSBwdWJsaXF1
+ZSA6IGNvbnRyaWJ1dGlvbnMgcHVibGnDqWVzIGRlcyBjYXTDqWdvcmllcyBFTiBWSUdVRVVSCi0t
+IGQndW4gaG9tbWFnZSBwdWJsaWMgZG9udCBsYSBydWJyaXF1ZSBuJ2VzdCBwYXMgbWFzcXXDqWUg
+OyBvcmRyZSBQMQotLSAocHVibGlzaGVkX2F0IGRlc2MsIGlkIGRlc2MpIDsgY3Vyc2V1ciAocF9i
+ZWZvcmVfcHVibGlzaGVkX2F0LAotLSBwX2JlZm9yZV9pZCkgZXhjbHVzaWYgOyBwaG90b3MgcmVh
+ZHkgc2V1bGVtZW50LiBKYW1haXMgaWRlbXBvdGVuY3lfa2V5LgpjcmVhdGUgb3IgcmVwbGFjZSBm
+dW5jdGlvbiBwdWJsaWMucmVhZF9wdWJsaWNfY29udHJpYnV0aW9uc192MSgKICBwX3NsdWcgdGV4
+dCwKICBwX2xpbWl0IGludGVnZXIgZGVmYXVsdCAyNCwKICBwX2JlZm9yZV9wdWJsaXNoZWRfYXQg
+dGltZXN0YW1wdHogZGVmYXVsdCBudWxsLAogIHBfYmVmb3JlX2lkIHV1aWQgZGVmYXVsdCBudWxs
+CikKcmV0dXJucyB0YWJsZSAoCiAgY29udHJpYnV0aW9uX2lkIHV1aWQsCiAgbWVzc2FnZV90eXBl
+IHRleHQsCiAgYXV0aG9yX25hbWUgdGV4dCwKICBjb250ZW50IHRleHQsCiAgY2FwdGlvbiB0ZXh0
+LAogIHB1Ymxpc2hlZF9hdCB0aW1lc3RhbXB0eiwKICBtZWRpYSBqc29uYgopCmxhbmd1YWdlIHBs
+cGdzcWwKc3RhYmxlCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQK
+ZGVjbGFyZQogIHZfbWVtb3JpYWxfaWQgdXVpZDsKICB2X2NhdGVnb3JpZXMganNvbmI7CiAgdl9s
+aW1pdCBpbnRlZ2VyIDo9IGxlYXN0KGdyZWF0ZXN0KGNvYWxlc2NlKHBfbGltaXQsIDI0KSwgMSks
+IDEwMCk7CmJlZ2luCiAgaWYgcF9zbHVnIGlzIG51bGwKICAgICBvciAoKHBfYmVmb3JlX3B1Ymxp
+c2hlZF9hdCBpcyBudWxsKSA8PiAocF9iZWZvcmVfaWQgaXMgbnVsbCkpIHRoZW4KICAgIHJldHVy
+bjsKICBlbmQgaWY7CiAgc2VsZWN0IG0uaWQgaW50byB2X21lbW9yaWFsX2lkIGZyb20gcHVibGlj
+Lm1lbW9yaWFscyBtIHdoZXJlIG0uc2x1ZyA9IHBfc2x1ZzsKICBpZiB2X21lbW9yaWFsX2lkIGlz
+IG51bGwgb3Igbm90IHB1YmxpYy5jb250cmlidXRpb25zX3J1YnJpY19wdWJsaWNfdjEodl9tZW1v
+cmlhbF9pZCwgbm93KCkpIHRoZW4KICAgIHJldHVybjsKICBlbmQgaWY7CiAgdl9jYXRlZ29yaWVz
+IDo9IHB1YmxpYy5jb250cmlidXRpb25fY2F0ZWdvcmllc19pbl9lZmZlY3RfdjEodl9tZW1vcmlh
+bF9pZCk7CgogIHJldHVybiBxdWVyeQogICAgc2VsZWN0IG1zZy5pZCwgbXNnLm1lc3NhZ2VfdHlw
+ZSwgbXNnLmF1dGhvcl9uYW1lLCBtc2cuY29udGVudCwgbXNnLmNhcHRpb24sIG1zZy5wdWJsaXNo
+ZWRfYXQsCiAgICAgICAgICAgY2FzZSB3aGVuIG1zZy5tZXNzYWdlX3R5cGUgPSAncGhvdG8nIHRo
+ZW4KICAgICAgICAgICAgIGpzb25iX2J1aWxkX29iamVjdCgnbWVkaWFfaWQnLCBtZC5pZCwgJ3N0
+b3JhZ2VfcGF0aCcsIG1kLnN0b3JhZ2VfcGF0aCwKICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAnd2lkdGgnLCBtZC53aWR0aCwgJ2hlaWdodCcsIG1kLmhlaWdodCkKICAgICAgICAgICBl
+bmQKICAgICAgZnJvbSBwdWJsaWMubWVzc2FnZXMgbXNnCiAgICAgIGxlZnQgam9pbiBwdWJsaWMu
+bWVkaWEgbWQKICAgICAgICBvbiBtZC5pZCA9IG1zZy5tZWRpYV9pZCBhbmQgbWQubWVtb3JpYWxf
+aWQgPSBtc2cubWVtb3JpYWxfaWQKICAgICB3aGVyZSBtc2cubWVtb3JpYWxfaWQgPSB2X21lbW9y
+aWFsX2lkCiAgICAgICBhbmQgbXNnLnN0YXR1cyA9ICdwdWJsaXNoZWQnCiAgICAgICBhbmQgKCht
+c2cubWVzc2FnZV90eXBlID0gJ2NvbmRvbGVuY2UnIGFuZCAodl9jYXRlZ29yaWVzIC0+PiAnY29u
+ZG9sZW5jZXMnKTo6Ym9vbGVhbikKICAgICAgICAgb3IgKG1zZy5tZXNzYWdlX3R5cGUgPSAndGVz
+dGltb25pYWwnIGFuZCAodl9jYXRlZ29yaWVzIC0+PiAnc3RvcmllcycpOjpib29sZWFuKQogICAg
+ICAgICBvciAobXNnLm1lc3NhZ2VfdHlwZSA9ICdwaG90bycgYW5kICh2X2NhdGVnb3JpZXMgLT4+
+ICdwaG90b3MnKTo6Ym9vbGVhbgogICAgICAgICAgICAgYW5kIG1kLnN0YXR1cyA9ICdyZWFkeScg
+YW5kIG1kLnB1cnBvc2UgPSAnY29udHJpYnV0aW9uJykpCiAgICAgICBhbmQgKHBfYmVmb3JlX3B1
+Ymxpc2hlZF9hdCBpcyBudWxsCiAgICAgICAgICAgIG9yIChtc2cucHVibGlzaGVkX2F0LCBtc2cu
+aWQpIDwgKHBfYmVmb3JlX3B1Ymxpc2hlZF9hdCwgcF9iZWZvcmVfaWQpKQogICAgIG9yZGVyIGJ5
+IG1zZy5wdWJsaXNoZWRfYXQgZGVzYywgbXNnLmlkIGRlc2MKICAgICBsaW1pdCB2X2xpbWl0Owpl
+bmQ7CiQkOwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDkuIEFjdGlvbnMgZGUgbGEgZmFtaWxsZSAoc2Vy
+dmljZV9yb2xlLCBwX293bmVyX2lkIHLDqXNvbHUgY8O0dMOpIHNlcnZldXIpCi0tID09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PQoKLS0gYXBwcm92ZSA6IHBlbmRpbmcg4oaSIHB1Ymxpc2hlZCA7IHJlamVjdCA6IHBlbmRp
+bmcg4oaSIHJlamVjdGVkIDsKLS0gaGlkZSA6IHB1Ymxpc2hlZCDihpIgaGlkZGVuIDsgdW5oaWRl
+IDogaGlkZGVuIOKGkiBwdWJsaXNoZWQuCi0tIEphbWFpcyBkZSByw6nDqWNyaXR1cmUgZHUgbm9t
+IG5pIGR1IHRleHRlLiBSw6lzdWx0YXRzIDogdXBkYXRlZCwKLS0gdW5jaGFuZ2VkIChkw6lqw6Ag
+ZGFucyBsJ8OpdGF0IHZpc8OpKSwgaW52YWxpZF90cmFuc2l0aW9uLCByZWZ1c2VkLgpjcmVhdGUg
+b3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJsaWMubW9kZXJhdGVfY29udHJpYnV0aW9uX3YxKHBfb3du
+ZXJfaWQgdXVpZCwgcF9jb250cmlidXRpb25faWQgdXVpZCwgcF9hY3Rpb24gdGV4dCkKcmV0dXJu
+cyB0YWJsZSAob3V0Y29tZSB0ZXh0LCBjb250cmlidXRpb25fc3RhdHVzIHRleHQpCmxhbmd1YWdl
+IHBscGdzcWwKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAnJwphcyAkJApkZWNs
+YXJlCiAgdl9tZW1vcmlhbF9pZCB1dWlkOwogIHZfbWVtb3JpYWwgcHVibGljLm1lbW9yaWFscyVy
+b3d0eXBlOwogIHZfbWVzc2FnZSBwdWJsaWMubWVzc2FnZXMlcm93dHlwZTsKICB2X2Zyb20gdGV4
+dDsKICB2X3RvIHRleHQ7CmJlZ2luCiAgaWYgcF9vd25lcl9pZCBpcyBudWxsIG9yIHBfY29udHJp
+YnV0aW9uX2lkIGlzIG51bGwKICAgICBvciBwX2FjdGlvbiBpcyBudWxsIG9yIHBfYWN0aW9uIG5v
+dCBpbiAoJ2FwcHJvdmUnLCAncmVqZWN0JywgJ2hpZGUnLCAndW5oaWRlJykgdGhlbgogICAgcmFp
+c2UgZXhjZXB0aW9uICdpbnZhbGlkIGNvbnRyaWJ1dGlvbiBtb2RlcmF0aW9uJyB1c2luZyBlcnJj
+b2RlID0gJzIyMDIzJzsKICBlbmQgaWY7CiAgc2VsZWN0IG1zZy5tZW1vcmlhbF9pZCBpbnRvIHZf
+bWVtb3JpYWxfaWQgZnJvbSBwdWJsaWMubWVzc2FnZXMgbXNnIHdoZXJlIG1zZy5pZCA9IHBfY29u
+dHJpYnV0aW9uX2lkOwogIGlmIHZfbWVtb3JpYWxfaWQgaXMgbnVsbCB0aGVuCiAgICByZXR1cm4g
+cXVlcnkgc2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dGV4dDsKICAgIHJldHVybjsKICBl
+bmQgaWY7CiAgc2VsZWN0ICogaW50byB2X21lbW9yaWFsIGZyb20gcHVibGljLm1lbW9yaWFscyB3
+aGVyZSBpZCA9IHZfbWVtb3JpYWxfaWQgZm9yIHVwZGF0ZTsKICBpZiBub3QgZm91bmQgb3Igdl9t
+ZW1vcmlhbC5vd25lcl9pZCBpcyBkaXN0aW5jdCBmcm9tIHBfb3duZXJfaWQgdGhlbgogICAgcmV0
+dXJuIHF1ZXJ5IHNlbGVjdCAncmVmdXNlZCc6OnRleHQsIG51bGw6OnRleHQ7CiAgICByZXR1cm47
+CiAgZW5kIGlmOwogIHNlbGVjdCAqIGludG8gdl9tZXNzYWdlIGZyb20gcHVibGljLm1lc3NhZ2Vz
+CiAgIHdoZXJlIGlkID0gcF9jb250cmlidXRpb25faWQgYW5kIG1lbW9yaWFsX2lkID0gdl9tZW1v
+cmlhbF9pZCBmb3IgdXBkYXRlOwogIGlmIG5vdCBmb3VuZCB0aGVuCiAgICByZXR1cm4gcXVlcnkg
+c2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dGV4dDsKICAgIHJldHVybjsKICBlbmQgaWY7
+CgogIHZfZnJvbSA6PSBjYXNlIHBfYWN0aW9uIHdoZW4gJ2FwcHJvdmUnIHRoZW4gJ3BlbmRpbmcn
+IHdoZW4gJ3JlamVjdCcgdGhlbiAncGVuZGluZycKICAgICAgICAgICAgICAgICAgICAgICAgICB3
+aGVuICdoaWRlJyB0aGVuICdwdWJsaXNoZWQnIGVsc2UgJ2hpZGRlbicgZW5kOwogIHZfdG8gOj0g
+Y2FzZSBwX2FjdGlvbiB3aGVuICdhcHByb3ZlJyB0aGVuICdwdWJsaXNoZWQnIHdoZW4gJ3JlamVj
+dCcgdGhlbiAncmVqZWN0ZWQnCiAgICAgICAgICAgICAgICAgICAgICAgIHdoZW4gJ2hpZGUnIHRo
+ZW4gJ2hpZGRlbicgZWxzZSAncHVibGlzaGVkJyBlbmQ7CiAgaWYgdl9tZXNzYWdlLnN0YXR1cyA9
+IHZfdG8gdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAndW5jaGFuZ2VkJzo6dGV4dCwgdl9t
+ZXNzYWdlLnN0YXR1czsKICAgIHJldHVybjsKICBlbmQgaWY7CiAgaWYgdl9tZXNzYWdlLnN0YXR1
+cyA8PiB2X2Zyb20gdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAnaW52YWxpZF90cmFuc2l0
+aW9uJzo6dGV4dCwgdl9tZXNzYWdlLnN0YXR1czsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIHVw
+ZGF0ZSBwdWJsaWMubWVzc2FnZXMKICAgICBzZXQgc3RhdHVzID0gdl90bywKICAgICAgICAgdmlz
+aWJsZSA9IHZfdG8gPSAncHVibGlzaGVkJywKICAgICAgICAgcHVibGlzaGVkX2F0ID0gY2FzZSB3
+aGVuIHZfdG8gPSAncHVibGlzaGVkJyB0aGVuIGNvYWxlc2NlKHB1Ymxpc2hlZF9hdCwgY2xvY2tf
+dGltZXN0YW1wKCkpIGVsc2UgcHVibGlzaGVkX2F0IGVuZCwKICAgICAgICAgbW9kZXJhdGVkX2F0
+ID0gY2xvY2tfdGltZXN0YW1wKCkKICAgd2hlcmUgaWQgPSBwX2NvbnRyaWJ1dGlvbl9pZDsKICBy
+ZXR1cm4gcXVlcnkgc2VsZWN0ICd1cGRhdGVkJzo6dGV4dCwgdl90bzsKZW5kOwokJDsKCi0tIFN1
+cHByZXNzaW9uIGTDqWZpbml0aXZlIGQndW5lIGNvbnRyaWJ1dGlvbi4gUG91ciB1bmUgcGhvdG8s
+IGxlIG3DqWRpYQotLSByZXBhc3NlIHBlbmRpbmcgZXQgdW5lIHLDqWNsYW1hdGlvbiBkZSBuZXR0
+b3lhZ2UgZXN0IHBvc8OpZSAoY2lyY3VpdAotLSBleGlzdGFudCkgOiBsZSBzZXJ2ZXVyIHN1cHBy
+aW1lIGwnb2JqZXQgcHVpcyBhcHBlbGxlCi0tIGZpbmlzaF9wZW5kaW5nX21lZGlhX2NsZWFudXBf
+djEobWVtb3JpYWxfaWQsIG93bmVyX2lkLCBjbGVhbnVwX2NsYWltX2lkKS4KLS0gUsOpc3VsdGF0
+cyA6IHJlbW92ZWQgKGF2ZWMgbGEgcsOpY2xhbWF0aW9uIMOpdmVudHVlbGxlKSwgcmVmdXNlZC4K
+Y3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLnJlbW92ZV9jb250cmlidXRpb25fdjEo
+cF9vd25lcl9pZCB1dWlkLCBwX2NvbnRyaWJ1dGlvbl9pZCB1dWlkKQpyZXR1cm5zIHRhYmxlIChv
+dXRjb21lIHRleHQsIG1lbW9yaWFsX2lkIHV1aWQsIGNsZWFudXBfY2xhaW1faWQgdXVpZCwgc3Rv
+cmFnZV9wYXRoIHRleHQpCmxhbmd1YWdlIHBscGdzcWwKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2Vh
+cmNoX3BhdGggPSAnJwphcyAkJAojdmFyaWFibGVfY29uZmxpY3QgdXNlX2NvbHVtbgpkZWNsYXJl
+CiAgdl9tZW1vcmlhbF9pZCB1dWlkOwogIHZfbWVtb3JpYWwgcHVibGljLm1lbW9yaWFscyVyb3d0
+eXBlOwogIHZfbWVzc2FnZSBwdWJsaWMubWVzc2FnZXMlcm93dHlwZTsKICB2X21lZGlhIHB1Ymxp
+Yy5tZWRpYSVyb3d0eXBlOwogIHZfY2xhaW0gdXVpZDsKYmVnaW4KICBpZiBwX293bmVyX2lkIGlz
+IG51bGwgb3IgcF9jb250cmlidXRpb25faWQgaXMgbnVsbCB0aGVuCiAgICByYWlzZSBleGNlcHRp
+b24gJ2ludmFsaWQgY29udHJpYnV0aW9uIHJlbW92YWwnIHVzaW5nIGVycmNvZGUgPSAnMjIwMjMn
+OwogIGVuZCBpZjsKICBzZWxlY3QgbXNnLm1lbW9yaWFsX2lkIGludG8gdl9tZW1vcmlhbF9pZCBm
+cm9tIHB1YmxpYy5tZXNzYWdlcyBtc2cgd2hlcmUgbXNnLmlkID0gcF9jb250cmlidXRpb25faWQ7
+CiAgaWYgdl9tZW1vcmlhbF9pZCBpcyBudWxsIHRoZW4KICAgIHJldHVybiBxdWVyeSBzZWxlY3Qg
+J3JlZnVzZWQnOjp0ZXh0LCBudWxsOjp1dWlkLCBudWxsOjp1dWlkLCBudWxsOjp0ZXh0OwogICAg
+cmV0dXJuOwogIGVuZCBpZjsKICBzZWxlY3QgKiBpbnRvIHZfbWVtb3JpYWwgZnJvbSBwdWJsaWMu
+bWVtb3JpYWxzIHdoZXJlIGlkID0gdl9tZW1vcmlhbF9pZCBmb3IgdXBkYXRlOwogIGlmIG5vdCBm
+b3VuZCBvciB2X21lbW9yaWFsLm93bmVyX2lkIGlzIGRpc3RpbmN0IGZyb20gcF9vd25lcl9pZCB0
+aGVuCiAgICByZXR1cm4gcXVlcnkgc2VsZWN0ICdyZWZ1c2VkJzo6dGV4dCwgbnVsbDo6dXVpZCwg
+bnVsbDo6dXVpZCwgbnVsbDo6dGV4dDsKICAgIHJldHVybjsKICBlbmQgaWY7CiAgc2VsZWN0ICog
+aW50byB2X21lc3NhZ2UgZnJvbSBwdWJsaWMubWVzc2FnZXMKICAgd2hlcmUgaWQgPSBwX2NvbnRy
+aWJ1dGlvbl9pZCBhbmQgbWVtb3JpYWxfaWQgPSB2X21lbW9yaWFsX2lkIGZvciB1cGRhdGU7CiAg
+aWYgbm90IGZvdW5kIHRoZW4KICAgIHJldHVybiBxdWVyeSBzZWxlY3QgJ3JlZnVzZWQnOjp0ZXh0
+LCBudWxsOjp1dWlkLCBudWxsOjp1dWlkLCBudWxsOjp0ZXh0OwogICAgcmV0dXJuOwogIGVuZCBp
+ZjsKICBpZiB2X21lc3NhZ2UubWVkaWFfaWQgaXMgbm90IG51bGwgdGhlbgogICAgc2VsZWN0ICog
+aW50byB2X21lZGlhIGZyb20gcHVibGljLm1lZGlhCiAgICAgd2hlcmUgaWQgPSB2X21lc3NhZ2Uu
+bWVkaWFfaWQgYW5kIG1lbW9yaWFsX2lkID0gdl9tZW1vcmlhbF9pZCBmb3IgdXBkYXRlOwogIGVu
+ZCBpZjsKCiAgZGVsZXRlIGZyb20gcHVibGljLm1lc3NhZ2VzIHdoZXJlIGlkID0gcF9jb250cmli
+dXRpb25faWQ7CgogIGlmIHZfbWVkaWEuaWQgaXMgbm90IG51bGwgdGhlbgogICAgdXBkYXRlIHB1
+YmxpYy5tZWRpYSBzZXQgc3RhdHVzID0gJ3BlbmRpbmcnIHdoZXJlIGlkID0gdl9tZWRpYS5pZDsK
+ICAgIHNlbGVjdCBjLmlkIGludG8gdl9jbGFpbSBmcm9tIHB1YmxpYy5wZW5kaW5nX21lZGlhX2Ns
+ZWFudXBfY2xhaW1zIGMKICAgICB3aGVyZSBjLm1lZGlhX2lkID0gdl9tZWRpYS5pZCBhbmQgYy5j
+b21wbGV0ZWRfYXQgaXMgbnVsbDsKICAgIGlmIHZfY2xhaW0gaXMgbnVsbCB0aGVuCiAgICAgIGlu
+c2VydCBpbnRvIHB1YmxpYy5wZW5kaW5nX21lZGlhX2NsZWFudXBfY2xhaW1zIChtZW1vcmlhbF9p
+ZCwgbWVkaWFfaWQsIG93bmVyX2lkKQogICAgICB2YWx1ZXMgKHZfbWVtb3JpYWxfaWQsIHZfbWVk
+aWEuaWQsIHZfbWVtb3JpYWwub3duZXJfaWQpCiAgICAgIHJldHVybmluZyBpZCBpbnRvIHZfY2xh
+aW07CiAgICBlbmQgaWY7CiAgZW5kIGlmOwoKICByZXR1cm4gcXVlcnkgc2VsZWN0ICdyZW1vdmVk
+Jzo6dGV4dCwgdl9tZW1vcmlhbF9pZCwgdl9jbGFpbSwgdl9tZWRpYS5zdG9yYWdlX3BhdGg7CmVu
+ZDsKJCQ7CgotLSBDb21wdGV1ciBkdSBUYWJsZWF1IGRlIGJvcmQgKE8xMikgOiBjb250cmlidXRp
+b25zIMOgIGV4YW1pbmVyLCBwYXIKLS0gaG9tbWFnZSBkdSBwcm9wcmnDqXRhaXJlICh0b3VzLCBv
+dSB1biBzZXVsKS4KY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLmNvdW50X3BlbmRp
+bmdfY29udHJpYnV0aW9uc192MShwX293bmVyX2lkIHV1aWQsIHBfbWVtb3JpYWxfaWQgdXVpZCBk
+ZWZhdWx0IG51bGwpCnJldHVybnMgdGFibGUgKG1lbW9yaWFsX2lkIHV1aWQsIHBlbmRpbmdfc3Rv
+cmllcyBpbnRlZ2VyLCBwZW5kaW5nX3Bob3RvcyBpbnRlZ2VyLCBwZW5kaW5nX3RvdGFsIGludGVn
+ZXIpCmxhbmd1YWdlIHNxbApzdGFibGUKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGgg
+PSAnJwphcyAkJAogIHNlbGVjdCBtLmlkLAogICAgICAgICBjb3VudChtc2cuaWQpIGZpbHRlciAo
+d2hlcmUgbXNnLm1lc3NhZ2VfdHlwZSA9ICd0ZXN0aW1vbmlhbCcpOjppbnRlZ2VyLAogICAgICAg
+ICBjb3VudChtc2cuaWQpIGZpbHRlciAod2hlcmUgbXNnLm1lc3NhZ2VfdHlwZSA9ICdwaG90bycp
+OjppbnRlZ2VyLAogICAgICAgICBjb3VudChtc2cuaWQpOjppbnRlZ2VyCiAgICBmcm9tIHB1Ymxp
+Yy5tZW1vcmlhbHMgbQogICAgbGVmdCBqb2luIHB1YmxpYy5tZXNzYWdlcyBtc2cgb24gbXNnLm1l
+bW9yaWFsX2lkID0gbS5pZCBhbmQgbXNnLnN0YXR1cyA9ICdwZW5kaW5nJwogICB3aGVyZSBwX293
+bmVyX2lkIGlzIG5vdCBudWxsCiAgICAgYW5kIG0ub3duZXJfaWQgPSBwX293bmVyX2lkCiAgICAg
+YW5kIChwX21lbW9yaWFsX2lkIGlzIG51bGwgb3IgbS5pZCA9IHBfbWVtb3JpYWxfaWQpCiAgIGdy
+b3VwIGJ5IG0uaWQKICAgb3JkZXIgYnkgbS5pZDsKJCQ7CgotLSBPOSA6IGNoYW5nZW1lbnQgaW1t
+w6lkaWF0IGRlcyBjYXTDqWdvcmllcywgZXQgYnJvdWlsbG9uIGFsaWduw6kKLS0gKGNvbnRlbnQu
+Y29udHJpYnV0aW9ucy5mZWF0dXJlcywgcsOpdmlzaW9uICsgMSwgbcOqbWVzIGNsw6lzIHByw6lz
+ZXJ2w6llcwotLSBxdWUgd3JpdGVDb250cmlidXRpb25zU2V0dGluZ3MpLiBMYSBjb3BpZSBwdWJs
+acOpZSBuJ2VzdCBwYXMgdG91Y2jDqWUuCi0tIHBfZXhwZWN0ZWRfcmV2aXNpb24gTlVMTCA6IHBh
+cyBkZSBjb250csO0bGUgKFRhYmxlYXUgZGUgYm9yZCkgOyBzaW5vbgotLSBzdGFsZV9yZXZpc2lv
+biBlbiBjYXMgZCfDqWNhcnQgKEJ1aWxkZXIgb3V2ZXJ0IGFpbGxldXJzKS4KLS0gUsOpc3VsdGF0
+cyA6IHVwZGF0ZWQsIHVuY2hhbmdlZCwgc3RhbGVfcmV2aXNpb24sIHJlZnVzZWQuCmNyZWF0ZSBv
+ciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5zZXRfY29udHJpYnV0aW9uX2NhdGVnb3JpZXNfdjEo
+CiAgcF9vd25lcl9pZCB1dWlkLAogIHBfbWVtb3JpYWxfaWQgdXVpZCwKICBwX2NvbmRvbGVuY2Vz
+IGJvb2xlYW4sCiAgcF9zdG9yaWVzIGJvb2xlYW4sCiAgcF9waG90b3MgYm9vbGVhbiwKICBwX2V4
+cGVjdGVkX3JldmlzaW9uIGJpZ2ludCBkZWZhdWx0IG51bGwKKQpyZXR1cm5zIHRhYmxlIChvdXRj
+b21lIHRleHQsIGRyYWZ0X3JldmlzaW9uIGJpZ2ludCkKbGFuZ3VhZ2UgcGxwZ3NxbApzZWN1cml0
+eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmRlY2xhcmUKICB2X21lbW9yaWFs
+IHB1YmxpYy5tZW1vcmlhbHMlcm93dHlwZTsKICB2X2RyYWZ0IHB1YmxpYy5tZW1vcmlhbF9kcmFm
+dHMlcm93dHlwZTsKICB2X3JhdyBqc29uYjsKICB2X3ByZXZpb3VzIGpzb25iOwogIHZfZmVhdHVy
+ZXMganNvbmI7CiAgdl9uZXh0X2ZlYXR1cmVzIGpzb25iOwogIHZfbmV4dF9jb250ZW50IGpzb25i
+OwogIHZfY2F0ZWdvcnkgcHVibGljLm1lbW9yaWFsX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzJXJv
+d3R5cGU7CiAgdl9jYXRlZ29yeV9jaGFuZ2VkIGJvb2xlYW47CiAgdl9kcmFmdF9jaGFuZ2VkIGJv
+b2xlYW47CmJlZ2luCiAgaWYgcF9vd25lcl9pZCBpcyBudWxsIG9yIHBfbWVtb3JpYWxfaWQgaXMg
+bnVsbAogICAgIG9yIHBfY29uZG9sZW5jZXMgaXMgbnVsbCBvciBwX3N0b3JpZXMgaXMgbnVsbCBv
+ciBwX3Bob3RvcyBpcyBudWxsIHRoZW4KICAgIHJhaXNlIGV4Y2VwdGlvbiAnaW52YWxpZCBjb250
+cmlidXRpb24gY2F0ZWdvcmllcyByZXF1ZXN0JyB1c2luZyBlcnJjb2RlID0gJzIyMDIzJzsKICBl
+bmQgaWY7CiAgc2VsZWN0ICogaW50byB2X21lbW9yaWFsIGZyb20gcHVibGljLm1lbW9yaWFscyB3
+aGVyZSBpZCA9IHBfbWVtb3JpYWxfaWQgZm9yIHVwZGF0ZTsKICBpZiBub3QgZm91bmQgb3Igdl9t
+ZW1vcmlhbC5vd25lcl9pZCBpcyBkaXN0aW5jdCBmcm9tIHBfb3duZXJfaWQgb3Igdl9tZW1vcmlh
+bC5zdGF0dXMgPSAnYXJjaGl2ZWQnIHRoZW4KICAgIHJldHVybiBxdWVyeSBzZWxlY3QgJ3JlZnVz
+ZWQnOjp0ZXh0LCBudWxsOjpiaWdpbnQ7CiAgICByZXR1cm47CiAgZW5kIGlmOwogIHNlbGVjdCAq
+IGludG8gdl9kcmFmdCBmcm9tIHB1YmxpYy5tZW1vcmlhbF9kcmFmdHMgd2hlcmUgbWVtb3JpYWxf
+aWQgPSBwX21lbW9yaWFsX2lkIGZvciB1cGRhdGU7CiAgaWYgbm90IGZvdW5kIHRoZW4KICAgIHJl
+dHVybiBxdWVyeSBzZWxlY3QgJ3JlZnVzZWQnOjp0ZXh0LCBudWxsOjpiaWdpbnQ7CiAgICByZXR1
+cm47CiAgZW5kIGlmOwogIGlmIHBfZXhwZWN0ZWRfcmV2aXNpb24gaXMgbm90IG51bGwgYW5kIHZf
+ZHJhZnQucmV2aXNpb24gPD4gcF9leHBlY3RlZF9yZXZpc2lvbiB0aGVuCiAgICByZXR1cm4gcXVl
+cnkgc2VsZWN0ICdzdGFsZV9yZXZpc2lvbic6OnRleHQsIHZfZHJhZnQucmV2aXNpb247CiAgICBy
+ZXR1cm47CiAgZW5kIGlmOwoKICB2X3JhdyA6PSB2X2RyYWZ0LmNvbnRlbnQgLT4gJ2NvbnRyaWJ1
+dGlvbnMnOwogIHZfcHJldmlvdXMgOj0gY2FzZSB3aGVuIGpzb25iX3R5cGVvZih2X3JhdykgPSAn
+b2JqZWN0JyB0aGVuIHZfcmF3IGVsc2UgJ3t9Jzo6anNvbmIgZW5kOwogIHZfZmVhdHVyZXMgOj0g
+Y2FzZSB3aGVuIGpzb25iX3R5cGVvZih2X3ByZXZpb3VzIC0+ICdmZWF0dXJlcycpID0gJ29iamVj
+dCcgdGhlbiB2X3ByZXZpb3VzIC0+ICdmZWF0dXJlcycgZWxzZSAne30nOjpqc29uYiBlbmQ7CiAg
+dl9uZXh0X2ZlYXR1cmVzIDo9IHZfZmVhdHVyZXMgfHwganNvbmJfYnVpbGRfb2JqZWN0KCdjb25k
+b2xlbmNlcycsIHBfY29uZG9sZW5jZXMsICdzdG9yaWVzJywgcF9zdG9yaWVzLCAncGhvdG9zJywg
+cF9waG90b3MpOwogIHZfbmV4dF9jb250ZW50IDo9IGpzb25iX3NldCgKICAgIGNhc2Ugd2hlbiBq
+c29uYl90eXBlb2Yodl9kcmFmdC5jb250ZW50KSA9ICdvYmplY3QnIHRoZW4gdl9kcmFmdC5jb250
+ZW50IGVsc2UgJ3t9Jzo6anNvbmIgZW5kLAogICAgJ3tjb250cmlidXRpb25zfScsCiAgICB2X3By
+ZXZpb3VzIHx8IGpzb25iX2J1aWxkX29iamVjdCgnZmVhdHVyZXMnLCB2X25leHRfZmVhdHVyZXMp
+KTsKICB2X2RyYWZ0X2NoYW5nZWQgOj0gdl9uZXh0X2NvbnRlbnQgaXMgZGlzdGluY3QgZnJvbSB2
+X2RyYWZ0LmNvbnRlbnQ7CgogIHZfY2F0ZWdvcnlfY2hhbmdlZCA6PSBmYWxzZTsKICBpZiB2X21l
+bW9yaWFsLmZpcnN0X3B1Ymxpc2hlZF9hdCBpcyBub3QgbnVsbCB0aGVuCiAgICBzZWxlY3QgKiBp
+bnRvIHZfY2F0ZWdvcnkgZnJvbSBwdWJsaWMubWVtb3JpYWxfY29udHJpYnV0aW9uX2NhdGVnb3Jp
+ZXMKICAgICB3aGVyZSBtZW1vcmlhbF9pZCA9IHBfbWVtb3JpYWxfaWQgZm9yIHVwZGF0ZTsKICAg
+IGlmIG5vdCBmb3VuZAogICAgICAgb3Igdl9jYXRlZ29yeS5jb25kb2xlbmNlcyA8PiBwX2NvbmRv
+bGVuY2VzCiAgICAgICBvciB2X2NhdGVnb3J5LnN0b3JpZXMgPD4gcF9zdG9yaWVzCiAgICAgICBv
+ciB2X2NhdGVnb3J5LnBob3RvcyA8PiBwX3Bob3RvcyB0aGVuCiAgICAgIGluc2VydCBpbnRvIHB1
+YmxpYy5tZW1vcmlhbF9jb250cmlidXRpb25fY2F0ZWdvcmllcwogICAgICAgIChtZW1vcmlhbF9p
+ZCwgY29uZG9sZW5jZXMsIHN0b3JpZXMsIHBob3RvcywgdXBkYXRlZF9hdCwgdXBkYXRlZF9ieSkK
+ICAgICAgdmFsdWVzIChwX21lbW9yaWFsX2lkLCBwX2NvbmRvbGVuY2VzLCBwX3N0b3JpZXMsIHBf
+cGhvdG9zLCBub3coKSwgcF9vd25lcl9pZCkKICAgICAgb24gY29uZmxpY3QgKG1lbW9yaWFsX2lk
+KSBkbyB1cGRhdGUKICAgICAgICBzZXQgY29uZG9sZW5jZXMgPSBleGNsdWRlZC5jb25kb2xlbmNl
+cywgc3RvcmllcyA9IGV4Y2x1ZGVkLnN0b3JpZXMsIHBob3RvcyA9IGV4Y2x1ZGVkLnBob3RvcywK
+ICAgICAgICAgICAgdXBkYXRlZF9hdCA9IGV4Y2x1ZGVkLnVwZGF0ZWRfYXQsIHVwZGF0ZWRfYnkg
+PSBleGNsdWRlZC51cGRhdGVkX2J5OwogICAgICB2X2NhdGVnb3J5X2NoYW5nZWQgOj0gdHJ1ZTsK
+ICAgIGVuZCBpZjsKICBlbmQgaWY7CgogIGlmIG5vdCB2X2RyYWZ0X2NoYW5nZWQgYW5kIG5vdCB2
+X2NhdGVnb3J5X2NoYW5nZWQgdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAndW5jaGFuZ2Vk
+Jzo6dGV4dCwgdl9kcmFmdC5yZXZpc2lvbjsKICAgIHJldHVybjsKICBlbmQgaWY7CgogIGlmIHZf
+ZHJhZnRfY2hhbmdlZCB0aGVuCiAgICB1cGRhdGUgcHVibGljLm1lbW9yaWFsX2RyYWZ0cwogICAg
+ICAgc2V0IGNvbnRlbnQgPSB2X25leHRfY29udGVudCwgcmV2aXNpb24gPSByZXZpc2lvbiArIDEK
+ICAgICB3aGVyZSBtZW1vcmlhbF9pZCA9IHBfbWVtb3JpYWxfaWQKICAgICByZXR1cm5pbmcgKiBp
+bnRvIHZfZHJhZnQ7CiAgZW5kIGlmOwogIGlmIHZfbWVtb3JpYWwuZmlyc3RfcHVibGlzaGVkX2F0
+IGlzIG5vdCBudWxsIHRoZW4KICAgIGluc2VydCBpbnRvIHB1YmxpYy5tZW1vcmlhbF9lZGl0X2F1
+ZGl0X2V2ZW50cwogICAgICAobWVtb3JpYWxfaWQsIGFjdG9yX293bmVyX2lkLCBvcGVyYXRpb24s
+IG11dGF0aW9uX3RhcmdldHMsIG1lbW9yaWFsX3N0YXR1cywgZHJhZnRfcmV2aXNpb24pCiAgICB2
+YWx1ZXMKICAgICAgKHBfbWVtb3JpYWxfaWQsIHBfb3duZXJfaWQsICdjb250cmlidXRpb25zLmNh
+dGVnb3JpZXMnLCBhcnJheVsnY29udHJpYnV0aW9ucy5mZWF0dXJlcyddLAogICAgICAgdl9tZW1v
+cmlhbC5zdGF0dXMsIHZfZHJhZnQucmV2aXNpb24pOwogIGVuZCBpZjsKICByZXR1cm4gcXVlcnkg
+c2VsZWN0ICd1cGRhdGVkJzo6dGV4dCwgdl9kcmFmdC5yZXZpc2lvbjsKZW5kOwokJDsKCi0tID09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PQotLSAxMC4gUHLDqXBhcmF0aW9uIE8xMiA6IHByw6lmw6lyZW5jZSBldCBqb3Vy
+bmFsIGR1IHLDqWNhcGl0dWxhdGlmCi0tID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQotLSBSaWVuIG4nZXN0IGVudm95
+w6kgaWNpIDogbCdlbnZvaSByZWzDqHZlIGRlIFE0L1E1LCBhcHLDqHMgRTcuCgpjcmVhdGUgdGFi
+bGUgcHVibGljLm93bmVyX25vdGlmaWNhdGlvbl9wcmVmZXJlbmNlcyAoCiAgb3duZXJfaWQgdXVp
+ZCBwcmltYXJ5IGtleSByZWZlcmVuY2VzIHB1YmxpYy5vd25lcnMgKGlkKSBvbiBkZWxldGUgY2Fz
+Y2FkZSwKICBjb250cmlidXRpb25zX2RpZ2VzdCBib29sZWFuIG5vdCBudWxsIGRlZmF1bHQgZmFs
+c2UsCiAgdXBkYXRlZF9hdCB0aW1lc3RhbXB0eiBub3QgbnVsbCBkZWZhdWx0IG5vdygpCik7Cgpj
+cmVhdGUgdGFibGUgcHVibGljLmNvbnRyaWJ1dGlvbnNfZGlnZXN0X2xvZyAoCiAgaWQgdXVpZCBw
+cmltYXJ5IGtleSBkZWZhdWx0IGdlbl9yYW5kb21fdXVpZCgpLAogIG93bmVyX2lkIHV1aWQgbm90
+IG51bGwgcmVmZXJlbmNlcyBwdWJsaWMub3duZXJzIChpZCkgb24gZGVsZXRlIGNhc2NhZGUsCiAg
+ZGlnZXN0X2RheSBkYXRlIG5vdCBudWxsLAogIHN0YXR1cyB0ZXh0IG5vdCBudWxsIGNoZWNrIChz
+dGF0dXMgaW4gKCdjbGFpbWVkJywgJ3NlbnQnLCAnZmFpbGVkJykpLAogIGF0dGVtcHRzIGludGVn
+ZXIgbm90IG51bGwgZGVmYXVsdCAxIGNoZWNrIChhdHRlbXB0cyBiZXR3ZWVuIDEgYW5kIDIpLAog
+IGNvdmVyZWRfdW50aWwgdGltZXN0YW1wdHogbm90IG51bGwsCiAgY2xhaW1lZF9hdCB0aW1lc3Rh
+bXB0eiBub3QgbnVsbCBkZWZhdWx0IG5vdygpLAogIHNlbnRfYXQgdGltZXN0YW1wdHosCiAgcHJv
+dmlkZXJfbWVzc2FnZV9pZCB0ZXh0IGNoZWNrIChwcm92aWRlcl9tZXNzYWdlX2lkIGlzIG51bGwg
+b3IgY2hhcl9sZW5ndGgocHJvdmlkZXJfbWVzc2FnZV9pZCkgYmV0d2VlbiAxIGFuZCAyMDApLAog
+IGNvbnN0cmFpbnQgY29udHJpYnV0aW9uc19kaWdlc3RfbG9nX293bmVyX2RheSB1bmlxdWUgKG93
+bmVyX2lkLCBkaWdlc3RfZGF5KSwKICBjb25zdHJhaW50IGNvbnRyaWJ1dGlvbnNfZGlnZXN0X2xv
+Z19zZW50X2NvaGVyZW50IGNoZWNrICgoc3RhdHVzID0gJ3NlbnQnKSA9IChzZW50X2F0IGlzIG5v
+dCBudWxsKSkKKTsKCmFsdGVyIHRhYmxlIHB1YmxpYy5vd25lcl9ub3RpZmljYXRpb25fcHJlZmVy
+ZW5jZXMgZW5hYmxlIHJvdyBsZXZlbCBzZWN1cml0eTsKYWx0ZXIgdGFibGUgcHVibGljLmNvbnRy
+aWJ1dGlvbnNfZGlnZXN0X2xvZyBlbmFibGUgcm93IGxldmVsIHNlY3VyaXR5OwoKY29tbWVudCBv
+biB0YWJsZSBwdWJsaWMub3duZXJfbm90aWZpY2F0aW9uX3ByZWZlcmVuY2VzIGlzCiAgJ004LUUx
+LCBPMTIuIFLDqWNhcGl0dWxhdGlmIHF1b3RpZGllbiBkZXMgY29udHJpYnV0aW9ucyDDoCBleGFt
+aW5lciA6IGTDqXNhY3RpdsOpIHBhciBkw6lmYXV0LCByw6l2ZXJzaWJsZS4gw4ljcml0IHBhciBz
+ZXRfY29udHJpYnV0aW9uc19kaWdlc3RfcHJlZmVyZW5jZV92MS4nOwpjb21tZW50IG9uIHRhYmxl
+IHB1YmxpYy5jb250cmlidXRpb25zX2RpZ2VzdF9sb2cgaXMKICAnTTgtRTEsIE8xMi9RNS4gQXUg
+cGx1cyB1biByw6ljYXBpdHVsYXRpZiBwYXIgcHJvcHJpw6l0YWlyZSBldCBwYXIgam91ciAoRXVy
+b3BlL1BhcmlzKS4gVW5lIGlzc3VlIGluY29ubnVlIHJlc3RlIGNsYWltZWQgZXQgbicnZXN0IHBh
+cyByZW52b3nDqWUgbGUgbcOqbWUgam91ci4gTmUgY29udGllbnQgYXVjdW5lIGRvbm7DqWUgZGUg
+cHJvY2hlLic7CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJsaWMuc2V0X2NvbnRyaWJ1
+dGlvbnNfZGlnZXN0X3ByZWZlcmVuY2VfdjEocF9vd25lcl9pZCB1dWlkLCBwX2VuYWJsZWQgYm9v
+bGVhbikKcmV0dXJucyB0YWJsZSAoY29udHJpYnV0aW9uc19kaWdlc3QgYm9vbGVhbikKbGFuZ3Vh
+Z2UgcGxwZ3NxbApzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmJl
+Z2luCiAgaWYgcF9vd25lcl9pZCBpcyBudWxsIG9yIHBfZW5hYmxlZCBpcyBudWxsIHRoZW4KICAg
+IHJhaXNlIGV4Y2VwdGlvbiAnaW52YWxpZCBub3RpZmljYXRpb24gcHJlZmVyZW5jZScgdXNpbmcg
+ZXJyY29kZSA9ICcyMjAyMyc7CiAgZW5kIGlmOwogIGlmIG5vdCBleGlzdHMgKHNlbGVjdCAxIGZy
+b20gcHVibGljLm93bmVycyBvIHdoZXJlIG8uaWQgPSBwX293bmVyX2lkKSB0aGVuCiAgICByYWlz
+ZSBleGNlcHRpb24gJ25vdGlmaWNhdGlvbiBwcmVmZXJlbmNlIHJlZnVzZWQnIHVzaW5nIGVycmNv
+ZGUgPSAnNDI1MDEnOwogIGVuZCBpZjsKICByZXR1cm4gcXVlcnkKICAgIGluc2VydCBpbnRvIHB1
+YmxpYy5vd25lcl9ub3RpZmljYXRpb25fcHJlZmVyZW5jZXMgYXMgcCAob3duZXJfaWQsIGNvbnRy
+aWJ1dGlvbnNfZGlnZXN0LCB1cGRhdGVkX2F0KQogICAgdmFsdWVzIChwX293bmVyX2lkLCBwX2Vu
+YWJsZWQsIG5vdygpKQogICAgb24gY29uZmxpY3QgKG93bmVyX2lkKSBkbyB1cGRhdGUKICAgICAg
+c2V0IGNvbnRyaWJ1dGlvbnNfZGlnZXN0ID0gZXhjbHVkZWQuY29udHJpYnV0aW9uc19kaWdlc3Qs
+IHVwZGF0ZWRfYXQgPSBleGNsdWRlZC51cGRhdGVkX2F0CiAgICByZXR1cm5pbmcgcC5jb250cmli
+dXRpb25zX2RpZ2VzdDsKZW5kOwokJDsKCi0tIFLDqXNlcnZlLCBwb3VyIGxlIGpvdXIgZGUgcF9u
+b3cgKEV1cm9wZS9QYXJpcyksIGxlcyByw6ljYXBpdHVsYXRpZnMgw6AKLS0gZW52b3llciA6IHBy
+b3ByacOpdGFpcmVzIGFib25uw6lzIMOAIENFVCBJTlNUQU5ULCBheWFudCBhdSBtb2lucyB1biBy
+w6ljaXQKLS0gb3UgdW5lIHBob3RvIGVuIGF0dGVudGUgcmXDp3UgZGVwdWlzIGxlIGRlcm5pZXIg
+ZW52b2kgcsOpdXNzaSwgc3VyIHVuCi0tIGhvbW1hZ2UgcHVibGljIGRvbnQgbGEgY2F0w6lnb3Jp
+ZSBlc3QgZW4gdmlndWV1ciA7IG5pIGVudm95w6kgbmkgcsOpc2VydsOpCi0tIGNlIGpvdXIgKHVu
+IMOpY2hlYyBleHBsaWNpdGUgZXN0IHLDqWVzc2F5w6kgdW5lIGZvaXMpLiBSZW52b2llIGRlcwot
+LSBub21icmVzIHNldWxlbWVudCwgamFtYWlzIHVuIG5vbSBuaSB1biB0ZXh0ZSBkZSBwcm9jaGUu
+CmNyZWF0ZSBvciByZXBsYWNlIGZ1bmN0aW9uIHB1YmxpYy5jbGFpbV9jb250cmlidXRpb25zX2Rp
+Z2VzdHNfdjEocF9ub3cgdGltZXN0YW1wdHosIHBfbGltaXQgaW50ZWdlcikKcmV0dXJucyB0YWJs
+ZSAoCiAgZGlnZXN0X2lkIHV1aWQsCiAgb3duZXJfaWQgdXVpZCwKICBlbWFpbCB0ZXh0LAogIGNv
+dmVyZWRfdW50aWwgdGltZXN0YW1wdHosCiAgbWVtb3JpYWxzIGpzb25iCikKbGFuZ3VhZ2UgcGxw
+Z3NxbApzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCiN2YXJpYWJs
+ZV9jb25mbGljdCB1c2VfY29sdW1uCmRlY2xhcmUKICB2X2RheSBkYXRlOwogIHZfbGltaXQgaW50
+ZWdlcjsKICB2X293bmVyIHJlY29yZDsKICB2X2xvZyBwdWJsaWMuY29udHJpYnV0aW9uc19kaWdl
+c3RfbG9nJXJvd3R5cGU7CiAgdl9zdW1tYXJ5IGpzb25iOwpiZWdpbgogIGlmIHBfbm93IGlzIG51
+bGwgb3IgcF9saW1pdCBpcyBudWxsIG9yIHBfbGltaXQgPCAxIHRoZW4KICAgIHJhaXNlIGV4Y2Vw
+dGlvbiAnaW52YWxpZCBkaWdlc3QgY2xhaW0nIHVzaW5nIGVycmNvZGUgPSAnMjIwMjMnOwogIGVu
+ZCBpZjsKICB2X2RheSA6PSAocF9ub3cgYXQgdGltZSB6b25lICdFdXJvcGUvUGFyaXMnKTo6ZGF0
+ZTsKICB2X2xpbWl0IDo9IGxlYXN0KHBfbGltaXQsIDUwMCk7CgogIGZvciB2X293bmVyIGluCiAg
+ICBzZWxlY3Qgby5pZCwgby5lbWFpbCwKICAgICAgICAgICBjb2FsZXNjZSgoc2VsZWN0IG1heChs
+LmNvdmVyZWRfdW50aWwpIGZyb20gcHVibGljLmNvbnRyaWJ1dGlvbnNfZGlnZXN0X2xvZyBsCiAg
+ICAgICAgICAgICAgICAgICAgICB3aGVyZSBsLm93bmVyX2lkID0gby5pZCBhbmQgbC5zdGF0dXMg
+PSAnc2VudCcpLCAnLWluZmluaXR5Jzo6dGltZXN0YW1wdHopIGFzIHNpbmNlCiAgICAgIGZyb20g
+cHVibGljLm93bmVyX25vdGlmaWNhdGlvbl9wcmVmZXJlbmNlcyBwCiAgICAgIGpvaW4gcHVibGlj
+Lm93bmVycyBvIG9uIG8uaWQgPSBwLm93bmVyX2lkCiAgICAgd2hlcmUgcC5jb250cmlidXRpb25z
+X2RpZ2VzdAogICAgICAgYW5kIG5vdCBleGlzdHMgKHNlbGVjdCAxIGZyb20gcHVibGljLmNvbnRy
+aWJ1dGlvbnNfZGlnZXN0X2xvZyBsCiAgICAgICAgICAgICAgICAgICAgICAgIHdoZXJlIGwub3du
+ZXJfaWQgPSBvLmlkIGFuZCBsLmRpZ2VzdF9kYXkgPSB2X2RheQogICAgICAgICAgICAgICAgICAg
+ICAgICAgIGFuZCAobC5zdGF0dXMgaW4gKCdzZW50JywgJ2NsYWltZWQnKSBvciBsLmF0dGVtcHRz
+ID49IDIpKQogICAgIG9yZGVyIGJ5IG8uaWQKICBsb29wCiAgICBleGl0IHdoZW4gdl9saW1pdCA8
+PSAwOwogICAgc2VsZWN0IGpzb25iX2FnZyhqc29uYl9idWlsZF9vYmplY3QoCiAgICAgICAgICAg
+ICAnbWVtb3JpYWxfaWQnLCB4Lm1lbW9yaWFsX2lkLCAnZGlzcGxheV9uYW1lJywgeC5kaXNwbGF5
+X25hbWUsCiAgICAgICAgICAgICAncGVuZGluZ19zdG9yaWVzJywgeC5zdG9yaWVzLCAncGVuZGlu
+Z19waG90b3MnLCB4LnBob3RvcykKICAgICAgICAgICBvcmRlciBieSB4Lm1lbW9yaWFsX2lkKQog
+ICAgICBpbnRvIHZfc3VtbWFyeQogICAgICBmcm9tICgKICAgICAgICBzZWxlY3QgbS5pZCBhcyBt
+ZW1vcmlhbF9pZCwKICAgICAgICAgICAgICAgcy5jb250ZW50ICM+PiAne2hlcm8sZGlzcGxheU5h
+bWV9JyBhcyBkaXNwbGF5X25hbWUsCiAgICAgICAgICAgICAgIGNvdW50KCopIGZpbHRlciAod2hl
+cmUgbXNnLm1lc3NhZ2VfdHlwZSA9ICd0ZXN0aW1vbmlhbCcKICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgIGFuZCAocHVibGljLmNvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX2luX2VmZmVj
+dF92MShtLmlkKSAtPj4gJ3N0b3JpZXMnKTo6Ym9vbGVhbikgYXMgc3RvcmllcywKICAgICAgICAg
+ICAgICAgY291bnQoKikgZmlsdGVyICh3aGVyZSBtc2cubWVzc2FnZV90eXBlID0gJ3Bob3RvJwog
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYW5kIChwdWJsaWMuY29udHJpYnV0aW9u
+X2NhdGVnb3JpZXNfaW5fZWZmZWN0X3YxKG0uaWQpIC0+PiAncGhvdG9zJyk6OmJvb2xlYW4pIGFz
+IHBob3RvcwogICAgICAgICAgZnJvbSBwdWJsaWMubWVtb3JpYWxzIG0KICAgICAgICAgIGpvaW4g
+cHVibGljLm1lbW9yaWFsX3B1Ymxpc2hlZF9zbmFwc2hvdHMgcyBvbiBzLm1lbW9yaWFsX2lkID0g
+bS5pZAogICAgICAgICAgam9pbiBwdWJsaWMubWVzc2FnZXMgbXNnIG9uIG1zZy5tZW1vcmlhbF9p
+ZCA9IG0uaWQKICAgICAgICAgd2hlcmUgbS5vd25lcl9pZCA9IHZfb3duZXIuaWQKICAgICAgICAg
+ICBhbmQgbXNnLnN0YXR1cyA9ICdwZW5kaW5nJwogICAgICAgICAgIGFuZCBtc2cubWVzc2FnZV90
+eXBlIGluICgndGVzdGltb25pYWwnLCAncGhvdG8nKQogICAgICAgICAgIGFuZCBtc2cuY3JlYXRl
+ZF9hdCA+IHZfb3duZXIuc2luY2UKICAgICAgICAgICBhbmQgbXNnLmNyZWF0ZWRfYXQgPD0gcF9u
+b3cKICAgICAgICAgICBhbmQgcHVibGljLmNvbnRyaWJ1dGlvbnNfcnVicmljX3B1YmxpY192MSht
+LmlkLCBwX25vdykKICAgICAgICAgZ3JvdXAgYnkgbS5pZCwgcy5jb250ZW50ICM+PiAne2hlcm8s
+ZGlzcGxheU5hbWV9JwogICAgICApIHgKICAgICB3aGVyZSB4LnN0b3JpZXMgKyB4LnBob3RvcyA+
+IDA7CiAgICBjb250aW51ZSB3aGVuIHZfc3VtbWFyeSBpcyBudWxsOwoKICAgIGluc2VydCBpbnRv
+IHB1YmxpYy5jb250cmlidXRpb25zX2RpZ2VzdF9sb2cgKG93bmVyX2lkLCBkaWdlc3RfZGF5LCBz
+dGF0dXMsIGNvdmVyZWRfdW50aWwsIGNsYWltZWRfYXQpCiAgICB2YWx1ZXMgKHZfb3duZXIuaWQs
+IHZfZGF5LCAnY2xhaW1lZCcsIHBfbm93LCBub3coKSkKICAgIG9uIGNvbmZsaWN0IChvd25lcl9p
+ZCwgZGlnZXN0X2RheSkgZG8gdXBkYXRlCiAgICAgIHNldCBzdGF0dXMgPSAnY2xhaW1lZCcsIGF0
+dGVtcHRzID0gcHVibGljLmNvbnRyaWJ1dGlvbnNfZGlnZXN0X2xvZy5hdHRlbXB0cyArIDEsCiAg
+ICAgICAgICBjb3ZlcmVkX3VudGlsID0gZXhjbHVkZWQuY292ZXJlZF91bnRpbCwgY2xhaW1lZF9h
+dCA9IGV4Y2x1ZGVkLmNsYWltZWRfYXQKICAgICAgd2hlcmUgcHVibGljLmNvbnRyaWJ1dGlvbnNf
+ZGlnZXN0X2xvZy5zdGF0dXMgPSAnZmFpbGVkJwogICAgICAgIGFuZCBwdWJsaWMuY29udHJpYnV0
+aW9uc19kaWdlc3RfbG9nLmF0dGVtcHRzIDwgMgogICAgcmV0dXJuaW5nICogaW50byB2X2xvZzsK
+ICAgIGNvbnRpbnVlIHdoZW4gdl9sb2cuaWQgaXMgbnVsbDsKCiAgICB2X2xpbWl0IDo9IHZfbGlt
+aXQgLSAxOwogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCB2X2xvZy5pZCwgdl9vd25lci5pZCwgdl9v
+d25lci5lbWFpbCwgdl9sb2cuY292ZXJlZF91bnRpbCwgdl9zdW1tYXJ5OwogICAgdl9sb2cgOj0g
+bnVsbDsKICBlbmQgbG9vcDsKZW5kOwokJDsKCi0tIElzc3VlIGQndW4gZW52b2kgOiBzZW50IChp
+ZGVudGlmaWFudCBkdSBmb3Vybmlzc2V1cikgb3UgZmFpbGVkIChyZWZ1cwotLSBleHBsaWNpdGUp
+LiBTZXVsZSB1bmUgbGlnbmUgY2xhaW1lZCBjaGFuZ2UuIFLDqXN1bHRhdHMgOiB1cGRhdGVkLCBy
+ZWZ1c2VkLgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJsaWMubWFya19jb250cmlidXRp
+b25zX2RpZ2VzdF92MShwX2RpZ2VzdF9pZCB1dWlkLCBwX3N0YXR1cyB0ZXh0LCBwX3Byb3ZpZGVy
+X21lc3NhZ2VfaWQgdGV4dCBkZWZhdWx0IG51bGwpCnJldHVybnMgdGFibGUgKG91dGNvbWUgdGV4
+dCkKbGFuZ3VhZ2UgcGxwZ3NxbApzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcn
+CmFzICQkCmJlZ2luCiAgaWYgcF9kaWdlc3RfaWQgaXMgbnVsbCBvciBwX3N0YXR1cyBpcyBudWxs
+IG9yIHBfc3RhdHVzIG5vdCBpbiAoJ3NlbnQnLCAnZmFpbGVkJykgdGhlbgogICAgcmFpc2UgZXhj
+ZXB0aW9uICdpbnZhbGlkIGRpZ2VzdCBvdXRjb21lJyB1c2luZyBlcnJjb2RlID0gJzIyMDIzJzsK
+ICBlbmQgaWY7CiAgdXBkYXRlIHB1YmxpYy5jb250cmlidXRpb25zX2RpZ2VzdF9sb2cKICAgICBz
+ZXQgc3RhdHVzID0gcF9zdGF0dXMsCiAgICAgICAgIHNlbnRfYXQgPSBjYXNlIHdoZW4gcF9zdGF0
+dXMgPSAnc2VudCcgdGhlbiBub3coKSBlbmQsCiAgICAgICAgIHByb3ZpZGVyX21lc3NhZ2VfaWQg
+PSBjYXNlIHdoZW4gcF9zdGF0dXMgPSAnc2VudCcgdGhlbiBwX3Byb3ZpZGVyX21lc3NhZ2VfaWQg
+ZW5kCiAgIHdoZXJlIGlkID0gcF9kaWdlc3RfaWQgYW5kIHN0YXR1cyA9ICdjbGFpbWVkJzsKICBp
+ZiBub3QgZm91bmQgdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAncmVmdXNlZCc6OnRleHQ7
+CiAgICByZXR1cm47CiAgZW5kIGlmOwogIHJldHVybiBxdWVyeSBzZWxlY3QgJ3VwZGF0ZWQnOjp0
+ZXh0OwplbmQ7CiQkOwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDExLiBQcml2aWzDqGdlcwotLSA9PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT0KLS0gVGFibGVzIG5vdXZlbGxlcyA6IGF1Y3VuIHByaXZpbMOoZ2UgcG91ciBhdWN1
+biByw7RsZSBjbGllbnQgKGFjY8OocyBwYXIKLS0gbGVzIFJQQyBTRUNVUklUWSBERUZJTkVSIHNl
+dWxlbWVudCkuIG1lc3NhZ2VzIDogbGVjdHVyZSBjb2xvbm5lIHBhcgotLSBjb2xvbm5lIHBvdXIg
+YXV0aGVudGljYXRlZCwgc291cyBsYSBwb2xpdGlxdWUgUkxTIGV4aXN0YW50ZQotLSBtZXNzYWdl
+c19zZWxlY3Rfb3duIDsgamFtYWlzIGlkZW1wb3RlbmN5X2tleSA7IGF1Y3VuZSDDqWNyaXR1cmUg
+Y2xpZW50LgoKcmV2b2tlIGFsbCBvbiB0YWJsZSBwdWJsaWMuY29udHJpYnV0aW9uX3NldHRpbmdz
+IGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBh
+bGwgb24gdGFibGUgcHVibGljLmNvbnRyaWJ1dGlvbl9saW1pdHNfb3ZlcnJpZGUgZnJvbSBwdWJs
+aWMsIGFub24sIGF1dGhlbnRpY2F0ZWQsIHNlcnZpY2Vfcm9sZTsKcmV2b2tlIGFsbCBvbiB0YWJs
+ZSBwdWJsaWMuY29udHJpYnV0aW9uX3JhdGVfbGltaXRzIGZyb20gcHVibGljLCBhbm9uLCBhdXRo
+ZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBhbGwgb24gdGFibGUgcHVibGljLm1lbW9y
+aWFsX2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNh
+dGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBhbGwgb24gdGFibGUgcHVibGljLm93bmVyX25vdGlm
+aWNhdGlvbl9wcmVmZXJlbmNlcyBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZCwgc2Vy
+dmljZV9yb2xlOwpyZXZva2UgYWxsIG9uIHRhYmxlIHB1YmxpYy5jb250cmlidXRpb25zX2RpZ2Vz
+dF9sb2cgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQsIHNlcnZpY2Vfcm9sZTsKCmdy
+YW50IHNlbGVjdCAoaWQsIG1lbW9yaWFsX2lkLCBtZXNzYWdlX3R5cGUsIGF1dGhvcl9uYW1lLCBj
+b250ZW50LCB2aXNpYmxlLCBjcmVhdGVkX2F0LAogICAgICAgICAgICAgIHN0YXR1cywgY2FwdGlv
+biwgbWVkaWFfaWQsIHB1Ymxpc2hlZF9hdCwgbW9kZXJhdGVkX2F0KQogIG9uIHRhYmxlIHB1Ymxp
+Yy5tZXNzYWdlcyB0byBhdXRoZW50aWNhdGVkOwoKLS0gRm9uY3Rpb25zIGludGVybmVzIDogZXjD
+qWN1dGFibGVzIHBhciBhdWN1biByw7RsZS4KcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMu
+bWVzc2FnZXNfYWxpZ25fdmlzaWJsZV92MSgpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNh
+dGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLmNvbnRyaWJ1
+dGlvbl9mZWF0dXJlc192MShqc29uYikgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQs
+IHNlcnZpY2Vfcm9sZTsKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMuc3luY19jb250cmli
+dXRpb25fY2F0ZWdvcmllc19vbl9wdWJsaWNhdGlvbl92MSgpIGZyb20gcHVibGljLCBhbm9uLCBh
+dXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGlj
+LmNvbnRyaWJ1dGlvbnNfcnVicmljX3B1YmxpY192MSh1dWlkLCB0aW1lc3RhbXB0eikgZnJvbSBw
+dWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQsIHNlcnZpY2Vfcm9sZTsKcmV2b2tlIGFsbCBvbiBm
+dW5jdGlvbiBwdWJsaWMuY29udHJpYnV0aW9uX2NhdGVnb3JpZXNfaW5fZWZmZWN0X3YxKHV1aWQp
+IGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBh
+bGwgb24gZnVuY3Rpb24gcHVibGljLnB1YmxpY19tZW1vcmlhbF9tZXNzYWdlX2FsbG93ZWRfdjIo
+dXVpZCwgdGV4dCkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQsIHNlcnZpY2Vfcm9s
+ZTsKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMuY29udHJpYnV0aW9uX3RleHRfdmFsaWRf
+djEodGV4dCwgaW50ZWdlcikgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQsIHNlcnZp
+Y2Vfcm9sZTsKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMuY29udHJpYnV0aW9uX2xpbWl0
+c192MSh1dWlkLCB0ZXh0KSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZCwgc2Vydmlj
+ZV9yb2xlOwpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5jb250cmlidXRpb25fcmF0ZV9v
+cGVuX3YxKHV1aWQsIHRleHQsIHRpbWVzdGFtcHR6KSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVu
+dGljYXRlZCwgc2VydmljZV9yb2xlOwpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5jb250
+cmlidXRpb25fcmF0ZV9jb3VudF92MSh1dWlkLCB0ZXh0KSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0
+aGVudGljYXRlZCwgc2VydmljZV9yb2xlOwpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5j
+b250cmlidXRpb25fcGVuZGluZ19waG90b3NfdjEodXVpZCwgdGltZXN0YW1wdHopIGZyb20gcHVi
+bGljLCBhbm9uLCBhdXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7Ci0tIFFHIDAxNyA6IG3Dqm1l
+cyBwcml2aWzDqGdlcyBxdSdhdmFudCAoYXVjdW4gcsO0bGUpLCByw6lhZmZpcm3DqXMgYXByw6hz
+IGxlCi0tIGNyZWF0ZSBvciByZXBsYWNlLgpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5v
+d25lcl9mcmVlX3N0b3JhZ2VfYnl0ZXNfdjEodXVpZCkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhl
+bnRpY2F0ZWQsIHNlcnZpY2Vfcm9sZTsKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMuZ3Vh
+cmRfZnJlZV9zdG9yYWdlX2J1ZGdldF92MSgpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNh
+dGVkLCBzZXJ2aWNlX3JvbGU7CgotLSBSUEMgOiBzZXJ2aWNlX3JvbGUgc2V1bC4KcmV2b2tlIGFs
+bCBvbiBmdW5jdGlvbiBwdWJsaWMuc3VibWl0X2NvbnRyaWJ1dGlvbl92MSh0ZXh0LCB0ZXh0LCB0
+ZXh0LCB0ZXh0LCB1dWlkKSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZDsKcmV2b2tl
+IGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMucmVzZXJ2ZV9jb250cmlidXRpb25fcGhvdG9fdjEodGV4
+dCwgdXVpZCwgdGV4dCwgdGV4dCkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0ZWQ7CnJl
+dm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLmZpbmFsaXplX2NvbnRyaWJ1dGlvbl9waG90b192
+MSh0ZXh0LCB1dWlkLCB0ZXh0LCB0ZXh0LCB1dWlkLCB0ZXh0LCBiaWdpbnQsIGludGVnZXIsIGlu
+dGVnZXIpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkOwpyZXZva2UgYWxsIG9uIGZ1
+bmN0aW9uIHB1YmxpYy5yZWFkX3B1YmxpY19jb250cmlidXRpb25zX3YxKHRleHQsIGludGVnZXIs
+IHRpbWVzdGFtcHR6LCB1dWlkKSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZDsKcmV2
+b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMubW9kZXJhdGVfY29udHJpYnV0aW9uX3YxKHV1aWQs
+IHV1aWQsIHRleHQpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkOwpyZXZva2UgYWxs
+IG9uIGZ1bmN0aW9uIHB1YmxpYy5yZW1vdmVfY29udHJpYnV0aW9uX3YxKHV1aWQsIHV1aWQpIGZy
+b20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkOwpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1
+YmxpYy5jb3VudF9wZW5kaW5nX2NvbnRyaWJ1dGlvbnNfdjEodXVpZCwgdXVpZCkgZnJvbSBwdWJs
+aWMsIGFub24sIGF1dGhlbnRpY2F0ZWQ7CnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLnNl
+dF9jb250cmlidXRpb25fY2F0ZWdvcmllc192MSh1dWlkLCB1dWlkLCBib29sZWFuLCBib29sZWFu
+LCBib29sZWFuLCBiaWdpbnQpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkOwpyZXZv
+a2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5zZXRfY29udHJpYnV0aW9uc19kaWdlc3RfcHJlZmVy
+ZW5jZV92MSh1dWlkLCBib29sZWFuKSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZDsK
+cmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMuY2xhaW1fY29udHJpYnV0aW9uc19kaWdlc3Rz
+X3YxKHRpbWVzdGFtcHR6LCBpbnRlZ2VyKSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRl
+ZDsKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMubWFya19jb250cmlidXRpb25zX2RpZ2Vz
+dF92MSh1dWlkLCB0ZXh0LCB0ZXh0KSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZDsK
+CmdyYW50IGV4ZWN1dGUgb24gZnVuY3Rpb24gcHVibGljLnN1Ym1pdF9jb250cmlidXRpb25fdjEo
+dGV4dCwgdGV4dCwgdGV4dCwgdGV4dCwgdXVpZCkgdG8gc2VydmljZV9yb2xlOwpncmFudCBleGVj
+dXRlIG9uIGZ1bmN0aW9uIHB1YmxpYy5yZXNlcnZlX2NvbnRyaWJ1dGlvbl9waG90b192MSh0ZXh0
+LCB1dWlkLCB0ZXh0LCB0ZXh0KSB0byBzZXJ2aWNlX3JvbGU7CmdyYW50IGV4ZWN1dGUgb24gZnVu
+Y3Rpb24gcHVibGljLmZpbmFsaXplX2NvbnRyaWJ1dGlvbl9waG90b192MSh0ZXh0LCB1dWlkLCB0
+ZXh0LCB0ZXh0LCB1dWlkLCB0ZXh0LCBiaWdpbnQsIGludGVnZXIsIGludGVnZXIpIHRvIHNlcnZp
+Y2Vfcm9sZTsKZ3JhbnQgZXhlY3V0ZSBvbiBmdW5jdGlvbiBwdWJsaWMucmVhZF9wdWJsaWNfY29u
+dHJpYnV0aW9uc192MSh0ZXh0LCBpbnRlZ2VyLCB0aW1lc3RhbXB0eiwgdXVpZCkgdG8gc2Vydmlj
+ZV9yb2xlOwpncmFudCBleGVjdXRlIG9uIGZ1bmN0aW9uIHB1YmxpYy5tb2RlcmF0ZV9jb250cmli
+dXRpb25fdjEodXVpZCwgdXVpZCwgdGV4dCkgdG8gc2VydmljZV9yb2xlOwpncmFudCBleGVjdXRl
+IG9uIGZ1bmN0aW9uIHB1YmxpYy5yZW1vdmVfY29udHJpYnV0aW9uX3YxKHV1aWQsIHV1aWQpIHRv
+IHNlcnZpY2Vfcm9sZTsKZ3JhbnQgZXhlY3V0ZSBvbiBmdW5jdGlvbiBwdWJsaWMuY291bnRfcGVu
+ZGluZ19jb250cmlidXRpb25zX3YxKHV1aWQsIHV1aWQpIHRvIHNlcnZpY2Vfcm9sZTsKZ3JhbnQg
+ZXhlY3V0ZSBvbiBmdW5jdGlvbiBwdWJsaWMuc2V0X2NvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX3Yx
+KHV1aWQsIHV1aWQsIGJvb2xlYW4sIGJvb2xlYW4sIGJvb2xlYW4sIGJpZ2ludCkgdG8gc2Vydmlj
+ZV9yb2xlOwpncmFudCBleGVjdXRlIG9uIGZ1bmN0aW9uIHB1YmxpYy5zZXRfY29udHJpYnV0aW9u
+c19kaWdlc3RfcHJlZmVyZW5jZV92MSh1dWlkLCBib29sZWFuKSB0byBzZXJ2aWNlX3JvbGU7Cmdy
+YW50IGV4ZWN1dGUgb24gZnVuY3Rpb24gcHVibGljLmNsYWltX2NvbnRyaWJ1dGlvbnNfZGlnZXN0
+c192MSh0aW1lc3RhbXB0eiwgaW50ZWdlcikgdG8gc2VydmljZV9yb2xlOwpncmFudCBleGVjdXRl
+IG9uIGZ1bmN0aW9uIHB1YmxpYy5tYXJrX2NvbnRyaWJ1dGlvbnNfZGlnZXN0X3YxKHV1aWQsIHRl
+eHQsIHRleHQpIHRvIHNlcnZpY2Vfcm9sZTsKCmNvbW1lbnQgb24gZnVuY3Rpb24gcHVibGljLnB1
+YmxpY19tZW1vcmlhbF9tZXNzYWdlX2FsbG93ZWRfdjIodXVpZCwgdGV4dCkgaXMKICAnTTgtRTEu
+IERyb2l0IGRlIGTDqXBvc2VyIDogaG9tbWFnZSBwdWJsaWMsIHJ1YnJpcXVlIENvbnRyaWJ1dGlv
+bnMgbm9uIG1hc3F1w6llIGRhbnMgbGEgY29waWUgcHVibGnDqWUsIGNhdMOpZ29yaWUgZW4gdmln
+dWV1ciAoTzkpIDsgY29uZG9sw6lhbmNlcywgcsOpY2l0cyBldCBwaG90b3MgZGFucyBsZXMgZGV1
+eCBvZmZyZXMgKEQxKSA7IG1lbW9yeV9tZXNzYWdlIDogcsOoZ2xlIFFHIDAwOCAoY29tcGxldCku
+IEludGVybmUuJzsKY29tbWVudCBvbiBmdW5jdGlvbiBwdWJsaWMuc3VibWl0X2NvbnRyaWJ1dGlv
+bl92MSh0ZXh0LCB0ZXh0LCB0ZXh0LCB0ZXh0LCB1dWlkKSBpcwogICdNOC1FMS4gRMOpcMO0dCBk
+Jyd1bmUgY29uZG9sw6lhbmNlIChwdWJsaXNoZWQsIEQyKSBvdSBkJyd1biByw6ljaXQgKHBlbmRp
+bmcpLiBJZGVtcG90ZW50IHBhciBjbMOpIDsgZG91YmxvbiBkZSBjb250ZW51IDwgMTAgbWluIDsg
+cGxhZm9uZHMgUjIuIHNlcnZpY2Vfcm9sZSBzZXVsLic7CmNvbW1lbnQgb24gZnVuY3Rpb24gcHVi
+bGljLnJlc2VydmVfY29udHJpYnV0aW9uX3Bob3RvX3YxKHRleHQsIHV1aWQsIHRleHQsIHRleHQp
+IGlzCiAgJ004LUUxLiBSw6lzZXJ2YXRpb24gZCcndW5lIHBob3RvIGRlIHByb2NoZSAobcOpZGlh
+IGNvbnRyaWJ1dGlvbiBwZW5kaW5nKSA7IFIyIGV0IFIzIChwZW5kaW5nX2Z1bGwpLiBzZXJ2aWNl
+X3JvbGUgc2V1bC4nOwpjb21tZW50IG9uIGZ1bmN0aW9uIHB1YmxpYy5maW5hbGl6ZV9jb250cmli
+dXRpb25fcGhvdG9fdjEodGV4dCwgdXVpZCwgdGV4dCwgdGV4dCwgdXVpZCwgdGV4dCwgYmlnaW50
+LCBpbnRlZ2VyLCBpbnRlZ2VyKSBpcwogICdNOC1FMS4gRmluYWxpc2F0aW9uIDogbWVzdXJlcyBk
+dSBmaWNoaWVyIG9wdGltaXPDqSAoTzUgZW4gRTIpLCBtw6lkaWEgcmVhZHksIG1lc3NhZ2UgcGhv
+dG8gcGVuZGluZy4gc2VydmljZV9yb2xlIHNldWwuJzsKY29tbWVudCBvbiBmdW5jdGlvbiBwdWJs
+aWMucmVhZF9wdWJsaWNfY29udHJpYnV0aW9uc192MSh0ZXh0LCBpbnRlZ2VyLCB0aW1lc3RhbXB0
+eiwgdXVpZCkgaXMKICAnTTgtRTEuIExlY3R1cmUgcHVibGlxdWUgOiBwdWJsacOpZXMgZXQgYXV0
+b3Jpc8OpZXMgc2V1bGVtZW50LCBvcmRyZSBQMSAocHVibGlzaGVkX2F0IGRlc2MsIGlkIGRlc2Mp
+LCBjdXJzZXVyLCBwaG90b3MgcmVhZHkuIHNlcnZpY2Vfcm9sZSBzZXVsLic7CmNvbW1lbnQgb24g
+ZnVuY3Rpb24gcHVibGljLm1vZGVyYXRlX2NvbnRyaWJ1dGlvbl92MSh1dWlkLCB1dWlkLCB0ZXh0
+KSBpcwogICdNOC1FMS4gTW9kw6lyYXRpb24gZmFtaWxpYWxlIDogYXBwcm92ZSwgcmVqZWN0LCBo
+aWRlLCB1bmhpZGUgOyBqYW1haXMgZGUgcsOpw6ljcml0dXJlLiBzZXJ2aWNlX3JvbGUgc2V1bCwg
+cF9vd25lcl9pZCByw6lzb2x1IHBhciBsZSBzZXJ2ZXVyLic7CmNvbW1lbnQgb24gZnVuY3Rpb24g
+cHVibGljLnJlbW92ZV9jb250cmlidXRpb25fdjEodXVpZCwgdXVpZCkgaXMKICAnTTgtRTEuIFN1
+cHByZXNzaW9uIGZhbWlsaWFsZSA7IHVuZSBwaG90byBwYXJ0IGF1IG5ldHRveWFnZSBwYXIgcsOp
+Y2xhbWF0aW9uIChwZW5kaW5nX21lZGlhX2NsZWFudXBfY2xhaW1zKS4gc2VydmljZV9yb2xlIHNl
+dWwuJzsKY29tbWVudCBvbiBmdW5jdGlvbiBwdWJsaWMuc2V0X2NvbnRyaWJ1dGlvbl9jYXRlZ29y
+aWVzX3YxKHV1aWQsIHV1aWQsIGJvb2xlYW4sIGJvb2xlYW4sIGJvb2xlYW4sIGJpZ2ludCkgaXMK
+ICAnTTgtRTEsIE85L1ExLiBDYXTDqWdvcmllcyBlbiB2aWd1ZXVyIGNoYW5nw6llcyBpbW3DqWRp
+YXRlbWVudCwgYnJvdWlsbG9uIGFsaWduw6kgKHLDqXZpc2lvbiArIDEpLCBjb3BpZSBwdWJsacOp
+ZSBpbnRhY3RlLiBzZXJ2aWNlX3JvbGUgc2V1bC4nOwoKbm90aWZ5IHBncnN0LCAncmVsb2FkIHNj
+aGVtYSc7Cgpjb21taXQ7Cg==
+';
+  c_source   text;
   v_lines    integer;
 begin
-  -- 1. Le texte collé est exactement le fichier de GitHub.
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261119090000] : texte de la migration illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
+  -- Le texte décodé est exactement le fichier de GitHub.
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
   end if;

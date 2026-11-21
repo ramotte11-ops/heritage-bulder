@@ -22,24 +22,27 @@ declare
   c_count    constant integer := 47;
   c_sha256   constant text := '3ae685dfe5bdc1bb3d9f4c149b1165be0520f3dd4f908146e456c2e0c06364fb';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E2 : RETOUR ARRIÈRE de
--- supabase/migrations/20261120090000_m8_e2_owner_contribution_settings.sql.
---
--- NE FAIT PAS PARTIE DES MIGRATIONS : jamais appliqué automatiquement,
--- seulement sur décision explicite du QG. À appliquer AVANT celui de M8-E1
--- (cette fonction dépend des fonctions E1).
--- Lecture seule : aucune donnée n'est touchée.
-
-begin;
-
-drop function if exists public.read_owner_contribution_settings_v1(uuid, uuid);
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/rollbacks/20261120090000_m8_e2_owner_contribution_settings.down.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTIgOiBSRVRPVVIgQVJSScOIUkUgZGUKLS0gc3Vw
+YWJhc2UvbWlncmF0aW9ucy8yMDI2MTEyMDA5MDAwMF9tOF9lMl9vd25lcl9jb250cmlidXRpb25f
+c2V0dGluZ3Muc3FsLgotLQotLSBORSBGQUlUIFBBUyBQQVJUSUUgREVTIE1JR1JBVElPTlMgOiBq
+YW1haXMgYXBwbGlxdcOpIGF1dG9tYXRpcXVlbWVudCwKLS0gc2V1bGVtZW50IHN1ciBkw6ljaXNp
+b24gZXhwbGljaXRlIGR1IFFHLiDDgCBhcHBsaXF1ZXIgQVZBTlQgY2VsdWkgZGUgTTgtRTEKLS0g
+KGNldHRlIGZvbmN0aW9uIGTDqXBlbmQgZGVzIGZvbmN0aW9ucyBFMSkuCi0tIExlY3R1cmUgc2V1
+bGUgOiBhdWN1bmUgZG9ubsOpZSBuJ2VzdCB0b3VjaMOpZS4KCmJlZ2luOwoKZHJvcCBmdW5jdGlv
+biBpZiBleGlzdHMgcHVibGljLnJlYWRfb3duZXJfY29udHJpYnV0aW9uX3NldHRpbmdzX3YxKHV1
+aWQsIHV1aWQpOwoKbm90aWZ5IHBncnN0LCAncmVsb2FkIHNjaGVtYSc7Cgpjb21taXQ7Cg==
+';
+  c_source   text;
   v_lines    integer;
 begin
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261120090000] : texte du retour arrière illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte du retour arrière altéré au copier-coller. Rien n''a été modifié.', c_version;
   end if;

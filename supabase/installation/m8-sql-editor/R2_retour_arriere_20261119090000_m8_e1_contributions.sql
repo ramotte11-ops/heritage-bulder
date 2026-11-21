@@ -25,197 +25,167 @@ declare
   c_count    constant integer := 46;
   c_sha256   constant text := 'ffb26d688e21ef2bab800e9f437ca2a95487e4f1d5bd1f1aaa7af39183196697';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E1 : RETOUR ARRIÈRE de
--- supabase/migrations/20261119090000_m8_e1_contributions.sql.
---
--- NE FAIT PAS PARTIE DES MIGRATIONS : jamais appliqué automatiquement,
--- seulement sur décision explicite du QG.
---
--- Revient exactement à l'état QG 017 A2 :
---   - supprime les RPC, fonctions internes, déclencheurs et tables M8-E1 ;
---   - retire les colonnes, contraintes et index ajoutés à messages, et lui
---     rend content NOT NULL et le type sans photo ;
---   - rend à media_purpose_check ses deux valeurs (hero, gallery) ;
---   - restaure owner_free_storage_bytes_v1 et guard_free_storage_budget_v1
---     dans leur version QG 017, à l'identique, avec leurs privilèges
---     (aucun rôle) ;
---   - retire contributions de avis_snapshot_keys.
---
--- GARDE-FOU : le retour arrière REFUSE de s'exécuter (et ne change rien)
--- dès qu'une contribution réelle existe (message photo, message déposé
--- par les RPC M8, média contribution). Ces données de proches ne sont
--- jamais supprimées par un script : leur sort est une décision QG.
-
-begin;
-
-do $$
-begin
-  if exists (select 1 from public.messages where message_type = 'photo' or idempotency_key is not null or media_id is not null)
-     or exists (select 1 from public.media where purpose = 'contribution') then
-    raise exception 'M8-E1 rollback refused: real contributions exist (decision QG required)'
-      using errcode = 'P0001';
-  end if;
-end;
-$$;
-
--- --- 10. O12 -------------------------------------------------------------
-drop function if exists public.mark_contributions_digest_v1(uuid, text, text);
-drop function if exists public.claim_contributions_digests_v1(timestamptz, integer);
-drop function if exists public.set_contributions_digest_preference_v1(uuid, boolean);
-drop table if exists public.contributions_digest_log;
-drop table if exists public.owner_notification_preferences;
-
--- --- 9. Actions de la famille -------------------------------------------
-drop function if exists public.set_contribution_categories_v1(uuid, uuid, boolean, boolean, boolean, bigint);
-drop function if exists public.count_pending_contributions_v1(uuid, uuid);
-drop function if exists public.remove_contribution_v1(uuid, uuid);
-drop function if exists public.moderate_contribution_v1(uuid, uuid, text);
-
--- --- 8. Dépôts et lecture ------------------------------------------------
-drop function if exists public.read_public_contributions_v1(text, integer, timestamptz, uuid);
-drop function if exists public.finalize_contribution_photo_v1(text, uuid, text, text, uuid, text, bigint, integer, integer);
-drop function if exists public.reserve_contribution_photo_v1(text, uuid, text, text);
-drop function if exists public.submit_contribution_v1(text, text, text, text, uuid);
-drop function if exists public.contribution_pending_photos_v1(uuid, timestamptz);
-drop function if exists public.contribution_rate_count_v1(uuid, text);
-drop function if exists public.contribution_rate_open_v1(uuid, text, timestamptz);
-drop function if exists public.contribution_limits_v1(uuid, text);
-drop function if exists public.contribution_text_valid_v1(text, integer);
-
--- --- 7. Autorisation v2 (la v1 n'a jamais été modifiée) -----------------
-drop function if exists public.public_memorial_message_allowed_v2(uuid, text);
-
--- --- 6. avis_snapshot_keys ----------------------------------------------
-update public.memorial_access_settings
-   set avis_snapshot_keys = array_remove(avis_snapshot_keys, 'contributions'),
-       updated_at = now()
- where id
-   and 'contributions' = any (avis_snapshot_keys);
-
--- --- 5. Q7-B : versions QG 017, à l'identique ---------------------------
-create or replace function public.owner_free_storage_bytes_v1(p_owner_id uuid)
-returns bigint
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select coalesce(sum(md.size_bytes), 0)::bigint
-    from public.media md
-    join public.memorials m on m.id = md.memorial_id
-   where m.owner_id = p_owner_id
-     and m.access_level = 'avis'
-     and md.status = 'ready';
-$$;
-
-create or replace function public.guard_free_storage_budget_v1()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_owner uuid;
-  v_level text;
-  v_budget bigint;
-  v_used bigint;
-begin
-  if tg_op = 'UPDATE' and not (old.status = 'pending' and new.status = 'ready') then
-    return new;
-  end if;
-  select m.owner_id, m.access_level into v_owner, v_level
-    from public.memorials m where m.id = new.memorial_id;
-  if v_level is distinct from 'avis' or v_owner is null then
-    return new;
-  end if;
-  select s.free_storage_bytes_per_owner into v_budget
-    from public.memorial_access_settings s where s.id;
-  if v_budget is null then
-    return new;
-  end if;
-  -- Sérialise les finalisations d'un même compte (verrou dédié : aucun
-  -- autre verrou n'est pris dans un ordre différent).
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('heritage-owner-storage:' || v_owner::text, 0));
-  v_used := public.owner_free_storage_bytes_v1(v_owner);
-  if tg_op = 'INSERT' then
-    -- Pré-contrôle à la réservation : budget déjà épuisé, inutile d'envoyer.
-    if v_used >= v_budget then
-      raise exception 'free storage budget reached' using errcode = 'HD507';
-    end if;
-  elsif v_used + coalesce(new.size_bytes, 0) > v_budget then
-    raise exception 'free storage budget reached' using errcode = 'HD507';
-  end if;
-  return new;
-end;
-$$;
-
-revoke all on function public.owner_free_storage_bytes_v1(uuid) from public, anon, authenticated, service_role;
-revoke all on function public.guard_free_storage_budget_v1() from public, anon, authenticated, service_role;
-
--- --- 4. Catégories en vigueur -------------------------------------------
-drop trigger if exists memorial_published_snapshots_sync_contribution_categories on public.memorial_published_snapshots;
-drop function if exists public.sync_contribution_categories_on_publication_v1();
-drop function if exists public.contribution_categories_in_effect_v1(uuid);
-drop function if exists public.contributions_rubric_public_v1(uuid, timestamptz);
-drop function if exists public.contribution_features_v1(jsonb);
-drop table if exists public.memorial_contribution_categories;
-
--- --- 3. Plafonds ---------------------------------------------------------
-drop table if exists public.contribution_rate_limits;
-drop table if exists public.contribution_limits_override;
-drop table if exists public.contribution_settings;
-
--- --- 2. media ------------------------------------------------------------
-alter table public.media drop constraint media_purpose_check;
-alter table public.media
-  add constraint media_purpose_check check (purpose in ('hero', 'gallery'));
-comment on column public.media.purpose is
-  'What this media is for: hero or gallery. Mirrors MEDIA_PURPOSES in config/media.ts. A label only — it never changes how the object is stored, pathed, authorized or validated (Mission 030).';
-
--- --- 1. messages ---------------------------------------------------------
-revoke select (id, memorial_id, message_type, author_name, content, visible, created_at,
-               status, caption, media_id, published_at, moderated_at)
-  on table public.messages from authenticated;
-
-drop trigger if exists messages_align_visible on public.messages;
-drop function if exists public.messages_align_visible_v1();
-
-drop index if exists public.messages_memorial_created_idx;
-drop index if exists public.messages_memorial_status_published_idx;
-
-alter table public.messages
-  drop constraint messages_media_id_key,
-  drop constraint messages_memorial_idempotency_key,
-  drop constraint messages_caption_q2,
-  drop constraint messages_content_q2,
-  drop constraint messages_author_name_q2,
-  drop constraint messages_published_at_required,
-  drop constraint messages_visible_matches_status,
-  drop constraint messages_shape_check,
-  drop constraint messages_status_check;
-
-alter table public.messages alter column content set not null;
-
-alter table public.messages drop constraint messages_message_type_check;
-alter table public.messages
-  add constraint messages_message_type_check
-  check (message_type in ('condolence', 'memory_message', 'testimonial'));
-
-alter table public.messages
-  drop column moderated_at,
-  drop column published_at,
-  drop column idempotency_key,
-  drop column media_id,
-  drop column caption,
-  drop column status;
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/rollbacks/20261119090000_m8_e1_contributions.down.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTEgOiBSRVRPVVIgQVJSScOIUkUgZGUKLS0gc3Vw
+YWJhc2UvbWlncmF0aW9ucy8yMDI2MTExOTA5MDAwMF9tOF9lMV9jb250cmlidXRpb25zLnNxbC4K
+LS0KLS0gTkUgRkFJVCBQQVMgUEFSVElFIERFUyBNSUdSQVRJT05TIDogamFtYWlzIGFwcGxpcXXD
+qSBhdXRvbWF0aXF1ZW1lbnQsCi0tIHNldWxlbWVudCBzdXIgZMOpY2lzaW9uIGV4cGxpY2l0ZSBk
+dSBRRy4KLS0KLS0gUmV2aWVudCBleGFjdGVtZW50IMOgIGwnw6l0YXQgUUcgMDE3IEEyIDoKLS0g
+ICAtIHN1cHByaW1lIGxlcyBSUEMsIGZvbmN0aW9ucyBpbnRlcm5lcywgZMOpY2xlbmNoZXVycyBl
+dCB0YWJsZXMgTTgtRTEgOwotLSAgIC0gcmV0aXJlIGxlcyBjb2xvbm5lcywgY29udHJhaW50ZXMg
+ZXQgaW5kZXggYWpvdXTDqXMgw6AgbWVzc2FnZXMsIGV0IGx1aQotLSAgICAgcmVuZCBjb250ZW50
+IE5PVCBOVUxMIGV0IGxlIHR5cGUgc2FucyBwaG90byA7Ci0tICAgLSByZW5kIMOgIG1lZGlhX3B1
+cnBvc2VfY2hlY2sgc2VzIGRldXggdmFsZXVycyAoaGVybywgZ2FsbGVyeSkgOwotLSAgIC0gcmVz
+dGF1cmUgb3duZXJfZnJlZV9zdG9yYWdlX2J5dGVzX3YxIGV0IGd1YXJkX2ZyZWVfc3RvcmFnZV9i
+dWRnZXRfdjEKLS0gICAgIGRhbnMgbGV1ciB2ZXJzaW9uIFFHIDAxNywgw6AgbCdpZGVudGlxdWUs
+IGF2ZWMgbGV1cnMgcHJpdmlsw6hnZXMKLS0gICAgIChhdWN1biByw7RsZSkgOwotLSAgIC0gcmV0
+aXJlIGNvbnRyaWJ1dGlvbnMgZGUgYXZpc19zbmFwc2hvdF9rZXlzLgotLQotLSBHQVJERS1GT1Ug
+OiBsZSByZXRvdXIgYXJyacOocmUgUkVGVVNFIGRlIHMnZXjDqWN1dGVyIChldCBuZSBjaGFuZ2Ug
+cmllbikKLS0gZMOocyBxdSd1bmUgY29udHJpYnV0aW9uIHLDqWVsbGUgZXhpc3RlIChtZXNzYWdl
+IHBob3RvLCBtZXNzYWdlIGTDqXBvc8OpCi0tIHBhciBsZXMgUlBDIE04LCBtw6lkaWEgY29udHJp
+YnV0aW9uKS4gQ2VzIGRvbm7DqWVzIGRlIHByb2NoZXMgbmUgc29udAotLSBqYW1haXMgc3VwcHJp
+bcOpZXMgcGFyIHVuIHNjcmlwdCA6IGxldXIgc29ydCBlc3QgdW5lIGTDqWNpc2lvbiBRRy4KCmJl
+Z2luOwoKZG8gJCQKYmVnaW4KICBpZiBleGlzdHMgKHNlbGVjdCAxIGZyb20gcHVibGljLm1lc3Nh
+Z2VzIHdoZXJlIG1lc3NhZ2VfdHlwZSA9ICdwaG90bycgb3IgaWRlbXBvdGVuY3lfa2V5IGlzIG5v
+dCBudWxsIG9yIG1lZGlhX2lkIGlzIG5vdCBudWxsKQogICAgIG9yIGV4aXN0cyAoc2VsZWN0IDEg
+ZnJvbSBwdWJsaWMubWVkaWEgd2hlcmUgcHVycG9zZSA9ICdjb250cmlidXRpb24nKSB0aGVuCiAg
+ICByYWlzZSBleGNlcHRpb24gJ004LUUxIHJvbGxiYWNrIHJlZnVzZWQ6IHJlYWwgY29udHJpYnV0
+aW9ucyBleGlzdCAoZGVjaXNpb24gUUcgcmVxdWlyZWQpJwogICAgICB1c2luZyBlcnJjb2RlID0g
+J1AwMDAxJzsKICBlbmQgaWY7CmVuZDsKJCQ7CgotLSAtLS0gMTAuIE8xMiAtLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCmRyb3AgZnVu
+Y3Rpb24gaWYgZXhpc3RzIHB1YmxpYy5tYXJrX2NvbnRyaWJ1dGlvbnNfZGlnZXN0X3YxKHV1aWQs
+IHRleHQsIHRleHQpOwpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0cyBwdWJsaWMuY2xhaW1fY29udHJp
+YnV0aW9uc19kaWdlc3RzX3YxKHRpbWVzdGFtcHR6LCBpbnRlZ2VyKTsKZHJvcCBmdW5jdGlvbiBp
+ZiBleGlzdHMgcHVibGljLnNldF9jb250cmlidXRpb25zX2RpZ2VzdF9wcmVmZXJlbmNlX3YxKHV1
+aWQsIGJvb2xlYW4pOwpkcm9wIHRhYmxlIGlmIGV4aXN0cyBwdWJsaWMuY29udHJpYnV0aW9uc19k
+aWdlc3RfbG9nOwpkcm9wIHRhYmxlIGlmIGV4aXN0cyBwdWJsaWMub3duZXJfbm90aWZpY2F0aW9u
+X3ByZWZlcmVuY2VzOwoKLS0gLS0tIDkuIEFjdGlvbnMgZGUgbGEgZmFtaWxsZSAtLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCmRyb3AgZnVuY3Rpb24gaWYgZXhpc3Rz
+IHB1YmxpYy5zZXRfY29udHJpYnV0aW9uX2NhdGVnb3JpZXNfdjEodXVpZCwgdXVpZCwgYm9vbGVh
+biwgYm9vbGVhbiwgYm9vbGVhbiwgYmlnaW50KTsKZHJvcCBmdW5jdGlvbiBpZiBleGlzdHMgcHVi
+bGljLmNvdW50X3BlbmRpbmdfY29udHJpYnV0aW9uc192MSh1dWlkLCB1dWlkKTsKZHJvcCBmdW5j
+dGlvbiBpZiBleGlzdHMgcHVibGljLnJlbW92ZV9jb250cmlidXRpb25fdjEodXVpZCwgdXVpZCk7
+CmRyb3AgZnVuY3Rpb24gaWYgZXhpc3RzIHB1YmxpYy5tb2RlcmF0ZV9jb250cmlidXRpb25fdjEo
+dXVpZCwgdXVpZCwgdGV4dCk7CgotLSAtLS0gOC4gRMOpcMO0dHMgZXQgbGVjdHVyZSAtLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KZHJvcCBmdW5jdGlvbiBp
+ZiBleGlzdHMgcHVibGljLnJlYWRfcHVibGljX2NvbnRyaWJ1dGlvbnNfdjEodGV4dCwgaW50ZWdl
+ciwgdGltZXN0YW1wdHosIHV1aWQpOwpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0cyBwdWJsaWMuZmlu
+YWxpemVfY29udHJpYnV0aW9uX3Bob3RvX3YxKHRleHQsIHV1aWQsIHRleHQsIHRleHQsIHV1aWQs
+IHRleHQsIGJpZ2ludCwgaW50ZWdlciwgaW50ZWdlcik7CmRyb3AgZnVuY3Rpb24gaWYgZXhpc3Rz
+IHB1YmxpYy5yZXNlcnZlX2NvbnRyaWJ1dGlvbl9waG90b192MSh0ZXh0LCB1dWlkLCB0ZXh0LCB0
+ZXh0KTsKZHJvcCBmdW5jdGlvbiBpZiBleGlzdHMgcHVibGljLnN1Ym1pdF9jb250cmlidXRpb25f
+djEodGV4dCwgdGV4dCwgdGV4dCwgdGV4dCwgdXVpZCk7CmRyb3AgZnVuY3Rpb24gaWYgZXhpc3Rz
+IHB1YmxpYy5jb250cmlidXRpb25fcGVuZGluZ19waG90b3NfdjEodXVpZCwgdGltZXN0YW1wdHop
+Owpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0cyBwdWJsaWMuY29udHJpYnV0aW9uX3JhdGVfY291bnRf
+djEodXVpZCwgdGV4dCk7CmRyb3AgZnVuY3Rpb24gaWYgZXhpc3RzIHB1YmxpYy5jb250cmlidXRp
+b25fcmF0ZV9vcGVuX3YxKHV1aWQsIHRleHQsIHRpbWVzdGFtcHR6KTsKZHJvcCBmdW5jdGlvbiBp
+ZiBleGlzdHMgcHVibGljLmNvbnRyaWJ1dGlvbl9saW1pdHNfdjEodXVpZCwgdGV4dCk7CmRyb3Ag
+ZnVuY3Rpb24gaWYgZXhpc3RzIHB1YmxpYy5jb250cmlidXRpb25fdGV4dF92YWxpZF92MSh0ZXh0
+LCBpbnRlZ2VyKTsKCi0tIC0tLSA3LiBBdXRvcmlzYXRpb24gdjIgKGxhIHYxIG4nYSBqYW1haXMg
+w6l0w6kgbW9kaWZpw6llKSAtLS0tLS0tLS0tLS0tLS0tLQpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0
+cyBwdWJsaWMucHVibGljX21lbW9yaWFsX21lc3NhZ2VfYWxsb3dlZF92Mih1dWlkLCB0ZXh0KTsK
+Ci0tIC0tLSA2LiBhdmlzX3NuYXBzaG90X2tleXMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLQp1cGRhdGUgcHVibGljLm1lbW9yaWFsX2FjY2Vzc19zZXR0aW5n
+cwogICBzZXQgYXZpc19zbmFwc2hvdF9rZXlzID0gYXJyYXlfcmVtb3ZlKGF2aXNfc25hcHNob3Rf
+a2V5cywgJ2NvbnRyaWJ1dGlvbnMnKSwKICAgICAgIHVwZGF0ZWRfYXQgPSBub3coKQogd2hlcmUg
+aWQKICAgYW5kICdjb250cmlidXRpb25zJyA9IGFueSAoYXZpc19zbmFwc2hvdF9rZXlzKTsKCi0t
+IC0tLSA1LiBRNy1CIDogdmVyc2lvbnMgUUcgMDE3LCDDoCBsJ2lkZW50aXF1ZSAtLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0KY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLm93bmVy
+X2ZyZWVfc3RvcmFnZV9ieXRlc192MShwX293bmVyX2lkIHV1aWQpCnJldHVybnMgYmlnaW50Cmxh
+bmd1YWdlIHNxbApzdGFibGUKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAnJwph
+cyAkJAogIHNlbGVjdCBjb2FsZXNjZShzdW0obWQuc2l6ZV9ieXRlcyksIDApOjpiaWdpbnQKICAg
+IGZyb20gcHVibGljLm1lZGlhIG1kCiAgICBqb2luIHB1YmxpYy5tZW1vcmlhbHMgbSBvbiBtLmlk
+ID0gbWQubWVtb3JpYWxfaWQKICAgd2hlcmUgbS5vd25lcl9pZCA9IHBfb3duZXJfaWQKICAgICBh
+bmQgbS5hY2Nlc3NfbGV2ZWwgPSAnYXZpcycKICAgICBhbmQgbWQuc3RhdHVzID0gJ3JlYWR5JzsK
+JCQ7CgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJsaWMuZ3VhcmRfZnJlZV9zdG9yYWdl
+X2J1ZGdldF92MSgpCnJldHVybnMgdHJpZ2dlcgpsYW5ndWFnZSBwbHBnc3FsCnNlY3VyaXR5IGRl
+ZmluZXIKc2V0IHNlYXJjaF9wYXRoID0gJycKYXMgJCQKZGVjbGFyZQogIHZfb3duZXIgdXVpZDsK
+ICB2X2xldmVsIHRleHQ7CiAgdl9idWRnZXQgYmlnaW50OwogIHZfdXNlZCBiaWdpbnQ7CmJlZ2lu
+CiAgaWYgdGdfb3AgPSAnVVBEQVRFJyBhbmQgbm90IChvbGQuc3RhdHVzID0gJ3BlbmRpbmcnIGFu
+ZCBuZXcuc3RhdHVzID0gJ3JlYWR5JykgdGhlbgogICAgcmV0dXJuIG5ldzsKICBlbmQgaWY7CiAg
+c2VsZWN0IG0ub3duZXJfaWQsIG0uYWNjZXNzX2xldmVsIGludG8gdl9vd25lciwgdl9sZXZlbAog
+ICAgZnJvbSBwdWJsaWMubWVtb3JpYWxzIG0gd2hlcmUgbS5pZCA9IG5ldy5tZW1vcmlhbF9pZDsK
+ICBpZiB2X2xldmVsIGlzIGRpc3RpbmN0IGZyb20gJ2F2aXMnIG9yIHZfb3duZXIgaXMgbnVsbCB0
+aGVuCiAgICByZXR1cm4gbmV3OwogIGVuZCBpZjsKICBzZWxlY3Qgcy5mcmVlX3N0b3JhZ2VfYnl0
+ZXNfcGVyX293bmVyIGludG8gdl9idWRnZXQKICAgIGZyb20gcHVibGljLm1lbW9yaWFsX2FjY2Vz
+c19zZXR0aW5ncyBzIHdoZXJlIHMuaWQ7CiAgaWYgdl9idWRnZXQgaXMgbnVsbCB0aGVuCiAgICBy
+ZXR1cm4gbmV3OwogIGVuZCBpZjsKICAtLSBTw6lyaWFsaXNlIGxlcyBmaW5hbGlzYXRpb25zIGQn
+dW4gbcOqbWUgY29tcHRlICh2ZXJyb3UgZMOpZGnDqSA6IGF1Y3VuCiAgLS0gYXV0cmUgdmVycm91
+IG4nZXN0IHByaXMgZGFucyB1biBvcmRyZSBkaWZmw6lyZW50KS4KICBwZXJmb3JtIHBnX2NhdGFs
+b2cucGdfYWR2aXNvcnlfeGFjdF9sb2NrKAogICAgcGdfY2F0YWxvZy5oYXNodGV4dGV4dGVuZGVk
+KCdoZXJpdGFnZS1vd25lci1zdG9yYWdlOicgfHwgdl9vd25lcjo6dGV4dCwgMCkpOwogIHZfdXNl
+ZCA6PSBwdWJsaWMub3duZXJfZnJlZV9zdG9yYWdlX2J5dGVzX3YxKHZfb3duZXIpOwogIGlmIHRn
+X29wID0gJ0lOU0VSVCcgdGhlbgogICAgLS0gUHLDqS1jb250csO0bGUgw6AgbGEgcsOpc2VydmF0
+aW9uIDogYnVkZ2V0IGTDqWrDoCDDqXB1aXPDqSwgaW51dGlsZSBkJ2Vudm95ZXIuCiAgICBpZiB2
+X3VzZWQgPj0gdl9idWRnZXQgdGhlbgogICAgICByYWlzZSBleGNlcHRpb24gJ2ZyZWUgc3RvcmFn
+ZSBidWRnZXQgcmVhY2hlZCcgdXNpbmcgZXJyY29kZSA9ICdIRDUwNyc7CiAgICBlbmQgaWY7CiAg
+ZWxzaWYgdl91c2VkICsgY29hbGVzY2UobmV3LnNpemVfYnl0ZXMsIDApID4gdl9idWRnZXQgdGhl
+bgogICAgcmFpc2UgZXhjZXB0aW9uICdmcmVlIHN0b3JhZ2UgYnVkZ2V0IHJlYWNoZWQnIHVzaW5n
+IGVycmNvZGUgPSAnSEQ1MDcnOwogIGVuZCBpZjsKICByZXR1cm4gbmV3OwplbmQ7CiQkOwoKcmV2
+b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMub3duZXJfZnJlZV9zdG9yYWdlX2J5dGVzX3YxKHV1
+aWQpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9r
+ZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLmd1YXJkX2ZyZWVfc3RvcmFnZV9idWRnZXRfdjEoKSBm
+cm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZCwgc2VydmljZV9yb2xlOwoKLS0gLS0tIDQu
+IENhdMOpZ29yaWVzIGVuIHZpZ3VldXIgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLQpkcm9wIHRyaWdnZXIgaWYgZXhpc3RzIG1lbW9yaWFsX3B1Ymxpc2hlZF9zbmFw
+c2hvdHNfc3luY19jb250cmlidXRpb25fY2F0ZWdvcmllcyBvbiBwdWJsaWMubWVtb3JpYWxfcHVi
+bGlzaGVkX3NuYXBzaG90czsKZHJvcCBmdW5jdGlvbiBpZiBleGlzdHMgcHVibGljLnN5bmNfY29u
+dHJpYnV0aW9uX2NhdGVnb3JpZXNfb25fcHVibGljYXRpb25fdjEoKTsKZHJvcCBmdW5jdGlvbiBp
+ZiBleGlzdHMgcHVibGljLmNvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX2luX2VmZmVjdF92MSh1dWlk
+KTsKZHJvcCBmdW5jdGlvbiBpZiBleGlzdHMgcHVibGljLmNvbnRyaWJ1dGlvbnNfcnVicmljX3B1
+YmxpY192MSh1dWlkLCB0aW1lc3RhbXB0eik7CmRyb3AgZnVuY3Rpb24gaWYgZXhpc3RzIHB1Ymxp
+Yy5jb250cmlidXRpb25fZmVhdHVyZXNfdjEoanNvbmIpOwpkcm9wIHRhYmxlIGlmIGV4aXN0cyBw
+dWJsaWMubWVtb3JpYWxfY29udHJpYnV0aW9uX2NhdGVnb3JpZXM7CgotLSAtLS0gMy4gUGxhZm9u
+ZHMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tCmRyb3AgdGFibGUgaWYgZXhpc3RzIHB1YmxpYy5jb250cmlidXRpb25fcmF0ZV9saW1pdHM7
+CmRyb3AgdGFibGUgaWYgZXhpc3RzIHB1YmxpYy5jb250cmlidXRpb25fbGltaXRzX292ZXJyaWRl
+Owpkcm9wIHRhYmxlIGlmIGV4aXN0cyBwdWJsaWMuY29udHJpYnV0aW9uX3NldHRpbmdzOwoKLS0g
+LS0tIDIuIG1lZGlhIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLQphbHRlciB0YWJsZSBwdWJsaWMubWVkaWEgZHJvcCBjb25zdHJhaW50
+IG1lZGlhX3B1cnBvc2VfY2hlY2s7CmFsdGVyIHRhYmxlIHB1YmxpYy5tZWRpYQogIGFkZCBjb25z
+dHJhaW50IG1lZGlhX3B1cnBvc2VfY2hlY2sgY2hlY2sgKHB1cnBvc2UgaW4gKCdoZXJvJywgJ2dh
+bGxlcnknKSk7CmNvbW1lbnQgb24gY29sdW1uIHB1YmxpYy5tZWRpYS5wdXJwb3NlIGlzCiAgJ1do
+YXQgdGhpcyBtZWRpYSBpcyBmb3I6IGhlcm8gb3IgZ2FsbGVyeS4gTWlycm9ycyBNRURJQV9QVVJQ
+T1NFUyBpbiBjb25maWcvbWVkaWEudHMuIEEgbGFiZWwgb25seSDigJQgaXQgbmV2ZXIgY2hhbmdl
+cyBob3cgdGhlIG9iamVjdCBpcyBzdG9yZWQsIHBhdGhlZCwgYXV0aG9yaXplZCBvciB2YWxpZGF0
+ZWQgKE1pc3Npb24gMDMwKS4nOwoKLS0gLS0tIDEuIG1lc3NhZ2VzIC0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQpyZXZva2Ugc2VsZWN0IChp
+ZCwgbWVtb3JpYWxfaWQsIG1lc3NhZ2VfdHlwZSwgYXV0aG9yX25hbWUsIGNvbnRlbnQsIHZpc2li
+bGUsIGNyZWF0ZWRfYXQsCiAgICAgICAgICAgICAgIHN0YXR1cywgY2FwdGlvbiwgbWVkaWFfaWQs
+IHB1Ymxpc2hlZF9hdCwgbW9kZXJhdGVkX2F0KQogIG9uIHRhYmxlIHB1YmxpYy5tZXNzYWdlcyBm
+cm9tIGF1dGhlbnRpY2F0ZWQ7Cgpkcm9wIHRyaWdnZXIgaWYgZXhpc3RzIG1lc3NhZ2VzX2FsaWdu
+X3Zpc2libGUgb24gcHVibGljLm1lc3NhZ2VzOwpkcm9wIGZ1bmN0aW9uIGlmIGV4aXN0cyBwdWJs
+aWMubWVzc2FnZXNfYWxpZ25fdmlzaWJsZV92MSgpOwoKZHJvcCBpbmRleCBpZiBleGlzdHMgcHVi
+bGljLm1lc3NhZ2VzX21lbW9yaWFsX2NyZWF0ZWRfaWR4Owpkcm9wIGluZGV4IGlmIGV4aXN0cyBw
+dWJsaWMubWVzc2FnZXNfbWVtb3JpYWxfc3RhdHVzX3B1Ymxpc2hlZF9pZHg7CgphbHRlciB0YWJs
+ZSBwdWJsaWMubWVzc2FnZXMKICBkcm9wIGNvbnN0cmFpbnQgbWVzc2FnZXNfbWVkaWFfaWRfa2V5
+LAogIGRyb3AgY29uc3RyYWludCBtZXNzYWdlc19tZW1vcmlhbF9pZGVtcG90ZW5jeV9rZXksCiAg
+ZHJvcCBjb25zdHJhaW50IG1lc3NhZ2VzX2NhcHRpb25fcTIsCiAgZHJvcCBjb25zdHJhaW50IG1l
+c3NhZ2VzX2NvbnRlbnRfcTIsCiAgZHJvcCBjb25zdHJhaW50IG1lc3NhZ2VzX2F1dGhvcl9uYW1l
+X3EyLAogIGRyb3AgY29uc3RyYWludCBtZXNzYWdlc19wdWJsaXNoZWRfYXRfcmVxdWlyZWQsCiAg
+ZHJvcCBjb25zdHJhaW50IG1lc3NhZ2VzX3Zpc2libGVfbWF0Y2hlc19zdGF0dXMsCiAgZHJvcCBj
+b25zdHJhaW50IG1lc3NhZ2VzX3NoYXBlX2NoZWNrLAogIGRyb3AgY29uc3RyYWludCBtZXNzYWdl
+c19zdGF0dXNfY2hlY2s7CgphbHRlciB0YWJsZSBwdWJsaWMubWVzc2FnZXMgYWx0ZXIgY29sdW1u
+IGNvbnRlbnQgc2V0IG5vdCBudWxsOwoKYWx0ZXIgdGFibGUgcHVibGljLm1lc3NhZ2VzIGRyb3Ag
+Y29uc3RyYWludCBtZXNzYWdlc19tZXNzYWdlX3R5cGVfY2hlY2s7CmFsdGVyIHRhYmxlIHB1Ymxp
+Yy5tZXNzYWdlcwogIGFkZCBjb25zdHJhaW50IG1lc3NhZ2VzX21lc3NhZ2VfdHlwZV9jaGVjawog
+IGNoZWNrIChtZXNzYWdlX3R5cGUgaW4gKCdjb25kb2xlbmNlJywgJ21lbW9yeV9tZXNzYWdlJywg
+J3Rlc3RpbW9uaWFsJykpOwoKYWx0ZXIgdGFibGUgcHVibGljLm1lc3NhZ2VzCiAgZHJvcCBjb2x1
+bW4gbW9kZXJhdGVkX2F0LAogIGRyb3AgY29sdW1uIHB1Ymxpc2hlZF9hdCwKICBkcm9wIGNvbHVt
+biBpZGVtcG90ZW5jeV9rZXksCiAgZHJvcCBjb2x1bW4gbWVkaWFfaWQsCiAgZHJvcCBjb2x1bW4g
+Y2FwdGlvbiwKICBkcm9wIGNvbHVtbiBzdGF0dXM7Cgpub3RpZnkgcGdyc3QsICdyZWxvYWQgc2No
+ZW1hJzsKCmNvbW1pdDsK
+';
+  c_source   text;
   v_lines    integer;
 begin
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261119090000] : texte du retour arrière illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte du retour arrière altéré au copier-coller. Rien n''a été modifié.', c_version;
   end if;

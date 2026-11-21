@@ -27,94 +27,84 @@ declare
   c_count    constant integer := 46;
   c_sha256   constant text := 'ce14e543864ee081a7bc07242b3fdd4ec082830b85bf2061b3d12a29a48fc001';
   c_txn      constant integer := 2;
-  c_source   constant text := $heritage_source$-- HERITAGE HOMMAGE — M8-E2 : lecture des réglages Contributions d'un hommage
--- pour la famille (Tableau de bord, A15 après publication).
---
--- Écrite et testée en local (npm run db:test) ; NON appliquée. Son
--- application relève de E6, avec 20261119090000_m8_e1_contributions.sql.
--- Retour arrière : supabase/rollbacks/20261120090000_m8_e2_owner_contribution_settings.down.sql.
---
--- Pourquoi : E1 écrit les catégories en vigueur (O9) et la préférence de
--- récapitulatif (O12) dans des tables sans aucun privilège client ; rien
--- ne permettait à la famille de LIRE leur état courant pour afficher ses
--- interrupteurs. Une seule fonction, en lecture seule, service_role avec
--- p_owner_id résolu côté serveur (même modèle que les RPC familiales E1).
---
--- Catégories renvoyées : après la première publication, le réglage EN
--- VIGUEUR (contribution_categories_in_effect_v1) ; avant, les choix du
--- brouillon (A15). draft_revision permet au Builder de passer
--- p_expected_revision à set_contribution_categories_v1.
-
-begin;
-
-create or replace function public.read_owner_contribution_settings_v1(p_owner_id uuid, p_memorial_id uuid)
-returns table (
-  outcome text,
-  condolences boolean,
-  stories boolean,
-  photos boolean,
-  first_published boolean,
-  draft_revision bigint,
-  contributions_digest boolean
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  v_memorial public.memorials%rowtype;
-  v_revision bigint;
-  v_draft jsonb;
-  v_features jsonb;
-  v_digest boolean;
-begin
-  if p_owner_id is null or p_memorial_id is null then
-    raise exception 'invalid contribution settings request' using errcode = '22023';
-  end if;
-  select * into v_memorial from public.memorials m where m.id = p_memorial_id;
-  if not found or v_memorial.owner_id is distinct from p_owner_id then
-    return query select 'refused'::text, null::boolean, null::boolean, null::boolean, null::boolean, null::bigint, null::boolean;
-    return;
-  end if;
-  select d.revision, d.content into v_revision, v_draft
-    from public.memorial_drafts d where d.memorial_id = p_memorial_id;
-  if v_memorial.first_published_at is not null then
-    v_features := public.contribution_categories_in_effect_v1(p_memorial_id);
-  else
-    v_features := public.contribution_features_v1(coalesce(v_draft, '{}'::jsonb));
-  end if;
-  select p.contributions_digest into v_digest
-    from public.owner_notification_preferences p where p.owner_id = p_owner_id;
-  if v_features is null then
-    -- Choix illisibles dans le brouillon : la famille voit tout fermé et
-    -- le Builder affiche son message calme (comme A15).
-    return query select 'corrupted'::text, false, false, false, false, v_revision, coalesce(v_digest, false);
-    return;
-  end if;
-  return query select 'ok'::text,
-                      (v_features ->> 'condolences')::boolean,
-                      (v_features ->> 'stories')::boolean,
-                      (v_features ->> 'photos')::boolean,
-                      v_memorial.first_published_at is not null,
-                      v_revision,
-                      coalesce(v_digest, false);
-end;
-$$;
-
-revoke all on function public.read_owner_contribution_settings_v1(uuid, uuid) from public, anon, authenticated;
-grant execute on function public.read_owner_contribution_settings_v1(uuid, uuid) to service_role;
-
-comment on function public.read_owner_contribution_settings_v1(uuid, uuid) is
-  'M8-E2. Lecture familiale : catégories (en vigueur après publication, brouillon avant), révision du brouillon, préférence de récapitulatif (false par défaut). service_role seul, p_owner_id résolu par le serveur.';
-
-notify pgrst, 'reload schema';
-
-commit;
-$heritage_source$;
+  -- Texte exact de supabase/migrations/20261120090000_m8_e2_owner_contribution_settings.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgTTgtRTIgOiBsZWN0dXJlIGRlcyByw6lnbGFnZXMgQ29u
+dHJpYnV0aW9ucyBkJ3VuIGhvbW1hZ2UKLS0gcG91ciBsYSBmYW1pbGxlIChUYWJsZWF1IGRlIGJv
+cmQsIEExNSBhcHLDqHMgcHVibGljYXRpb24pLgotLQotLSDDiWNyaXRlIGV0IHRlc3TDqWUgZW4g
+bG9jYWwgKG5wbSBydW4gZGI6dGVzdCkgOyBOT04gYXBwbGlxdcOpZS4gU29uCi0tIGFwcGxpY2F0
+aW9uIHJlbMOodmUgZGUgRTYsIGF2ZWMgMjAyNjExMTkwOTAwMDBfbThfZTFfY29udHJpYnV0aW9u
+cy5zcWwuCi0tIFJldG91ciBhcnJpw6hyZSA6IHN1cGFiYXNlL3JvbGxiYWNrcy8yMDI2MTEyMDA5
+MDAwMF9tOF9lMl9vd25lcl9jb250cmlidXRpb25fc2V0dGluZ3MuZG93bi5zcWwuCi0tCi0tIFBv
+dXJxdW9pIDogRTEgw6ljcml0IGxlcyBjYXTDqWdvcmllcyBlbiB2aWd1ZXVyIChPOSkgZXQgbGEg
+cHLDqWbDqXJlbmNlIGRlCi0tIHLDqWNhcGl0dWxhdGlmIChPMTIpIGRhbnMgZGVzIHRhYmxlcyBz
+YW5zIGF1Y3VuIHByaXZpbMOoZ2UgY2xpZW50IDsgcmllbgotLSBuZSBwZXJtZXR0YWl0IMOgIGxh
+IGZhbWlsbGUgZGUgTElSRSBsZXVyIMOpdGF0IGNvdXJhbnQgcG91ciBhZmZpY2hlciBzZXMKLS0g
+aW50ZXJydXB0ZXVycy4gVW5lIHNldWxlIGZvbmN0aW9uLCBlbiBsZWN0dXJlIHNldWxlLCBzZXJ2
+aWNlX3JvbGUgYXZlYwotLSBwX293bmVyX2lkIHLDqXNvbHUgY8O0dMOpIHNlcnZldXIgKG3Dqm1l
+IG1vZMOobGUgcXVlIGxlcyBSUEMgZmFtaWxpYWxlcyBFMSkuCi0tCi0tIENhdMOpZ29yaWVzIHJl
+bnZvecOpZXMgOiBhcHLDqHMgbGEgcHJlbWnDqHJlIHB1YmxpY2F0aW9uLCBsZSByw6lnbGFnZSBF
+TgotLSBWSUdVRVVSIChjb250cmlidXRpb25fY2F0ZWdvcmllc19pbl9lZmZlY3RfdjEpIDsgYXZh
+bnQsIGxlcyBjaG9peCBkdQotLSBicm91aWxsb24gKEExNSkuIGRyYWZ0X3JldmlzaW9uIHBlcm1l
+dCBhdSBCdWlsZGVyIGRlIHBhc3NlcgotLSBwX2V4cGVjdGVkX3JldmlzaW9uIMOgIHNldF9jb250
+cmlidXRpb25fY2F0ZWdvcmllc192MS4KCmJlZ2luOwoKY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rp
+b24gcHVibGljLnJlYWRfb3duZXJfY29udHJpYnV0aW9uX3NldHRpbmdzX3YxKHBfb3duZXJfaWQg
+dXVpZCwgcF9tZW1vcmlhbF9pZCB1dWlkKQpyZXR1cm5zIHRhYmxlICgKICBvdXRjb21lIHRleHQs
+CiAgY29uZG9sZW5jZXMgYm9vbGVhbiwKICBzdG9yaWVzIGJvb2xlYW4sCiAgcGhvdG9zIGJvb2xl
+YW4sCiAgZmlyc3RfcHVibGlzaGVkIGJvb2xlYW4sCiAgZHJhZnRfcmV2aXNpb24gYmlnaW50LAog
+IGNvbnRyaWJ1dGlvbnNfZGlnZXN0IGJvb2xlYW4KKQpsYW5ndWFnZSBwbHBnc3FsCnN0YWJsZQpz
+ZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmRlY2xhcmUKICB2X21l
+bW9yaWFsIHB1YmxpYy5tZW1vcmlhbHMlcm93dHlwZTsKICB2X3JldmlzaW9uIGJpZ2ludDsKICB2
+X2RyYWZ0IGpzb25iOwogIHZfZmVhdHVyZXMganNvbmI7CiAgdl9kaWdlc3QgYm9vbGVhbjsKYmVn
+aW4KICBpZiBwX293bmVyX2lkIGlzIG51bGwgb3IgcF9tZW1vcmlhbF9pZCBpcyBudWxsIHRoZW4K
+ICAgIHJhaXNlIGV4Y2VwdGlvbiAnaW52YWxpZCBjb250cmlidXRpb24gc2V0dGluZ3MgcmVxdWVz
+dCcgdXNpbmcgZXJyY29kZSA9ICcyMjAyMyc7CiAgZW5kIGlmOwogIHNlbGVjdCAqIGludG8gdl9t
+ZW1vcmlhbCBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbSB3aGVyZSBtLmlkID0gcF9tZW1vcmlhbF9p
+ZDsKICBpZiBub3QgZm91bmQgb3Igdl9tZW1vcmlhbC5vd25lcl9pZCBpcyBkaXN0aW5jdCBmcm9t
+IHBfb3duZXJfaWQgdGhlbgogICAgcmV0dXJuIHF1ZXJ5IHNlbGVjdCAncmVmdXNlZCc6OnRleHQs
+IG51bGw6OmJvb2xlYW4sIG51bGw6OmJvb2xlYW4sIG51bGw6OmJvb2xlYW4sIG51bGw6OmJvb2xl
+YW4sIG51bGw6OmJpZ2ludCwgbnVsbDo6Ym9vbGVhbjsKICAgIHJldHVybjsKICBlbmQgaWY7CiAg
+c2VsZWN0IGQucmV2aXNpb24sIGQuY29udGVudCBpbnRvIHZfcmV2aXNpb24sIHZfZHJhZnQKICAg
+IGZyb20gcHVibGljLm1lbW9yaWFsX2RyYWZ0cyBkIHdoZXJlIGQubWVtb3JpYWxfaWQgPSBwX21l
+bW9yaWFsX2lkOwogIGlmIHZfbWVtb3JpYWwuZmlyc3RfcHVibGlzaGVkX2F0IGlzIG5vdCBudWxs
+IHRoZW4KICAgIHZfZmVhdHVyZXMgOj0gcHVibGljLmNvbnRyaWJ1dGlvbl9jYXRlZ29yaWVzX2lu
+X2VmZmVjdF92MShwX21lbW9yaWFsX2lkKTsKICBlbHNlCiAgICB2X2ZlYXR1cmVzIDo9IHB1Ymxp
+Yy5jb250cmlidXRpb25fZmVhdHVyZXNfdjEoY29hbGVzY2Uodl9kcmFmdCwgJ3t9Jzo6anNvbmIp
+KTsKICBlbmQgaWY7CiAgc2VsZWN0IHAuY29udHJpYnV0aW9uc19kaWdlc3QgaW50byB2X2RpZ2Vz
+dAogICAgZnJvbSBwdWJsaWMub3duZXJfbm90aWZpY2F0aW9uX3ByZWZlcmVuY2VzIHAgd2hlcmUg
+cC5vd25lcl9pZCA9IHBfb3duZXJfaWQ7CiAgaWYgdl9mZWF0dXJlcyBpcyBudWxsIHRoZW4KICAg
+IC0tIENob2l4IGlsbGlzaWJsZXMgZGFucyBsZSBicm91aWxsb24gOiBsYSBmYW1pbGxlIHZvaXQg
+dG91dCBmZXJtw6kgZXQKICAgIC0tIGxlIEJ1aWxkZXIgYWZmaWNoZSBzb24gbWVzc2FnZSBjYWxt
+ZSAoY29tbWUgQTE1KS4KICAgIHJldHVybiBxdWVyeSBzZWxlY3QgJ2NvcnJ1cHRlZCc6OnRleHQs
+IGZhbHNlLCBmYWxzZSwgZmFsc2UsIGZhbHNlLCB2X3JldmlzaW9uLCBjb2FsZXNjZSh2X2RpZ2Vz
+dCwgZmFsc2UpOwogICAgcmV0dXJuOwogIGVuZCBpZjsKICByZXR1cm4gcXVlcnkgc2VsZWN0ICdv
+ayc6OnRleHQsCiAgICAgICAgICAgICAgICAgICAgICAodl9mZWF0dXJlcyAtPj4gJ2NvbmRvbGVu
+Y2VzJyk6OmJvb2xlYW4sCiAgICAgICAgICAgICAgICAgICAgICAodl9mZWF0dXJlcyAtPj4gJ3N0
+b3JpZXMnKTo6Ym9vbGVhbiwKICAgICAgICAgICAgICAgICAgICAgICh2X2ZlYXR1cmVzIC0+PiAn
+cGhvdG9zJyk6OmJvb2xlYW4sCiAgICAgICAgICAgICAgICAgICAgICB2X21lbW9yaWFsLmZpcnN0
+X3B1Ymxpc2hlZF9hdCBpcyBub3QgbnVsbCwKICAgICAgICAgICAgICAgICAgICAgIHZfcmV2aXNp
+b24sCiAgICAgICAgICAgICAgICAgICAgICBjb2FsZXNjZSh2X2RpZ2VzdCwgZmFsc2UpOwplbmQ7
+CiQkOwoKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMucmVhZF9vd25lcl9jb250cmlidXRp
+b25fc2V0dGluZ3NfdjEodXVpZCwgdXVpZCkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhlbnRpY2F0
+ZWQ7CmdyYW50IGV4ZWN1dGUgb24gZnVuY3Rpb24gcHVibGljLnJlYWRfb3duZXJfY29udHJpYnV0
+aW9uX3NldHRpbmdzX3YxKHV1aWQsIHV1aWQpIHRvIHNlcnZpY2Vfcm9sZTsKCmNvbW1lbnQgb24g
+ZnVuY3Rpb24gcHVibGljLnJlYWRfb3duZXJfY29udHJpYnV0aW9uX3NldHRpbmdzX3YxKHV1aWQs
+IHV1aWQpIGlzCiAgJ004LUUyLiBMZWN0dXJlIGZhbWlsaWFsZSA6IGNhdMOpZ29yaWVzIChlbiB2
+aWd1ZXVyIGFwcsOocyBwdWJsaWNhdGlvbiwgYnJvdWlsbG9uIGF2YW50KSwgcsOpdmlzaW9uIGR1
+IGJyb3VpbGxvbiwgcHLDqWbDqXJlbmNlIGRlIHLDqWNhcGl0dWxhdGlmIChmYWxzZSBwYXIgZMOp
+ZmF1dCkuIHNlcnZpY2Vfcm9sZSBzZXVsLCBwX293bmVyX2lkIHLDqXNvbHUgcGFyIGxlIHNlcnZl
+dXIuJzsKCm5vdGlmeSBwZ3JzdCwgJ3JlbG9hZCBzY2hlbWEnOwoKY29tbWl0Owo=
+';
+  c_source   text;
   v_lines    integer;
 begin
-  -- 1. Le texte collé est exactement le fichier de GitHub.
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261120090000] : texte de la migration illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
+  -- Le texte décodé est exactement le fichier de GitHub.
   if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
     raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
   end if;
