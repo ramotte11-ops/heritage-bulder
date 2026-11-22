@@ -168,10 +168,28 @@ async function reconcileAndRetireHeroMedia(
   memorialId: string,
   content: MemorialContent,
 ): Promise<ReconciledHeroMedia> {
-  const heroMedia = await listMemorialMedia(deps.mediaEngine, actor, {
-    memorialId,
-    purpose: "hero",
-  });
+  // Mission 04-G / L1.1 — the two READS below are independent, so they
+  // run together: the ready Hero media list, and whether this actor may
+  // still change the Hero (ownership, then the media security snapshot).
+  // Each keeps its own access check (`listMemorialMedia` and
+  // `authorizeMemorialAccess` both re-check ownership; the caller has
+  // already granted access to this memorial). Every WRITE — adopting a
+  // late upload, retiring stale media — still happens strictly after
+  // both answers, in the same order as before.
+  const [heroMedia, mayMutate] = await Promise.all([
+    listMemorialMedia(deps.mediaEngine, actor, {
+      memorialId,
+      purpose: "hero",
+    }),
+    // Reconciliation used to be a write-capable read path. After the first
+    // publication it must remain read-only: it may display the already-canonical
+    // Hero, but it must neither adopt a late upload nor retire an older one.
+    authorizeMemorialAccess(deps.mediaEngine, actor, memorialId).then((access) =>
+      access.status === "granted"
+        ? authorizeMediaEdit(deps.mediaEngine, actor, access, "hero.finalize").catch(() => null)
+        : null,
+    ),
+  ]);
   // `listMemorialMedia` already returns `"ready"` media only, newest
   // first — see lib/media/read-media.ts. A refusal (denied/unavailable)
   // degrades to "nothing to reconcile against" rather than throwing:
@@ -179,14 +197,6 @@ async function reconcileAndRetireHeroMedia(
   // decision itself, which the caller (page.tsx) has already made
   // before ever reaching this function.
   const readyHeroMedia = heroMedia.ok ? heroMedia.value : [];
-
-  // Reconciliation used to be a write-capable read path. After the first
-  // publication it must remain read-only: it may display the already-canonical
-  // Hero, but it must neither adopt a late upload nor retire an older one.
-  const access = await authorizeMemorialAccess(deps.mediaEngine, actor, memorialId);
-  const mayMutate = access.status === "granted"
-    ? await authorizeMediaEdit(deps.mediaEngine, actor, access, "hero.finalize").catch(() => null)
-    : null;
   if (mayMutate === null) {
     const read = readHeroForEditing(content);
     const canonical = read.status === "ready" && read.hero.photo !== null

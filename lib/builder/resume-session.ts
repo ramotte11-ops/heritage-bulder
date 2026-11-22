@@ -119,31 +119,50 @@ export type ResumeBuilderSessionResult =
       reason: string;
     };
 
+/**
+ * Mission 04-G / L1.1 — the configuration and the draft are read
+ * TOGETHER: neither read depends on the other's result, and the caller
+ * (`app/builder/[memorialId]/page.tsx`) only reaches this function once
+ * `authorizeMemorialForRequest` has granted access to this memorial. Both
+ * reads use the session-scoped client, under the same RLS predicate.
+ *
+ * The outcome is decided afterwards in the historical order — a failed
+ * configuration read, then a missing memorial, then a failed draft read,
+ * then a missing draft — so every combination resolves exactly as when
+ * the reads ran one after the other. The one difference: when the memorial
+ * is not found (an anomaly after a granted authorization), the draft read
+ * has been issued anyway; its result is ignored and never surfaces.
+ */
 export async function resumeBuilderSession(
   deps: ResumeBuilderSessionDeps,
   memorialId: string,
 ): Promise<ResumeBuilderSessionResult> {
-  let memorial: StoredMemorialConfig | null;
-  try {
-    memorial = await deps.memorialConfigRepository.findConfigById(memorialId);
-  } catch (error) {
-    return { status: "error", reason: error instanceof Error ? error.message : String(error) };
+  const [memorialRead, draftRead] = await Promise.allSettled([
+    deps.memorialConfigRepository.findConfigById(memorialId),
+    deps.draftRepository.getDraftContent(memorialId),
+  ]);
+
+  if (memorialRead.status === "rejected") {
+    return { status: "error", reason: failureReason(memorialRead.reason) };
   }
 
+  const memorial: StoredMemorialConfig | null = memorialRead.value;
   if (!memorial) {
     return { status: "notFoundOrForbidden" };
   }
 
-  let draft: MemorialVersion | null;
-  try {
-    draft = await deps.draftRepository.getDraftContent(memorialId);
-  } catch (error) {
-    return { status: "error", reason: error instanceof Error ? error.message : String(error) };
+  if (draftRead.status === "rejected") {
+    return { status: "error", reason: failureReason(draftRead.reason) };
   }
 
+  const draft: MemorialVersion | null = draftRead.value;
   if (!draft) {
     return { status: "draftAnomaly", memorial };
   }
 
   return { status: "resumable", memorial, draft };
+}
+
+function failureReason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
