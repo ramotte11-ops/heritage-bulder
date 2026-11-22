@@ -4,6 +4,7 @@ import { TornCornerOrnament } from "@/components/owner/FamilyIcons";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import styles from "@/components/owner/FamilySpace.module.css";
+import loadingStyles from "./loading.module.css";
 
 /** The Builder loading boundary's order: French first (first market). */
 const LOADING_LANGUAGES: readonly Language[] = ["fr", "en", "es"];
@@ -31,14 +32,13 @@ export default function OwnerLoading() {
           <span className={styles.brandRule} aria-hidden="true" />
         </header>
 
-        <div className={styles.subtitle} aria-busy="true">
+        <div className={`${styles.subtitle} ${loadingStyles.status}`} aria-busy="true">
           <PendingActionLabel
             pending
             pendingLabel={
-              <span>
-                {LOADING_LANGUAGES.map((language, index) => (
+              <span className={loadingStyles.copy}>
+                {LOADING_LANGUAGES.map((language) => (
                   <span key={language} lang={language}>
-                    {index > 0 ? " · " : ""}
                     {translate(language, "common.pleaseWait")}
                   </span>
                 ))}

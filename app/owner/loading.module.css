@@ -1,0 +1,16 @@
+/*
+ * Mission 04-G / L1.3 — the three languages of « Un instant… » stacked,
+ * exactly like the Builder's own loading boundary
+ * (app/builder/[memorialId]/loading.module.css, `.copy`). Typography and
+ * colours come from the family space's existing `.subtitle`.
+ */
+.status {
+  display: flex;
+  justify-content: center;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
