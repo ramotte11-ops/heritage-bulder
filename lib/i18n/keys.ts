@@ -547,6 +547,7 @@ export const TRANSLATION_KEYS = [
   "autosave.error",
   "autosave.offline",
   "autosave.retry",
+  "autosave.stepPartial",
   "autosave.conflictTitle",
   "autosave.conflictBody",
   "autosave.conflictDownload",

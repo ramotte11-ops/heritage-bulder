@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useStepDone } from "./journey/journey-context";
 import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
-import { useCombinedStepSave, type TextThenStepTransport } from "@/lib/builder/use-combined-step-save";
+import { StepNotValidatedError, useCombinedStepSave, type TextThenStepTransport } from "@/lib/builder/use-combined-step-save";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   ceremonyStepProgress,
@@ -46,11 +46,14 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
-  const [submitError, setSubmitError] = useState(false);
+  // Mission 04-K — « partial »: the text is confirmed saved, the step is
+  // not (its own message); « total »: nothing confirmed (generic error).
+  const [submitError, setSubmitError] = useState<null | "total" | "partial">(null);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
+  const lastIntent = useRef<"continue" | "skip">("continue");
 
-  const { flush, persistVia, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
-  const saveStep = useCombinedStepSave({ status: autosaveState.status, flush, persistVia }, saveDraft, persistCombined);
+  const { flush, persistVia, getStatus, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const combinedSave = useCombinedStepSave({ getStatus, flush, persistVia }, saveDraft, persistCombined);
 
   const read = readCeremonyForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -60,25 +63,27 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
     if (result.ok) setContent(result.content);
   }
 
-  async function handleContinue(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  /** Continue or skip: the step's final write, then the next screen. */
+  async function finishStep(intent: "continue" | "skip") {
     if (read.status !== "ready") return;
+    lastIntent.current = intent;
+    setPendingAction(intent);
+    setSubmitError(null);
 
-    setPendingAction("continue");
-
-    const committed = commitA06(content);
+    const committed = intent === "continue" ? commitA06(content) : skipA06(content);
     if (!committed.ok) {
-      setSubmitError(true);
+      setSubmitError("total");
       setPendingAction(null);
       return;
     }
 
-    // Mission 04-J (EXPERIMENT) — the text then the step; the historical
-    // flush-then-write order whenever the combined path does not apply.
+    // Missions 04-J / 04-K (EXPERIMENT) — the text then the step; the
+    // historical flush-then-write order whenever the combined path does
+    // not apply.
     try {
-      await saveStep(content, committed.content);
-    } catch {
-      setSubmitError(true);
+      await combinedSave.save(content, committed.content);
+    } catch (error) {
+      setSubmitError(error instanceof StepNotValidatedError ? "partial" : "total");
       setPendingAction(null);
       return;
     }
@@ -86,27 +91,22 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
     stepDone();
   }
 
+  async function handleContinue(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await finishStep("continue");
+  }
+
   async function handleSkip() {
-    if (read.status !== "ready" || controlsDisabled) return;
+    if (controlsDisabled) return;
+    await finishStep("skip");
+  }
 
-    setPendingAction("skip");
-
-    const skipped = skipA06(content);
-    if (!skipped.ok) {
-      setSubmitError(true);
-      setPendingAction(null);
-      return;
-    }
-
-    try {
-      await saveStep(content, skipped.content);
-    } catch {
-      setSubmitError(true);
-      setPendingAction(null);
-      return;
-    }
-
-    stepDone();
+  // Mission 04-K — after an unconfirmed final write, « Réessayer » takes
+  // up that same Continue or skip (settled first, never replayed); the
+  // historical autosave retry otherwise.
+  function handleRetry() {
+    if (combinedSave.hasUnconfirmed()) void finishStep(lastIntent.current);
+    else retryAutosave();
   }
 
   if (read.status !== "ready") {
@@ -124,7 +124,7 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
   return (
     <BuilderScreen
       progress={resolvedProgress}
-      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={retryAutosave} />}
+      status={<AutosaveIndicator language={language} state={autosaveState} onRetry={handleRetry} />}
     >
       <div className={styles.copy}>
         <h1 className={styles.title}>{translate(language, "ceremony.venueTitle")}</h1>
@@ -174,9 +174,9 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
           </button>
         </div>
 
-        {submitError && (
+        {submitError !== null && (
           <p role="alert" className={styles.error}>
-            {translate(language, "errors.generic")}
+            {translate(language, submitError === "partial" ? "autosave.stepPartial" : "errors.generic")}
           </p>
         )}
       </form>

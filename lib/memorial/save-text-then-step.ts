@@ -37,8 +37,9 @@ import { withStoredPresentation } from "./section-visibility";
  *   - already the text → write 1 is done: answer it, run write 2 only;
  *   - anything else → somebody else wrote: `conflict`, write nothing.
  * Equality is semantic (`changedMemorialContentMutations` finds no
- * change): a stored draft identical to what this request wants loses
- * nothing when the step is committed on top of it.
+ * change), and Mission 04-K bounds it by the revision: only the exact
+ * revisions this operation could have produced (r+1, r+2) are accepted
+ * as « this operation »; anything else is a conflict.
  */
 
 export type SavedWrite = { status: "saved"; updatedAt: string; revision: number; reconciled?: true };
@@ -100,7 +101,18 @@ export async function saveTextThenStep(input: {
     textWrite = { status: "saved", updatedAt: written.updatedAt, revision: written.revision };
     base = { content: textNext, updatedAt: written.updatedAt, revision: written.revision };
   } else {
-    // A retry after a lost response, or another writer: reconcile, never replay.
+    // A retry after a lost response, or another writer: reconcile, never
+    // replay. Mission 04-K — content equality alone does not prove that
+    // THIS operation produced the stored draft: it must also sit exactly
+    // where this operation could have left it. From `expectedRevision`
+    // (r), each of its writes moves the revision by one, and nothing
+    // else may have written in between (revision CAS):
+    //   r+2 and the final content  → write 1 then write 2 were done;
+    //   r+1 and the final content  → write 1 was a no-op, write 2 done;
+    //   r+1 and the text           → write 1 done, write 2 still owed.
+    // Any other revision — another writer, before or after — is a
+    // conflict, even when the content happens to be identical.
+    const progressed = snapshot.draft.revision - expectedRevision;
     const finalOnStored = withStoredPresentation(final, stored);
     const current: SavedWrite = {
       status: "saved",
@@ -108,10 +120,10 @@ export async function saveTextThenStep(input: {
       revision: snapshot.draft.revision,
       reconciled: true,
     };
+    const conflict: TextThenStepResponse = { status: "done", text: { status: "conflict" }, step: { status: "notAttempted" } };
+    if (progressed !== 1 && progressed !== 2) return conflict;
     if (unchanged(stored, finalOnStored)) return { status: "done", text: current, step: current };
-    if (!unchanged(stored, textNext)) {
-      return { status: "done", text: { status: "conflict" }, step: { status: "notAttempted" } };
-    }
+    if (progressed !== 1 || !unchanged(stored, textNext)) return conflict;
     textWrite = current;
     base = snapshot.draft;
   }

@@ -96,6 +96,9 @@ export interface UseAutosaveResult {
   /** Mission 04-J (EXPERIMENT) — see `AutosaveController.persistVia`.
    * Always `null` in persist-less (demo) mode. */
   persistVia: (write: () => Promise<{ updatedAt: string }>) => Promise<void> | null;
+  /** Mission 04-K (EXPERIMENT) — the controller's status NOW (not the
+   * last rendered one), for a caller deciding between two writes. */
+  getStatus: () => AutosaveState["status"];
 }
 
 function noopSubscribe(): () => void {
@@ -114,6 +117,10 @@ function noopFlush(): Promise<void> {
 
 function noopPersistVia(): null {
   return null;
+}
+
+function idleStatus(): AutosaveState["status"] {
+  return "idle";
 }
 
 /**
@@ -232,5 +239,6 @@ export function useAutosave<T = MemorialContent>({ content, persist }: UseAutosa
     retry: controller ? controller.retry : noopRetry,
     flush: controller ? controller.flush : noopFlush,
     persistVia: controller ? controller.persistVia : noopPersistVia,
+    getStatus: controller ? () => controller.getState().status : idleStatus,
   };
 }

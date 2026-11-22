@@ -204,3 +204,106 @@ describe("Mission 04-J — publication and audit", () => {
     expect(repository.audit).toEqual([]);
   });
 });
+
+describe("Mission 04-K — lost responses, case by case (revision-bounded identity)", () => {
+  it("1. write 1 done, its answer lost (crash before write 2): the retry runs write 2 ONLY", async () => {
+    const { repository, run } = setup();
+    repository.inject(2, "before", () => new Error("crash"));
+    await run();
+    expect(repository.commits.map((c) => c.expectedRevision)).toEqual([7]);
+
+    const retry = await run(7);
+    expect(repository.commits.map((c) => c.expectedRevision)).toEqual([7, 8]);
+    expect(retry).toMatchObject({ text: { status: "saved", revision: 8, reconciled: true }, step: { status: "saved", revision: 9 } });
+  });
+
+  it("2. write 2 done, its answer lost inside the server: the retry writes nothing and confirms both", async () => {
+    const { repository, run } = setup();
+    repository.inject(2, "after", () => new Error("timeout after commit"));
+    expect(await run()).toMatchObject({ step: { status: "failed" } });
+
+    const retry = await run(7);
+    expect(repository.commits).toHaveLength(2);
+    expect(retry).toMatchObject({ text: { status: "saved", revision: 9 }, step: { status: "saved", revision: 9, reconciled: true } });
+  });
+
+  it("3. both writes done, the final answer lost: the retry writes nothing (no double validation)", async () => {
+    const { repository, run } = setup();
+    await run();
+    const retry = await run(7);
+    expect(repository.commits).toHaveLength(2);
+    expect(retry).toMatchObject({ step: { status: "saved", reconciled: true } });
+  });
+
+  it("4a. answer lost, then another tab changed the venue: conflict, nothing written, the other tab's text kept", async () => {
+    const { repository, run } = setup();
+    await run(); // now 9
+    repository.content = ok(writeCeremonyVenueName(repository.content, "Corrigé dans un autre onglet")).content;
+    repository.revision = 10;
+
+    expect(await run(7)).toMatchObject({ text: { status: "conflict" }, step: { status: "notAttempted" } });
+    expect(repository.commits).toHaveLength(2);
+    expect(venueOf(repository.content)).toBe("Corrigé dans un autre onglet");
+  });
+
+  it("4b. answer lost, then another writer stored IDENTICAL content at a later revision: still a conflict (identity is not equality)", async () => {
+    const { repository, run } = setup();
+    await run(); // 9, final content
+    repository.revision = 10; // same content, written again by someone else
+
+    expect(await run(7)).toMatchObject({ text: { status: "conflict" } });
+    expect(repository.commits).toHaveLength(2);
+  });
+
+  it("4c. write 1 done, answer lost, then another writer stored the same text at r+2: conflict, write 2 NOT run on top", async () => {
+    const { repository, run } = setup();
+    repository.inject(2, "before", () => new Error("crash"));
+    await run(); // 8, text
+    repository.revision = 9; // someone else wrote (the same text) meanwhile
+
+    expect(await run(7)).toMatchObject({ text: { status: "conflict" } });
+    expect(repository.commits).toHaveLength(1);
+    expect(a06Of(repository.content)).toBeUndefined();
+  });
+
+  it("5. repeated retries after an uncertain result stay idempotent: no write, same confirmed revision", async () => {
+    const { repository, run } = setup();
+    await run();
+    const first = await run(7);
+    const second = await run(7);
+    expect(repository.commits).toHaveLength(2);
+    expect(first).toEqual(second);
+  });
+});
+
+describe("Mission 04-K — partial failure and revisions", () => {
+  it("text saved, step failed: the retry from the TEXT revision does not rewrite the text (write 1 is a no-op)", async () => {
+    const { repository, run } = setup();
+    repository.inject(2, "before", () => new Error("connection reset"));
+    expect(await run(7)).toMatchObject({ text: { status: "saved", revision: 8 }, step: { status: "failed" } });
+
+    const retry = await run(8); // the browser follows the text revision
+    expect(repository.commits.map((c) => c.expectedRevision)).toEqual([7, 8]); // exactly one more write: the step
+    expect(retry).toMatchObject({ text: { status: "saved", revision: 8 }, step: { status: "saved", revision: 9 } });
+  });
+
+  it("published BETWEEN the two writes: the text stays, the step is refused by the commit's lifecycle check, no audit event", async () => {
+    const { repository, run } = setup();
+    const commitDraft = repository.commitDraft.bind(repository);
+    let calls = 0;
+    repository.commitDraft = async (input) => {
+      calls += 1;
+      if (calls === 2) {
+        repository.firstPublishedAt = "2026-10-01T10:00:00.000Z";
+        repository.status = "published";
+      }
+      return commitDraft(input);
+    };
+    const response = await run();
+
+    expect(response).toMatchObject({ text: { status: "saved", revision: 8 }, step: { status: "conflict" } });
+    expect(venueOf(repository.content)).toBe("Église Saint-Martin");
+    expect(a06Of(repository.content)).toBeUndefined();
+    expect(repository.audit).toEqual([]); // write 1 before publication: none; write 2 not written
+  });
+});

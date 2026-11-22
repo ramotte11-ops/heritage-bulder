@@ -89,6 +89,7 @@ function renderStep(h: ReturnType<typeof harness>, { combined = true } = {}) {
   );
 }
 
+const PARTIAL = "Votre texte a bien été enregistré. Nous n'avons pas pu terminer cette étape. Vous pouvez réessayer sans perdre votre texte.";
 const venueInput = () => screen.getByLabelText("Nom du lieu") as HTMLInputElement;
 const clickContinue = () => fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
 const typeVenue = (value = "Église Saint-Martin") => fireEvent.change(venueInput(), { target: { value } });
@@ -174,7 +175,8 @@ describe("Mission 04-J — échecs", () => {
     typeVenue();
     clickContinue();
 
-    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(await screen.findByText(PARTIAL)).toBeTruthy(); // 04-K: its own message
+    expect(screen.queryByText("Une erreur est survenue.")).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(venueOf(h.repository.content)).toBe("Église Saint-Martin"); // text durable
     expect(a06Of(h.repository.content)).toBeUndefined(); // step not validated
@@ -250,7 +252,7 @@ describe("Mission 04-J — réponse perdue et nouvelle tentative", () => {
     expect(a06Of(h.repository.content)).toEqual({ status: "completed" });
   });
 
-  it("après une réponse perdue, « Réessayer » de l'autosave n'écrase rien : conflit honnête, contenu serveur intact", async () => {
+  it("04-K — après une réponse perdue, « Réessayer » reprend la MÊME opération : réconciliée, rien de réécrit, étape terminée", async () => {
     const h = harness();
     h.network.push("lostAfterServer");
     renderStep(h);
@@ -259,7 +261,7 @@ describe("Mission 04-J — réponse perdue et nouvelle tentative", () => {
     expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
 
     fireEvent.click(await screen.findByRole("button", { name: "Réessayer" }));
-    await settle();
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
     expect(h.repository.commits).toHaveLength(2);
     expect(a06Of(h.repository.content)).toEqual({ status: "completed" });
   });
@@ -351,5 +353,120 @@ describe("Mission 04-J — concurrence et historique", () => {
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
     expect(h.requests).toEqual(["historical", "historical"]);
     expect(h.combined).not.toHaveBeenCalled();
+  });
+});
+
+describe("Mission 04-K — réponses perdues, cas par cas, côté interface", () => {
+  it("première écriture faite, réponse perdue : message générique (rien de confirmé), « Réessayer » ne fait QUE la seconde", async () => {
+    const h = harness();
+    h.repository.inject(2, "before", () => new Error("server crashed"));
+    h.network.push("lostAfterServer");
+    renderStep(h);
+    typeVenue();
+    clickContinue();
+
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(screen.queryByText(PARTIAL)).toBeNull(); // the text is NOT confirmed to the browser
+    expect(screen.queryByText("Enregistré")).toBeNull();
+    expect(leavingIsGuarded()).toBe(true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Réessayer" }));
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    expect(h.repository.commits.map((c) => c.expectedRevision)).toEqual([7, 8]);
+  });
+
+  it("réponse perdue, puis nouveau texte saisi, puis Continuer : l'opération est d'abord réconciliée, puis le nouveau texte écrit AVEC l'étape (jamais retirée)", async () => {
+    const h = harness();
+    h.network.push("lostAfterServer");
+    renderStep(h);
+    typeVenue("Église Saint-Martin");
+    clickContinue();
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(h.repository.commits).toHaveLength(2); // the server did both
+
+    typeVenue("Église Saint-Martin, chapelle nord");
+    clickContinue();
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+
+    expect(h.repository.commits).toHaveLength(3);
+    for (const commit of h.repository.commits.slice(1)) expect(a06Of(commit.content)).toEqual({ status: "completed" });
+    expect(venueOf(h.repository.content)).toBe("Église Saint-Martin, chapelle nord");
+    expect(h.repository.revision).toBe(10);
+  });
+
+  it("réponse perdue, puis modification dans un autre onglet : conflit, rien d'écrasé, l'autre version conservée", async () => {
+    const h = harness();
+    h.network.push("lostAfterServer");
+    renderStep(h);
+    typeVenue();
+    clickContinue();
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+
+    h.repository.content = { ...h.repository.content, ceremony: { ...(h.repository.content as never as { ceremony: object }).ceremony, venueName: "Autre onglet" } } as MemorialContent;
+    h.repository.revision += 1;
+    clickContinue();
+
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    await settle(AUTOSAVE_DEBOUNCE_MS * 3);
+    expect(h.repository.commits).toHaveLength(2);
+    expect(venueOf(h.repository.content)).toBe("Autre onglet");
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("échec partiel puis Continuer : le texte n'est PAS réécrit, une seule écriture de plus (l'étape), révisions cohérentes", async () => {
+    const h = harness();
+    h.repository.inject(2, "before", () => new Error("connection reset"));
+    renderStep(h);
+    typeVenue();
+    clickContinue();
+    expect(await screen.findByText(PARTIAL)).toBeTruthy();
+    expect(await screen.findByText("Enregistré")).toBeTruthy(); // true: the text is confirmed
+
+    clickContinue();
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    expect(h.repository.commits.map((c) => [c.expectedRevision, a06Of(c.content) ?? null])).toEqual([
+      [7, null],
+      [8, { status: "completed" }],
+    ]);
+  });
+
+  it("le message d'échec partiel n'apparaît jamais sans texte confirmé (échec de la première écriture)", async () => {
+    const h = harness();
+    h.repository.inject(1, "before", () => new Error("connection reset"));
+    renderStep(h);
+    typeVenue();
+    clickContinue();
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(screen.queryByText(PARTIAL)).toBeNull();
+    expect(screen.queryByText("Enregistré")).toBeNull();
+  });
+
+  it("navigation rapide : double clic sur Continuer → une seule requête, une seule validation", async () => {
+    const h = harness();
+    renderStep(h);
+    typeVenue();
+    const button = screen.getByRole("button", { name: /continuer/i });
+    fireEvent.click(button);
+    fireEvent.click(button); // its name is now « Enregistrement… »: same element
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    await settle(AUTOSAVE_DEBOUNCE_MS * 2);
+    expect(h.requests).toEqual(["combined"]);
+    expect(h.repository.commits).toHaveLength(2);
+  });
+
+  it.each([
+    ["en", "Your text has been saved. We could not complete this step. You can try again without losing your text."],
+    ["es", "Su texto se ha guardado correctamente. No hemos podido completar este paso. Puede volver a intentarlo sin perder su texto."],
+  ] as const)("message d'échec partiel traduit (%s)", async (language, message) => {
+    const h = harness();
+    h.repository.inject(2, "before", () => new Error("connection reset"));
+    render(
+      <DraftRevisionProvider initialRevision={7} initialContent={CONTENT}>
+        <CeremonyVenueStep language={language} content={CONTENT} persist={h.historical} persistCombined={h.combined} />
+      </DraftRevisionProvider>,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Iglesia" } });
+    fireEvent.click(screen.getAllByRole("button").find((b) => b.getAttribute("type") === "submit")!);
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 });

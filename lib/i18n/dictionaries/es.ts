@@ -328,6 +328,7 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "autosave.error": "No se han podido guardar tus últimos cambios.",
   "autosave.offline": "Estás sin conexión. Tus últimos cambios se guardarán en cuanto vuelva la conexión.",
   "autosave.retry": "Reintentar",
+  "autosave.stepPartial": "Su texto se ha guardado correctamente. No hemos podido completar este paso. Puede volver a intentarlo sin perder su texto.",
   "autosave.conflictTitle": "Se ha guardado una versión más reciente en otro lugar.",
   "autosave.conflictBody": "Los últimos cambios de esta pantalla no se han guardado. Seguirán visibles hasta que recargue la página.",
   "autosave.conflictDownload": "Descargar mis cambios",
