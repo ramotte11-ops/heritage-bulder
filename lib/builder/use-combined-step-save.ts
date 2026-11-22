@@ -32,9 +32,10 @@ import type { StepWrite, TextThenStepAttempt, TextThenStepResponse } from "@/lib
  * (still the operation's starting revision). The NEXT final write — the
  * step's Continue or skip, or the autosave's « Réessayer », which the
  * step routes here — first settles it with those SAME arguments and that
- * SAME revision, marked `retry`: the server reconciles (revision-bounded
- * identity, see lib/memorial/save-text-then-step.ts) and never replays a
- * done write. Mission 04-L — every other request is marked `first` and is
+ * SAME revision, marked `retry`: the server reconciles (stored-state
+ * equivalence within the revision window — a state, never a proof of
+ * authorship; see lib/memorial/save-text-then-step.ts) and never replays
+ * a done write. Mission 04-L — every other request is marked `first` and is
  * never reconciled (saveDraftAction's own decisions).
  * Then:
  *   - step stored, nothing typed since → done, nothing more written;

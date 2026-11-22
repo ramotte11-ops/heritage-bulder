@@ -37,9 +37,11 @@ import { withStoredPresentation } from "./section-visibility";
  *   - already the text → write 1 is done: answer it, run write 2 only;
  *   - anything else → somebody else wrote: `conflict`, write nothing.
  * Equality is semantic (`changedMemorialContentMutations` finds no
- * change), and Mission 04-K bounds it by the revision: only the exact
- * revisions this operation could have produced (r+1, r+2) are accepted
- * as « this operation »; anything else is a conflict.
+ * change), and Mission 04-K narrows it by the revision: only the
+ * revisions this operation could have produced (r+1, r+2) are
+ * considered; anything else is a conflict. Neither the equality nor a
+ * compatible revision PROVES that this operation wrote the draft: the
+ * answer confirms a stored STATE, never an author (Mission 04-M).
  *
  * Mission 04-L — this reconciliation applies ONLY to a request the
  * browser marks `retry` (the same arguments of its own unconfirmed
@@ -50,6 +52,18 @@ import { withStoredPresentation } from "./section-visibility";
  * owner storing exactly the same content in that window is
  * indistinguishable from this operation. The stored draft is then
  * exactly what this operation wanted; nothing is overwritten.
+ *
+ * Mission 04-M — `retry` is a claim of the browser, not verified here,
+ * and grants nothing: (1) a request at the exact expected revision runs
+ * the same code whatever its `attempt`; (2) the retry branch writes only
+ * write 2, only over a stored draft that IS the request's own text, with
+ * the revision CAS on the revision just read, through the same Security
+ * V1 authorization and RPC owner/lifecycle re-check — what
+ * saveDraftAction(text) then saveDraftAction(final) would do; (3) it
+ * confirms « saved » only for a final content that is stored right now —
+ * what re-sending saveDraftAction(final) would confirm (empty diff). The
+ * r+1 / r+2 window is a guard for honest browsers, NOT a security
+ * boundary (a forger chooses the expected revision freely).
  */
 
 export type SavedWrite = { status: "saved"; updatedAt: string; revision: number; reconciled?: true };
@@ -134,9 +148,10 @@ export async function saveTextThenStep(input: {
   } else {
     // attempt === "retry" from here on.
     // A retry after a lost response, or another writer: reconcile, never
-    // replay. Mission 04-K — content equality alone does not prove that
-    // THIS operation produced the stored draft: it must also sit exactly
-    // where this operation could have left it. From `expectedRevision`
+    // replay. Mission 04-K — content equality alone is not enough to
+    // reconcile: the stored draft must also sit where this operation
+    // could have left it (still no proof of authorship — Mission 04-M,
+    // above). From `expectedRevision`
     // (r), each of its writes moves the revision by one, and nothing
     // else may have written in between (revision CAS):
     //   r+2 and the final content  → write 1 then write 2 were done;

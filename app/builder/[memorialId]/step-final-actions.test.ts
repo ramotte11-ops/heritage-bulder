@@ -75,4 +75,21 @@ describe("saveTextThenStepAction — boundary", () => {
     expect(await saveTextThenStepAction("m-1", TEXT, FINAL, 7, "retry")).toMatchObject({ text: { reconciled: true } });
     expect(repository.commits).toEqual([]);
   });
+
+  it("Mission 04-M — a forged « retry » is authorized exactly like a first request: refused before any read", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "denied" });
+    await expect(saveTextThenStepAction("m-x", TEXT, FINAL, 7, "retry")).rejects.toThrow("Draft save refused.");
+    expect(createServerSupabaseClient).not.toHaveBeenCalled();
+    expect(repository.loads).toBe(0);
+    expect(repository.commits).toEqual([]);
+  });
+
+  it("Mission 04-M — a forged « retry » uses the AUTHORIZED id and owner only, never the claimed id", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "granted", memorialId: "m-authorized", ownerId: "o-1" });
+    repository.content = TEXT;
+    repository.revision = 8;
+    await saveTextThenStepAction("m-claimed", TEXT, FINAL, 7, "retry");
+    expect(repository.commits.map((c) => [c.memorialId, c.ownerId, c.expectedRevision])).toEqual([["m-authorized", "o-1", 8]]);
+  });
 });
+
