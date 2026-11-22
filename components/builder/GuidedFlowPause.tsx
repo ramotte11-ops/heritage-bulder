@@ -1,9 +1,9 @@
-import Link from "next/link";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { BuilderScreen } from "./BuilderScreen";
 import { PausePreviewCta } from "./preview/PausePreviewCta";
 import { FullReviewEntry } from "./journey/JourneyEntry";
+import { BackToSpaceLink } from "./BackToSpaceLink";
 import styles from "./GuidedFlowPause.module.css";
 
 interface GuidedFlowPauseProps {
@@ -52,11 +52,8 @@ export function GuidedFlowPause({ language, progress, ownerSpace = true, openPre
       {/* Chef 03 / O05 — go through every answer again, in order. */}
       <FullReviewEntry />
 
-      {ownerSpace && (
-        <Link href="/owner" className={styles.link}>
-          {translate(language, "flowPause.backToSpace")}
-        </Link>
-      )}
+      {/* Mission 04-G / L1.3 — same link, with « Un instant… » while /owner loads. */}
+      {ownerSpace && <BackToSpaceLink language={language} className={styles.link} />}
     </BuilderScreen>
   );
 }
