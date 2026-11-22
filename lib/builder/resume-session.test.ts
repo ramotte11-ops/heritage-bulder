@@ -92,13 +92,54 @@ describe("resumeBuilderSession — memorial not found or not authorized", () => 
     expect(result).toEqual({ status: "notFoundOrForbidden" });
   });
 
-  it("never calls getDraftContent when the memorial itself isn't found — no wasted read, no guessing", async () => {
-    const getDraftContent = vi.fn();
+  // Mission 04-G / L1.1 — the draft is now read together with the
+  // configuration (the caller only gets here after a granted
+  // authorization). When the memorial is not found, whatever the draft
+  // read returned — content, null or a failure — never surfaces: no
+  // guessing, the outcome stays notFoundOrForbidden.
+  it.each([
+    ["a draft", vi.fn().mockResolvedValue({ content: {}, updatedAt: "2026-01-01T00:00:00.000Z", revision: 1 })],
+    ["no draft", vi.fn().mockResolvedValue(null)],
+    ["a failed draft read", vi.fn().mockRejectedValue(new Error("network down"))],
+  ])("ignores %s when the memorial itself isn't found — still notFoundOrForbidden", async (_case, getDraftContent) => {
     const deps = depsWith({ findConfigById: vi.fn().mockResolvedValue(null), getDraftContent });
 
-    await resumeBuilderSession(deps, "not-mine-or-nonexistent");
+    const result = await resumeBuilderSession(deps, "not-mine-or-nonexistent");
 
-    expect(getDraftContent).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "notFoundOrForbidden" });
+  });
+});
+
+describe("resumeBuilderSession — Mission 04-G / L1.1: both reads in flight together", () => {
+  it("starts the draft read before the configuration read has answered", async () => {
+    let answerConfig!: (value: StoredMemorialConfig) => void;
+    const findConfigById = vi.fn(() => new Promise<StoredMemorialConfig>((resolve) => (answerConfig = resolve)));
+    const getDraftContent = vi.fn().mockResolvedValue(FRESH_DRAFT);
+    const pending = resumeBuilderSession(depsWith({ findConfigById, getDraftContent }), "memorial-123");
+
+    expect(findConfigById).toHaveBeenCalledOnce();
+    expect(getDraftContent).toHaveBeenCalledOnce();
+
+    answerConfig(FIXTURE_CONFIG);
+    expect(await pending).toEqual({ status: "resumable", memorial: FIXTURE_CONFIG, draft: FRESH_DRAFT });
+  });
+
+  it("keeps the historical precedence: a failed configuration read wins over a failed draft read", async () => {
+    const deps = depsWith({
+      findConfigById: vi.fn().mockRejectedValue(new Error("config down")),
+      getDraftContent: vi.fn().mockRejectedValue(new Error("draft down")),
+    });
+
+    expect(await resumeBuilderSession(deps, "memorial-123")).toEqual({ status: "error", reason: "config down" });
+  });
+
+  it("a failed configuration read wins over a missing draft too", async () => {
+    const deps = depsWith({
+      findConfigById: vi.fn().mockRejectedValue(new Error("config down")),
+      getDraftContent: vi.fn().mockResolvedValue(null),
+    });
+
+    expect(await resumeBuilderSession(deps, "memorial-123")).toEqual({ status: "error", reason: "config down" });
   });
 });
 

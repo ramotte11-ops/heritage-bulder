@@ -530,6 +530,86 @@ describe("resolveHeroPhotoStepData — MemorialVersion's own content shape", () 
   });
 });
 
+describe("Mission 04-G / L1.1 — the two reads run together, every write after both", () => {
+  it("the media security snapshot is read while the ready Hero media list is still in flight", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+
+    const list = engine.mediaRepository.listForMemorial.bind(engine.mediaRepository);
+    let releaseList!: () => void;
+    const listGate = new Promise<void>((resolve) => (releaseList = resolve));
+    engine.mediaRepository.listForMemorial = async (input) => {
+      await listGate;
+      return list(input);
+    };
+    const load = engine.mediaSecurityRepository.load.bind(engine.mediaSecurityRepository);
+    let snapshotRead = false;
+    engine.mediaSecurityRepository.load = async (input) => {
+      snapshotRead = true;
+      return load(input);
+    };
+
+    const pending = reconcileHeroMediaOnResume(
+      { mediaEngine: engine, draftRepository }, ownerActor(OWNER_A), MEMORIAL_A, content,
+    );
+    // Let the ownership check and the snapshot read go through while the list waits.
+    for (let i = 0; i < 20 && !snapshotRead; i++) await Promise.resolve();
+    expect(snapshotRead).toBe(true);
+
+    releaseList();
+    expect(await pending).toBe(content);
+  });
+
+  it("adoption and retirement writes start only once BOTH reads have answered", async () => {
+    const engine = createTestEngine();
+    const draftRepository = new FakeDraftRepository();
+    const canonical = await readyHeroMedia(engine);
+    engine.advance(1000);
+    const stale = await readyHeroMedia(engine);
+    const content = contentWithT06Completed(canonical.id);
+
+    const events: string[] = [];
+    const list = engine.mediaRepository.listForMemorial.bind(engine.mediaRepository);
+    engine.mediaRepository.listForMemorial = async (input) => {
+      const result = await list(input);
+      events.push("read:list");
+      return result;
+    };
+    const load = engine.mediaSecurityRepository.load.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.load = async (input) => {
+      const result = await load(input);
+      events.push("read:snapshot");
+      return result;
+    };
+    const reserve = engine.mediaSecurityRepository.reserveRetirement.bind(engine.mediaSecurityRepository);
+    engine.mediaSecurityRepository.reserveRetirement = async (input) => {
+      events.push("write:retire");
+      return reserve(input);
+    };
+    const save = draftRepository.saveDraftContent.bind(draftRepository);
+    draftRepository.saveDraftContent = async (memorialId, next) => {
+      events.push("write:draft");
+      return save(memorialId, next);
+    };
+
+    await reconcileHeroMediaOnResume({ mediaEngine: engine, draftRepository }, ownerActor(OWNER_A), MEMORIAL_A, content);
+
+    // The retirement itself re-checks the snapshot (deleteMedia, unchanged):
+    // what matters is that the reconciliation's own two reads have BOTH
+    // answered before the first write.
+    const firstWrite = events.findIndex((event) => event.startsWith("write:"));
+    expect(firstWrite).toBeGreaterThan(-1);
+    expect(events.indexOf("read:list")).toBeLessThan(firstWrite);
+    expect(events.indexOf("read:snapshot")).toBeLessThan(firstWrite);
+    expect(events.indexOf("read:list")).toBeGreaterThan(-1);
+    // Same outcome as before: the stale media is retired, the canonical one kept.
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: stale.id })).toBeNull();
+    expect(await engine.mediaRepository.findById({ memorialId: MEMORIAL_A, mediaId: canonical.id })).not.toBeNull();
+  });
+});
+
 describe("resolveHeroPhotoStepData — Security V1 publication lock", () => {
   it("never adopts or retires Hero media after first publication", async () => {
     const engine = createTestEngine();
