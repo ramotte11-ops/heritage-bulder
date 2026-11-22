@@ -323,7 +323,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "autosave.error": "Vos dernières modifications n'ont pas pu être enregistrées.",
   "autosave.offline": "Vous êtes hors ligne. Vos dernières modifications seront enregistrées dès le retour de la connexion.",
   "autosave.retry": "Réessayer",
-  "autosave.stepPartial": "Votre texte a bien été enregistré. Nous n'avons pas pu terminer cette étape. Vous pouvez réessayer sans perdre votre texte.",
+  "autosave.stepPartial": "Votre texte a bien été enregistré. Nous n'avons pas pu confirmer la fin de cette étape. Vous pouvez réessayer sans perdre votre texte.",
   "autosave.conflictTitle": "Une version plus récente a été enregistrée ailleurs.",
   "autosave.conflictBody": "Vos dernières modifications sur cet écran ne sont pas enregistrées. Elles restent affichées tant que vous ne rechargez pas la page.",
   "autosave.conflictDownload": "Télécharger mes modifications",

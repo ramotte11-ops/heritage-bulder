@@ -91,7 +91,7 @@ function renderStep(h: ReturnType<typeof harness>, { combined = true } = {}) {
   );
 }
 
-const PARTIAL = "Votre texte a bien été enregistré. Nous n'avons pas pu terminer cette étape. Vous pouvez réessayer sans perdre votre texte.";
+const PARTIAL = "Votre texte a bien été enregistré. Nous n'avons pas pu confirmer la fin de cette étape. Vous pouvez réessayer sans perdre votre texte.";
 const venueInput = () => screen.getByLabelText("Nom du lieu") as HTMLInputElement;
 const clickContinue = () => fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
 const typeVenue = (value = "Église Saint-Martin") => fireEvent.change(venueInput(), { target: { value } });
@@ -457,8 +457,8 @@ describe("Mission 04-K — réponses perdues, cas par cas, côté interface", ()
   });
 
   it.each([
-    ["en", "Your text has been saved. We could not complete this step. You can try again without losing your text."],
-    ["es", "Su texto se ha guardado correctamente. No hemos podido completar este paso. Puede volver a intentarlo sin perder su texto."],
+    ["en", "Your text has been saved. We couldn't confirm that this step was completed. You can try again without losing your text."],
+    ["es", "Su texto se ha guardado correctamente. No hemos podido confirmar que este paso se haya completado. Puede volver a intentarlo sin perder su texto."],
   ] as const)("message d'échec partiel traduit (%s)", async (language, message) => {
     const h = harness();
     h.repository.inject(2, "before", () => new Error("connection reset"));
