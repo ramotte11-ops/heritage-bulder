@@ -1,9 +1,10 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import type { Language } from "@/config/languages";
 import { translate } from "@/lib/i18n/translate";
 import { PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
+import { PendingActionLabel } from "../PendingActionLabel";
 import styles from "./GuestDurableSaveEntry.module.css";
 
 /**
@@ -35,15 +36,18 @@ export function GuestDurableSaveEntry({
 }) {
   const registry = useContext(PreviewFlushRegistryContext);
   const [leaving, setLeaving] = useState(false);
+  const leavingRef = useRef(false);
 
   async function leave() {
-    if (leaving) return;
+    if (leavingRef.current) return;
+    leavingRef.current = true;
     setLeaving(true);
     try {
       await registry?.flushAll();
     } catch {
       // A failed local flush keeps the family here: the last saved step
       // is safe, the screen shows its own save state.
+      leavingRef.current = false;
       setLeaving(false);
       return;
     }
@@ -52,8 +56,19 @@ export function GuestDurableSaveEntry({
 
   return (
     <aside className={styles.entry} data-guest-durable-save="">
-      <button type="button" className={styles.button} onClick={leave} disabled={leaving}>
-        {leaving ? translate(language, "common.pleaseWait") : translate(language, "durableSave.entry")}
+      <button
+        type="button"
+        className={styles.button}
+        onClick={leave}
+        disabled={leaving}
+        aria-busy={leaving || undefined}
+      >
+        <PendingActionLabel
+          pending={leaving}
+          pendingLabel={translate(language, "common.pleaseWait")}
+        >
+          {translate(language, "durableSave.entry")}
+        </PendingActionLabel>
       </button>
       <p className={styles.hint}>{translate(language, "durableSave.entryHint")}</p>
     </aside>
