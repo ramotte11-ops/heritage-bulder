@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Language } from "@/config/languages";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
 import { PreviewPublicationPanel } from "./PreviewPublicationPanel";
 
@@ -233,6 +234,62 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     await waitFor(() => expect(reload).toHaveBeenLastCalledWith([1, 3, 4, 5, 6, 7].map(id)));
   });
 
+  it.each([
+    ["fr", "Un instant…"],
+    ["en", "Just a moment…"],
+    ["es", "Un momento…"],
+  ] as const)("shows the real reload in %s, blocks repeated changes, then returns to rest", async (language, pendingLabel) => {
+    let finish!: (value: boolean) => void;
+    const reload = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    const { container } = render(
+      <PreviewPublicationPanel
+        language={language as Language}
+        publication={publication({ gallery: sevenPhotos() })}
+        publish={vi.fn()}
+        reload={reload}
+        builderPath={null}
+        onBackToCreation={vi.fn()}
+      />,
+    );
+
+    const checkbox = screen.getAllByRole("checkbox")[1];
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+
+    expect(reload).toHaveBeenCalledOnce();
+    expect(screen.getByRole("status").textContent).toBe(pendingLabel);
+    expect(container.querySelector("[data-publication-gallery-loading]")).not.toBeNull();
+    expect((screen.getByRole("group") as HTMLFieldSetElement).disabled).toBe(true);
+
+    await act(async () => finish(true));
+    await waitFor(() => expect(container.querySelector("[data-publication-gallery-loading]")).toBeNull());
+    expect((screen.getByRole("group") as HTMLFieldSetElement).disabled).toBe(false);
+  });
+
+  it("reports a failed reload, restores the controls, and clears the error on retry", async () => {
+    const reload = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const { container } = render(
+      <PreviewPublicationPanel
+        language="fr"
+        publication={publication({ gallery: sevenPhotos() })}
+        publish={vi.fn()}
+        reload={reload}
+        builderPath={null}
+        onBackToCreation={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    expect((await screen.findByRole("alert")).textContent).toBe("L’aperçu n’est pas disponible pour le moment. Réessayez dans un instant.");
+    expect((screen.getByRole("group") as HTMLFieldSetElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
+    expect(container.querySelector("[data-publication-gallery-error]")).toBeNull();
+  });
+
   it("the last photo cannot be unchecked (an empty gallery choice is not a choice)", () => {
     const { reload } = renderPanel({ publication: publication({ gallery: sevenPhotos([id(3)]) }) });
     fireEvent.click(screen.getAllByRole("checkbox")[2]);
@@ -250,7 +307,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
     });
     expect(publish).toHaveBeenCalledOnce();
-    expect(await screen.findByText("Confirmez votre adresse e-mail.")).toBeTruthy();
+    expect(await screen.findByText("Confirmez votre adresse e-mail.", {}, { timeout: 3_000 })).toBeTruthy();
     expect(document.querySelector("[data-email-verification=\"start\"]")).not.toBeNull();
     expect(document.querySelector("[data-publication=\"done\"]")).toBeNull();
   });

@@ -4,6 +4,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
+import { PendingActionLabel } from "../PendingActionLabel";
 import { heroPhotoPath } from "./hero-photo-path";
 import styles from "./PreviewPublicationPanel.module.css";
 
@@ -62,6 +63,7 @@ export function PreviewPublicationPanel({
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [reloadFailed, setReloadFailed] = useState(false);
   const [outcome, setOutcome] = useState<PublishFromPreviewOutcome | null>(null);
   const [justVerified, setJustVerified] = useState(false);
   // QG 004-B — the proof is recorded: back to « Publier », the family's click.
@@ -122,9 +124,12 @@ export function PreviewPublicationPanel({
     if (wanted.size === 0 || (gallery.limit !== null && wanted.size > gallery.limit)) return;
     const next = gallery.choices.map((choice) => choice.mediaId).filter((id) => wanted.has(id));
     setReloading(true);
+    setReloadFailed(false);
     setOutcome(null);
     try {
-      await reload(next);
+      setReloadFailed(!(await reload(next)));
+    } catch {
+      setReloadFailed(true);
     } finally {
       setReloading(false);
     }
@@ -160,36 +165,50 @@ export function PreviewPublicationPanel({
       )}
 
       {selection !== undefined && (
-        <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
-          <legend className={styles.text}>
-            {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
-            {translate(language, "publish.galleryLimit")}
-          </legend>
-          {gallery.choices.map((choice, index) => {
-            const selected = selection.includes(choice.mediaId);
-            const full = gallery.limit !== null && selection.length >= gallery.limit;
-            const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
-            return (
-              <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
-                {choice.readUrl !== null ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
-                  <img src={choice.readUrl} alt="" />
-                ) : (
-                  <span className={styles.thumbMissing} aria-hidden="true" />
-                )}
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    disabled={!selected && full}
-                    onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
-                  />{" "}
-                  {label}
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
+        <>
+          <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
+            <legend className={styles.text}>
+              {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
+              {translate(language, "publish.galleryLimit")}
+            </legend>
+            {gallery.choices.map((choice, index) => {
+              const selected = selection.includes(choice.mediaId);
+              const full = gallery.limit !== null && selection.length >= gallery.limit;
+              const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
+              return (
+                <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
+                  {choice.readUrl !== null ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
+                    <img src={choice.readUrl} alt="" />
+                  ) : (
+                    <span className={styles.thumbMissing} aria-hidden="true" />
+                  )}
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!selected && full}
+                      onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
+                    />{" "}
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+          {reloading && (
+            <p className={styles.notice} data-publication-gallery-loading="">
+              <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
+                {null}
+              </PendingActionLabel>
+            </p>
+          )}
+          {reloadFailed && (
+            <p role="alert" className={styles.alert} data-publication-gallery-error="">
+              {translate(language, "preview.unavailable")}
+            </p>
+          )}
+        </>
       )}
 
       {outcome === "preview_outdated" && (
@@ -200,20 +219,28 @@ export function PreviewPublicationPanel({
 
       {/* QG 004-B — once, before the first publication: prove the address. */}
       {outcome === "email_unverified" && (
-        <Suspense fallback={null}>
-        <EmailVerificationStep
-          language={language}
-          onVerified={verified}
-          classNames={{
-            root: styles.choices,
-            form: styles.actions,
-            field: styles.verifyField,
-            primary: styles.primary,
-            secondary: styles.secondary,
-            notice: styles.notice,
-            alert: styles.alert,
-          }}
-        />
+        <Suspense
+          fallback={
+            <p className={styles.notice} data-email-verification-loading="">
+              <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
+                {null}
+              </PendingActionLabel>
+            </p>
+          }
+        >
+          <EmailVerificationStep
+            language={language}
+            onVerified={verified}
+            classNames={{
+              root: styles.choices,
+              form: styles.actions,
+              field: styles.verifyField,
+              primary: styles.primary,
+              secondary: styles.secondary,
+              notice: styles.notice,
+              alert: styles.alert,
+            }}
+          />
         </Suspense>
       )}
       {justVerified && outcome === null && (
