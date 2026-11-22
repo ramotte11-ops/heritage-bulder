@@ -47,16 +47,16 @@ export interface JourneyNavigation {
   openScreen: (id: JourneyScreenId, options?: OpenScreenOptions) => Promise<boolean>;
   /** Saves, then goes back to where the family stopped (back to the
    * Preview when the screen was opened from it). */
-  resume: () => Promise<boolean>;
+  resume: (options?: NavigationOptions) => Promise<boolean>;
   /** This screen was opened from the Preview: « Continuer » and the way
    * back lead to the Preview again (`?apercu=1`). Absent → `false`. */
   returnToPreview?: boolean;
   /** Explicitly leaves rubrique revision and resumes the normal route. */
-  finishReview: () => Promise<boolean>;
+  finishReview: (options?: NavigationOptions) => Promise<boolean>;
   /** Chef 03 / O05 — « Reprendre mon parcours depuis le début »: drains
    * the screen's autosave, then opens the first screen of the full review.
    * Absent → the host offers no full review (the entry is not shown). */
-  startReview?: () => Promise<boolean>;
+  startReview?: (options?: NavigationOptions) => Promise<boolean>;
   /** Called by a step once its own Continue (or skip) is saved. */
   finishStep: () => void;
   /** The current screen holds input the autosave cannot save yet
@@ -70,13 +70,28 @@ export interface JourneyNavigation {
   visibility?: JourneyVisibility | null;
 }
 
-export interface OpenScreenOptions {
+/**
+ * Mission 04-D — how a navigation is started. `startTransition`: the
+ * caller's transition, so that its pending state (« Un instant… ») lasts
+ * until the route has brought the destination — not merely until the
+ * autosave drain is over. A host whose moves are instant may ignore it.
+ */
+export interface NavigationOptions {
+  startTransition?: (navigate: () => void) => void;
+}
+
+export interface OpenScreenOptions extends NavigationOptions {
   returnToPreview?: boolean;
   /** Chef 03 / O04 — the rubrique to come back to after the save, when it
    * is not the screen's own (A00 reopened from « L'annonce de décès »).
    * Validated server-side (`REVISION_SECTION_ALIASES`). */
   section?: JourneySection;
-  startTransition?: (navigate: () => void) => void;
+}
+
+/** Runs `navigate` in the caller's transition when one is given. */
+function startNavigation(options: NavigationOptions, navigate: () => void): void {
+  if (options.startTransition) options.startTransition(navigate);
+  else navigate();
 }
 
 /** Chef 03 / O05 — the full review's query flag (validated by the page). */
@@ -292,29 +307,29 @@ export function RouteJourneyProvider({
         if (!(await canLeaveCurrentScreen())) return false;
         const section = options.section ?? journeySectionForScreen(id);
         const path = `${builderPath}?etape=${id}&rubrique=${section}${options.returnToPreview ? `&${RETURN_TO_PREVIEW_QUERY}` : ""}`;
-        const navigate = () => {
+        startNavigation(options, () => {
           if (snapshot.reviewingSection === null) router.push(path);
           else router.replace(path);
-        };
-        if (options.startTransition) options.startTransition(navigate);
-        else navigate();
+        });
         return true;
       },
-      async resume() {
+      async resume(options = {}) {
         if (!(await canLeaveCurrentScreen())) return false;
-        if (returnToPreview) router.replace(`${builderPath}?${RETURN_TO_PREVIEW_QUERY}`);
-        else if (snapshot.reviewingSection === null) router.push(builderPath);
-        else router.replace(builderPath);
+        startNavigation(options, () => {
+          if (returnToPreview) router.replace(`${builderPath}?${RETURN_TO_PREVIEW_QUERY}`);
+          else if (snapshot.reviewingSection === null) router.push(builderPath);
+          else router.replace(builderPath);
+        });
         return true;
       },
-      async finishReview() {
+      async finishReview(options = {}) {
         if (!(await canLeaveCurrentScreen())) return false;
-        router.replace(builderPath);
+        startNavigation(options, () => router.replace(builderPath));
         return true;
       },
-      async startReview() {
+      async startReview(options = {}) {
         if (!(await canLeaveCurrentScreen())) return false;
-        router.push(`${builderPath}?${FULL_REVIEW_QUERY}`);
+        startNavigation(options, () => router.push(`${builderPath}?${FULL_REVIEW_QUERY}`));
         return true;
       },
       finishStep() {
