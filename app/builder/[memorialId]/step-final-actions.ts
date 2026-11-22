@@ -3,7 +3,11 @@
 import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
 import { createSupabaseMemorialEditRepository } from "@/lib/adapters/supabase/memorial-edit-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
-import { saveTextThenStep, type TextThenStepResponse } from "@/lib/memorial/save-text-then-step";
+import {
+  saveTextThenStep,
+  type TextThenStepAttempt,
+  type TextThenStepResponse,
+} from "@/lib/memorial/save-text-then-step";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
@@ -22,6 +26,7 @@ export async function saveTextThenStepAction(
   text: MemorialContent,
   final: MemorialContent,
   expectedRevision: number,
+  attempt: TextThenStepAttempt = "first",
 ): Promise<TextThenStepResponse> {
   for (const content of [text, final]) {
     if (typeof content !== "object" || content === null || Array.isArray(content)) {
@@ -31,6 +36,8 @@ export async function saveTextThenStepAction(
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     throw new Error("Unsupported draft revision.");
   }
+  // Mission 04-L — anything but an explicit « retry » is a new operation.
+  if (attempt !== "first" && attempt !== "retry") throw new Error("Unsupported draft attempt.");
 
   const access = await authorizeMemorialForRequest(memorialId);
   if (access.status !== "granted") throw new Error("Draft save refused.");
@@ -42,5 +49,6 @@ export async function saveTextThenStepAction(
     text,
     final,
     expectedRevision,
+    attempt,
   });
 }

@@ -5,7 +5,7 @@ import type { MemorialContent } from "@/types/memorial";
 import type { AutosaveStatus } from "./autosave-state";
 import { DraftRevisionConflictError, useDraftRevisionCoordinator } from "./draft-revision";
 import { changedMemorialContentMutations } from "@/lib/memorial/edit-mutations";
-import type { StepWrite, TextThenStepResponse } from "@/lib/memorial/save-text-then-step";
+import type { StepWrite, TextThenStepAttempt, TextThenStepResponse } from "@/lib/memorial/save-text-then-step";
 
 /**
  * Missions 04-J / 04-K — EXPERIMENT (local only). A step's final write
@@ -32,15 +32,23 @@ import type { StepWrite, TextThenStepResponse } from "@/lib/memorial/save-text-t
  * (still the operation's starting revision). The NEXT final write — the
  * step's Continue or skip, or the autosave's « Réessayer », which the
  * step routes here — first settles it with those SAME arguments and that
- * SAME revision: the server reconciles (revision-bounded identity, see
- * lib/memorial/save-text-then-step.ts) and never replays a done write.
+ * SAME revision, marked `retry`: the server reconciles (revision-bounded
+ * identity, see lib/memorial/save-text-then-step.ts) and never replays a
+ * done write. Mission 04-L — every other request is marked `first` and is
+ * never reconciled (saveDraftAction's own decisions).
  * Then:
  *   - step stored, nothing typed since → done, nothing more written;
  *   - step stored, new text typed since → the new final content is
  *     written as the text itself (write 1 carries the step, write 2 is a
  *     no-op): the stored step is never removed in between;
  *   - step not stored → the requested operation, normally (write 1 is a
- *     no-op when the text did not change).
+ *     no-op when the text did not change);
+ *   - step still unknown (« failed » again) → StepNotValidatedError, the
+ *     operation stays unconfirmed.
+ *
+ * Mission 04-L — a step reported « failed » (text confirmed, step outcome
+ * unknown) is itself an unconfirmed operation, settled the same way from
+ * the text's revision.
  *
  * Outcomes:
  *   - resolves → text AND step durably saved (confirmed by the server);
@@ -55,6 +63,7 @@ export type TextThenStepTransport = (
   text: MemorialContent,
   final: MemorialContent,
   expectedRevision: number,
+  attempt: TextThenStepAttempt,
 ) => Promise<TextThenStepResponse>;
 
 export class StepNotValidatedError extends Error {
@@ -109,12 +118,20 @@ export function useCombinedStepSave(
 
       /** One combined request, standing in for what the autosave owes.
        * `null` → a save is in flight: the caller keeps the historical order. */
-      const attempt = async (opText: MemorialContent, opFinal: MemorialContent): Promise<Attempt | null> => {
+      // Mission 04-L — `rescue`: what a conflict notice offers to keep.
+      // Always the family's LATEST local content, even while an older
+      // unconfirmed operation is being settled (never its stale copy).
+      const attempt = async (
+        opText: MemorialContent,
+        opFinal: MemorialContent,
+        rescue: MemorialContent = opText,
+        kind: TextThenStepAttempt = "first",
+      ): Promise<Attempt | null> => {
         const outcome: Attempt = { step: null, unsupported: false };
         const write = async () => {
           try {
-            return await coordinator.commit(opText, async (expectedRevision) => {
-              const response = await combined(opText, opFinal, expectedRevision);
+            return await coordinator.commit(rescue, async (expectedRevision) => {
+              const response = await combined(opText, opFinal, expectedRevision, kind);
               if (response.status === "unsupported") throw new UnsupportedSignal();
               if (response.text.status === "conflict") return { status: "conflict" as const };
               outcome.step = response.step;
@@ -138,18 +155,22 @@ export function useCombinedStepSave(
           if (!(error instanceof DraftRevisionConflictError)) unconfirmed.current = { text: opText, final: opFinal };
           throw error;
         }
-        unconfirmed.current = null;
+        // Mission 04-L — « failed » for the step: the text is confirmed, the
+        // step's outcome is NOT (the server may have stored it and lost the
+        // answer). It stays unconfirmed, to be settled as a retry from the
+        // text's revision — never resent as a new operation.
+        unconfirmed.current = outcome.step?.status === "failed" ? { text: opText, final: opFinal } : null;
         return outcome;
       };
 
-      const conclude = async (outcome: Attempt, opFinal: MemorialContent) => {
+      const conclude = async (outcome: Attempt, opFinal: MemorialContent, rescue: MemorialContent = opFinal) => {
         if (outcome.unsupported) {
           await saveDraft(opFinal);
           return;
         }
         if (outcome.step?.status === "saved") return;
         if (outcome.step?.status === "conflict") {
-          coordinator.reportConflict(opFinal);
+          coordinator.reportConflict(rescue);
           throw new DraftRevisionConflictError();
         }
         throw new StepNotValidatedError();
@@ -159,7 +180,7 @@ export function useCombinedStepSave(
       const pending = unconfirmed.current;
       if (pending !== null) {
         // Settle the unconfirmed operation first, with ITS arguments and revision.
-        const settled = await attempt(pending.text, pending.final);
+        const settled = await attempt(pending.text, pending.final, text, "retry");
         if (settled === null) return historical();
         if (settled.unsupported) {
           await saveDraft(pending.final);
@@ -167,7 +188,9 @@ export function useCombinedStepSave(
           await saveDraft(final);
           return;
         }
-        if (settled.step?.status === "conflict") return conclude(settled, pending.final);
+        if (settled.step?.status === "conflict") return conclude(settled, pending.final, final);
+        // Still unknown: report it (text confirmed), never start a new operation on top.
+        if (settled.step?.status === "failed") throw new StepNotValidatedError();
         if (settled.step?.status === "saved") {
           if (sameContent(pending.final, final)) return; // nothing typed since: the step is done
           opText = final; // the step is stored: never write a text that would remove it

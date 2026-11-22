@@ -7,13 +7,15 @@
  * both against an in-memory database reproducing the RPC contract
  * (revision CAS, lifecycle check, audit only after publication).
  */
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { MemorialContent } from "@/types/memorial";
-import { DraftRevisionProvider, type DraftSaveResponse } from "@/lib/builder/draft-revision";
+import { DraftRevisionProvider, useDraftRevisionCoordinator, type DraftSaveResponse } from "@/lib/builder/draft-revision";
 import { AUTOSAVE_DEBOUNCE_MS } from "@/lib/builder/autosave-state";
 import { changedMemorialContentMutations } from "@/lib/memorial/edit-mutations";
 import { commitAuthorizedDraftEdit } from "@/lib/memorial/persist-edit";
+import { commitA06, writeCeremonyVenueName } from "@/lib/builder/guided-flow/ceremony-step";
 import { withStoredPresentation } from "@/lib/memorial/section-visibility";
 import { isMemorialEditConflict, saveTextThenStep } from "@/lib/memorial/save-text-then-step";
 import { InMemoryEditRepository } from "@/lib/memorial/in-memory-edit-repository.test-helper";
@@ -69,11 +71,11 @@ function harness() {
 
   /** Network behaviour of the combined request, per call. */
   const network: Array<"ok" | "lostAfterServer" | "deniedBeforeServer"> = [];
-  const combined = vi.fn(async (text: MemorialContent, final: MemorialContent, expectedRevision: number) => {
-    requests.push("combined");
+  const combined = vi.fn(async (text: MemorialContent, final: MemorialContent, expectedRevision: number, attempt: "first" | "retry") => {
+    requests.push(attempt === "retry" ? "combined:retry" : "combined");
     const behaviour = network.shift() ?? "ok";
     if (behaviour === "deniedBeforeServer") throw new Error("Draft save refused.");
-    const response = await saveTextThenStep({ repository, access: ACCESS, text, final, expectedRevision });
+    const response = await saveTextThenStep({ repository, access: ACCESS, text, final, expectedRevision, attempt });
     if (behaviour === "lostAfterServer") throw new Error("Failed to fetch"); // the server did its work
     return response;
   });
@@ -233,7 +235,7 @@ describe("Mission 04-J — réponse perdue et nouvelle tentative", () => {
     clickContinue();
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
     expect(h.repository.commits).toHaveLength(2); // no double validation
-    expect(h.requests).toEqual(["combined", "combined"]);
+    expect(h.requests).toEqual(["combined", "combined:retry"]); // 04-L: the settlement is marked « retry »
   });
 
   it("seule la première écriture faite, réponse perdue : la nouvelle tentative ne fait QUE la seconde", async () => {
@@ -468,5 +470,147 @@ describe("Mission 04-K — réponses perdues, cas par cas, côté interface", ()
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Iglesia" } });
     fireEvent.click(screen.getAllByRole("button").find((b) => b.getAttribute("type") === "submit")!);
     expect(await screen.findByText(message)).toBeTruthy();
+  });
+});
+
+/**
+ * Mission 04-L — final security review, interface side. `ConflictProbe`
+ * reads what the conflict notice (DraftConflictNotice) would offer the
+ * family to keep — the coordinator's conflict copy.
+ */
+const probe: { conflict: MemorialContent | null } = { conflict: null };
+function ConflictProbe() {
+  const coordinator = useDraftRevisionCoordinator();
+  const conflict = coordinator?.conflictContent ?? null;
+  useEffect(() => {
+    probe.conflict = conflict;
+  }, [conflict]);
+  return null;
+}
+
+function renderWithProbe(h: ReturnType<typeof harness>) {
+  probe.conflict = null;
+  render(
+    <DraftRevisionProvider initialRevision={7} initialContent={CONTENT}>
+      <CeremonyVenueStep language="fr" content={CONTENT} persist={h.historical} persistCombined={h.combined} />
+      <ConflictProbe />
+    </DraftRevisionProvider>,
+  );
+}
+
+const typed = (value: string) => {
+  const result = writeCeremonyVenueName(CONTENT, value);
+  if (!result.ok) throw new Error("fixture");
+  return result.content;
+};
+
+describe("Mission 04-L — collisions de contenu et opérations concurrentes, côté interface", () => {
+  it("deux auteurs, contenu IDENTIQUE : la première tentative n'est pas « réconciliée » — conflit, rien d'écrit, jamais « Enregistré »", async () => {
+    const h = harness();
+    // Another tab of the same owner did exactly the same Continue (7 → 8 → 9).
+    const text = typed("Église Saint-Martin");
+    const committed = commitA06(text);
+    if (!committed.ok) throw new Error("fixture");
+    h.repository.content = committed.content;
+    h.repository.revision = 9;
+
+    renderWithProbe(h);
+    typeVenue("Église Saint-Martin");
+    clickContinue();
+
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(screen.queryByText(PARTIAL)).toBeNull();
+    expect(screen.queryByText("Enregistré")).toBeNull();
+    expect(h.requests).toEqual(["combined"]);
+    expect(h.repository.commits).toEqual([]);
+    expect(routerRefresh).not.toHaveBeenCalled();
+    expect(probe.conflict).not.toBeNull(); // the conflict notice is shown
+  });
+
+  it("réponse perdue, nouveau texte saisi, puis conflit avec un autre onglet : la copie de secours est le DERNIER texte saisi (jamais l'ancien)", async () => {
+    const h = harness();
+    h.network.push("lostAfterServer");
+    renderWithProbe(h);
+    typeVenue("Église Saint-Martin");
+    clickContinue();
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+
+    // Another tab changes the venue, then this tab types a newer text.
+    h.repository.content = { ...h.repository.content, ceremony: { ...(h.repository.content as never as { ceremony: object }).ceremony, venueName: "Autre onglet" } } as MemorialContent;
+    h.repository.revision += 1;
+    typeVenue("Église Saint-Martin, chapelle nord");
+    clickContinue();
+
+    await vi.waitFor(() => expect(probe.conflict).not.toBeNull());
+    expect(venueOf(probe.conflict!)).toBe("Église Saint-Martin, chapelle nord");
+    expect(venueOf(h.repository.content)).toBe("Autre onglet");
+    expect(h.repository.commits).toHaveLength(2);
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("seconde écriture FAITE mais sa réponse perdue dans le serveur : message partiel, puis Continuer réconcilie (retry) sans réécrire ni conflit", async () => {
+    const h = harness();
+    h.repository.inject(2, "after", () => new Error("timeout after commit"));
+    renderWithProbe(h);
+    typeVenue();
+    clickContinue();
+    expect(await screen.findByText(PARTIAL)).toBeTruthy();
+    expect(h.repository.commits).toHaveLength(2); // the step IS stored
+
+    clickContinue();
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    expect(h.repository.commits).toHaveLength(2); // nothing rewritten
+    expect(h.requests).toEqual(["combined", "combined:retry"]);
+    expect(probe.conflict).toBeNull();
+  });
+
+  it("autre écrivain ENTRE les deux écritures : message générique (pas le message partiel), avis de conflit, son texte conservé", async () => {
+    const h = harness();
+    const commitDraft = h.repository.commitDraft.bind(h.repository);
+    let calls = 0;
+    h.repository.commitDraft = async (input) => {
+      calls += 1;
+      if (calls === 2) {
+        h.repository.content = typed("Autre appareil");
+        h.repository.revision += 1;
+      }
+      return commitDraft(input);
+    };
+    renderWithProbe(h);
+    typeVenue();
+    clickContinue();
+
+    expect(await screen.findByText("Une erreur est survenue.")).toBeTruthy();
+    expect(screen.queryByText(PARTIAL)).toBeNull();
+    await vi.waitFor(() => expect(probe.conflict).not.toBeNull());
+    expect(venueOf(probe.conflict!)).toBe("Église Saint-Martin");
+    expect(venueOf(h.repository.content)).toBe("Autre appareil");
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("deux onglets, même révision, Continuer en même temps avec des textes différents : un seul gagne, l'autre est en conflit, rien d'écrasé", async () => {
+    const h = harness();
+    const { container: tabA } = render(
+      <DraftRevisionProvider initialRevision={7} initialContent={CONTENT}>
+        <CeremonyVenueStep language="fr" content={CONTENT} persist={h.historical} persistCombined={h.combined} />
+      </DraftRevisionProvider>,
+    );
+    const { container: tabB } = render(
+      <DraftRevisionProvider initialRevision={7} initialContent={CONTENT}>
+        <CeremonyVenueStep language="fr" content={CONTENT} persist={h.historical} persistCombined={h.combined} />
+      </DraftRevisionProvider>,
+    );
+    fireEvent.change(within(tabA).getByRole("textbox"), { target: { value: "Lieu A" } });
+    fireEvent.change(within(tabB).getByRole("textbox"), { target: { value: "Lieu B" } });
+    fireEvent.click(within(tabA).getByRole("button", { name: /continuer/i }));
+    fireEvent.click(within(tabB).getByRole("button", { name: /continuer/i }));
+
+    await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(screen.getByText("Une erreur est survenue.")).toBeTruthy());
+    await settle(AUTOSAVE_DEBOUNCE_MS * 3);
+    expect(routerRefresh).toHaveBeenCalledOnce();
+    expect(h.repository.commits).toHaveLength(2);
+    expect(venueOf(h.repository.content)).toBe("Lieu A");
+    expect(a06Of(h.repository.content)).toEqual({ status: "completed" });
   });
 });

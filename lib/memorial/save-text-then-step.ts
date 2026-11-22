@@ -40,6 +40,16 @@ import { withStoredPresentation } from "./section-visibility";
  * change), and Mission 04-K bounds it by the revision: only the exact
  * revisions this operation could have produced (r+1, r+2) are accepted
  * as « this operation »; anything else is a conflict.
+ *
+ * Mission 04-L — this reconciliation applies ONLY to a request the
+ * browser marks `retry` (the same arguments of its own unconfirmed
+ * operation). A `first` request never reconciles: write 1 is
+ * saveDraftAction's write, decision for decision. Limit, documented: on
+ * a retry, nothing on the server records WHO wrote r+1 / r+2 (no
+ * operation id without a schema change), so another tab of the same
+ * owner storing exactly the same content in that window is
+ * indistinguishable from this operation. The stored draft is then
+ * exactly what this operation wanted; nothing is overwritten.
  */
 
 export type SavedWrite = { status: "saved"; updatedAt: string; revision: number; reconciled?: true };
@@ -48,6 +58,16 @@ export type StepWrite = SavedWrite | { status: "conflict" } | { status: "failed"
 export type TextThenStepResponse =
   | { status: "unsupported" }
   | { status: "done"; text: SavedWrite | { status: "conflict" }; step: StepWrite };
+
+/**
+ * Mission 04-L — which kind of request this is. `first`: a new operation;
+ * write 1 then follows saveDraftAction to the letter (an identical stored
+ * text is confirmed, any other change on a stale revision is a conflict)
+ * and NOTHING is ever reconciled. `retry`: the browser re-sends the SAME
+ * arguments of one of its own operations whose outcome it never learnt
+ * (lost response) — only then is the revision-bounded reconciliation used.
+ */
+export type TextThenStepAttempt = "first" | "retry";
 
 export function isMemorialEditConflict(error: unknown): boolean {
   return (
@@ -68,8 +88,10 @@ export async function saveTextThenStep(input: {
   text: MemorialContent;
   final: MemorialContent;
   expectedRevision: number;
+  attempt?: TextThenStepAttempt;
 }): Promise<TextThenStepResponse> {
   const { repository, access, text, final, expectedRevision } = input;
+  const attempt = input.attempt ?? "first";
 
   const snapshot = await repository.load(access.memorialId);
   if (snapshot === null) throw new Error("Draft save refused.");
@@ -81,8 +103,17 @@ export async function saveTextThenStep(input: {
   let base: MemorialEditSnapshot["draft"];
   let textWrite: SavedWrite;
 
-  if (snapshot.draft.revision === expectedRevision) {
-    // Write 1 — the text, exactly as saveDraftAction would write it.
+  if (snapshot.draft.revision !== expectedRevision && attempt === "first" && !unchanged(stored, textNext)) {
+    // Mission 04-L — a new operation on a stale revision: what
+    // saveDraftAction(text) answers (the RPC's revision CAS would refuse
+    // this write), without the pointless round trip. Never reconciled.
+    return { status: "done", text: { status: "conflict" }, step: { status: "notAttempted" } };
+  }
+
+  if (snapshot.draft.revision === expectedRevision || attempt === "first") {
+    // Write 1 — the text, exactly as saveDraftAction would write it
+    // (including its empty-diff rule: an identical stored text is a
+    // confirmation at the stored revision, with no write).
     let written: { updatedAt: string; revision: number };
     try {
       written = await commitAuthorizedDraftEdit({
@@ -101,6 +132,7 @@ export async function saveTextThenStep(input: {
     textWrite = { status: "saved", updatedAt: written.updatedAt, revision: written.revision };
     base = { content: textNext, updatedAt: written.updatedAt, revision: written.revision };
   } else {
+    // attempt === "retry" from here on.
     // A retry after a lost response, or another writer: reconcile, never
     // replay. Mission 04-K — content equality alone does not prove that
     // THIS operation produced the stored draft: it must also sit exactly

@@ -58,4 +58,21 @@ describe("saveTextThenStepAction — boundary", () => {
     ]);
     expect(response).toMatchObject({ status: "done", text: { status: "saved" }, step: { status: "saved" } });
   });
+
+  it.each([["an unknown attempt kind", "replay"], ["a non-string attempt", 1]])(
+    "Mission 04-L — rejects %s before authorization",
+    async (_case, attempt) => {
+      await expect(saveTextThenStepAction("m-1", TEXT, FINAL, 7, attempt as never)).rejects.toThrow("Unsupported draft attempt.");
+      expect(authorizeMemorialForRequest).not.toHaveBeenCalled();
+    },
+  );
+
+  it("Mission 04-L — without the attempt argument (an older page), a request is « first »: never reconciled", async () => {
+    authorizeMemorialForRequest.mockResolvedValue({ status: "granted", memorialId: "m-1", ownerId: "o-1" });
+    repository.content = FINAL;
+    repository.revision = 9; // the very same final content, stored by another tab
+    expect(await saveTextThenStepAction("m-1", TEXT, FINAL, 7)).toMatchObject({ text: { status: "conflict" } });
+    expect(await saveTextThenStepAction("m-1", TEXT, FINAL, 7, "retry")).toMatchObject({ text: { reconciled: true } });
+    expect(repository.commits).toEqual([]);
+  });
 });
