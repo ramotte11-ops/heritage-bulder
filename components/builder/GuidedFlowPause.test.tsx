@@ -64,3 +64,17 @@ describe("GuidedFlowPause — openPreview (Lot 3)", () => {
     expect(button.getAttribute("aria-busy")).toBe("true");
   });
 });
+
+describe("GuidedFlowPause — Mission 04-G / L1.3: « Retour à mon espace »", () => {
+  it("authenticated Builder: one link to /owner, with its label and no busy signal at rest", () => {
+    render(<GuidedFlowPause language="fr" progress={0.9} />);
+    const link = screen.getByRole("link", { name: "Retour à mon espace" });
+    expect(link.getAttribute("href")).toBe("/owner");
+    expect(link.querySelector("[role=status]")).toBeNull();
+  });
+
+  it("guest Builder: still no way to an owner space it does not have", () => {
+    render(<GuidedFlowPause language="fr" progress={0.9} ownerSpace={false} />);
+    expect(screen.queryByRole("link", { name: "Retour à mon espace" })).toBeNull();
+  });
+});
