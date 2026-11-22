@@ -57,33 +57,63 @@ export async function loadFamilySpace(): Promise<FamilySpace> {
     return { status: "none", email, isOwner: false, publication: UNKNOWN_OWNER_FREE_PUBLICATION_STATUS };
   }
 
-  const publication = await loadOwnerFreePublicationStatus(gate.owner.id);
+  // Mission 04-G / L1.2 — once the Owner gate is granted, the three reads
+  // below depend on nothing but the Owner's id, so they run together: the
+  // free publication status, the list of the family's tributes, and their
+  // details. Every outcome is decided afterwards exactly as when they ran
+  // one after the other (see each branch). The only difference: when the
+  // family has no tribute, the details were read anyway — their result is
+  // ignored.
+  const clientRead = settle(createServerSupabaseClient());
+  const [publication, memorialsRead, detailsRead] = await Promise.all([
+    loadOwnerFreePublicationStatus(gate.owner.id),
+    clientRead.then((client) =>
+      client.ok ? settle(new SupabaseOwnedMemorialListRepository(client.value).listOwnedMemorials(gate.owner.id)) : client,
+    ),
+    clientRead.then((client) =>
+      client.ok ? settle(new SupabaseFamilySpaceRepository(client.value).listTributeDetails(gate.owner.id)) : client,
+    ),
+  ]);
 
-  try {
-    const client = await createServerSupabaseClient();
-    const memorials = await new SupabaseOwnedMemorialListRepository(client).listOwnedMemorials(gate.owner.id);
-    if (memorials.length === 0) return { status: "none", email, isOwner: true, publication };
-
-    const repository = new SupabaseFamilySpaceRepository(client);
-    // Statuses, years and photo references are an enrichment of the list:
-    // if they cannot be read, the family still reaches every tribute.
-    let details: Map<string, FamilyTributeDetails> = new Map();
-    try {
-      details = await repository.listTributeDetails(gate.owner.id);
-    } catch (error) {
-      console.error("Owner space: tribute details failed:", error instanceof Error ? error.message : error);
-    }
-
-    return {
-      status: "ready",
-      email,
-      actor,
-      publication,
-      tributes: buildFamilyTributes(memorials, details),
-      repository,
-    };
-  } catch (error) {
+  const client = await clientRead;
+  if (!client.ok || !memorialsRead.ok) {
+    const error = client.ok ? (memorialsRead.ok ? null : memorialsRead.error) : client.error;
     console.error("Owner space: memorial list failed:", error instanceof Error ? error.message : error);
     return { status: "error", email };
   }
+
+  const memorials = memorialsRead.value;
+  if (memorials.length === 0) return { status: "none", email, isOwner: true, publication };
+
+  const repository = new SupabaseFamilySpaceRepository(client.value);
+  // Statuses, years and photo references are an enrichment of the list:
+  // if they cannot be read, the family still reaches every tribute.
+  let details: Map<string, FamilyTributeDetails> = new Map();
+  if (detailsRead.ok) {
+    details = detailsRead.value;
+  } else {
+    console.error(
+      "Owner space: tribute details failed:",
+      detailsRead.error instanceof Error ? detailsRead.error.message : detailsRead.error,
+    );
+  }
+
+  return {
+    status: "ready",
+    email,
+    actor,
+    publication,
+    tributes: buildFamilyTributes(memorials, details),
+    repository,
+  };
+}
+
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+/** A read that never rejects: its failure is kept for the caller to decide. */
+function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  return promise.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
 }
