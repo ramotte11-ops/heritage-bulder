@@ -561,3 +561,92 @@ describe("flush — Mission 034 QG micro-audit: durable drain before an order-se
     await expect(controller.flush()).resolves.toBeUndefined();
   });
 });
+
+describe("persistVia — Mission 04-J experiment: the final write stands in for a save still owed", () => {
+  const SAVED = { updatedAt: "2026-01-01T00:00:00.000Z" };
+
+  it("scheduled save: ONE write (the caller's), and nothing scheduled fires afterwards (Mission 034)", async () => {
+    const persist = vi.fn().mockResolvedValue(SAVED);
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    const write = vi.fn().mockResolvedValue({ updatedAt: "2026-01-01T00:00:01.000Z" });
+
+    await controller.persistVia(write);
+    expect(write).toHaveBeenCalledOnce();
+    expect(controller.getState()).toMatchObject({ status: "saved", lastSavedAt: "2026-01-01T00:00:01.000Z" });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 10);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("a previous failure (error): the final write may stand in for the failed save (reconciliation retry)", async () => {
+    const persist = vi.fn().mockRejectedValue(new Error("lost"));
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(controller.getState().status).toBe("error");
+
+    await controller.persistVia(() => Promise.resolve(SAVED));
+    expect(controller.getState().status).toBe("saved");
+  });
+
+  it("a failed final write loses nothing: error, guard-worthy, and retry() saves the LATEST content", async () => {
+    const persist = vi.fn().mockResolvedValue(SAVED);
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    controller.notifyContentChanged(CONTENT_B);
+    await expect(controller.persistVia(() => Promise.reject(new Error("network down")))).rejects.toThrow("network down");
+    expect(controller.getState().status).toBe("error");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 10);
+    expect(persist).not.toHaveBeenCalled();
+
+    controller.retry();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(persist).toHaveBeenCalledWith(CONTENT_B);
+  });
+
+  it.each([
+    ["a save in flight", async (c: ReturnType<typeof createAutosaveController>, inFlight: Promise<unknown>) => {
+      c.setPersist(() => inFlight as Promise<{ updatedAt: string }>);
+      c.notifyContentChanged(CONTENT_A);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    }],
+    ["idle", async () => {}],
+    ["saved", async (c: ReturnType<typeof createAutosaveController>) => {
+      c.notifyContentChanged(CONTENT_A);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    }],
+    ["destroyed", async (c: ReturnType<typeof createAutosaveController>) => {
+      c.notifyContentChanged(CONTENT_A);
+      c.destroy();
+    }],
+  ])("%s: not applicable (null) — the historical path is kept", async (_case, prepare) => {
+    const inFlight = deferred<{ updatedAt: string }>();
+    const controller = createAutosaveController({ persist: vi.fn().mockResolvedValue(SAVED), debounceMs: DEBOUNCE_MS });
+    await prepare(controller, inFlight.promise);
+    const write = vi.fn();
+    expect(controller.persistVia(write)).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+    inFlight.resolve(SAVED);
+  });
+
+  it("content typed DURING the final write is not marked saved: it is saved afterwards, in order", async () => {
+    const finalWrite = deferred<{ updatedAt: string }>();
+    const order: string[] = [];
+    const persist = vi.fn(async (content: MemorialContent) => {
+      order.push(`autosave:${(content.hero as { title: string }).title}`);
+      return SAVED;
+    });
+    const controller = createAutosaveController({ persist, debounceMs: DEBOUNCE_MS });
+    controller.notifyContentChanged(CONTENT_A);
+    const handedOff = controller.persistVia(() => {
+      order.push("final:A");
+      return finalWrite.promise;
+    });
+    controller.notifyContentChanged(CONTENT_C);
+    finalWrite.resolve(SAVED);
+    await handedOff;
+    expect(controller.getState().status).toBe("pending");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(order).toEqual(["final:A", "autosave:ABC"]);
+  });
+});

@@ -11,6 +11,16 @@
 //   GET /__latency?ms=N   délai appliqué aux appels suivants
 //   GET /__mark?label=X   écrit un repère dans le journal
 //   GET /__reset          remet le brouillon de test dans son état initial
+//   GET /__state          révision, nombre d'écritures, contenu de cérémonie
+//   GET /__fail?nth=N&when=before|after
+//                         fait échouer la N-ième écriture à venir, avant
+//                         (rien d'écrit) ou après (écrite, réponse en erreur)
+//   GET /__hold?ms=N      retient la prochaine écriture N ms (rechargement,
+//                         fermeture d'onglet pendant l'écriture)
+//
+// Mission 04-K : l'écriture (commit_memorial_draft_edit_v1) vérifie la
+// révision attendue comme la vraie fonction : une révision périmée est
+// refusée avec le code 40001.
 //
 // Usage : node scripts/perf/supabase-stub.mjs <fixture.json> <journal.jsonl> [port]
 
@@ -31,10 +41,18 @@ const NOW = "2026-11-22T06:00:00.000Z";
 let latency = 0;
 let revision = 7;
 let content = structuredClone(fixture.content);
+let commits = 0;
+let commitAttempts = 0;
+const failures = new Map();
+let holdNextMs = 0;
 
 function reset() {
   revision = 7;
   content = structuredClone(fixture.content);
+  commits = 0;
+  commitAttempts = 0;
+  failures.clear();
+  holdNextMs = 0;
 }
 
 const ROWS = {
@@ -92,12 +110,22 @@ function respond(method, path, accept, body) {
   if (path.startsWith("/rest/v1/rpc/")) {
     const fn = path.slice("/rest/v1/rpc/".length);
     if (fn === "commit_memorial_draft_edit_v1") {
+      commitAttempts += 1;
+      const failure = failures.get(commitAttempts);
+      if (failure === "before") return { status: 500, payload: { code: "XX000", message: "faux Supabase : échec injecté" } };
+      let args = {};
       try {
-        content = JSON.parse(body).p_content ?? content;
+        args = JSON.parse(body);
       } catch {
-        // keep the previous content
+        // malformed body: treated as a stale revision below
       }
+      if (args.p_expected_revision !== revision) {
+        return { status: 409, payload: { code: "40001", message: "memorial draft changed" } };
+      }
+      content = args.p_content ?? content;
       revision += 1;
+      commits += 1;
+      if (failure === "after") return { status: 500, payload: { code: "XX000", message: "faux Supabase : réponse perdue injectée" } };
       return { status: 200, payload: { updated_at: NOW, revision } };
     }
     return { status: 200, payload: null };
@@ -145,10 +173,30 @@ http
         res.end("ok");
         return;
       }
+      if (url.pathname === "/__state") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ revision, commits, ceremony: content.ceremony ?? null, guidedFlow: content.guidedFlow ?? null }));
+        return;
+      }
+      if (url.pathname === "/__fail") {
+        failures.set(commitAttempts + Number(url.searchParams.get("nth") ?? 1), url.searchParams.get("when") === "after" ? "after" : "before");
+        res.end("ok");
+        return;
+      }
+      if (url.pathname === "/__hold") {
+        holdNextMs = Number(url.searchParams.get("ms") ?? 0);
+        res.end("ok");
+        return;
+      }
       const id = ++seq;
       const t0 = Date.now();
       inflight += 1;
       const concurrent = inflight;
+      let delay = latency;
+      if (holdNextMs > 0 && url.pathname === "/rest/v1/rpc/commit_memorial_draft_edit_v1") {
+        delay += holdNextMs;
+        holdNextMs = 0;
+      }
       setTimeout(() => {
         const { status, payload } = respond(req.method, url.pathname, req.headers.accept, body);
         inflight -= 1;
@@ -168,7 +216,7 @@ http
         );
         res.writeHead(status, { "content-type": "application/json", "content-range": "0-0/1" });
         res.end(JSON.stringify(payload));
-      }, latency);
+      }, delay);
     });
   })
   .listen(PORT, "127.0.0.1", () => console.log(`faux Supabase prêt sur http://127.0.0.1:${PORT}`));

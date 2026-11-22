@@ -338,6 +338,7 @@ export const en: Record<TranslationKey, string> = {
   "autosave.error": "Your latest changes could not be saved.",
   "autosave.offline": "You are offline. Your latest changes will be saved once the connection is back.",
   "autosave.retry": "Try again",
+  "autosave.stepPartial": "Your text has been saved. We couldn't confirm that this step was completed. You can try again without losing your text.",
   "autosave.conflictTitle": "A newer version was saved elsewhere.",
   "autosave.conflictBody": "Your latest changes on this screen were not saved. They will remain visible until you reload the page.",
   "autosave.conflictDownload": "Download my changes",
