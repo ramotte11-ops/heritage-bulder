@@ -39,40 +39,103 @@ const STATUS_MARK: Record<JourneyScreenState["status"], string> = {
 };
 
 /**
+ * Mission 04-D — one move out of the screen at a time, whichever journey
+ * control started it: each control has its own guard, and a navigation
+ * now stays in flight until the destination is ready, so a second
+ * control must not start another one meanwhile.
+ */
+let moveLockOwner: object | null = null;
+
+function moveInFlight(): boolean {
+  return moveLockOwner !== null;
+}
+
+function takeMoveLock(token: { current: object | null }): boolean {
+  if (moveLockOwner !== null) return false;
+  token.current = {};
+  moveLockOwner = token.current;
+  return true;
+}
+
+function releaseMoveLock(token: { current: object | null }): void {
+  if (token.current !== null && moveLockOwner === token.current) moveLockOwner = null;
+  token.current = null;
+}
+
+/** A guarded move: receives the transition its navigation must run in
+ * (`NavigationOptions.startTransition`) and resolves `false` — nothing
+ * navigated — when the screen could not be left safely. */
+type GuardedAction = (startTransition: (navigate: () => void) => void) => Promise<boolean>;
+
+/**
  * Every navigation out of the current screen goes through here: if the
  * screen holds input the autosave cannot save yet (./pending-input.tsx),
  * the family is asked first — stay and finish it, or leave without it —
  * never a silent loss. Otherwise the screen's autosave is drained and
  * the navigation runs (`JourneyNavigation.openScreen` / `resume`).
+ *
+ * Mission 04-D — the end of the autosave drain is NOT the end of the
+ * wait. The navigation itself runs in this guard's own transition (the
+ * mechanism « Changer l'ambiance » introduced), so the activated
+ * control keeps « Un instant… » — and every control stays disabled —
+ * until the route has brought the destination. `onDone` (closing the
+ * panel) runs inside that same transition: it is committed together
+ * with the new screen, never before it. A host whose moves are instant
+ * and do not use the transition (the guest runtime's resume, the QG
+ * demo) keeps its historical behaviour: `onDone` right after the move.
  */
 function useGuardedNavigation(journey: JourneyNavigation, onDone?: () => void) {
   const [busy, startTransition] = useTransition();
+  const [navigating, startNavigation] = useTransition();
   const [failed, setFailed] = useState(false);
-  const [waiting, setWaiting] = useState<null | { key: string; action: () => Promise<boolean> }>(null);
+  const [waiting, setWaiting] = useState<null | { key: string; action: GuardedAction }>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const pending = busy || navigating;
+  const lockToken = useRef<object | null>(null);
 
-  async function execute(action: () => Promise<boolean>) {
-    const ok = await action();
-    setPendingKey(null);
-    if (ok) onDone?.();
-    else {
+  // The shared lock is released once this guard's move is over (failed,
+  // or the destination is there), or when the guard goes away with it.
+  useEffect(() => {
+    if (!pending) releaseMoveLock(lockToken);
+  }, [pending]);
+  useEffect(() => () => releaseMoveLock(lockToken), []);
+
+  async function execute(action: GuardedAction) {
+    let transitioned = false;
+    const ok = await action((navigate) => {
+      transitioned = true;
+      startNavigation(() => {
+        navigate();
+        onDone?.();
+      });
+    });
+    if (!ok) {
+      // Nothing navigated: the controls are usable again at once.
+      setPendingKey(null);
       setFailed(true);
+      return;
     }
+    if (!transitioned) onDone?.();
   }
 
-  function begin(key: string, action: () => Promise<boolean>) {
+  function begin(key: string, action: GuardedAction) {
+    // Another journey control (the revision notice, the panel, the full
+    // review entry, « Changer l'ambiance ») is already leaving the screen.
+    if (!takeMoveLock(lockToken)) return;
     setFailed(false);
     setPendingKey(key);
     startTransition(async () => execute(action));
   }
 
   return {
-    busy,
-    pendingKey,
+    busy: pending,
+    /** The activated control, shown busy for as long as the move is
+     * genuinely in flight: drain, then the route's own transition. */
+    activeKey: pending ? pendingKey : null,
     failed,
     waiting: waiting !== null,
-    run(key: string, action: () => Promise<boolean>) {
-      if (busy) return;
+    run(key: string, action: GuardedAction) {
+      if (pending || moveInFlight()) return;
       if (journey.hasPendingInput()) {
         setWaiting({ key, action });
         return;
@@ -122,10 +185,18 @@ export function JourneyEntry() {
   const revising = journey?.snapshot.revising ?? null;
   const [open, setOpen] = useState(reviewingSection !== null && revising === null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const wasOpen = useRef(open);
+
+  // Mission 04-D — the panel may close inside a navigation's transition
+  // (committed with the new screen): focus comes back to the entry only
+  // once the panel is really gone, never while it still says « Un instant… ».
+  useEffect(() => {
+    if (wasOpen.current && !open) buttonRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
 
   const close = useCallback(() => {
     setOpen(false);
-    buttonRef.current?.focus();
   }, []);
 
   if (journey === null) return null;
@@ -174,12 +245,12 @@ function RevisingNotice({ journey }: { journey: JourneyNavigation }) {
       <button
         type="button"
         className={styles.linkButton}
-        onClick={() => guard.run("resume", journey.resume)}
+        onClick={() => guard.run("resume", (startTransition) => journey.resume({ startTransition }))}
         disabled={guard.busy}
-        aria-busy={guard.pendingKey === "resume" || undefined}
+        aria-busy={guard.activeKey === "resume" || undefined}
       >
         <PendingActionLabel
-          pending={guard.pendingKey === "resume"}
+          pending={guard.activeKey === "resume"}
           pendingLabel={translate(journey.language, "common.pleaseWait")}
         >
           {translate(journey.language, way)}
@@ -210,40 +281,57 @@ function JourneyPanel({ journey, onClose }: { journey: JourneyNavigation; onClos
   // dialog (no second overlay); « Retour à mon parcours » comes back.
   const [view, setView] = useState<"journey" | "visibility">("journey");
   const visibility = journey.visibility ?? null;
+  // Mission 04-D — while a move is in flight the panel stays, busy, until
+  // the destination is ready: closing it then (Escape, backdrop,
+  // « Fermer ») would show the old screen again with no sign of the wait.
+  // The move itself closes it, with the new screen.
+  const dismiss = busy ? undefined : onClose;
 
   useEffect(() => {
     closeRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, []);
+
+  useEffect(() => {
+    if (dismiss === undefined) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") dismiss?.();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [dismiss]);
 
   const actions: RowActions = {
-    review: (id, section) => guard.run(id, () => journey.openScreen(id, section === undefined ? {} : { section })),
+    review: (id, section) =>
+      guard.run(id, (startTransition) =>
+        journey.openScreen(id, section === undefined ? { startTransition } : { section, startTransition }),
+      ),
     resume: () =>
-      guard.run(
-        "resume",
-        snapshot.reviewingSection === null ? journey.resume : journey.finishReview,
+      guard.run("resume", (startTransition) =>
+        (snapshot.reviewingSection === null ? journey.resume : journey.finishReview)({ startTransition }),
       ),
     busy,
-    pendingKey: guard.pendingKey,
+    pendingKey: guard.activeKey,
   };
 
   return (
-    <div className={styles.overlay} onClick={(event) => event.target === event.currentTarget && onClose()}>
+    <div className={styles.overlay} onClick={(event) => event.target === event.currentTarget && dismiss?.()}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={styles.panel} aria-busy={busy}>
         <div className={styles.panelHead}>
           <h2 id={titleId} className={styles.panelTitle}>
             {translate(language, view === "visibility" ? "visibility.title" : "journey.title")}
           </h2>
-          <button ref={closeRef} type="button" className={styles.linkButton} onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className={styles.linkButton}
+            onClick={dismiss}
+            disabled={dismiss === undefined}
+          >
             {translate(language, "journey.close")}
           </button>
         </div>
@@ -594,19 +682,25 @@ export function FullReviewEntry() {
   return <FullReviewAction journey={journey} start={journey.startReview} />;
 }
 
-function FullReviewAction({ journey, start }: { journey: JourneyNavigation; start: () => Promise<boolean> }) {
+function FullReviewAction({
+  journey,
+  start,
+}: {
+  journey: JourneyNavigation;
+  start: NonNullable<JourneyNavigation["startReview"]>;
+}) {
   const guard = useGuardedNavigation(journey);
   return (
     <div className={styles.revising}>
       <button
         type="button"
         className={styles.linkButton}
-        onClick={() => guard.run("fullReview", start)}
+        onClick={() => guard.run("fullReview", (startTransition) => start({ startTransition }))}
         disabled={guard.busy}
-        aria-busy={guard.pendingKey === "fullReview" || undefined}
+        aria-busy={guard.activeKey === "fullReview" || undefined}
       >
         <PendingActionLabel
-          pending={guard.pendingKey === "fullReview"}
+          pending={guard.activeKey === "fullReview"}
           pendingLabel={translate(journey.language, "common.pleaseWait")}
         >
           {translate(journey.language, "journey.fullReviewStart")}
@@ -671,19 +765,21 @@ export function ChangeAmbianceLink({ className }: { className?: string }) {
 }
 
 function ChangeAmbianceAction({ journey, className }: { journey: JourneyNavigation; className?: string }) {
+  // The guard runs the navigation in its own transition (the mechanism
+  // this control introduced, now shared by every guarded move).
   const guard = useGuardedNavigation(journey);
-  const [navigating, startNavigation] = useTransition();
-  const pending = guard.pendingKey === "ambiance" || navigating;
+  const pending = guard.activeKey === "ambiance";
   return (
     <div className={styles.revising}>
       <button
         type="button"
         className={className ?? styles.linkButton}
-        onClick={() => {
-          if (navigating) return;
-          guard.run("ambiance", () => journey.openScreen("reveal", { returnToPreview: true, startTransition: startNavigation }));
-        }}
-        disabled={guard.busy || navigating}
+        onClick={() =>
+          guard.run("ambiance", (startTransition) =>
+            journey.openScreen("reveal", { returnToPreview: true, startTransition }),
+          )
+        }
+        disabled={guard.busy}
         aria-busy={pending || undefined}
       >
         <PendingActionLabel
