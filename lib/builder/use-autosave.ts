@@ -93,6 +93,9 @@ export interface UseAutosaveResult {
    * exists. Resolves immediately, doing nothing, in persist-less (demo)
    * mode — there is no controller, and therefore nothing to drain. */
   flush: () => Promise<void>;
+  /** Mission 04-J (EXPERIMENT) — see `AutosaveController.persistVia`.
+   * Always `null` in persist-less (demo) mode. */
+  persistVia: (write: () => Promise<{ updatedAt: string }>) => Promise<void> | null;
 }
 
 function noopSubscribe(): () => void {
@@ -107,6 +110,10 @@ function noopRetry(): void {}
 
 function noopFlush(): Promise<void> {
   return Promise.resolve();
+}
+
+function noopPersistVia(): null {
+  return null;
 }
 
 /**
@@ -224,5 +231,6 @@ export function useAutosave<T = MemorialContent>({ content, persist }: UseAutosa
     state,
     retry: controller ? controller.retry : noopRetry,
     flush: controller ? controller.flush : noopFlush,
+    persistVia: controller ? controller.persistVia : noopPersistVia,
   };
 }

@@ -6,6 +6,7 @@ import type { Language } from "@/config/languages";
 import type { MemorialContent } from "@/types/memorial";
 import { translate } from "@/lib/i18n/translate";
 import { useAutosave } from "@/lib/builder/use-autosave";
+import { useCombinedStepSave, type TextThenStepTransport } from "@/lib/builder/use-combined-step-save";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import {
   ceremonyStepProgress,
@@ -27,6 +28,10 @@ interface CeremonyVenueStepProps {
    * resolved by the time this renders. */
   content: MemorialContent;
   persist: DraftSaveTransport;
+  /** Mission 04-J (EXPERIMENT, local only) — the combined « text then
+   * step » transport. Given only by the authenticated route, and only
+   * before publication; absent → the historical path, unchanged. */
+  persistCombined?: TextThenStepTransport;
   /** Optional host progress override; authenticated callers keep the
    * canonical calculation while the guest host includes its local Hero. */
   progress?: number;
@@ -37,14 +42,15 @@ interface CeremonyVenueStepProps {
  * own découpage) — never a full address (that is A07's own field).
  * Facultatif, passable.
  */
-export function CeremonyVenueStep({ language, content: initialContent, persist, progress }: CeremonyVenueStepProps) {
+export function CeremonyVenueStep({ language, content: initialContent, persist, persistCombined, progress }: CeremonyVenueStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
   const [content, setContent] = useState(initialContent);
   const [submitError, setSubmitError] = useState(false);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
 
-  const { flush, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const { flush, persistVia, state: autosaveState, retry: retryAutosave } = useAutosave({ content, persist: saveDraft });
+  const saveStep = useCombinedStepSave({ status: autosaveState.status, flush, persistVia }, saveDraft, persistCombined);
 
   const read = readCeremonyForEditing(content);
   const controlsDisabled = pendingAction !== null;
@@ -54,23 +60,11 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
     if (result.ok) setContent(result.content);
   }
 
-  async function drainAutosave(): Promise<boolean> {
-    try {
-      await flush();
-      return true;
-    } catch {
-      setSubmitError(true);
-      setPendingAction(null);
-      return false;
-    }
-  }
-
   async function handleContinue(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (read.status !== "ready") return;
 
     setPendingAction("continue");
-    if (!(await drainAutosave())) return;
 
     const committed = commitA06(content);
     if (!committed.ok) {
@@ -79,8 +73,10 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
       return;
     }
 
+    // Mission 04-J (EXPERIMENT) — the text then the step; the historical
+    // flush-then-write order whenever the combined path does not apply.
     try {
-      await saveDraft(committed.content);
+      await saveStep(content, committed.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);
@@ -94,7 +90,6 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
     if (read.status !== "ready" || controlsDisabled) return;
 
     setPendingAction("skip");
-    if (!(await drainAutosave())) return;
 
     const skipped = skipA06(content);
     if (!skipped.ok) {
@@ -104,7 +99,7 @@ export function CeremonyVenueStep({ language, content: initialContent, persist, 
     }
 
     try {
-      await saveDraft(skipped.content);
+      await saveStep(content, skipped.content);
     } catch {
       setSubmitError(true);
       setPendingAction(null);

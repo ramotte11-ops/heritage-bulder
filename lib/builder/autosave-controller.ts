@@ -163,6 +163,18 @@ export interface AutosaveController<T = MemorialContent> {
    * `"saved"`). See this file's own docstring, "Mission 034 QG
    * micro-audit". */
   flush(): Promise<void>;
+  /** Mission 04-J (EXPERIMENT) — lets a caller's final write stand in for
+   * the save this controller still OWES: one scheduled but not started
+   * (`"pending"`), or one that failed (`"error"`, e.g. an answer lost on
+   * the way back). Never while a save is in flight, nor once destroyed:
+   * returns `null` and the caller keeps the historical path (`flush()`,
+   * then its own write). When it applies, the debounce timer is cancelled
+   * (no stale save can land after the caller's write — Mission 034) and
+   * `write` runs exactly like one of this controller's saves: same
+   * generation capture, same `saving` → `saved` / `error` transitions,
+   * same `retryRequested` follow-up. A failure leaves `"error"` with the
+   * same unsaved content: `retry()` and the `beforeunload` guard apply. */
+  persistVia(write: () => Promise<{ updatedAt: string }>): Promise<void> | null;
 }
 
 export function createAutosaveController<T = MemorialContent>(
@@ -336,5 +348,41 @@ export function createAutosaveController<T = MemorialContent>(
     });
   }
 
-  return { notifyContentChanged, getState, subscribe, destroy, resume, setPersist, retry, flush };
+  function persistVia(write: () => Promise<{ updatedAt: string }>): Promise<void> | null {
+    if (destroyed || inFlightGeneration !== null) return null;
+    if (state.status !== "pending" && state.status !== "error") return null;
+
+    clearDebounceTimer();
+    if (state.status === "error") setState(markContentChanged(state)); // error -> pending, like retry()
+    const generationToSave = generation;
+    inFlightGeneration = generationToSave;
+    retryRequested = false;
+    setState(startSaving(state));
+
+    return write().then(
+      (result) => {
+        inFlightGeneration = null;
+        if (!destroyed && generationToSave === generation) {
+          setState(saveSucceeded(state, result.updatedAt));
+        }
+        if (!destroyed && retryRequested) {
+          retryRequested = false;
+          attemptSave();
+        }
+      },
+      (error: unknown) => {
+        inFlightGeneration = null;
+        if (!destroyed && generationToSave === generation) {
+          setState(saveFailed(state, error instanceof Error ? error.message : String(error)));
+        }
+        if (!destroyed && retryRequested) {
+          retryRequested = false;
+          attemptSave();
+        }
+        throw error;
+      },
+    );
+  }
+
+  return { notifyContentChanged, getState, subscribe, destroy, resume, setPersist, retry, flush, persistVia };
 }

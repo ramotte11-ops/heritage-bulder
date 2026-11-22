@@ -71,6 +71,7 @@ import { resolveHeroCropStepData } from "@/lib/builder/guided-flow/resolve-hero-
 import { createServerMediaEngineDeps } from "@/lib/media/server-media-engine";
 import { readHero } from "@/lib/memorial/hero";
 import { saveDraftAction, saveLanguageAction } from "./actions";
+import { saveTextThenStepAction } from "./step-final-actions";
 import {
   reserveHeroPhotoUploadAction,
   finalizeHeroPhotoUploadAction,
@@ -668,7 +669,15 @@ export default async function BuilderMemorialPage({
       case "ceremonyVenue":
         return {
           element: (
-            <CeremonyVenueStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />
+            <CeremonyVenueStep
+              key={key}
+              language={language}
+              content={content}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              // Mission 04-J (EXPERIMENT, local only) — before any
+              // publication only; the action re-checks it on every call.
+              persistCombined={resumed.memorial.status === "draft" ? saveTextThenStepAction.bind(null, access.memorialId) : undefined}
+            />
           ),
           available: previewAvailable(content),
         };
