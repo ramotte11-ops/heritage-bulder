@@ -115,7 +115,11 @@ describe("MemorialAssembly — the real renderers, in the composition's order", 
     const { container } = await renderAssembly(fullAnnouncement());
     const block = (id: string) => container.querySelector(`[data-memorial-section="${id}"]`) as HTMLElement;
 
-    expect(block("hero").querySelector('img[src*="hero-runtime-light-desktop.png"]')).toBeTruthy();
+    expect(
+      block("hero").querySelector(
+        'picture[data-hero-responsive-master] source[srcset*="hero-runtime-light-desktop.png"]',
+      ),
+    ).toBeTruthy();
     expect(block("deathNotice").querySelector('[data-testid="death-notice-v2"]')).toBeTruthy();
     // V1 (rollback only) is never what the Memorial draws.
     expect(block("deathNotice").querySelector('img[src*="a03-scene-top.png"]')).toBeNull();

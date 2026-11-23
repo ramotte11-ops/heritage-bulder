@@ -61,8 +61,7 @@
 
 /* --- The Studio's own runtime masters — the entire composition ------- */
 
-.masterDesktop,
-.masterMobile {
+.masterResponsive {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -72,29 +71,11 @@
   pointer-events: none;
 }
 
-.masterDesktop {
-  display: none;
-}
-
-.masterMobile {
-  display: block;
-}
-
-@media (min-width: 960px) {
-  .masterDesktop {
-    display: block;
-  }
-
-  .masterMobile {
-    display: none;
-  }
-}
-
 /* --- Photo window (mission section 4) ---------------------------------
    One axis-aligned box, sized/positioned from the manifest's own
    `photo_opening_runtime_px_exact` (HeroIntemporel.tsx's `photoWindowBox`),
-   switched desktop/mobile by the same breakpoint as the two master
-   images above. BEHIND the master (z-index 0 < 10) so the master's
+   switched desktop/mobile by the same breakpoint as the responsive
+   master above. BEHIND the master (z-index 0 < 10) so the master's
    genuinely-transparent cut shows it through exactly where the Studio
    placed it. No rotation anywhere — the window IS the visible crop, no
    masking trick needed. */
@@ -146,7 +127,7 @@
 
 @media (max-width: 959.98px) {
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .photoWindow,
-  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterMobile {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterResponsive {
     display: none;
   }
 
@@ -198,7 +179,7 @@
   }
 
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
-  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterMobile {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterResponsive {
     display: none;
   }
 
@@ -250,7 +231,7 @@
 
 @media (min-width: 960px) {
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .photoWindow,
-  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterDesktop {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .masterResponsive {
     display: none;
   }
 
@@ -300,7 +281,7 @@
 
 @media (min-width: 960px) {
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .photoWindow,
-  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterDesktop {
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="dark"] .masterResponsive {
     display: none;
   }
 

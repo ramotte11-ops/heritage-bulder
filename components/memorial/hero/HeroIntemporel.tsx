@@ -125,9 +125,9 @@ import styles from "./HeroIntemporel.module.css";
  * never `prefers-color-scheme`, never a mechanically-rescaled desktop
  * master standing in for mobile. Both the photo window and the text
  * zone carry their own desktop/mobile percentages as CSS custom
- * properties, switched together with the two master `<img>`s
- * themselves (only one of which is ever visible) in
- * `HeroIntemporel.module.css` — one DOM tree, CSS-driven breakpoint.
+ * properties, switched with the master `<picture>` at the same
+ * breakpoint. The browser selects exactly one raster source while the
+ * component keeps one stable server/client DOM tree.
  *
  * ## Header/UI (mission section 7)
  *
@@ -299,6 +299,7 @@ export interface FitDisplayNameResult {
  * about which contract applies. */
 // The Mobile photo runtimes' territory: every width below the Desktop breakpoint.
 const MOBILE_TEXT_CONTRACT_MEDIA_QUERY = `(max-width: ${HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX - 0.02}px)`;
+const DESKTOP_MEDIA_QUERY = `(min-width: ${HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX}px)`;
 
 export interface MobileContractNameFit {
   fontSizePx: number;
@@ -919,58 +920,48 @@ export function HeroIntemporel({ hero, photo, skinVariant, language }: HeroIntem
         )}
 
         {/* The Studio's own runtime masters — the whole artistic
-            composition, no raster text or UI (V3 FINAL). Only one is
-            ever visible at a time (this module's own CSS, switched at
-            the 960px breakpoint). Never `next/image`: these are fixed,
-            pre-optimized static assets shipped from `public/`, not
-            per-request content worth its optimization pipeline. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={masterSrc.desktop} alt="" aria-hidden="true" className={styles.masterDesktop} />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterMobile} />
+            composition, no raster text or UI (V3 FINAL). Native picture
+            selection makes the browser request only the source for the
+            existing 960px breakpoint. Never `next/image`: these are
+            fixed, pre-optimized static assets shipped from `public/`,
+            not per-request content worth its optimization pipeline. */}
+        <picture data-hero-responsive-master="">
+          <source media={DESKTOP_MEDIA_QUERY} srcSet={masterSrc.desktop} />
+          <img src={masterSrc.mobile} alt="" aria-hidden="true" className={styles.masterResponsive} />
+        </picture>
 
         {skinVariant === "light" && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.plateSrc}
-            alt=""
-            aria-hidden="true"
-            className={styles.mobileLightRuntimePlate}
-            data-hero-mobile-light-layer="clean-plate"
-          />
+          <picture data-hero-responsive-artwork="light">
+            <source
+              media={DESKTOP_MEDIA_QUERY}
+              srcSet={HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc}
+            />
+            <img
+              src={HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME.plateSrc}
+              alt=""
+              aria-hidden="true"
+              className={`${styles.mobileLightRuntimePlate} ${styles.desktopLightRuntimeOverlay}`}
+              data-hero-mobile-light-layer="clean-plate"
+              data-hero-desktop-light-layer="authoritative-overlay"
+            />
+          </picture>
         )}
 
         {skinVariant === "dark" && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySrc}
-            alt=""
-            aria-hidden="true"
-            className={styles.mobileDarkRuntimeOverlay}
-            data-hero-mobile-dark-layer="authoritative-overlay"
-          />
-        )}
-
-        {skinVariant === "light" && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc}
-            alt=""
-            aria-hidden="true"
-            className={styles.desktopLightRuntimeOverlay}
-            data-hero-desktop-light-layer="authoritative-overlay"
-          />
-        )}
-
-        {skinVariant === "dark" && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySrc}
-            alt=""
-            aria-hidden="true"
-            className={styles.desktopDarkRuntimeOverlay}
-            data-hero-desktop-dark-layer="authoritative-overlay"
-          />
+          <picture data-hero-responsive-artwork="dark">
+            <source
+              media={DESKTOP_MEDIA_QUERY}
+              srcSet={HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySrc}
+            />
+            <img
+              src={HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME.overlaySrc}
+              alt=""
+              aria-hidden="true"
+              className={`${styles.mobileDarkRuntimeOverlay} ${styles.desktopDarkRuntimeOverlay}`}
+              data-hero-mobile-dark-layer="authoritative-overlay"
+              data-hero-desktop-dark-layer="authoritative-overlay"
+            />
+          </picture>
         )}
 
         <div
