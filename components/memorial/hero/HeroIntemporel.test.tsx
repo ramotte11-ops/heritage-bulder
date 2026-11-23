@@ -84,20 +84,34 @@ function renderHero(overrides: Partial<React.ComponentProps<typeof HeroIntempore
 }
 
 describe("HeroIntemporel — the Studio's own runtime masters, nothing recomposed", () => {
-  it("renders both the light desktop and light mobile masters (one hidden by CSS, the DOM stays single)", () => {
+  it("lets the browser select one light master at the existing breakpoint", () => {
     const { container } = renderHero({ skinVariant: "light" });
-
-    expect(container.querySelector('img[src*="hero-runtime-light-desktop.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="hero-runtime-light-mobile.png"]')).toBeTruthy();
+    const picture = container.querySelector('picture[data-hero-responsive-master]')!;
+    expect(picture.querySelector('source[media="(min-width: 960px)"]')?.getAttribute("srcset")).toContain(
+      "hero-runtime-light-desktop.png",
+    );
+    expect(picture.querySelector("img")?.getAttribute("src")).toContain("hero-runtime-light-mobile.png");
+    expect(picture.querySelectorAll("img")).toHaveLength(1);
     expect(container.querySelector('img[src*="dark"]')).toBeNull();
   });
 
-  it("renders the dark masters when skinVariant is dark", () => {
+  it("lets the browser select one dark master at the existing breakpoint", () => {
     const { container } = renderHero({ skinVariant: "dark" });
-
-    expect(container.querySelector('img[src*="hero-runtime-dark-desktop.png"]')).toBeTruthy();
-    expect(container.querySelector('img[src*="hero-runtime-dark-mobile.png"]')).toBeTruthy();
+    const picture = container.querySelector('picture[data-hero-responsive-master]')!;
+    expect(picture.querySelector('source[media="(min-width: 960px)"]')?.getAttribute("srcset")).toContain(
+      "hero-runtime-dark-desktop.png",
+    );
+    expect(picture.querySelector("img")?.getAttribute("src")).toContain("hero-runtime-dark-mobile.png");
+    expect(picture.querySelectorAll("img")).toHaveLength(1);
     expect(container.querySelector('img[src*="light"]')).toBeNull();
+  });
+
+  it.each(["light", "dark"] as const)("selects one responsive %s artwork without client viewport state", (variant) => {
+    const { container } = renderHero({ skinVariant: variant });
+    const picture = container.querySelector(`picture[data-hero-responsive-artwork="${variant}"]`)!;
+    expect(picture.querySelectorAll("source")).toHaveLength(1);
+    expect(picture.querySelector("source")?.getAttribute("media")).toBe("(min-width: 960px)");
+    expect(picture.querySelectorAll("img")).toHaveLength(1);
   });
 
   it("never draws a paper, botanical, postcard, seal, or paperclip asset of its own", () => {
@@ -120,8 +134,11 @@ describe("HeroIntemporel — photo window geometry (mission 035 v4, section 4)",
         photo: { readUrl, crop: { focalX: 0.3, focalY: 0.7, zoom: 1.4 } },
       });
       expect(container.querySelectorAll(`img[src="${readUrl}"]`)).toHaveLength(3);
-      expect(container.querySelector(`img[src*="hero-runtime-${skinVariant}-mobile.png"]`)).toBeTruthy();
-      expect(container.querySelector(`img[src*="hero-runtime-${skinVariant}-desktop.png"]`)).toBeTruthy();
+      const master = container.querySelector('picture[data-hero-responsive-master]')!;
+      expect(master.querySelector("img")?.getAttribute("src")).toContain(`hero-runtime-${skinVariant}-mobile.png`);
+      expect(master.querySelector("source")?.getAttribute("srcset")).toContain(
+        `hero-runtime-${skinVariant}-desktop.png`,
+      );
     },
   );
 
@@ -353,7 +370,7 @@ describe("HeroIntemporel — Desktop Light Handoff Runtime V1", () => {
       "dynamic-content",
     ]);
     expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
-    expect((layers[1] as HTMLImageElement).src).toContain(
+    expect(layers[1].closest("picture")?.querySelector("source")?.getAttribute("srcset")).toContain(
       HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySrc,
     );
   });
@@ -395,7 +412,7 @@ describe("HeroIntemporel — Desktop Dark Handoff Runtime V1", () => {
       "dynamic-content",
     ]);
     expect(layers[0].querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeTruthy();
-    expect((layers[1] as HTMLImageElement).src).toContain(
+    expect(layers[1].closest("picture")?.querySelector("source")?.getAttribute("srcset")).toContain(
       HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySrc,
     );
   });
@@ -500,7 +517,7 @@ describe("HeroIntemporel — accessibility", () => {
 
     const images = Array.from(container.querySelectorAll("img"));
     const decorative = images.filter((img) => img.getAttribute("src") !== PHOTO.readUrl);
-    expect(decorative.length).toBe(4); // two legacy masters plus the Mobile/ Desktop Light overlays
+    expect(decorative.length).toBe(2); // one responsive master plus one responsive Light artwork
     for (const img of decorative) {
       expect(img.getAttribute("aria-hidden")).toBe("true");
       expect(img.getAttribute("alt")).toBe("");
@@ -517,7 +534,9 @@ describe("HeroIntemporel — a missing photo degrades cleanly, never crashes", (
     const { container } = renderHero({ hero: { ...FULL_HERO, photo: null }, photo: null });
 
     expect(container.querySelector(`img[src="${PHOTO.readUrl}"]`)).toBeNull();
-    expect(container.querySelector('img[src*="hero-runtime-light-desktop.png"]')).toBeTruthy();
+    expect(
+      container.querySelector('picture[data-hero-responsive-master] source[srcset*="hero-runtime-light-desktop.png"]'),
+    ).toBeTruthy();
     expect(screen.getByText("Jean Dupont")).toBeTruthy();
   });
 });
@@ -1067,7 +1086,7 @@ describe("HeroIntemporel — photo alignment below 960px (Light and Dark)", () =
 
   it.each(["light", "dark"] as const)("%s: the legacy axis-aligned window and mobile master are hidden below 960px", (variant) => {
     const scope = `[data-heritage-skin="intemporel"][data-heritage-skin-variant="${variant}"]`;
-    expect(SUB_DESKTOP_BLOCKS).toContain(`${scope} .photoWindow,\n  ${scope} .masterMobile {\n    display: none;\n  }`);
+    expect(SUB_DESKTOP_BLOCKS).toContain(`${scope} .photoWindow,\n  ${scope} .masterResponsive {\n    display: none;\n  }`);
   });
 
   it("Light shows its projected photo and clean plate below 960px; Dark its projected photo and overlay", () => {
