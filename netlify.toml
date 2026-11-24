@@ -3,3 +3,10 @@
 
 [build.environment]
   NODE_VERSION = "24"
+
+# Mission 06-D — only byte-verified, content-addressed decor copies live
+# under this prefix. Stable public/assets URLs keep Netlify's default policy.
+[[headers]]
+  for = "/assets/fingerprinted/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

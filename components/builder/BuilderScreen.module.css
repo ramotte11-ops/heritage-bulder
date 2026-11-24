@@ -10,7 +10,7 @@
   min-height: 100dvh;
   overflow: hidden;
   background-color: var(--heritage-surface-page); /* shows while the image loads, or if it fails */
-  background-image: url("/assets/builder/backgrounds/heritage-builder-background-mobile.png");
+  background-image: url("/assets/fingerprinted/a45b42834151d61381e88e010b742a15e8a851adf803bea14a375c780775d4f3-heritage-builder-background-mobile.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -32,7 +32,7 @@
 
 @media (min-width: 40rem) {
   .page {
-    background-image: url("/assets/builder/backgrounds/heritage-builder-background-desktop.png");
+    background-image: url("/assets/fingerprinted/1dbc4e705f8e056cd42622cddd769b658c49d776ecd99f5891d87cce64f57393-heritage-builder-background-desktop.png");
   }
 }
 

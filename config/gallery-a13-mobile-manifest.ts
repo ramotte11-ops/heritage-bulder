@@ -33,6 +33,8 @@
  * raster-scaled (contract `responsive`).
  */
 
+import { DECOR_FINGERPRINTS } from "@/config/decor-fingerprints";
+
 export const A13_MOBILE_HANDOFF_ID = "A13_MOBILE_GALLERY_LIGHT_FINAL_HANDOFF_V1_7" as const;
 
 export const A13_MOBILE_CANVAS = { width: 941, height: 1672 } as const;
@@ -313,7 +315,7 @@ export const A13_MOBILE_TITLE_BLOCK = {
  * this reading is reported to QG.
  */
 export const A13_MOBILE_SEPARATOR_ART = {
-  sprigSrc: "/assets/ceremony/intemporel/runtime/light/title-sprig.png",
+  sprigSrc: DECOR_FINGERPRINTS.ceremonyLightTitleSprig.src,
   sprigFile: { width: 260, height: 95 },
   sprigViewBox: { x: 70, y: 15, width: 132, height: 60 },
   ruleColor: "rgb(150 142 121)",

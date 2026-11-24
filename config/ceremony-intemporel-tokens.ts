@@ -1,4 +1,5 @@
 import type { SkinVariant } from "@/config/skins";
+import { DECOR_FINGERPRINTS } from "@/config/decor-fingerprints";
 
 /**
  * Mission 040B — the Ceremony ("Cérémonie") Intemporel RUNTIME tokens,
@@ -105,7 +106,7 @@ export const CEREMONY_INTEMPOREL_ASSET_SRC: Record<
     iconInfo: `${ASSET_ROOT}/light/icon-info.png`,
     separatorHorizontal: `${ASSET_ROOT}/light/separator-horizontal.png`,
     separatorVertical: `${ASSET_ROOT}/light/separator-vertical.png`,
-    titleSprig: `${ASSET_ROOT}/light/title-sprig.png`,
+    titleSprig: DECOR_FINGERPRINTS.ceremonyLightTitleSprig.src,
     closingHeartSprig: `${ASSET_ROOT}/light/closing-heart-sprig.png`,
   },
   dark: {

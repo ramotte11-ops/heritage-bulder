@@ -11,11 +11,12 @@ import screenStyles from "./BuilderScreen.module.css";
 import styles from "./WelcomeStep.module.css";
 import { useRevisionedDraftPersist, type DraftSaveTransport } from "@/lib/builder/draft-revision";
 import { useStepDone } from "./journey/journey-context";
+import { DECOR_FINGERPRINTS } from "@/config/decor-fingerprints";
 
 /** The Ceremony title's own botanical sprig, reused as-is (never
  * modified): the one decorative image on this screen besides the
  * Builder's shared paper background. */
-const SPRIG_SRC = "/assets/ceremony/intemporel/runtime/light/title-sprig.png";
+const SPRIG_SRC = DECOR_FINGERPRINTS.ceremonyLightTitleSprig.src;
 
 type WelcomeStepState = { status: "idle" } | { status: "error" };
 
