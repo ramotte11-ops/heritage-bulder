@@ -27,6 +27,7 @@
  */
 
 import type { SkinVariant } from "@/config/skins";
+import { DECOR_FINGERPRINTS } from "@/config/decor-fingerprints";
 
 export const HERO_INTEMPOREL_BREAKPOINT_DESKTOP_PX = 960;
 
@@ -53,10 +54,8 @@ export const HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_RUNTIME = {
     [-42.583383355159, 465.6752792727, 219.04280090332],
     [0.00652662597, -0.017417454681, 1],
   ],
-  plateSrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_PLATE_RUNTIME_CLEAN_V2.png",
-  maskSrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_LIGHT_PHOTO_MASK_RUNTIME_CLEAN_V1.png",
+  plateSrc: DECOR_FINGERPRINTS.heroMobileLightPlate.src,
+  maskSrc: DECOR_FINGERPRINTS.heroMobileLightMask.src,
   plateSha256: "91c902ee25725b0fafbccb4a2f4138026947a30fc06f94ae0132c0710fc14a6e",
   maskSha256: "8df35f9e9222e0dca243e70e629c600cf9c0f1ff72028735f459db2ed82653f8",
 } as const;
@@ -91,8 +90,7 @@ export const HERO_INTEMPOREL_MOBILE_DARK_PHOTO_RUNTIME = {
     [-12.218643662535635, 111.26622935568122, 150.5527559508917],
     [0.003351048606059601, -0.003898191948665708, 1],
   ],
-  overlaySrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_MOBILE_DARK_ALPHA_RUNTIME_ASSET_V2(1).png",
+  overlaySrc: DECOR_FINGERPRINTS.heroMobileDarkOverlay.src,
   overlaySha256: "aab7752aad7d707a0db4c46cef344d852b32dfd86ee3dcfa4eeac1e09c1a36c0",
   fullyTransparentPixels: 226292,
 } as const;
@@ -123,8 +121,7 @@ export const HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME = {
     [-22.009530153937288, 111.88555121460418, 213.34765695803256],
     [-0.00015384940226202226, -0.0017096147467908099, 1],
   ],
-  overlaySrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_LIGHT_ALPHA_RUNTIME_ASSET_V2.png",
+  overlaySrc: DECOR_FINGERPRINTS.heroDesktopLightOverlay.src,
   overlaySha256: "6a614a9db6367eb7a9ad11a353df167504140b3d16455bd31615315382b86651",
   fullyTransparentPixels: 295048,
 } as const;
@@ -151,8 +148,7 @@ export const HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME = {
     [-21.07242999591678, 107.96074197549991, 208.53977135624035],
     [-0.006573455951470907, -0.0028162226428227314, 1],
   ],
-  overlaySrc:
-    "/assets/hero/intemporel/runtime/HERO_INTEMPOREL_DESKTOP_DARK_ALPHA_RUNTIME_ASSET_V1(1).png",
+  overlaySrc: DECOR_FINGERPRINTS.heroDesktopDarkOverlay.src,
   overlaySha256: "9e8419e9446838367210893897f1f02434e30a34e61f1231f04634d95a2d2f8b",
   fullyTransparentPixels: 250532,
 } as const;
@@ -162,12 +158,12 @@ export const HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME = {
  * `public/`. */
 export const HERO_INTEMPOREL_RUNTIME_MASTER_SRC: Record<SkinVariant, { desktop: string; mobile: string }> = {
   light: {
-    desktop: "/assets/hero/intemporel/runtime/hero-runtime-light-desktop.png",
-    mobile: "/assets/hero/intemporel/runtime/hero-runtime-light-mobile.png",
+    desktop: DECOR_FINGERPRINTS.heroLightDesktopMaster.src,
+    mobile: DECOR_FINGERPRINTS.heroLightMobileMaster.src,
   },
   dark: {
-    desktop: "/assets/hero/intemporel/runtime/hero-runtime-dark-desktop.png",
-    mobile: "/assets/hero/intemporel/runtime/hero-runtime-dark-mobile.png",
+    desktop: DECOR_FINGERPRINTS.heroDarkDesktopMaster.src,
+    mobile: DECOR_FINGERPRINTS.heroDarkMobileMaster.src,
   },
 };
 

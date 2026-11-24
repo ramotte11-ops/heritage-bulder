@@ -112,16 +112,16 @@ describe("HERITAGE design tokens foundation", () => {
     }
   });
 
-  it("preserves the validated Builder background asset paths untouched (mission brief section 10)", () => {
+  it("uses the byte-identical fingerprinted Builder background URLs", () => {
     const builderScreenCss = readFileSync(
       path.join(root, "components", "builder", "BuilderScreen.module.css"),
       "utf8",
     );
     expect(builderScreenCss).toContain(
-      "/assets/builder/backgrounds/heritage-builder-background-mobile.png",
+      "/assets/fingerprinted/a45b42834151d61381e88e010b742a15e8a851adf803bea14a375c780775d4f3-heritage-builder-background-mobile.png",
     );
     expect(builderScreenCss).toContain(
-      "/assets/builder/backgrounds/heritage-builder-background-desktop.png",
+      "/assets/fingerprinted/1dbc4e705f8e056cd42622cddd769b658c49d776ecd99f5891d87cce64f57393-heritage-builder-background-desktop.png",
     );
   });
 
