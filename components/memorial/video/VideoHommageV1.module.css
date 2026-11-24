@@ -1,0 +1,382 @@
+/*
+ * VID-05A — « Des instants pour se souvenir ».
+ *
+ * Scène unique par Master : la scène garde les proportions du Master affiché
+ * (Mobile 1024 × 1536, Desktop 1670 × 942) et tout le contenu est placé en
+ * pourcentages de la scène, avec des tailles en unités de conteneur (cqw).
+ * La composition reste donc celle des références à toutes les largeurs.
+ *
+ * Zones (VID-02 § 7, mesurées sur les Masters et les références) :
+ *   Desktop : titre centré en haut ; lecteur à gauche (x 6 % → 52 %,
+ *             y 38 % → 84 %) ; sélecteurs à droite (x 56 % → 89 %), alignés
+ *             sur le haut du lecteur et arrêtés à y 66 % : le sceau et ses
+ *             feuilles (x ≥ 75 %, y ≥ 66 %) ne sont jamais recouverts.
+ *   Mobile  : titre sur deux lignes (y 6 % → 17 %) ; lecteur (x 7 % → 93 %,
+ *             y 26 % → 58 %) ; sélecteurs (x 9 % → 89 %, y 60,5 % → 78 %),
+ *             au-dessus du sceau (y ≥ 79 % à droite).
+ *
+ * Aucune règle globale : ni point de rupture partagé, ni style hors de la
+ * rubrique. La bascule à 1024 px est une requête de CONTENEUR.
+ */
+
+.root {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  /* Teintes de la rubrique — Light par défaut. */
+  --video-ink: #2f2a1c;
+  --video-ink-soft: #4a3f2c;
+  --video-rule: #b58a4c;
+  --video-frame: #caa46a;
+  --video-frame-glow: rgb(255 246 228 / 0.55);
+  --video-shadow: rgb(70 46 18 / 0.28);
+  --video-pill-fill: rgb(255 250 240 / 0.72);
+  --video-pill-ink: #2f2a1c;
+  --video-pill-border: #c9a56a;
+  --video-pill-active-fill: #414a31;
+  --video-pill-active-ink: #fbf3e2;
+  --video-pill-active-border: #d8b77c;
+  --video-focus: #7a5a24;
+  --video-message: #fbf3e2;
+}
+
+.root[data-variant="dark"] {
+  --video-ink: #f4e6cd;
+  --video-ink-soft: #e8d6b6;
+  --video-rule: #c48a4f;
+  --video-frame: #c7935a;
+  --video-frame-glow: rgb(214 150 82 / 0.28);
+  --video-shadow: rgb(0 0 0 / 0.45);
+  --video-pill-fill: rgb(40 22 11 / 0.55);
+  --video-pill-ink: #f4e6cd;
+  --video-pill-border: #b97f47;
+  --video-pill-active-fill: #1f4a47;
+  --video-pill-active-ink: #f8ecd6;
+  --video-pill-active-border: #d6a56b;
+  --video-focus: #f1c98d;
+}
+
+/* ---------------------------------------------------------------- Scène */
+
+.scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1024 / 1536;
+  overflow: hidden;
+  background: var(--video-paper-mobile);
+}
+
+.masterMobile,
+.masterDesktop {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.masterDesktop {
+  display: none;
+}
+
+.masterImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Même proportion que la scène : l'image est affichée entière, sans recadrage. */
+  object-fit: cover;
+  user-select: none;
+  pointer-events: none;
+}
+
+.content {
+  position: absolute;
+  inset: 0;
+}
+
+/* --------------------------------------------------------------- Titres */
+
+.heading {
+  position: absolute;
+  top: 6%;
+  left: 10%;
+  right: 10%;
+  margin: 0;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-heritage-recit-serif-italic), "EB Garamond", Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 7.6cqw;
+  line-height: 1.08;
+  color: var(--video-ink);
+  letter-spacing: 0.005em;
+  text-wrap: balance;
+}
+
+.subtitle {
+  margin: 4.2cqw 0 0;
+  font-family: var(--font-heritage-recit-serif-italic), "EB Garamond", Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: max(13px, 3.5cqw);
+  line-height: 1.3;
+  color: var(--video-ink-soft);
+  text-wrap: balance;
+}
+
+.subtitle::before {
+  content: "";
+  display: block;
+  width: 10cqw;
+  height: 1px;
+  margin: 0 auto 3cqw;
+  background: var(--video-rule);
+  opacity: 0.8;
+}
+
+/* -------------------------------------------------------------- Lecteur */
+
+.stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.playerSlot {
+  position: absolute;
+  top: 26%;
+  left: 7%;
+  width: 86%;
+  pointer-events: auto;
+}
+
+.playerFrame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 2.4cqw;
+  overflow: hidden;
+  background: #0b0806;
+  border: max(1.5px, 0.3cqw) solid var(--video-frame);
+  box-shadow:
+    0 0 0 max(1px, 0.15cqw) var(--video-frame-glow),
+    0 1.6cqw 4cqw var(--video-shadow);
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #0b0806;
+}
+
+.playerMessage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0 8%;
+  text-align: center;
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: max(13px, 3.4cqw);
+  line-height: 1.35;
+  color: var(--video-message);
+  background: radial-gradient(closest-side, rgb(60 40 22 / 0.65), rgb(11 8 6 / 0.95));
+}
+
+/* ----------------------------------------------------------- Sélecteurs */
+
+.selectorsSlot {
+  position: absolute;
+  top: 60.5%;
+  left: 9%;
+  width: 80%;
+  pointer-events: auto;
+}
+
+.selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectorItem {
+  margin: 0;
+}
+
+.selector {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 2.6cqw;
+  width: 100%;
+  height: 7.6cqw;
+  padding: 0 5cqw 0 2.2cqw;
+  border-radius: 999px;
+  border: max(1px, 0.25cqw) solid var(--video-pill-border);
+  background: var(--video-pill-fill);
+  color: var(--video-pill-ink);
+  font-family: var(--font-heritage-ceremony-serif), "EB Garamond", Georgia, serif;
+  font-size: max(12px, 3.4cqw);
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0.6cqw 1.6cqw var(--video-shadow);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.selector[aria-pressed="true"] {
+  background: var(--video-pill-active-fill);
+  border-color: var(--video-pill-active-border);
+  color: var(--video-pill-active-ink);
+}
+
+.selector:focus-visible {
+  outline: max(2px, 0.35cqw) solid var(--video-focus);
+  outline-offset: max(2px, 0.4cqw);
+}
+
+.selectorIcon {
+  display: grid;
+  place-items: center;
+  width: 5.4cqw;
+  height: 5.4cqw;
+  border-radius: 50%;
+  border: max(1px, 0.25cqw) solid currentColor;
+}
+
+.selectorIcon svg {
+  width: 62%;
+  height: 62%;
+  fill: currentColor;
+}
+
+.selectorTitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.selectorRule {
+  width: 1px;
+  height: 3.6cqw;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.selectorDuration {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selector {
+    transition: none;
+  }
+}
+
+/* -------------------------------------------------------------- Desktop */
+
+@container (min-width: 1024px) {
+  .scene {
+    aspect-ratio: 1670 / 942;
+    background: var(--video-paper-desktop);
+  }
+
+  .masterMobile {
+    display: none;
+  }
+
+  .masterDesktop {
+    display: block;
+  }
+
+  .heading {
+    top: 10%;
+    left: 18%;
+    right: 18%;
+  }
+
+  .title {
+    font-size: 4cqw;
+  }
+
+  .subtitle {
+    margin-top: 1.3cqw;
+    font-size: max(13px, 1.65cqw);
+  }
+
+  .subtitle::before {
+    width: 6cqw;
+    margin-bottom: 1.2cqw;
+  }
+
+  .playerSlot {
+    top: 38%;
+    left: 6%;
+    width: 46%;
+  }
+
+  .playerFrame {
+    border-radius: 1.2cqw;
+    border-width: max(1.5px, 0.16cqw);
+    box-shadow:
+      0 0 0 max(1px, 0.08cqw) var(--video-frame-glow),
+      0 0.9cqw 2.4cqw var(--video-shadow);
+  }
+
+  .playerMessage {
+    font-size: max(13px, 1.6cqw);
+  }
+
+  /* Une seule vidéo : le lecteur seul, centré dans la scène. */
+  .stage[data-layout="player-only"] .playerSlot {
+    left: 26%;
+    width: 48%;
+  }
+
+  /* Sélecteurs alignés sur le haut du lecteur ; trois sélecteurs
+     s'arrêtent à y ≈ 65,5 %, au-dessus des feuilles du sceau. */
+  .selectorsSlot {
+    top: 38%;
+    left: 56%;
+    width: 33%;
+  }
+
+  .selectors {
+    gap: 1.1cqw;
+  }
+
+  .selector {
+    height: 4.4cqw;
+    gap: 1.2cqw;
+    padding: 0 2.2cqw 0 1.1cqw;
+    font-size: max(13px, 1.6cqw);
+    border-width: max(1px, 0.12cqw);
+    box-shadow: 0 0.35cqw 1cqw var(--video-shadow);
+  }
+
+  .selectorIcon {
+    width: 2.7cqw;
+    height: 2.7cqw;
+    border-width: max(1px, 0.12cqw);
+  }
+
+  .selectorRule {
+    height: 2.1cqw;
+  }
+
+  .selector:focus-visible {
+    outline-width: max(2px, 0.18cqw);
+    outline-offset: max(2px, 0.22cqw);
+  }
+}
