@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { isVideoFullscreen } from "./use-fullscreen-orientation";
 
 /**
  * VID-05A — pause automatique, jamais de reprise automatique.
@@ -28,13 +29,18 @@ export function usePauseWhenHidden(video: HTMLVideoElement | null): void {
     const pause = () => {
       if (!video.paused) video.pause();
     };
+    // En plein écran, la position du lecteur dans la page ne compte plus :
+    // seul l'onglet masqué met encore en pause.
+    const pauseIfInPage = () => {
+      if (!isVideoFullscreen(video)) pause();
+    };
 
     let observer: IntersectionObserver | null = null;
     if (typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
-            if (entry.intersectionRatio < VIDEO_PAUSE_VISIBILITY_THRESHOLD) pause();
+            if (entry.intersectionRatio < VIDEO_PAUSE_VISIBILITY_THRESHOLD) pauseIfInPage();
           }
         },
         { threshold: [0, VIDEO_PAUSE_VISIBILITY_THRESHOLD] },

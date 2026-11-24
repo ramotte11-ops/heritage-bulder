@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { VideoHommageItem } from "@/lib/memorial/video/video-hommage";
 import type { VideoHommageTexts } from "./texts";
+import { useFullscreenOrientation } from "./use-fullscreen-orientation";
 import { usePauseWhenHidden } from "./use-pause-when-hidden";
 import styles from "./VideoHommageV1.module.css";
 
@@ -20,6 +21,9 @@ import styles from "./VideoHommageV1.module.css";
  *    première image s'affiche), `none` pour un flux hébergé (aucune minute
  *    diffusée tant que le visiteur n'a pas cliqué).
  *  - Pause quand le lecteur quitte l'écran, sans reprise automatique.
+ *  - Plein écran : commande native du lecteur (ordinateur et mobile),
+ *    paysage sur mobile pour une vidéo horizontale quand le système le
+ *    permet, ratio d'origine conservé (`use-fullscreen-orientation.ts`).
  *
  * Flux hébergés : l'adresse fournie par le serveur porte déjà le plafond
  * 720p et le jeton. Safari lit le HLS nativement ; les autres navigateurs
@@ -42,6 +46,7 @@ export function VideoHommagePlayer({
   const [failed, setFailed] = useState<string | null>(null);
   const handledRequest = useRef(0);
   usePauseWhenHidden(video);
+  useFullscreenOrientation(video);
 
   const source = item?.status === "ready" ? item.source : undefined;
   const sourceUrl = source?.url;

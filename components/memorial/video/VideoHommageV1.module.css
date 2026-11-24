@@ -7,10 +7,13 @@
  * La composition reste donc celle des références à toutes les largeurs.
  *
  * Zones (VID-02 § 7, mesurées sur les Masters et les références) :
- *   Desktop : titre centré en haut ; lecteur à gauche (x 6 % → 52 %,
- *             y 38 % → 84 %) ; sélecteurs à droite (x 56 % → 89 %), alignés
- *             sur le haut du lecteur et arrêtés à y 66 % : le sceau et ses
- *             feuilles (x ≥ 75 %, y ≥ 66 %) ne sont jamais recouverts.
+ *   Desktop : titre centré en haut ; lecteur à gauche (x 6,5 % → 52,5 %,
+ *             y 30,75 % → 76,7 %), entre le rameau du haut et les bandes
+ *             déchirées du bas ; sélecteurs à droite (x 55 % → 88 %) : deux
+ *             sélecteurs centrés sur la hauteur du lecteur, trois posés à
+ *             y 33,75 % et arrêtés à y ≈ 61 %. Le sceau
+ *             et ses feuilles (x ≥ 75 %, y ≥ 66 %) ne sont jamais recouverts.
+ *             (Retour PO VID-05A : lecteur remonté, sélecteurs vers la gauche.)
  *   Mobile  : titre sur deux lignes (y 6 % → 17 %) ; lecteur (x 7 % → 93 %,
  *             y 26 % → 58 %) ; sélecteurs (x 9 % → 89 %, y 60,5 % → 78 %),
  *             au-dessus du sceau (y ≥ 79 % à droite).
@@ -173,6 +176,16 @@
   background: #0b0806;
 }
 
+/* Plein écran (commande native du lecteur) : vidéo entière, ratio d'origine,
+   bandes noires si besoin, jamais de recadrage. */
+.video:fullscreen {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  border-radius: 0;
+}
+
 .playerMessage {
   position: absolute;
   inset: 0;
@@ -321,8 +334,8 @@
   }
 
   .playerSlot {
-    top: 38%;
-    left: 6%;
+    top: 30.75%;
+    left: 6.5%;
     width: 46%;
   }
 
@@ -340,16 +353,23 @@
 
   /* Une seule vidéo : le lecteur seul, centré dans la scène. */
   .stage[data-layout="player-only"] .playerSlot {
+    top: 30.75%;
     left: 26%;
     width: 48%;
   }
 
-  /* Sélecteurs alignés sur le haut du lecteur ; trois sélecteurs
-     s'arrêtent à y ≈ 65,5 %, au-dessus des feuilles du sceau. */
+  /* Trois sélecteurs : posés à y 33,75 %, arrêtés à y ≈ 61 %, au-dessus des
+     feuilles du sceau (un centrage sur le lecteur les y ferait entrer). */
   .selectorsSlot {
-    top: 38%;
-    left: 56%;
+    top: 33.75%;
+    left: 55%;
     width: 33%;
+  }
+
+  /* Deux sélecteurs : centrés sur la hauteur du lecteur (y 30,75 % → 76,7 %). */
+  .root[data-count="2"] .selectorsSlot {
+    top: 53.75%;
+    transform: translateY(-50%);
   }
 
   .selectors {

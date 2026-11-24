@@ -100,6 +100,9 @@ describe("« Des instants pour se souvenir »", () => {
     expect(element.hasAttribute("autoplay")).toBe(false);
     expect(element.hasAttribute("loop")).toBe(false);
     expect(element.getAttribute("controlslist")).toContain("nodownload");
+    // Commande plein écran du lecteur conservée (retour PO).
+    expect(element.getAttribute("controlslist")).not.toContain("nofullscreen");
+    expect(element.hasAttribute("controls")).toBe(true);
   });
 
   it("un clic sur un autre souvenir change de vidéo et la lance", () => {
