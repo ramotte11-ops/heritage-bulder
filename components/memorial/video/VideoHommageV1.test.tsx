@@ -12,7 +12,7 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { VideoHommageV1 } = await import("./VideoHommageV1");
-const { VIDEO_MASTERS_INSTALLED } = await import("./video-masters");
+const { VIDEO_MASTERS, VIDEO_MASTERS_INSTALLED, videoMasterSrcSet } = await import("./video-masters");
 
 const play = vi.fn(() => Promise.resolve());
 const pause = vi.fn();
@@ -181,20 +181,38 @@ describe("« Des instants pour se souvenir »", () => {
     expect(container.querySelector("video")!.getAttribute("preload")).toBe("metadata");
   });
 
-  it("variante et Masters : attributs de la scène, aucune image tant que les PNG officiels manquent", () => {
-    const { container } = render(<VideoHommageV1 items={three} skinVariant="dark" language="fr" />);
-    const section = container.querySelector("[data-video-hommage]")!;
-    expect(section.getAttribute("data-variant")).toBe("dark");
-    expect(container.querySelector("[data-heritage-skin-variant='dark']")).not.toBeNull();
-    if (VIDEO_MASTERS_INSTALLED) {
+  it.each(["light", "dark"] as const)(
+    "Masters %s : seule la variante du mémorial est rendue, AVIF puis WebP, différés, adresses à empreinte",
+    (variant) => {
+      expect(VIDEO_MASTERS_INSTALLED).toBe(true);
+      const { container } = render(<VideoHommageV1 items={three} skinVariant={variant} language="fr" />);
+      const section = container.querySelector("[data-video-hommage]")!;
+      expect(section.getAttribute("data-variant")).toBe(variant);
+      expect(section.getAttribute("data-masters")).toBe("installed");
+      expect(container.querySelector(`[data-heritage-skin-variant='${variant}']`)).not.toBeNull();
+
       const masters = Array.from(container.querySelectorAll("img[data-video-master]"));
-      expect(masters.map((m) => m.getAttribute("data-video-master"))).toEqual(["mobile-dark", "desktop-dark"]);
-      expect(masters.every((m) => m.getAttribute("loading") === "lazy")).toBe(true);
-    } else {
-      expect(section.getAttribute("data-masters")).toBe("absent");
-      expect(container.querySelector("img")).toBeNull();
-    }
-  });
+      expect(masters.map((m) => m.getAttribute("data-video-master"))).toEqual([`mobile-${variant}`, `desktop-${variant}`]);
+      for (const img of masters) {
+        const [layout] = img.getAttribute("data-video-master")!.split("-") as ["mobile" | "desktop"];
+        const spec = VIDEO_MASTERS[layout][variant];
+        expect(img.getAttribute("loading")).toBe("lazy");
+        expect(img.getAttribute("alt")).toBe("");
+        expect(img.getAttribute("width")).toBe(String(spec.width));
+        expect(img.getAttribute("height")).toBe(String(spec.height));
+        expect(img.getAttribute("src")).toBe(spec.webp.at(-1)!.src);
+        expect(img.getAttribute("srcset")).toBe(videoMasterSrcSet(spec.webp));
+        const avif = img.closest("picture")!.querySelector("source")!;
+        expect(avif.getAttribute("type")).toBe("image/avif");
+        expect(avif.getAttribute("srcset")).toBe(videoMasterSrcSet(spec.avif));
+        expect(avif.getAttribute("sizes")).toBe(img.getAttribute("sizes"));
+      }
+      // Aucune adresse de l'autre variante dans le document.
+      const other = variant === "light" ? "dark" : "light";
+      expect(container.innerHTML).not.toContain(`-${other}-`);
+      expect(container.innerHTML).toMatch(/\/assets\/video-hommage\/v1\/[0-9a-f]{64}-video-/);
+    },
+  );
 
   it("titre de niveau 1 sur une page dédiée, textes traduits", () => {
     render(<VideoHommageV1 items={three} skinVariant="light" language="en" headingLevel="page" />);

@@ -7,7 +7,13 @@ import { SkinScope } from "@/components/memorial/SkinScope";
 import { ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
 import { videoDisplayTitle, type VideoHommageItem } from "@/lib/memorial/video/video-hommage";
 import { VIDEO_HOMMAGE_TEXTS } from "./texts";
-import { VIDEO_MASTERS, VIDEO_MASTERS_INSTALLED, type VideoMasterLayout } from "./video-masters";
+import {
+  VIDEO_MASTER_SIZES,
+  VIDEO_MASTERS,
+  VIDEO_MASTERS_INSTALLED,
+  videoMasterSrcSet,
+  type VideoMasterLayout,
+} from "./video-masters";
 import { VideoHommagePlayer } from "./VideoHommagePlayer";
 import { VideoHommageSelectors } from "./VideoHommageSelectors";
 import styles from "./VideoHommageV1.module.css";
@@ -113,13 +119,22 @@ export function VideoHommageV1({ items, skinVariant, language, headingLevel = "s
   );
 }
 
+/**
+ * Un Master : AVIF (principal) puis WebP sans perte (repli), chacun à deux
+ * largeurs. Seule la variante (Light ou Dark) du mémorial est rendue ; le
+ * format non affiché (Mobile ou Desktop) est en `display: none` et, chargé en
+ * différé, n'est jamais demandé au réseau.
+ */
 function MasterPicture({ layout, skinVariant }: { layout: VideoMasterLayout; skinVariant: SkinVariant }) {
   const master = VIDEO_MASTERS[layout][skinVariant];
+  const fallback = master.webp[master.webp.length - 1]!;
   return (
     <picture className={layout === "mobile" ? styles.masterMobile : styles.masterDesktop}>
-      <source type="image/avif" srcSet={`${master.base}.avif`} />
+      <source type="image/avif" srcSet={videoMasterSrcSet(master.avif)} sizes={VIDEO_MASTER_SIZES} />
       <img
-        src={`${master.base}.webp`}
+        src={fallback.src}
+        srcSet={videoMasterSrcSet(master.webp)}
+        sizes={VIDEO_MASTER_SIZES}
         alt=""
         width={master.width}
         height={master.height}
