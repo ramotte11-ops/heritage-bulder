@@ -27,6 +27,7 @@ import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GalleryStep } from "@/components/builder/GalleryStep";
 import { ContributionsStep } from "@/components/builder/ContributionsStep";
+import { VideoStep } from "@/components/builder/VideoStep";
 import { updateContributionCategories } from "@/lib/memorial/contributions/family-contribution-actions";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
@@ -51,6 +52,7 @@ import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
 import { needsA15 } from "@/lib/builder/guided-flow/contributions-step";
+import { needsA16 } from "@/lib/builder/guided-flow/video-step";
 import {
   currentJourneyScreen,
   isJourneyScreenId,
@@ -768,6 +770,15 @@ export default async function BuilderMemorialPage({
           ),
           available: previewAvailable(content),
         };
+      case "video":
+        // VID-06 — A16 : titres, durées et ordre enregistrés par la même Server
+        // Action liée que tous les écrans ; les fichiers restent dans le
+        // navigateur (aucun téléversement tant que l'offre complète n'est pas
+        // activée et que le lot Mux n'est pas ouvert).
+        return {
+          element: <VideoStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />,
+          available: previewAvailable(content),
+        };
     }
   };
 
@@ -1073,6 +1084,13 @@ export default async function BuilderMemorialPage({
   // A15 itself has been treated once, whichever way.
   if (needsA15(heroReconciledContent)) {
     return (await showCurrent("contributions", heroReconciledContent))!;
+  }
+
+  // VID-06 — A16 « Vos souvenirs en vidéo ». Shown once A15 is genuinely
+  // behind the family (`needsA16` gates on `isA15Resolved`) and only until
+  // A16 itself has been treated once, whichever way.
+  if (needsA16(heroReconciledContent)) {
+    return (await showCurrent("video", heroReconciledContent))!;
   }
 
   // Builder continuity mission — what a memorial past every BUILT gate

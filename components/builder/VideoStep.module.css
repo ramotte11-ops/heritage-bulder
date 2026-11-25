@@ -1,0 +1,417 @@
+/*
+ * VID-06 — A16 « Vos souvenirs en vidéo ». Chrome : BuilderScreen.module.css.
+ * Aucune nouvelle grammaire : titre, sous-titre, actions et « Passer » sont
+ * ceux de A15 (ContributionsStep.module.css) ; le registre, ses rangées,
+ * les champs, les liens d'action, les boutons de déplacement, la zone
+ * d'ajout et le champ de fichier caché sont ceux de la Galerie A13
+ * (GalleryWorkshop.module.css) ; l'aperçu élargi est celui des
+ * Contributions (ContributionsPreparation.module.css, `.previewBleed`).
+ * Aucun jeton, couleur, police ou ombre nouveaux.
+ */
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.title {
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 600;
+  font-size: 1.625rem;
+  color: var(--heritage-text-primary);
+}
+
+@media (min-width: 40rem) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--heritage-text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-lg);
+}
+
+/* L'information sur le stockage local : discrète, jamais une alerte. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+  padding: var(--heritage-space-md) var(--heritage-space-lg);
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--heritage-text-secondary);
+}
+
+.notice p {
+  margin: 0;
+}
+
+/* --------------------------------------------------- Registre (Galerie A13) */
+
+.register {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "number body moves";
+  column-gap: var(--heritage-space-md);
+  align-items: start;
+  padding: var(--heritage-space-lg);
+}
+
+.item + .item {
+  border-top: 1px solid var(--heritage-border-soft);
+}
+
+.number {
+  grid-area: number;
+  min-width: 1.5rem;
+  font-family: var(--heritage-font-family-serif);
+  font-weight: 500;
+  font-size: 1rem;
+  line-height: 2.25;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--heritage-text-secondary);
+}
+
+.body {
+  grid-area: body;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+.fieldLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-primary);
+}
+
+.textInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  font-family: var(--heritage-font-family-sans);
+  font-size: 0.9375rem;
+  color: var(--heritage-text-primary);
+}
+
+.textInput:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 1px;
+}
+
+.textInput:disabled {
+  color: var(--heritage-text-secondary);
+}
+
+.counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--heritage-text-secondary);
+}
+
+.meta,
+.state {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.state {
+  color: var(--heritage-text-primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--heritage-space-lg);
+}
+
+.textAction,
+.textActionQuiet {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.textActionQuiet {
+  color: var(--heritage-text-secondary);
+}
+
+.textActionQuiet:disabled,
+.textAction[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.textActionQuiet:focus-visible,
+.textAction:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+  padding-block-start: var(--heritage-space-xs);
+}
+
+.confirmQuestion {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-text-primary);
+}
+
+.confirmAction {
+  min-height: 2.75rem;
+  background: none;
+  border: 1px solid var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  padding: 0.5rem 0.875rem;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--heritage-accent-primary);
+  cursor: pointer;
+}
+
+.confirmAction:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.moves {
+  grid-area: moves;
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+.moveButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--heritage-radius-control);
+  border: 1px solid var(--heritage-border-soft);
+  background: var(--heritage-surface-card);
+  color: var(--heritage-text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.moveButton:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+  background: var(--heritage-state-disabled-surface);
+}
+
+.moveButton:not(:disabled):hover {
+  background: var(--heritage-surface-selected);
+}
+
+.moveButton:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------- Ajout (HeroPhoto) */
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dropzone,
+.addRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--heritage-border-soft);
+  border-radius: var(--heritage-radius-control);
+  background: var(--heritage-surface-card);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background-color var(--heritage-motion-fast) var(--heritage-easing-standard),
+    border-color var(--heritage-motion-fast) var(--heritage-easing-standard);
+}
+
+.dropzone {
+  min-height: 10rem;
+  padding: var(--heritage-space-xl);
+}
+
+.addRow {
+  min-height: 3.5rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.addText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+}
+
+.addLabel {
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--heritage-accent-primary);
+}
+
+.dropzone[aria-disabled="true"],
+.addRow[aria-disabled="true"] {
+  cursor: default;
+  background: var(--heritage-state-disabled-surface);
+}
+
+.dropzone[aria-disabled="true"] .addLabel,
+.addRow[aria-disabled="true"] .addLabel {
+  color: var(--heritage-state-disabled-text);
+}
+
+.dropzone:has(.hiddenInput:focus-visible),
+.addRow:has(.hiddenInput:focus-visible) {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.budget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-xs);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--heritage-text-primary);
+}
+
+.budget p {
+  margin: 0;
+}
+
+.unverified {
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--heritage-state-error-text);
+}
+
+/* ---------------------------------------- Aperçu (bleed des Contributions) */
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heritage-space-sm);
+}
+
+.previewNote {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--heritage-text-secondary);
+}
+
+.previewBleed {
+  --bleed: min(100vw, 430px);
+  width: var(--bleed);
+  margin-inline: calc((100% - var(--bleed)) / 2);
+}
+
+@media (min-width: 64rem) {
+  .previewBleed {
+    --bleed: min(1180px, calc(100vw - 32px));
+  }
+}
+
+/* ------------------------------------------------------ Actions de l'étape */
+
+.stepActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--heritage-space-md);
+}
+
+.skipLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--heritage-font-family-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--heritage-text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.skipLink:disabled {
+  cursor: not-allowed;
+  color: var(--heritage-state-disabled-text);
+}
+
+.skipLink:focus-visible {
+  outline: 2px solid var(--heritage-focus-ring);
+  outline-offset: 2px;
+}

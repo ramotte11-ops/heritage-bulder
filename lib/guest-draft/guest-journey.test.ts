@@ -179,6 +179,7 @@ describe("Chef 03 / O05 — guest full review, by the route's own rule", () => {
       A12: { status: "skipped" },
       A13: { status: "skipped" },
       A15: { status: "skipped" },
+      A16: { status: "skipped" },
     },
   };
 

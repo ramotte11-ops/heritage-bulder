@@ -54,6 +54,10 @@ export const STEP_IDS = [
   // rubriques : Galerie → Offrandes, sans étape → Contributions). Ajoutée
   // en fin de section : l'ordre des étapes existantes est inchangé.
   "A15",
+  // VID-06 — A16 « Vos souvenirs en vidéo », après les Contributions des
+  // proches (ordre produit : Offrandes → Contributions → Vidéo). Ajoutée en
+  // fin de section : l'ordre des étapes existantes est inchangé.
+  "A16",
   // Tronc final commun
   "P01",
   "P04",
@@ -223,6 +227,7 @@ export const STEPS: readonly HumanStepDefinition[] = [
   { id: "A12", group: "announcement", required: false, skippable: true },
   { id: "A13", group: "announcement", required: false, skippable: true },
   { id: "A15", group: "announcement", required: false, skippable: true },
+  { id: "A16", group: "announcement", required: false, skippable: true },
 
   // --- Tronc final commun ---
   { id: "P01", group: "final", required: false, skippable: true },

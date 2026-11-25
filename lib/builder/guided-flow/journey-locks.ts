@@ -45,6 +45,7 @@ const SCREEN_MUTATIONS: Readonly<Record<JourneyScreenId, readonly MemorialMutati
   personSheet: [{ kind: "content", target: "personWords.text" }, { kind: "content", target: "guidedFlow.A10" }],
   gallery: [{ kind: "content", target: "gallery.items" }, { kind: "content", target: "guidedFlow.A13" }],
   contributions: [{ kind: "content", target: "contributions.features" }, { kind: "content", target: "guidedFlow.A15" }],
+  video: [{ kind: "content", target: "video.items" }, { kind: "content", target: "guidedFlow.A16" }],
 };
 
 /** The lifecycle facts the Builder route already holds (`memorials.status`). */

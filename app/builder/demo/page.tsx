@@ -21,6 +21,7 @@ import { CeremonyNoteStep } from "@/components/builder/CeremonyNoteStep";
 import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { ContributionsStep } from "@/components/builder/ContributionsStep";
+import { VideoStep } from "@/components/builder/VideoStep";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { JourneyContext, type JourneyNavigation } from "@/components/builder/journey/journey-context";
 import {
@@ -356,6 +357,8 @@ export default function QgRuntimeDemoPage() {
         return { label: "A13 — galerie (indisponible dans ce banc d'essai)", screen: unavailableNotice("La galerie")};
       case "contributions":
         return { label: "A15 — contributions des proches", screen: <ContributionsStep language={LANGUAGE} content={content} skinVariant={skinVariant} persist={persist} /> };
+      case "video":
+        return { label: "A16 — vos souvenirs en vidéo", screen: <VideoStep language={LANGUAGE} content={content} persist={persist} /> };
       case null:
         return {
           label: "Parcours terminé (écran de repos)",

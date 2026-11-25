@@ -10,6 +10,7 @@ import { commitA00 } from "./announcement-choice-step";
 import { commitA04 } from "./ceremony-step";
 import { skipA13 } from "./gallery-step";
 import { skipA15 } from "./contributions-step";
+import { skipA16 } from "./video-step";
 import { addTraditionsEntry, commitA09, skipA09, updateTraditionsEntry } from "./traditions-step";
 import { readGuidedFlowState } from "./flow-state";
 import {
@@ -315,8 +316,8 @@ describe("QG 005-B — a local runtime's Hero overrides", () => {
 
 describe("Chef 03 / O03 — « Traditions & repères » independent of A00", () => {
   const ENTRY = { id: "t-journey", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
-  const passed = () => ok(skipA15(ok(skipA13(fullAnnouncement())))); // A09 skipped
-  const filled = () => ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))); // A09 confirmed
+  const passed = () => ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncement())))))); // A09 skipped
+  const filled = () => ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))))); // A09 confirmed
   const traditions = (content: MemorialContent) => resolveJourneyScreens(content).find((s) => s.id === "traditions")!;
 
   it.each(["yes", "no", "later"] as const)("A00 = %s: a passed Traditions is done and reopenable", (answer) => {
@@ -368,7 +369,7 @@ describe("Chef 03 / O03 — « Traditions & repères » independent of A00", () 
 
 describe("Chef 03 / O03 — « À compléter » for repères not confirmed yet (display only)", () => {
   const ENTRY = { id: "t-pending", origin: "custom", suggestionId: null, title: null, text: "Un repère fictif." } as const;
-  const filled = () => ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))); // A09 confirmed, A00 derived yes
+  const filled = () => ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))))); // A09 confirmed, A00 derived yes
   const traditions = (content: MemorialContent) => resolveJourneyScreens(content).find((s) => s.id === "traditions")!;
   /** A pre-fingerprint draft: repères, A09 resolved without any confirmation. */
   const legacy = (a00: "no" | "later", a09: object = { status: "completed" }) => {
@@ -395,7 +396,7 @@ describe("Chef 03 / O03 — « À compléter » for repères not confirmed yet (
 
   it("A00 = yes (repères shown by the pre-O03 rule) or no repère at all: « Terminée »", () => {
     expect(traditions(ok(commitA00(legacy("no"), "yes")))).toMatchObject({ status: "done", pendingConfirmation: false });
-    const empty = ok(skipA15(ok(skipA13(fullAnnouncement()))));
+    const empty = ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncement()))))));
     expect(traditions(ok(commitA00(empty, "no")))).toMatchObject({ status: "done", pendingConfirmation: false });
   });
 
@@ -544,7 +545,7 @@ describe("Chef 03 / O05 — nextReviewScreen: the full review, in the natural or
   }
 
   it("a finished memorial: every reached screen once, in catalog order, from the very first", () => {
-    const content = ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))));
+    const content = ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))))));
     expect(currentJourneyScreen(content)).toBeNull();
     const steps = walk(content);
     expect(steps[0]).toBe("identity");
@@ -554,7 +555,7 @@ describe("Chef 03 / O05 — nextReviewScreen: the full review, in the natural or
   });
 
   it("never a hidden, deferred or future screen — their content stays", () => {
-    const content = ok(commitA00(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))), "no"));
+    const content = ok(commitA00(ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))))), "no"));
     const steps = walk(content);
     for (const id of ["announcementText", "announcementDetails", "announcementPreview"] as const) expect(steps).not.toContain(id);
     expect(steps).toContain("traditions");
@@ -564,14 +565,14 @@ describe("Chef 03 / O05 — nextReviewScreen: the full review, in the natural or
   });
 
   it("follows answers changed on the way: A00 → « Oui » brings the notice into the review", () => {
-    const no = ok(commitA00(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))), "no"));
+    const no = ok(commitA00(ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions())))))), "no"));
     expect(nextReviewScreen(no, "reveal")).not.toBe("announcementText");
     const yes = ok(commitA00(no, "yes")); // the family answers « Oui » at A00 during the review
     expect(nextReviewScreen(yes, "reveal")).toBe("announcementText");
   });
 
   it("after publication: locked screens are passed over, the editable ones kept", () => {
-    const content = ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))));
+    const content = ok(skipA16(ok(skipA15(ok(skipA13(fullAnnouncementWithTraditions()))))));
     const locks = ["identity", "announcementChoice", "phrase", "photo", "crop", "reveal", "ceremonyMoment", "ceremonyDateTime", "ceremonyVenue", "ceremonyAddress", "ceremonyProgramme", "ceremonyNote"] as const;
     const steps = walk(content, locks);
     expect(steps[0]).toBe("announcementText");
