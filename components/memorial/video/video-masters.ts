@@ -30,6 +30,23 @@ import type { SkinVariant } from "@/config/skins";
  */
 export const VIDEO_MASTERS_INSTALLED = true;
 
+/**
+ * Décision PO du 25/11/2026 (VID-05B consolidé) — Master Light universel.
+ *
+ * La rubrique se présente en Light dans les deux ambiances du mémorial :
+ * Master Light du format affiché (Desktop ou Mobile), textes et commandes
+ * aux couleurs Light. En ambiance Dark, la rubrique Contributions qui la
+ * précède est sombre ; la vidéo apporte une respiration lumineuse.
+ *
+ * Seule la rubrique est concernée : le thème du mémorial n'est pas modifié
+ * (la portée `SkinScope` de la rubrique ne couvre que la rubrique), et ce
+ * n'est pas une option du Builder. Les Masters Dark restent installés et
+ * déclarés ci-dessous, intacts, ainsi que les teintes Dark de la feuille de
+ * style : revenir à une présentation par ambiance ne demanderait que de
+ * changer cette constante.
+ */
+export const VIDEO_HOMMAGE_PRESENTATION_VARIANT: SkinVariant = "light";
+
 export type VideoMasterLayout = "desktop" | "mobile";
 
 export interface VideoMasterRendition {

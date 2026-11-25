@@ -8,6 +8,7 @@ import { ebGaramond, ebGaramondItalic } from "@/components/builder/fonts";
 import { videoDisplayTitle, type VideoHommageItem } from "@/lib/memorial/video/video-hommage";
 import { VIDEO_HOMMAGE_TEXTS } from "./texts";
 import {
+  VIDEO_HOMMAGE_PRESENTATION_VARIANT,
   VIDEO_MASTER_SIZES,
   VIDEO_MASTERS,
   VIDEO_MASTERS_INSTALLED,
@@ -24,6 +25,11 @@ const SCENE_FONTS = [ebGaramond, ebGaramondItalic].map((font) => font.variable).
 export interface VideoHommageV1Props {
   /** Vidéos dans l'ordre choisi par la famille (3 au plus ; les suivantes sont ignorées). */
   items: readonly VideoHommageItem[];
+  /**
+   * Ambiance du mémorial. Depuis la décision PO « Master Light universel »
+   * (VID-05B), elle ne change plus la présentation de la rubrique, toujours
+   * en Light ; elle reste exposée en `data-memorial-variant`.
+   */
   skinVariant: SkinVariant;
   language: Language;
   /** `page` : titre de niveau 1 (pilote) ; `section` : niveau 2 (mémorial). */
@@ -48,6 +54,9 @@ export interface VideoHommageV1Props {
  * La bascule Mobile / Desktop suit la largeur RÉELLE du conteneur (requête de
  * conteneur à 1024 px, comme les Offrandes) : l'image du Master non affiché
  * est en `display: none` et, chargée en différé, n'est pas téléchargée.
+ *
+ * Présentation (VID-05B, décision PO) : Master Light, textes et commandes
+ * Light dans les deux ambiances du mémorial (`VIDEO_HOMMAGE_PRESENTATION_VARIANT`).
  */
 export function VideoHommageV1({ items, skinVariant, language, headingLevel = "section" }: VideoHommageV1Props) {
   const texts = VIDEO_HOMMAGE_TEXTS[language];
@@ -73,26 +82,29 @@ export function VideoHommageV1({ items, skinVariant, language, headingLevel = "s
 
   const Heading = headingLevel === "page" ? "h1" : "h2";
   const currentTitle = current === null ? null : videoDisplayTitle(current, selectedIndex, texts.defaultTitle);
+  // Master Light universel : la présentation ne suit pas l'ambiance du mémorial.
+  const presentation = VIDEO_HOMMAGE_PRESENTATION_VARIANT;
   const paper = {
-    "--video-paper-mobile": VIDEO_MASTERS.mobile[skinVariant].paper,
-    "--video-paper-desktop": VIDEO_MASTERS.desktop[skinVariant].paper,
+    "--video-paper-mobile": VIDEO_MASTERS.mobile[presentation].paper,
+    "--video-paper-desktop": VIDEO_MASTERS.desktop[presentation].paper,
   } as CSSProperties;
 
   return (
-    <SkinScope skin="intemporel" skinVariant={skinVariant}>
+    <SkinScope skin="intemporel" skinVariant={presentation}>
       <section
         className={`${styles.root} ${SCENE_FONTS}`}
         aria-labelledby={headingId}
         data-video-hommage=""
-        data-variant={skinVariant}
+        data-variant={presentation}
+        data-memorial-variant={skinVariant}
         data-count={shown.length}
         data-masters={VIDEO_MASTERS_INSTALLED ? "installed" : "absent"}
       >
         <div className={styles.scene} style={paper}>
           {VIDEO_MASTERS_INSTALLED && (
             <>
-              <MasterPicture layout="mobile" skinVariant={skinVariant} />
-              <MasterPicture layout="desktop" skinVariant={skinVariant} />
+              <MasterPicture layout="mobile" skinVariant={presentation} />
+              <MasterPicture layout="desktop" skinVariant={presentation} />
             </>
           )}
           <div className={styles.content}>

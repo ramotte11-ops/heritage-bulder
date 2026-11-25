@@ -12,7 +12,7 @@ vi.mock("next/font/google", () => ({
 }));
 
 const { VideoHommageV1 } = await import("./VideoHommageV1");
-const { VIDEO_MASTERS, VIDEO_MASTERS_INSTALLED, videoMasterSrcSet } = await import("./video-masters");
+const { VIDEO_HOMMAGE_PRESENTATION_VARIANT, VIDEO_MASTERS, VIDEO_MASTERS_INSTALLED, videoMasterSrcSet } = await import("./video-masters");
 
 const play = vi.fn(() => Promise.resolve());
 const pause = vi.fn();
@@ -182,20 +182,25 @@ describe("« Des instants pour se souvenir »", () => {
   });
 
   it.each(["light", "dark"] as const)(
-    "Masters %s : seule la variante du mémorial est rendue, AVIF puis WebP, différés, adresses à empreinte",
-    (variant) => {
+    "Master Light universel — ambiance %s du mémorial : Masters Light, AVIF puis WebP, différés, adresses à empreinte",
+    (memorialVariant) => {
       expect(VIDEO_MASTERS_INSTALLED).toBe(true);
-      const { container } = render(<VideoHommageV1 items={three} skinVariant={variant} language="fr" />);
+      expect(VIDEO_HOMMAGE_PRESENTATION_VARIANT).toBe("light");
+      const { container } = render(<VideoHommageV1 items={three} skinVariant={memorialVariant} language="fr" />);
       const section = container.querySelector("[data-video-hommage]")!;
-      expect(section.getAttribute("data-variant")).toBe(variant);
+      // Présentation Light de la rubrique ; l'ambiance du mémorial reste exposée, non modifiée.
+      expect(section.getAttribute("data-variant")).toBe("light");
+      expect(section.getAttribute("data-memorial-variant")).toBe(memorialVariant);
       expect(section.getAttribute("data-masters")).toBe("installed");
-      expect(container.querySelector(`[data-heritage-skin-variant='${variant}']`)).not.toBeNull();
+      // Textes et commandes aux couleurs Light : la portée de la rubrique est Light.
+      expect(container.querySelector("[data-heritage-skin-variant='light']")).not.toBeNull();
+      expect(container.querySelector("[data-heritage-skin-variant='dark']")).toBeNull();
 
       const masters = Array.from(container.querySelectorAll("img[data-video-master]"));
-      expect(masters.map((m) => m.getAttribute("data-video-master"))).toEqual([`mobile-${variant}`, `desktop-${variant}`]);
+      expect(masters.map((m) => m.getAttribute("data-video-master"))).toEqual(["mobile-light", "desktop-light"]);
       for (const img of masters) {
         const [layout] = img.getAttribute("data-video-master")!.split("-") as ["mobile" | "desktop"];
-        const spec = VIDEO_MASTERS[layout][variant];
+        const spec = VIDEO_MASTERS[layout].light;
         expect(img.getAttribute("loading")).toBe("lazy");
         expect(img.getAttribute("alt")).toBe("");
         expect(img.getAttribute("width")).toBe(String(spec.width));
@@ -207,12 +212,32 @@ describe("« Des instants pour se souvenir »", () => {
         expect(avif.getAttribute("srcset")).toBe(videoMasterSrcSet(spec.avif));
         expect(avif.getAttribute("sizes")).toBe(img.getAttribute("sizes"));
       }
-      // Aucune adresse de l'autre variante dans le document.
-      const other = variant === "light" ? "dark" : "light";
-      expect(container.innerHTML).not.toContain(`-${other}-`);
+      // Aucune ressource Dark demandée, quelle que soit l'ambiance.
+      expect(container.innerHTML).not.toContain("-dark-");
       expect(container.innerHTML).toMatch(/\/assets\/video-hommage\/v1\/[0-9a-f]{64}-video-/);
     },
   );
+
+  it("changer l'ambiance du mémorial ne change pas le décor de la rubrique", () => {
+    const decor = () =>
+      Array.from(container.querySelectorAll("picture img, picture source")).map(
+        (el) => `${el.getAttribute("src") ?? ""} ${el.getAttribute("srcset") ?? ""}`,
+      );
+    const { container, rerender } = render(<VideoHommageV1 items={three} skinVariant="light" language="fr" />);
+    const before = decor();
+    expect(before).toHaveLength(4);
+    rerender(<VideoHommageV1 items={three} skinVariant="dark" language="fr" />);
+    expect(decor()).toEqual(before);
+    expect(container.querySelector("[data-video-hommage]")!.getAttribute("data-memorial-variant")).toBe("dark");
+    expect(container.querySelector("[data-video-hommage]")!.getAttribute("data-variant")).toBe("light");
+  });
+
+  it("les Masters Dark restent installés et déclarés", () => {
+    for (const layout of ["desktop", "mobile"] as const) {
+      expect(VIDEO_MASTERS[layout].dark.avif).toHaveLength(2);
+      expect(VIDEO_MASTERS[layout].dark.source.file).toMatch(/_Dark_MASTER\.png$/);
+    }
+  });
 
   it("titre de niveau 1 sur une page dédiée, textes traduits", () => {
     render(<VideoHommageV1 items={three} skinVariant="light" language="en" headingLevel="page" />);
