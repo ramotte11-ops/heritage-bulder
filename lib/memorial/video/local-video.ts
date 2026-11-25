@@ -29,9 +29,16 @@ export interface LocalVideoHandle {
 }
 
 /** Fichier présenté comme une vidéo par l'appareil (type MIME `video/…`). */
-export function isVideoFile(file: Pick<File, "type">): boolean {
-  return file.type.startsWith("video/");
+export function isVideoFile(file: Pick<File, "type"> & { name?: string }): boolean {
+  if (file.type.startsWith("video/")) return true;
+  // VID-06 — certains appareils ne déclarent aucun type pour une vidéo
+  // (fichier .mov ou .3gp venu d'un téléphone, partage depuis une autre
+  // application) : seule l'extension la reconnaît alors. Un type déclaré
+  // autre que vidéo n'est jamais rattrapé par l'extension.
+  return file.type === "" && VIDEO_EXTENSION.test(file.name ?? "");
 }
+
+const VIDEO_EXTENSION = /\.(mp4|m4v|mov|qt|webm|3gp|3g2|mkv|avi)$/iu;
 
 /** Dépendances injectables, pour les tests et pour garder ce module sans état global. */
 export interface LocalVideoEnvironment {
