@@ -9,7 +9,8 @@ import { lockedJourneyScreens } from "@/lib/builder/guided-flow/journey-locks";
 import { buildTransferredContent } from "@/lib/guest-draft/guest-transfer-plan";
 import { transferableDraft } from "@/lib/guest-draft/guest-transfer-test-fixtures";
 import { commitA16, isA16Resolved, needsA16, readVideoForEditing, skipA16 } from "@/lib/builder/guided-flow/video-step";
-import { decideVideoUpload, VIDEO_HOSTING_OPERATIONAL } from "./video-upload-contract";
+import { decideVideoUpload } from "./video-upload-contract";
+import { isVideoHostingConfigured } from "./hosting/hosting-runtime";
 import { writeVideoItems } from "./video-content";
 
 /**
@@ -115,8 +116,9 @@ describe("VID-06 — aucune publication vidéo, aucun accès distant sans l'offr
     expect(decideVideoUpload(facts)).toEqual({ decision: "deny", reason });
   });
 
-  it("seul le propriétaire avec l'offre complète y aurait droit — et le lot Mux n'est pas ouvert", () => {
+  it("seul le propriétaire avec l'offre complète y a droit — et l'hébergement reste fermé tant qu'il n'est pas configuré et activé", () => {
     expect(decideVideoUpload({ actorIsOwner: true, accessLevel: "complet", memorialStatus: "published" })).toEqual({ decision: "allow" });
-    expect(VIDEO_HOSTING_OPERATIONAL).toBe(false);
+    expect(isVideoHostingConfigured({})).toBe(false);
+    expect(isVideoHostingConfigured({ MUX_TOKEN_ID: "x", MUX_TOKEN_SECRET: "x" })).toBe(false);
   });
 });

@@ -5701,6 +5701,186 @@ check "M8-E5: another family's session reads none of these contributions (RLS)" 
 check "M8-E5: the family sees its own pending count through the counter RPC (6 stories)" "6|6" \
   "$(svc "select pending_stories || '|' || pending_total from count_pending_contributions_v1('$E1_OWNER', '$E5_MEM');")"
 
+echo "== VID-07: hosted memorial videos (20261125090000, NOT applied to any project) =="
+V7_MIG="$MIGRATIONS_DIR/20261125090000_vid07_memorial_videos.sql"
+V7_DOWN="$REPO_ROOT/supabase/rollbacks/20261125090000_vid07_memorial_videos.down.sql"
+V7_FNS="public.reserve_memorial_video_upload_v1(uuid,uuid,text,integer) public.attach_memorial_video_upload_v1(uuid,text,timestamptz) public.fail_memorial_video_upload_v1(uuid,text) public.cancel_memorial_video_upload_v1(uuid,uuid,uuid) public.apply_memorial_video_event_v1(text,text,uuid,text,text,text,integer) public.list_memorial_videos_to_reconcile_v1(timestamptz,integer) public.request_memorial_video_removal_v1(uuid,uuid,text) public.confirm_memorial_video_deleted_v1(uuid) public.list_memorial_videos_v1(uuid,uuid) public.read_public_memorial_videos_v1(text)"
+
+# --- V7-1. Privileges, graded on a migrations-only clone (no test grant) ---
+$PSQL -d postgres -c "create database v7_fresh template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d v7_fresh -f "$f" >/dev/null 2>&1; done
+V7F="$PSQL -d v7_fresh -t -A"
+for fn in $V7_FNS; do
+  check "VID-07: $fn executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+    "$($V7F -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$fn'::regprocedure;")"
+done
+for fn in "public.memorial_video_guard_v1(uuid,uuid)" "public.memorial_video_status_rank_v1(text)"; do
+  check "VID-07: internal $fn is executable by no client and not by service_role" "false|false|false" \
+    "$($V7F -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE');")"
+done
+check "VID-07: memorial_videos — anon nothing; authenticated SELECT only; service_role no direct DML" "false|false|true|false|false|false|false|false" \
+  "$($V7F -c "select has_table_privilege('anon','public.memorial_videos','SELECT') || '|' || has_table_privilege('anon','public.memorial_videos','INSERT') || '|' || has_table_privilege('authenticated','public.memorial_videos','SELECT') || '|' || has_table_privilege('authenticated','public.memorial_videos','INSERT') || '|' || has_table_privilege('authenticated','public.memorial_videos','UPDATE') || '|' || has_table_privilege('authenticated','public.memorial_videos','DELETE') || '|' || has_table_privilege('service_role','public.memorial_videos','INSERT') || '|' || has_table_privilege('service_role','public.memorial_videos','UPDATE');")"
+check "VID-07: memorial_video_events — no client privilege at all, RLS on both tables" "false|false|true|true" \
+  "$($V7F -c "select has_table_privilege('anon','public.memorial_video_events','SELECT') || '|' || has_table_privilege('authenticated','public.memorial_video_events','SELECT') || '|' || (select relrowsecurity from pg_class where oid='public.memorial_videos'::regclass) || '|' || (select relrowsecurity from pg_class where oid='public.memorial_video_events'::regclass);")"
+$PSQL -d postgres -c "drop database v7_fresh;" >/dev/null
+
+# --- Fixtures ---------------------------------------------------------------
+V7_OWNER=$(q8_owner vid07-owner)
+V7_OTHER=$(q8_owner vid07-other)
+v7_complet_draft() {
+  # $1 owner -> id of an unpublished « complet » memorial
+  local ent
+  ent=$($DB -t -A -c "insert into entitlements (access_level, source, offer_id) values ('complet', 'direct','intemporel') returning id;")
+  $DB -t -A -c "insert into memorials (owner_id, entitlement_id, memorial_type, editorial_context, skin_id, skin_variant, language, status) values ('$1','$ent','person','announcement','intemporel','light','fr','draft') returning id;"
+}
+v7_reserve() { svc "select outcome || '|' || coalesce(video_id::text, '-') from reserve_memorial_video_upload_v1('$1','$2','$3',$4);"; }
+v7_id() { echo "${1##*|}"; }
+v7_event() {
+  # $1 event id, $2 type, $3 video id (or null), $4 upload, $5 asset, $6 playback, $7 duration ms
+  svc "select outcome || '|' || coalesce(asset_to_delete, '-') || '|' || coalesce(superseded_asset, '-') from apply_memorial_video_event_v1('$1','$2',${3:-null},${4:-null},${5:-null},${6:-null},${7:-null});"
+}
+v7_status() { $DB -t -A -c "select status || '|' || coalesce(failure_reason, '-') from memorial_videos where id='$1';"; }
+v7_ready() {
+  # $1 memorial, $2 slot, $3 duration ms -> video id, accepted and ready
+  local r vid
+  r=$(v7_reserve "$V7_OWNER" "$1" "$2" "$3"); vid=$(v7_id "$r")
+  svc "select attach_memorial_video_upload_v1('$vid','up-$vid', now() + interval '1 hour');" >/dev/null
+  v7_event "ev-ready-$vid" asset_ready "'$vid'" null "'as-$vid'" "'pb-$vid'" "$3" >/dev/null
+  echo "$vid"
+}
+
+V7_MEM=$(v7_complet_draft "$V7_OWNER")
+V7_AVIS=$(q8_draft "$V7_OWNER")
+
+# --- V7-2. Authorization ----------------------------------------------------
+check "VID-07: invalid requests (bad id, zero duration) -> invalid" "invalid|-|invalid|-" \
+  "$(v7_reserve "$V7_OWNER" "$V7_MEM" "abc" 1000)|$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-x" 0)"
+check "VID-07: another owner's memorial -> refused (same answer as an unknown memorial)" "refused|-|refused|-" \
+  "$(v7_reserve "$V7_OTHER" "$V7_MEM" "v-a" 1000)|$(v7_reserve "$V7_OWNER" "$(e1_key)" "v-a" 1000)"
+check "VID-07: free offer (avis) -> refused_offer" "refused_offer|-" "$(v7_reserve "$V7_OWNER" "$V7_AVIS" "v-a" 1000)"
+check "VID-07: archived memorial -> refused_archived" "refused_archived|-" \
+  "$($DB -t -A -c "begin;" -c "update memorials set status='archived' where id='$V7_MEM';" -c "set role service_role;" -c "select outcome || '|' || coalesce(video_id::text,'-') from reserve_memorial_video_upload_v1('$V7_OWNER','$V7_MEM','v-a',1000);" -c "rollback;" | tail -1)"
+
+# --- V7-3. Three videos, 600 s, unknown durations ---------------------------
+V7_A=$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-a" 400000)
+check "VID-07: complete offer -> first video reserved" "reserved" "${V7_A%%|*}"
+check "VID-07: the same video while its upload is in flight -> refused_in_progress" "refused_in_progress|-" "$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-a" 1000)"
+check "VID-07: 400 s + 200 s = 600 s exactly -> reserved; one more ms -> refused_duration" "reserved|refused_duration" \
+  "$($DB -t -A -c "begin;" -c "set role service_role;" -c "select outcome from reserve_memorial_video_upload_v1('$V7_OWNER','$V7_MEM','v-b',200000);" -c "rollback;" | tail -1)|$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-b" 200001 | cut -d'|' -f1)"
+V7_B=$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-b" 100000)
+check "VID-07: unknown duration with time left -> reserved (never counted as zero)" "reserved" "$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-c" null | cut -d'|' -f1)"
+check "VID-07: a 4th video -> refused_too_many" "refused_too_many|-" "$(v7_reserve "$V7_OWNER" "$V7_MEM" "v-d" 1000)"
+V7_MEM2=$(v7_complet_draft "$V7_OWNER")
+v7_reserve "$V7_OWNER" "$V7_MEM2" "v-u1" null >/dev/null
+check "VID-07: a second unknown duration while one is pending -> refused_unknown_pending" "refused_unknown_pending|-" "$(v7_reserve "$V7_OWNER" "$V7_MEM2" "v-u2" null)"
+V7_MEM3=$(v7_complet_draft "$V7_OWNER")
+v7_reserve "$V7_OWNER" "$V7_MEM3" "v-full" 600000 >/dev/null
+check "VID-07: unknown duration when 600 s are already declared -> refused_duration" "refused_duration|-" "$(v7_reserve "$V7_OWNER" "$V7_MEM3" "v-more" null)"
+
+# --- V7-4. Concurrency: two requests for the last slot ----------------------
+V7_MEM4=$(v7_complet_draft "$V7_OWNER")
+v7_reserve "$V7_OWNER" "$V7_MEM4" "v-1" 1000 >/dev/null
+v7_reserve "$V7_OWNER" "$V7_MEM4" "v-2" 1000 >/dev/null
+( $DB -t -A -c "set role service_role; select pg_sleep(0.2); select outcome from reserve_memorial_video_upload_v1('$V7_OWNER','$V7_MEM4','v-3a',1000);" | tail -1 > "$PGDATA_DIR/v7_c1" ) &
+( $DB -t -A -c "set role service_role; select pg_sleep(0.2); select outcome from reserve_memorial_video_upload_v1('$V7_OWNER','$V7_MEM4','v-3b',1000);" | tail -1 > "$PGDATA_DIR/v7_c2" ) &
+wait
+check "VID-07: two simultaneous requests for the last slot -> exactly one reserved, one refused_too_many" "refused_too_many,reserved" \
+  "$(sort "$PGDATA_DIR/v7_c1" "$PGDATA_DIR/v7_c2" | paste -sd, -)"
+check "VID-07: ... and the memorial holds exactly 3 live videos" "3" "$($DB -t -A -c "select count(*) from memorial_videos where memorial_id='$V7_MEM4' and status in ('reserved','uploading','processing','ready');")"
+
+# --- V7-5. Upload, events, idempotency, disorder ----------------------------
+V7_AID=$(v7_id "$V7_A")
+check "VID-07: the Mux upload is attached once (reserved -> uploading)" "attached|not_reserved|uploading|-" \
+  "$(svc "select attach_memorial_video_upload_v1('$V7_AID','up-a', now() + interval '1 hour');")|$(svc "select attach_memorial_video_upload_v1('$V7_AID','up-a2', now() + interval '1 hour');")|$(v7_status "$V7_AID")"
+check "VID-07: an unknown upload id -> unknown (recorded, ignored)" "unknown|-|-" "$(v7_event ev-x1 upload_asset_created null "'up-nope'" "'as-nope'")"
+check "VID-07: video.upload.asset_created -> processing; the same event again -> duplicate" "applied|-|-|duplicate|-|-|processing|-" \
+  "$(v7_event ev-a1 upload_asset_created null "'up-a'" "'as-a'")|$(v7_event ev-a1 upload_asset_created null "'up-a'" "'as-a'")|$(v7_status "$V7_AID")"
+check "VID-07: asset ready with the measured duration -> accepted, ready" "accepted|-|-|ready|-" \
+  "$(v7_event ev-a2 asset_ready "'$V7_AID'" null "'as-a'" "'pb-a'" 400000)|$(v7_status "$V7_AID")"
+check "VID-07: a second delivery under another event id -> ignored, still ready" "ignored|-|-|ready|-" \
+  "$(v7_event ev-a3 asset_ready "'$V7_AID'" null "'as-a'" "'pb-a'" 400000)|$(v7_status "$V7_AID")"
+check "VID-07: a late asset_created after ready -> ignored (never backwards)" "ignored|-|-|ready|-" \
+  "$(v7_event ev-a4 upload_asset_created null "'up-a'" "'as-a'")|$(v7_status "$V7_AID")"
+check "VID-07: an asset id never moves to another video" "ignored|-|-" "$(v7_event ev-a5 asset_ready "'$V7_AID'" null "'as-other'" "'pb-o'" 1000)"
+
+# --- V7-6. Measured duration differs from the declared one ------------------
+V7_BID=$(v7_id "$V7_B")
+svc "select attach_memorial_video_upload_v1('$V7_BID','up-b', now() + interval '1 hour');" >/dev/null
+check "VID-07: declared 100 s but Mux measures 250 s with 400 s ready -> rejected (over 600 s), asset to delete" "rejected|as-b|-|rejected|over_total_duration" \
+  "$(v7_event ev-b1 asset_ready "'$V7_BID'" null "'as-b'" "'pb-b'" 250000)|$(v7_status "$V7_BID")"
+check "VID-07: asset ready without a duration -> rejected (duration_unavailable), never accepted" "rejected|as-c0|-" \
+  "$(V7_C0=$(v7_id "$(v7_reserve "$V7_OWNER" "$V7_MEM2" "v-c0" 1000)"); v7_event ev-c0 asset_ready "'$V7_C0'" null "'as-c0'" "'pb-c0'" null)"
+
+# --- V7-6b. A refused video stays visible to its family after cleanup -------
+check "VID-07: the refused video is listed for cleanup (asset still at Mux)" "1" \
+  "$(svc "select count(*) from list_memorial_videos_to_reconcile_v1(now() + interval '1 day', 500) where video_id='$V7_BID';")"
+check "VID-07: its asset deleted (webhook) -> still rejected with its reason, deletion noted" "rejected|over_total_duration|t" \
+  "$(v7_event ev-b2 asset_deleted null null "'as-b'" >/dev/null; v7_status "$V7_BID")|$($DB -t -A -c "select deleted_at is not null from memorial_videos where id='$V7_BID';")"
+check "VID-07: ... still shown to its owner with the reason, never again listed for cleanup" "rejected|over_total_duration|0" \
+  "$(svc "select status || '|' || coalesce(failure_reason,'-') from list_memorial_videos_v1('$V7_OWNER','$V7_MEM') where video_id='$V7_BID';")|$(svc "select count(*) from list_memorial_videos_to_reconcile_v1(now() + interval '1 day', 500) where video_id='$V7_BID';")"
+check "VID-07: deletion confirmed again on a refused video -> state kept (idempotent)" "rejected|over_total_duration" \
+  "$(svc "select confirm_memorial_video_deleted_v1('$V7_BID');" >/dev/null; v7_status "$V7_BID")"
+check "VID-07: the family removes the refused slot -> deleted at once (nothing left at Mux), no longer listed" "requested|rejected|deleted|over_total_duration|0" \
+  "$(svc "select outcome || '|' || previous_status from request_memorial_video_removal_v1('$V7_OWNER','$V7_MEM','v-b');")|$(v7_status "$V7_BID")|$(svc "select count(*) from list_memorial_videos_v1('$V7_OWNER','$V7_MEM') where video_id='$V7_BID';")"
+
+# --- V7-7. Replacement: the old video stays until the new one is accepted ---
+V7_MEM5=$(v7_complet_draft "$V7_OWNER")
+V7_OLD=$(v7_ready "$V7_MEM5" "v-r" 300000)
+V7_NEW=$(v7_id "$(v7_reserve "$V7_OWNER" "$V7_MEM5" "v-r" 500000)")
+check "VID-07: replacement reserved while the old video stays ready" "ready|-" "$(v7_status "$V7_OLD")"
+svc "select attach_memorial_video_upload_v1('$V7_NEW','up-new', now() + interval '1 hour');" >/dev/null
+check "VID-07: replacement accepted -> the old one becomes deletion_requested, its asset is returned" "accepted|-|as-$V7_OLD|deletion_requested|-|ready|-" \
+  "$(v7_event ev-new asset_ready "'$V7_NEW'" null "'as-new'" "'pb-new'" 500000)|$(v7_status "$V7_OLD")|$(v7_status "$V7_NEW")"
+check "VID-07: one ready video per slot at all times" "1" "$($DB -t -A -c "select count(*) from memorial_videos where memorial_id='$V7_MEM5' and draft_video_id='v-r' and status='ready';")"
+
+# --- V7-8. Cancellation, expiry, removal, deletion --------------------------
+V7_MEM6=$(v7_complet_draft "$V7_OWNER")
+V7_K=$(v7_id "$(v7_reserve "$V7_OWNER" "$V7_MEM6" "v-k" 1000)")
+svc "select attach_memorial_video_upload_v1('$V7_K','up-k', now() + interval '1 hour');" >/dev/null
+check "VID-07: another owner cannot cancel; the owner cancels -> cancelled, upload id returned" "refused|-|cancelled|up-k|cancelled|upload_cancelled" \
+  "$(svc "select outcome || '|' || coalesce(upload_id,'-') from cancel_memorial_video_upload_v1('$V7_OTHER','$V7_MEM6','$V7_K');")|$(svc "select outcome || '|' || coalesce(upload_id,'-') from cancel_memorial_video_upload_v1('$V7_OWNER','$V7_MEM6','$V7_K');")|$(v7_status "$V7_K")"
+check "VID-07: an asset arriving for a cancelled upload -> delete_asset" "delete_asset|as-k|-" "$(v7_event ev-k1 upload_asset_created null "'up-k'" "'as-k'")"
+V7_E=$(v7_id "$(v7_reserve "$V7_OWNER" "$V7_MEM6" "v-e" 1000)")
+svc "select attach_memorial_video_upload_v1('$V7_E','up-e', now() - interval '1 minute');" >/dev/null
+check "VID-07: an expired upload no longer blocks its slot: retry reserved, old one cancelled (upload_expired)" "reserved|cancelled|upload_expired" \
+  "$(v7_reserve "$V7_OWNER" "$V7_MEM6" "v-e" 1000 | cut -d'|' -f1)|$(v7_status "$V7_E")"
+check "VID-07: stale rows are listed for reconciliation" "t" \
+  "$(svc "select count(*) > 0 from list_memorial_videos_to_reconcile_v1(now() + interval '1 minute', 50);")"
+V7_RM=$(v7_ready "$V7_MEM6" "v-rm" 2000)
+check "VID-07: another owner cannot remove; the owner removes -> deletion_requested with the asset to delete" "refused|requested|as-$V7_RM|ready|deletion_requested|-" \
+  "$(svc "select outcome from request_memorial_video_removal_v1('$V7_OTHER','$V7_MEM6','v-rm') limit 1;")|$(svc "select outcome || '|' || coalesce(asset_id,'-') || '|' || previous_status from request_memorial_video_removal_v1('$V7_OWNER','$V7_MEM6','v-rm');")|$(v7_status "$V7_RM")"
+check "VID-07: deletion confirmed -> deleted, and no longer listed to the owner" "deleted|0" \
+  "$(svc "select confirm_memorial_video_deleted_v1('$V7_RM');")|$(svc "select count(*) from list_memorial_videos_v1('$V7_OWNER','$V7_MEM6') where draft_video_id='v-rm';")"
+check "VID-07: asset.deleted webhook after a removal -> deleted (idempotent)" "applied|-|-" \
+  "$(v7_event ev-rm2 asset_deleted null null "'as-$V7_RM'")"
+check "VID-07: a memorial holding videos cannot be deleted (no orphan Mux asset)" "restricted" \
+  "$($DB -t -A -c "begin;" -c "delete from memorials where id='$V7_MEM6';" -c "rollback;" >/dev/null 2>&1 && echo deleted || echo restricted)"
+
+# --- V7-9. Reads: owner session (RLS), owner list, public -------------------
+V7_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$V7_OWNER';")
+V7_OTHER_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$V7_OTHER';")
+check "VID-07: the owner's session reads its videos; another family's session reads none (RLS)" "t|0" \
+  "$(as_owner "$V7_AUTH" "select count(*) > 0 from memorial_videos where memorial_id='$V7_MEM';")|$(as_owner "$V7_OTHER_AUTH" "select count(*) from memorial_videos where memorial_id='$V7_MEM';")"
+check "VID-07: owner list through the RPC; another owner gets nothing" "t|0" \
+  "$(svc "select count(*) > 0 from list_memorial_videos_v1('$V7_OWNER','$V7_MEM');")|$(svc "select count(*) from list_memorial_videos_v1('$V7_OTHER','$V7_MEM');")"
+V7_PUB=$(e1_complet "$V7_OWNER" vid07-pub "" '"video":{"items":[{"id":"v-pub","title":null,"durationSeconds":10}]}')
+V7_PUB_NO=$(e1_complet "$V7_OWNER" vid07-pub-no "")
+V7_PV=$(v7_ready "$V7_PUB" "v-pub" 10000)
+v7_ready "$V7_PUB_NO" "v-pub" 10000 >/dev/null
+check "VID-07: public read — complete offer, published, video in the published copy -> 1 playback id" "1|pb-$V7_PV" \
+  "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid07-pub');")"
+check "VID-07: public read — a ready video absent from the published copy is never served" "0" \
+  "$(svc "select count(*) from read_public_memorial_videos_v1('vid07-pub-no');")"
+check "VID-07: public read — the same memorial unpublished, or free (avis), serves nothing" "0|0" \
+  "$($DB -t -A -c "begin;" -c "update memorials set status='editing' where id='$V7_PUB';" -c "set role service_role;" -c "select count(*) from read_public_memorial_videos_v1('vid07-pub');" -c "rollback;" | tail -1)|$($DB -t -A -c "begin;" -c "set local session_replication_role = replica;" -c "update memorials set access_level='avis', free_public_until = now() + interval '30 days', free_private_until = now() + interval '60 days' where id='$V7_PUB';" -c "set local session_replication_role = origin;" -c "set role service_role;" -c "select count(*) from read_public_memorial_videos_v1('vid07-pub');" -c "rollback;" 2>/dev/null | tail -1)"
+
+# --- V7-10. Rollback --------------------------------------------------------
+$PSQL -d postgres -c "create database vid07_down template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid07_down -f "$f" >/dev/null 2>&1; done
+check "VID-07 rollback removes both tables, then the migration re-applies" "0|absent|0|present" \
+  "$($PSQL -d vid07_down -f "$V7_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid07_down -t -A -c "select case when to_regclass('public.memorial_videos') is null and to_regclass('public.memorial_video_events') is null then 'absent' else 'present' end;")|$($PSQL -d vid07_down -f "$V7_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid07_down -t -A -c "select case when to_regclass('public.memorial_videos') is null then 'absent' else 'present' end;")"
+$PSQL -d postgres -c "drop database vid07_down;" >/dev/null
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
