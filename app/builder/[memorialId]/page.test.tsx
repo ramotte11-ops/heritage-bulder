@@ -282,6 +282,13 @@ const { publishFromPreviewAction } = vi.hoisted(() => ({
   publishFromPreviewAction: vi.fn(() => Promise.resolve("published")),
 }));
 vi.mock("./publication-actions", () => ({ publishFromPreviewAction }));
+const videoActions = vi.hoisted(() => ({
+  loadVideoHostingAction: vi.fn(async () => ({ status: "unavailable" })),
+  requestVideoUploadAction: vi.fn(async () => ({ status: "unavailable" })),
+  cancelVideoUploadAction: vi.fn(async () => ({ status: "ignored" })),
+  removeHostedVideoAction: vi.fn(async () => ({ status: "removed" })),
+}));
+vi.mock("./video-actions", () => videoActions);
 
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
@@ -3073,9 +3080,23 @@ describe("BuilderMemorialPage — granted access", () => {
             granted(afterA15(), { ...CONFIGURED_MEMORIAL, slug: null });
             const result = await callPage();
             expect(result.type).toBe(VideoStep);
-            expect(Object.keys(result.props).sort()).toEqual(["content", "language", "persist"]);
+            expect(Object.keys(result.props).sort()).toEqual(["content", "hosting", "language", "persist"]);
             await result.props.persist({ guidedFlow: {} }, 2);
             expect(saveDraftAction).toHaveBeenLastCalledWith(MEMORIAL_ID, { guidedFlow: {} }, 2);
+          });
+
+          it("VID-07 — the four hosting actions are bound to the AUTHORIZED id, never to a value from the browser", async () => {
+            granted(afterA15(), { ...CONFIGURED_MEMORIAL, slug: null });
+            const { hosting } = (await callPage()).props as { hosting: Record<"load" | "request" | "cancel" | "remove", (...args: unknown[]) => Promise<unknown>> };
+            expect(Object.keys(hosting).sort()).toEqual(["cancel", "load", "remove", "request"]);
+            await hosting.load();
+            await hosting.request("v-1", 12);
+            await hosting.cancel("22222222-2222-4222-8222-222222222222");
+            await hosting.remove("v-1");
+            expect(videoActions.loadVideoHostingAction).toHaveBeenLastCalledWith(MEMORIAL_ID);
+            expect(videoActions.requestVideoUploadAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "v-1", 12);
+            expect(videoActions.cancelVideoUploadAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "22222222-2222-4222-8222-222222222222");
+            expect(videoActions.removeHostedVideoAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "v-1");
           });
 
           it("never before A15, and never again once A16 is resolved (completed or skipped)", async () => {

@@ -32,7 +32,14 @@ export const VIDEO_HOMMAGE_MAX_TITLE_LENGTH = 30;
  */
 export type VideoHommageSource =
   | { kind: "local"; url: string }
-  | { kind: "stream"; url: string; posterUrl?: string };
+  | {
+      kind: "stream";
+      /** HLS signé (plafonné à 720p par son jeton). */
+      url: string;
+      posterUrl?: string;
+      /** VID-07 — MP4 720p signé, pour un navigateur sans HLS natif (s'il existe). */
+      fallbackUrl?: string;
+    };
 
 /**
  * État d'une vidéo du point de vue de la rubrique.

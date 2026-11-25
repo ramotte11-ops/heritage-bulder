@@ -90,6 +90,7 @@ import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
 import { resolveVisibilityEntries } from "@/lib/memorial/visibility-entries";
 import { loadMemorialPreviewAction } from "./preview-actions";
 import { publishFromPreviewAction } from "./publication-actions";
+import { cancelVideoUploadAction, loadVideoHostingAction, removeHostedVideoAction, requestVideoUploadAction } from "./video-actions";
 import styles from "./page.module.css";
 
 /**
@@ -772,11 +773,25 @@ export default async function BuilderMemorialPage({
         };
       case "video":
         // VID-06 — A16 : titres, durées et ordre enregistrés par la même Server
-        // Action liée que tous les écrans ; les fichiers restent dans le
-        // navigateur (aucun téléversement tant que l'offre complète n'est pas
-        // activée et que le lot Mux n'est pas ouvert).
+        // Action liée que tous les écrans. VID-07 — les actions d'hébergement
+        // sont liées à l'identifiant AUTORISÉ ; chacune rejoue la session et lit
+        // l'offre côté serveur. Hébergement non activé ou offre gratuite : elles
+        // répondent « indisponible » et les fichiers restent dans le navigateur.
         return {
-          element: <VideoStep key={key} language={language} content={content} persist={saveDraftAction.bind(null, access.memorialId)} />,
+          element: (
+            <VideoStep
+              key={key}
+              language={language}
+              content={content}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              hosting={{
+                load: loadVideoHostingAction.bind(null, access.memorialId),
+                request: requestVideoUploadAction.bind(null, access.memorialId),
+                cancel: cancelVideoUploadAction.bind(null, access.memorialId),
+                remove: removeHostedVideoAction.bind(null, access.memorialId),
+              }}
+            />
+          ),
           available: previewAvailable(content),
         };
     }

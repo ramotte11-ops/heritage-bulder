@@ -23,13 +23,15 @@ import type { LocalVideoHandle, LocalVideoMetadata } from "./local-video";
 export interface LocalVideoEntry {
   url: string;
   metadata: LocalVideoMetadata;
+  /** VID-07 — le fichier lui-même, pour (re)prendre un envoi premium ; jamais copié ailleurs. */
+  file: Blob | null;
 }
 
 export interface LocalVideoRegistry {
   get(id: string): LocalVideoEntry | null;
   has(id: string): boolean;
   /** Associe le fichier ouvert à la vidéo `id` ; libère l'éventuel fichier précédent. */
-  set(id: string, handle: LocalVideoHandle): void;
+  set(id: string, handle: LocalVideoHandle, file?: Blob): void;
   /** Retire et libère ; sans effet si absent. */
   release(id: string): void;
   /** Libère tout ce qui n'est plus dans `keepIds` (vidéos retirées ailleurs, autre onglet). */
@@ -39,21 +41,25 @@ export interface LocalVideoRegistry {
 
 export function createLocalVideoRegistry(): LocalVideoRegistry {
   const handles = new Map<string, LocalVideoHandle>();
+  const files = new Map<string, Blob>();
   const release = (id: string) => {
     const handle = handles.get(id);
     if (handle === undefined) return;
     handles.delete(id);
+    files.delete(id);
     handle.release();
   };
   return {
     get: (id) => {
       const handle = handles.get(id);
-      return handle === undefined ? null : { url: handle.url, metadata: handle.metadata };
+      return handle === undefined ? null : { url: handle.url, metadata: handle.metadata, file: files.get(id) ?? null };
     },
     has: (id) => handles.has(id),
-    set: (id, handle) => {
+    set: (id, handle, file) => {
       const previous = handles.get(id);
       handles.set(id, handle);
+      if (file === undefined) files.delete(id);
+      else files.set(id, file);
       if (previous !== undefined && previous !== handle) previous.release();
     },
     release,

@@ -30,6 +30,17 @@ import styles from "./VideoHommageV1.module.css";
  * demanderont un adaptateur HLS au lot de raccordement Mux (dépendance à
  * concerter avec Chef 06, `package-lock.json`).
  */
+/**
+ * VID-07 — l'adresse que CE navigateur sait lire : le HLS si le lecteur
+ * natif le lit (Safari, iOS, Android), sinon le MP4 720p de secours s'il
+ * existe, sinon le HLS (le lecteur affichera alors l'erreur prévue).
+ */
+function playableUrl(source: NonNullable<VideoHommageItem["source"]>): string {
+  if (source.kind !== "stream" || source.fallbackUrl === undefined) return source.url;
+  const nativeHls = typeof document !== "undefined" && document.createElement("video").canPlayType("application/vnd.apple.mpegurl") !== "";
+  return nativeHls ? source.url : source.fallbackUrl;
+}
+
 export function VideoHommagePlayer({
   item,
   title,
@@ -49,7 +60,7 @@ export function VideoHommagePlayer({
   useFullscreenOrientation(video);
 
   const source = item?.status === "ready" ? item.source : undefined;
-  const sourceUrl = source?.url;
+  const sourceUrl = source === undefined ? undefined : playableUrl(source);
 
   useEffect(() => {
     if (video === null || sourceUrl === undefined) return;
@@ -75,7 +86,7 @@ export function VideoHommagePlayer({
           ref={setVideo}
           key="player"
           className={styles.video}
-          src={source.url}
+          src={sourceUrl}
           poster={source.kind === "stream" ? source.posterUrl : undefined}
           preload={source.kind === "local" ? "metadata" : "none"}
           controls
@@ -83,7 +94,7 @@ export function VideoHommagePlayer({
           controlsList="nodownload noremoteplayback"
           disablePictureInPicture
           aria-label={title === null ? undefined : texts.playerLabel(title)}
-          onError={() => setFailed(source.url)}
+          onError={() => setFailed(sourceUrl ?? null)}
         />
       )}
       {message !== null && (

@@ -34,6 +34,8 @@ import {
 } from "@/lib/memorial/video/video-hommage";
 import { isVideoFile, openLocalVideo, type LocalVideoHandle } from "@/lib/memorial/video/local-video";
 import { pageLocalVideoRegistry, type LocalVideoRegistry } from "@/lib/memorial/video/local-video-registry";
+import type { VideoHostingActions } from "@/lib/memorial/video/hosting/hosted-video-types";
+import { pageVideoTransfers, type VideoTransferManager } from "@/lib/memorial/video/hosting/video-transfers";
 import { VideoHommageV1 } from "@/components/memorial/video/VideoHommageV1";
 import { VIDEO_HOMMAGE_TEXTS } from "@/components/memorial/video/texts";
 import { AutosaveIndicator } from "./AutosaveIndicator";
@@ -42,6 +44,7 @@ import { PrimaryButton } from "./PrimaryButton";
 import { PendingActionLabel } from "./PendingActionLabel";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./VideoStep.module.css";
+import { useVideoHosting, type HostedItemStatus } from "./useVideoHosting";
 
 export interface VideoStepProps {
   language: Language;
@@ -53,6 +56,14 @@ export interface VideoStepProps {
   registry?: LocalVideoRegistry;
   openVideo?: (file: File) => Promise<LocalVideoHandle>;
   createId?: () => string;
+  /**
+   * VID-07 — actions serveur liées à l'hommage autorisé (route du Builder).
+   * Absentes (invité) ou « indisponibles » (offre gratuite, hébergement non
+   * configuré) : préparation locale seule, aucun envoi.
+   */
+  hosting?: VideoHostingActions;
+  transfers?: VideoTransferManager;
+  hostingPollMs?: number;
 }
 
 const NO_ITEMS: readonly VideoDraftItem[] = [];
@@ -63,7 +74,8 @@ type Feedback =
   | { kind: "tooMany" }
   | { kind: "noTimeLeft" }
   | { kind: "tooLong"; duration: number; remaining: number }
-  | { kind: "notPlayable" };
+  | { kind: "notPlayable" }
+  | { kind: "removeFailed" };
 
 /** « 4 min 28 s », « 45 s » — lu tel quel dans les trois langues. */
 export function spokenVideoDuration(seconds: number): string {
@@ -104,6 +116,9 @@ export function VideoStep({
   registry = pageLocalVideoRegistry(),
   openVideo = (file) => openLocalVideo(file),
   createId = () => createVideoDraftId(),
+  hosting,
+  transfers = pageVideoTransfers(),
+  hostingPollMs,
 }: VideoStepProps) {
   const saveDraft = useRevisionedDraftPersist(persist);
   const stepDone = useStepDone();
@@ -115,12 +130,26 @@ export function VideoStep({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState(false);
 
   const read = readVideoForEditing(content);
   const items = read.status === "ready" ? read.items : NO_ITEMS;
   const rubrique = VIDEO_HOMMAGE_TEXTS[language];
   const defaultTitle = rubrique.defaultTitle;
+  const hosted = useVideoHosting({
+    hosting,
+    items,
+    registry,
+    transfers,
+    pollMs: hostingPollMs,
+    onVerifiedDurations: (durations) =>
+      setContent((current) => {
+        const latest = readVideoForEditing(current);
+        if (latest.status !== "ready") return current;
+        return writeVideoItems(current, latest.items.map((item) => ({ ...item, durationSeconds: durations.get(item.id) ?? item.durationSeconds })));
+      }),
+  });
 
   // Un fichier gardé pour une vidéo que le brouillon ne contient plus (retirée
   // depuis un autre écran) est libéré à l'ouverture de l'écran.
@@ -129,7 +158,7 @@ export function VideoStep({
     registry.retainOnly(initial.status === "ready" ? initial.items.map((item) => item.id) : []);
   }, [initialContent, registry]);
 
-  const busy = opening !== null || pendingAction !== null;
+  const busy = opening !== null || pendingAction !== null || removing !== null;
   const budget = videoDraftBudget(items);
   const compliance = videoDraftCompliance(items);
   const timeLeft = budget.remainingSeconds > 0;
@@ -174,7 +203,7 @@ export function VideoStep({
       return;
     }
     const id = replacingId ?? createId();
-    registry.set(id, handle);
+    registry.set(id, handle, file);
     filesChanged();
     writeItems(
       replacingId === undefined
@@ -183,6 +212,7 @@ export function VideoStep({
     );
     setOpening(null);
     if (!playable) setFeedback({ kind: "notPlayable" });
+    hosted.send(id, durationSeconds);
   }
 
   function changeTitle(id: string, raw: string) {
@@ -196,9 +226,19 @@ export function VideoStep({
     writeItems(moveVideo(items, index, to));
   }
 
-  function remove(id: string) {
+  async function remove(id: string) {
     setConfirmRemove(null);
     setFeedback(null);
+    // Premium : la vidéo est d'abord retirée chez l'hébergeur ; un échec la laisse en place.
+    if (hosted.mode !== "local") {
+      setRemoving(id);
+      const removed = await hosted.remove(id);
+      setRemoving(null);
+      if (!removed) {
+        setFeedback({ kind: "removeFailed" });
+        return;
+      }
+    }
     registry.release(id);
     filesChanged();
     writeItems(items.filter((item) => item.id !== id));
@@ -233,9 +273,18 @@ export function VideoStep({
 
   const previewItems: VideoHommageItem[] = items.map((item) => {
     const entry = registry.get(item.id);
-    return entry === null
-      ? { id: item.id, title: item.title, durationSeconds: item.durationSeconds, status: "local-unavailable" }
-      : { id: item.id, title: item.title, durationSeconds: item.durationSeconds, status: "ready", source: { kind: "local", url: entry.url } };
+    const base = { id: item.id, title: item.title, durationSeconds: item.durationSeconds };
+    if (entry !== null) return { ...base, status: "ready", source: { kind: "local", url: entry.url } };
+    // Premium : plus de fichier sur l'appareil, mais une version prête chez l'hébergeur (lecture signée, 720p).
+    const playback = hosted.playbackOf(item.id);
+    if (playback !== null) {
+      return {
+        ...base,
+        status: "ready",
+        source: { kind: "stream", url: playback.hlsUrl, posterUrl: playback.posterUrl, ...(playback.mp4Url === null ? {} : { fallbackUrl: playback.mp4Url }) },
+      };
+    }
+    return { ...base, status: "local-unavailable" };
   });
 
   const addInput = (label: string, big: boolean) => (
@@ -275,10 +324,16 @@ export function VideoStep({
           void resolveStep((c) => commitA16(c, items), "continue");
         }}
       >
-        <div className={styles.notice} data-video-local-notice="">
-          <p>{translate(language, "videoStep.localNotice")}</p>
-          <p>{translate(language, "videoStep.premiumNotice")}</p>
-        </div>
+        {hosted.mode === "hosted" ? (
+          <div className={styles.notice} data-video-hosted-notice="">
+            <p>{translate(language, "videoStep.hostedNotice")}</p>
+          </div>
+        ) : (
+          <div className={styles.notice} data-video-local-notice="">
+            <p>{translate(language, "videoStep.localNotice")}</p>
+            <p>{translate(language, "videoStep.premiumNotice")}</p>
+          </div>
+        )}
 
         {items.length > 0 && (
           <ol className={styles.register} aria-label={translate(language, "videoStep.listLabel")} data-video-register="">
@@ -287,8 +342,12 @@ export function VideoStep({
               const shownTitle = videoDisplayTitle(item, index, defaultTitle);
               const inputValue = titleInputs[item.id] ?? item.title ?? "";
               const inputId = `video-title-${item.id}`;
+              const hostStatus = hosted.statusOf(item.id);
+              const keptRemotely = hosted.playbackOf(item.id) !== null || hostStatus?.kind === "processing";
+              const fileState = entry !== null ? "present" : keptRemotely ? "hosted" : "missing";
+              const sending = hosted.isActive(item.id);
               return (
-                <li key={item.id} className={styles.item} data-video-item={item.id} data-file={entry === null ? "missing" : "present"}>
+                <li key={item.id} className={styles.item} data-video-item={item.id} data-file={fileState}>
                   <span className={styles.number} aria-hidden="true">
                     {String(index + 1).padStart(2, "0")}
                   </span>
@@ -317,16 +376,26 @@ export function VideoStep({
                         ? translate(language, "videoStep.durationUnknown")
                         : translateWith(language, "videoStep.duration", { duration: spokenVideoDuration(item.durationSeconds) })}
                     </p>
-                    {entry === null && <p className={styles.state}>{translate(language, "videoStep.fileMissing")}</p>}
+                    {fileState === "missing" && <p className={styles.state}>{translate(language, "videoStep.fileMissing")}</p>}
                     {entry !== null && !entry.metadata.playable && <p className={styles.state}>{translate(language, "videoStep.notPlayable")}</p>}
+                    {hostStatus !== null && (
+                      <HostingState
+                        language={language}
+                        status={hostStatus}
+                        title={shownTitle}
+                        disabled={busy}
+                        onCancel={() => void hosted.cancel(item.id)}
+                        onResume={() => hosted.resume(item.id, item.durationSeconds)}
+                      />
+                    )}
 
                     <div className={styles.actions}>
-                      <label className={styles.textAction} aria-disabled={busy || undefined}>
+                      <label className={styles.textAction} aria-disabled={busy || sending || undefined}>
                         <input
                           type="file"
                           accept="video/*"
                           className={styles.hiddenInput}
-                          disabled={busy}
+                          disabled={busy || sending}
                           onChange={(event) => {
                             const file = event.target.files?.[0];
                             event.target.value = "";
@@ -335,7 +404,7 @@ export function VideoStep({
                         />
                         {opening === item.id
                           ? translate(language, "videoStep.opening")
-                          : translate(language, entry === null ? "videoStep.reselect" : "videoStep.replace")}
+                          : translate(language, fileState === "missing" ? "videoStep.reselect" : "videoStep.replace")}
                       </label>
                       <button
                         type="button"
@@ -351,7 +420,7 @@ export function VideoStep({
                       <div className={styles.confirm} role="group" aria-label={translateWith(language, "videoStep.removeConfirm", { title: shownTitle })}>
                         <p className={styles.confirmQuestion}>{translateWith(language, "videoStep.removeConfirm", { title: shownTitle })}</p>
                         <div className={styles.actions}>
-                          <button type="button" className={styles.confirmAction} onClick={() => remove(item.id)}>
+                          <button type="button" className={styles.confirmAction} onClick={() => void remove(item.id)}>
                             {translate(language, "videoStep.removeYes")}
                           </button>
                           <button type="button" className={styles.confirmAction} onClick={() => setConfirmRemove(null)}>
@@ -467,5 +536,111 @@ function feedbackText(language: Language, feedback: Feedback): string {
       });
     case "notPlayable":
       return translate(language, "videoStep.notPlayable");
+    case "removeFailed":
+      return translate(language, "videoStep.removeFailed");
+  }
+}
+
+const REFUSAL_KEYS = {
+  too_many: "videoStep.refusedTooMany",
+  duration: "videoStep.refusedDuration",
+  unknown_pending: "videoStep.refusedUnknownPending",
+  in_progress: "videoStep.refusedInProgress",
+  offer: "videoStep.refusedOffer",
+  other: "videoStep.refusedOther",
+} as const;
+
+const FAILURE_KEYS = {
+  over_total_duration: "videoStep.hostedFailedTotal",
+  too_many_videos: "videoStep.hostedFailedCount",
+  duration_unavailable: "videoStep.hostedFailedDuration",
+  asset_errored: "videoStep.hostedFailedProcessing",
+} as const;
+
+/**
+ * VID-07 — l'état d'envoi d'une vidéo, sous sa durée : transfert et
+ * progression, réception et mise en forme, disponibilité, erreur, reprise.
+ * « Conservée » n'est écrit que lorsque le serveur déclare la vidéo prête.
+ */
+function HostingState({
+  language,
+  status,
+  title,
+  disabled,
+  onCancel,
+  onResume,
+}: {
+  language: Language;
+  status: HostedItemStatus;
+  title: string;
+  disabled: boolean;
+  onCancel: () => void;
+  onResume: () => void;
+}) {
+  const resume = (
+    <button type="button" className={styles.textAction} disabled={disabled} onClick={onResume}>
+      {translate(language, "videoStep.transferResume")}
+    </button>
+  );
+  switch (status.kind) {
+    case "preparing":
+      return (
+        <p className={styles.state} role="status" data-video-hosting="preparing">
+          {translate(language, "videoStep.transferPreparing")}
+        </p>
+      );
+    case "sending":
+      return (
+        <div className={styles.hosting} data-video-hosting="sending">
+          <progress
+            className={styles.progress}
+            max={100}
+            value={status.percent}
+            aria-label={translateWith(language, "videoStep.transferProgressLabel", { title })}
+          />
+          <p className={styles.state} aria-live="polite">
+            {translateWith(language, "videoStep.transferProgress", { percent: status.percent })}
+          </p>
+          <div className={styles.actions}>
+            <button type="button" className={styles.textActionQuiet} onClick={onCancel}>
+              {translate(language, "videoStep.transferCancel")}
+            </button>
+          </div>
+        </div>
+      );
+    case "processing":
+      return (
+        <p className={styles.state} role="status" data-video-hosting="processing">
+          {translate(language, "videoStep.hostedProcessing")}
+        </p>
+      );
+    case "ready":
+      return (
+        <p className={styles.state} role="status" data-video-hosting="ready">
+          {translate(language, "videoStep.hostedReady")}
+        </p>
+      );
+    case "interrupted":
+      return (
+        <div className={styles.hosting} role="status" data-video-hosting="interrupted">
+          <p className={styles.state}>{translate(language, status.unsuccessful ? "videoStep.hostedFailedUpload" : "videoStep.transferInterrupted")}</p>
+          {status.canResume ? <div className={styles.actions}>{resume}</div> : <p className={styles.hint}>{translate(language, "videoStep.transferNeedsFile")}</p>}
+        </div>
+      );
+    case "failed":
+      return (
+        <p className={styles.error} role="alert" data-video-hosting="failed" data-video-failure={status.failure}>
+          {translate(language, FAILURE_KEYS[status.failure])}
+        </p>
+      );
+    case "refused":
+      return (
+        <div className={styles.hosting} data-video-hosting="refused" data-video-refusal={status.reason}>
+          <p className={styles.error} role="alert">
+            {translate(language, REFUSAL_KEYS[status.reason])}
+          </p>
+          {status.canResume && <div className={styles.actions}>{resume}</div>}
+        </div>
+      );
   }
 }
