@@ -19,6 +19,11 @@
  *   MUX_SIGNING_KEY_ID          identifiant de la clé de lecture signée
  *   MUX_SIGNING_KEY_PRIVATE     clé privée RSA de lecture signée (PEM en base64)
  *   NEXT_PUBLIC_SITE_URL        origine du site (CORS des envois directs) — non secrète
+ *   HERITAGE_VIDEO_DEPLOY_ORIGINS  (VID-10, facultatif) « enabled » : accepte
+ *                               aussi l'envoi depuis l'adresse permanente d'un
+ *                               déploiement du MÊME site
+ *                               (`https://<id>--<hôte du site>`), pour la recette
+ *                               sur un déploiement non publié. Non secrète.
  */
 
 export interface MuxHostingConfig {
@@ -30,6 +35,8 @@ export interface MuxHostingConfig {
   signingPrivateKeyPem: string;
   /** Origine autorisée pour l'envoi direct depuis le navigateur. */
   corsOrigin: string;
+  /** VID-10 — accepter aussi les adresses permanentes de déploiement du même site. */
+  allowDeployOrigins: boolean;
 }
 
 export type MuxHostingConfigRead =
@@ -63,6 +70,36 @@ export function readMuxHostingConfig(env: Env = process.env): MuxHostingConfigRe
       signingKeyId: env.MUX_SIGNING_KEY_ID!,
       signingPrivateKeyPem: pem,
       corsOrigin: origin,
+      allowDeployOrigins: env.HERITAGE_VIDEO_DEPLOY_ORIGINS === "enabled",
     },
   };
+}
+
+/**
+ * VID-10 — l'origine à déclarer à Mux pour UN envoi direct : celle du site, ou,
+ * si la recette sur déploiement non publié est explicitement permise,
+ * l'adresse permanente d'un déploiement du même site (`https://<id>--<hôte>`,
+ * hôte identique, HTTPS, sans port). Toute autre origine (autre site,
+ * sous-domaine arbitraire, en-tête absent ou illisible) retombe sur l'origine
+ * du site : l'envoi échouera alors dans le navigateur, sans rien ouvrir.
+ */
+export function resolveUploadOrigin(config: Pick<MuxHostingConfig, "corsOrigin" | "allowDeployOrigins">, requestOrigin: string | null | undefined): string {
+  if (!requestOrigin || !config.allowDeployOrigins) return config.corsOrigin;
+  let request: URL;
+  let site: URL;
+  try {
+    request = new URL(requestOrigin);
+    site = new URL(config.corsOrigin);
+  } catch {
+    return config.corsOrigin;
+  }
+  if (request.origin === site.origin) return site.origin;
+  const prefix = request.hostname.slice(0, -(`--${site.hostname}`.length));
+  const isDeployOfSameSite =
+    request.protocol === "https:" &&
+    request.port === "" &&
+    request.hostname.endsWith(`--${site.hostname}`) &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(prefix) &&
+    !prefix.includes("--");
+  return isDeployOfSameSite ? request.origin : site.origin;
 }

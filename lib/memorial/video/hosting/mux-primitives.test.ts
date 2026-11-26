@@ -1,6 +1,6 @@
 import { createHmac, createVerify, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { readMuxHostingConfig } from "./mux-config";
+import { readMuxHostingConfig, resolveUploadOrigin } from "./mux-config";
 import { createMuxApi, muxAssetDurationMs, MuxApiError } from "./mux-api";
 import { parseMuxEvent, verifyMuxSignature } from "./mux-webhook";
 import { signMuxPlaybackToken, signedVideoPlayback } from "./mux-playback";
@@ -188,5 +188,29 @@ describe("VID-07 — configuration", () => {
     expect(read.status).toBe("configured");
     expect(read.status === "configured" && read.config.corsOrigin).toBe("https://heritage.example");
     expect(read.status === "configured" && read.config.signingPrivateKeyPem).toContain("BEGIN PRIVATE KEY");
+    expect(read.status === "configured" && read.config.allowDeployOrigins).toBe(false);
+  });
+});
+
+describe("VID-10 — origine déclarée à Mux pour un envoi direct", () => {
+  const site = { corsOrigin: "https://hommages.netlify.app", allowDeployOrigins: true };
+
+  it("adresse permanente d'un déploiement du MÊME site : acceptée, seulement si la recette est explicitement permise", () => {
+    expect(resolveUploadOrigin(site, "https://6b03311329c08193f8771ee2--hommages.netlify.app")).toBe("https://6b03311329c08193f8771ee2--hommages.netlify.app");
+    expect(resolveUploadOrigin({ ...site, allowDeployOrigins: false }, "https://6b03311329c08193f8771ee2--hommages.netlify.app")).toBe("https://hommages.netlify.app");
+    expect(readMuxHostingConfig({ HERITAGE_VIDEO_HOSTING: "enabled", MUX_TOKEN_ID: "i", MUX_TOKEN_SECRET: "s", MUX_WEBHOOK_SECRET: "w", MUX_SIGNING_KEY_ID: "k", MUX_SIGNING_KEY_PRIVATE: Buffer.from("-----BEGIN PRIVATE KEY-----").toString("base64"), NEXT_PUBLIC_SITE_URL: "https://hommages.netlify.app", HERITAGE_VIDEO_DEPLOY_ORIGINS: "enabled" })).toMatchObject({ config: { allowDeployOrigins: true } });
+  });
+
+  it.each([
+    ["autre site", "https://evil.example"],
+    ["autre site Netlify", "https://abc--autre.netlify.app"],
+    ["imitation par suffixe", "https://abc--hommages.netlify.app.evil.example"],
+    ["double préfixe", "https://a--b--hommages.netlify.app"],
+    ["HTTP", "http://abc--hommages.netlify.app"],
+    ["port", "https://abc--hommages.netlify.app:8443"],
+    ["en-tête illisible", "pas une adresse"],
+    ["en-tête absent", null],
+  ])("%s : l'origine du site est déclarée, rien n'est ouvert", (_label, origin) => {
+    expect(resolveUploadOrigin(site, origin)).toBe("https://hommages.netlify.app");
   });
 });

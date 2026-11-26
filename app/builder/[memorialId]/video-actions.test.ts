@@ -32,6 +32,9 @@ const { videoHostingRuntime, service } = vi.hoisted(() => {
 });
 vi.mock("@/lib/memorial/video/hosting/hosting-runtime", () => ({ videoHostingRuntime }));
 
+const { requestHeaders } = vi.hoisted(() => ({ requestHeaders: new Map<string, string>() }));
+vi.mock("next/headers", () => ({ headers: async () => ({ get: (name: string) => requestHeaders.get(name) ?? null }) }));
+
 const { requestVideoUploadAction, loadVideoHostingAction, cancelVideoUploadAction, removeHostedVideoAction } = await import("./video-actions");
 
 const MEMORIAL_ID = "11111111-1111-4111-8111-111111111111";
@@ -41,7 +44,8 @@ const snapshot = (accessLevel: unknown, status = "draft") => ({ status, accessLe
 beforeEach(() => {
   vi.clearAllMocks();
   authorizeMemorialForRequest.mockResolvedValue({ status: "granted", ownerId: "owner-a", memorialId: MEMORIAL_ID });
-  videoHostingRuntime.mockReturnValue({ config: { webhookSecret: "never-sent" }, service });
+  videoHostingRuntime.mockReturnValue({ config: { webhookSecret: "never-sent", corsOrigin: "https://hommages.netlify.app", allowDeployOrigins: true }, service });
+  requestHeaders.clear();
   load.mockResolvedValue(snapshot("complet"));
 });
 
@@ -78,7 +82,17 @@ describe("VID-07 — requestVideoUploadAction", () => {
       uploadUrl: "https://upload.example/u",
       expiresAt: "2026-11-25T13:00:00.000Z",
     });
-    expect(service.requestUpload).toHaveBeenCalledWith({ ownerId: "owner-a", memorialId: MEMORIAL_ID, draftVideoId: "v-a", declaredDurationSeconds: 268.4 });
+    expect(service.requestUpload).toHaveBeenCalledWith({ ownerId: "owner-a", memorialId: MEMORIAL_ID, draftVideoId: "v-a", declaredDurationSeconds: 268.4, corsOrigin: "https://hommages.netlify.app" });
+  });
+
+  it("VID-10 — envoi depuis un déploiement non publié du même site (recette permise) : son origine est déclarée à Mux ; une autre origine, jamais", async () => {
+    service.requestUpload.mockResolvedValue({ status: "granted", videoId: VIDEO_ROW, uploadUrl: "https://upload.example/u", expiresAt: "x" });
+    requestHeaders.set("origin", "https://6b03311329c08193f8771ee2--hommages.netlify.app");
+    await requestVideoUploadAction(MEMORIAL_ID, "v-a", 10);
+    expect(service.requestUpload).toHaveBeenLastCalledWith(expect.objectContaining({ corsOrigin: "https://6b03311329c08193f8771ee2--hommages.netlify.app" }));
+    requestHeaders.set("origin", "https://evil.example");
+    await requestVideoUploadAction(MEMORIAL_ID, "v-a", 10);
+    expect(service.requestUpload).toHaveBeenLastCalledWith(expect.objectContaining({ corsOrigin: "https://hommages.netlify.app" }));
   });
 
   it.each([

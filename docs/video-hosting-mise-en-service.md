@@ -25,6 +25,9 @@ de VID-06 (préparation locale, aucun envoi) : le code est inerte.
 
 ## Ordre de mise en service
 
+> VID-10 : procédure détaillée par phases (liens, contrôles, recette,
+> retour arrière) dans `docs/video-mise-en-service-vid10.md`.
+
 1. **Appliquer les migrations** sur le projet Supabase réel, dans l'ordre
    (`20261125090000_vid07_memorial_videos.sql`,
    `20261125100000_vid08_video_publication_reconcile.sql`, puis

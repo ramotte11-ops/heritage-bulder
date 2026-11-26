@@ -276,3 +276,13 @@ describe("VID-09 — remplacement d'une vidéo publiée", () => {
     expect(releaseSuperseded).toHaveBeenCalledWith({ memorialId: "m", limit: 50 });
   });
 });
+
+describe("VID-10 — origine de l'envoi", () => {
+  it("l'origine validée par l'action est transmise à Mux ; à défaut, celle du site", async () => {
+    const { m, s } = service();
+    await s.requestUpload({ ownerId: "o", memorialId: "m", draftVideoId: "v-a", declaredDurationSeconds: 10, corsOrigin: "https://abc--hommages.netlify.app" });
+    expect(m.createDirectUpload).toHaveBeenLastCalledWith({ videoId: "vid-1", corsOrigin: "https://abc--hommages.netlify.app", mp4Fallback: false });
+    await s.requestUpload({ ownerId: "o", memorialId: "m", draftVideoId: "v-a", declaredDurationSeconds: 10 });
+    expect(m.createDirectUpload).toHaveBeenLastCalledWith({ videoId: "vid-1", corsOrigin: "https://heritage.example", mp4Fallback: false });
+  });
+});

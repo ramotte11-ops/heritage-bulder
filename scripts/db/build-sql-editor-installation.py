@@ -25,8 +25,15 @@ dans le SQL Editor Supabase (aucune CLI) :
 Produit aussi les blocs de retour arrière (même principe, ordre inverse) et les
 deux contrôles d'état en lecture seule (avant / après).
 
-Usage : python3 scripts/db/build-sql-editor-installation.py [--check]
+VID-10 : deux lots, chacun dans son dossier et avec son point de départ :
+  * m8  : supabase/installation/m8-sql-editor/  (Lot 2 + M8, cinq étapes) ;
+  * vid : supabase/installation/vid-sql-editor/ (VID-07, VID-08, VID-09).
+Chaque lot ne considère que les migrations jusqu'à sa dernière étape : un
+lot plus récent ne périme jamais les fichiers d'un lot plus ancien.
+
+Usage : python3 scripts/db/build-sql-editor-installation.py [--check] [--lot m8|vid]
   --check : n'écrit rien, échoue si les fichiers générés ne sont pas à jour.
+  --lot   : un seul lot (par défaut : tous).
 """
 import base64
 import hashlib
@@ -37,7 +44,7 @@ import textwrap
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MIG = ROOT / "supabase" / "migrations"
 RB = ROOT / "supabase" / "rollbacks"
-OUT = ROOT / "supabase" / "installation" / "m8-sql-editor"
+OUT = ROOT / "supabase" / "installation" / "m8-sql-editor"   # remplacé par select_lot()
 
 PROD = "nudqzbdfnjzlnyffllgs"
 OLD = "pbgzyyqdbdrhgnkzmxyn"
@@ -45,7 +52,7 @@ HISTORY = "supabase_migrations.schema_migrations"
 TXN_LINE = r"^(begin|commit);[ \t]*$"
 
 # (version, nom, sentinelles "absent" avant installation, prérequis présents)
-STEPS = [
+M8_STEPS = [
     ("20261116120000", "lot2_offering_signature",
      [("colonne", "public.symbolic_offerings.signature",
        "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'symbolic_offerings' and column_name = 'signature')"),
@@ -84,8 +91,66 @@ STEPS = [
      [("fonction E3", "public.read_public_contributions_overview_v1(text)",
        "to_regprocedure('public.read_public_contributions_overview_v1(text)') is not null")]),
 ]
+
+# VID-10 — rubrique vidéo. Point de départ attendu : le lot M8 installé
+# (49 versions, dernière 20261122090000). Si la production diffère, le
+# fichier 00 le montre et chaque étape s'arrête d'elle-même (STOP ordre).
+VID_STEPS = [
+    ("20261125090000", "vid07_memorial_videos",
+     [("table", "public.memorial_videos",
+       "to_regclass('public.memorial_videos') is not null"),
+      ("table", "public.memorial_video_events",
+       "to_regclass('public.memorial_video_events') is not null"),
+      ("fonction", "public.reserve_memorial_video_upload_v1(uuid,uuid,text,integer)",
+       "to_regprocedure('public.reserve_memorial_video_upload_v1(uuid,uuid,text,integer)') is not null")],
+     [("fonction M8-E4", "public.read_public_contributions_by_ids_v1(text,uuid[])",
+       "to_regprocedure('public.read_public_contributions_by_ids_v1(text,uuid[])') is not null"),
+      ("fonction", "public.memorial_publicly_visible_v1(uuid,timestamptz)",
+       "to_regprocedure('public.memorial_publicly_visible_v1(uuid,timestamp with time zone)') is not null"),
+      ("fonction", "public.current_owner_id()",
+       "to_regprocedure('public.current_owner_id()') is not null"),
+      ("colonne", "public.memorials.access_level",
+       "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'memorials' and column_name = 'access_level')")]),
+    ("20261125100000", "vid08_video_publication_reconcile",
+     [("colonne", "public.memorial_videos.ready_at",
+       "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'memorial_videos' and column_name = 'ready_at')"),
+      ("fonction", "public.claim_memorial_videos_for_reconcile_v1(uuid,timestamptz,integer,integer)",
+       "to_regprocedure('public.claim_memorial_videos_for_reconcile_v1(uuid,timestamp with time zone,integer,integer)') is not null")],
+     [("table VID-07", "public.memorial_videos",
+       "to_regclass('public.memorial_videos') is not null")]),
+    ("20261126090000", "vid09_published_replacement",
+     [("fonction", "public.release_superseded_memorial_videos_v1(uuid,integer)",
+       "to_regprocedure('public.release_superseded_memorial_videos_v1(uuid,integer)') is not null")],
+     [("colonne VID-08", "public.memorial_videos.ready_at",
+       "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'memorial_videos' and column_name = 'ready_at')")]),
+]
+
+LOTS = {
+    "m8": {"steps": M8_STEPS, "previous": "20261116100000", "base_count": 44, "folder": "m8-sql-editor"},
+    "vid": {"steps": VID_STEPS, "previous": "20261122090000", "base_count": 49, "folder": "vid-sql-editor"},
+}
+LOT = "m8"
+STEPS = M8_STEPS
 PREVIOUS = "20261116100000"          # dernière version enregistrée en production (QG, M8-DB-02)
 BASE_COUNT = 44                       # versions enregistrées avant l'étape 1
+WORDS = {3: "TROIS", 5: "CINQ"}
+
+
+def select_lot(name: str) -> None:
+    global LOT, STEPS, PREVIOUS, BASE_COUNT, OUT
+    lot = LOTS[name]
+    LOT, STEPS, PREVIOUS, BASE_COUNT = name, lot["steps"], lot["previous"], lot["base_count"]
+    OUT = ROOT / "supabase" / "installation" / lot["folder"]
+
+
+def step_total() -> int:
+    return len(STEPS)
+
+
+def lot_migration_files() -> list[str]:
+    """Les migrations du dépôt jusqu'à la dernière étape du lot (jamais au-delà)."""
+    last = STEPS[-1][0]
+    return sorted(p.name for p in MIG.glob("*.sql") if p.name[:14] <= last)
 
 
 def sha(text: str) -> str:
@@ -165,7 +230,7 @@ def install_file(n: int) -> str:
             f"    raise exception 'STOP [{version}] : {kind} {label} existe déjà alors que la version n''est pas enregistrée. Rien n''a été modifié ; prévenir le QG.';\n"
             f"  end if;")
     h = header(
-        f"INSTALLATION {n}/5 — {version}_{name}",
+        f"INSTALLATION {n}/{step_total()} — {version}_{name}",
         [f"Source : supabase/migrations/{fname}",
          f"SHA-256 du fichier : {sha(text)}",
          "",
@@ -231,7 +296,7 @@ select {lit(version)} as version,
                           where h.version = {lit(version)}
                             and encode(sha256(convert_to(h.statements[1], 'UTF8')), 'hex') = {lit(sha(text))})
              and (select count(*) from {HISTORY}) = {before + 1}
-            then 'OK — étape {n}/5 installée et enregistrée'
+            then 'OK — étape {n}/{step_total()} installée et enregistrée'
             else 'ECHEC — prévenir le QG' end as verdict;
 """
 
@@ -243,7 +308,21 @@ def rollback_file(n: int) -> str:
     txn_lines = sum(1 for l in text.split("\n") if l.rstrip(" \t") in ("begin;", "commit;"))
     after = BASE_COUNT + n
     extra_decl, extra_check, extra_note = "", "", []
-    if n == 1:
+    if LOT == "vid" and n == 1:
+        extra_decl = "  c_assets_mux_supprimes constant boolean := false;  -- PO : passer à true SEULEMENT après suppression des assets Mux\n"
+        extra_check = (
+            "  if to_regclass('public.memorial_videos') is not null\n"
+            "     and exists (select 1 from public.memorial_videos where status <> 'deleted')\n"
+            "     and not c_assets_mux_supprimes then\n"
+            f"    raise exception 'STOP [{version}] : des vidéos hébergées existent ; ce retour arrière SUPPRIME leurs lignes et rendrait leurs assets Mux orphelins (facturés). Supprimer d''abord les assets, puis décision PO (voir c_assets_mux_supprimes). Rien n''a été modifié.';\n"
+            "  end if;\n")
+        extra_note = ["", "ATTENTION : supprime les tables des vidéos hébergées.",
+                      "Refuse tant que c_assets_mux_supprimes vaut false et qu'une",
+                      "vidéo non supprimée existe."]
+    if LOT == "vid" and n == 3:
+        extra_note = ["", "Les anciennes versions encore gardées pour la page publique",
+                      "passent en « suppression demandée » (aucune ligne effacée)."]
+    if LOT == "m8" and n == 1:
         extra_decl = "  c_signatures_exportees constant boolean := false;  -- QG : passer à true SEULEMENT après export des signatures décidé\n"
         extra_check = (
             "  if exists (select 1 from public.symbolic_offerings where signature is not null)\n"
@@ -253,14 +332,14 @@ def rollback_file(n: int) -> str:
         extra_note = ["", "ATTENTION : efface définitivement les signatures reçues.",
                       "Refuse tant que c_signatures_exportees vaut false et qu'une",
                       "signature existe."]
-    if n == 2:
+    if LOT == "m8" and n == 2:
         extra_note = ["", "Le script du dépôt REFUSE lui-même s'il existe des contributions",
                       "réelles (erreur « M8-E1 rollback refused ») : rien n'est modifié."]
     h = header(
-        f"RETOUR ARRIÈRE {n}/5 — {version}_{name}",
+        f"RETOUR ARRIÈRE {n}/{step_total()} — {version}_{name}",
         [f"Source : supabase/rollbacks/{fname}",
          f"SHA-256 du fichier : {sha(text)}",
-         "Uniquement sur décision du QG. Ordre inverse : 5, 4, 3, 2, 1.",
+         f"Uniquement sur décision du QG. Ordre inverse : {', '.join(str(i) for i in range(step_total(), 0, -1))}.",
          *extra_note,
          "",
          *COMMON])
@@ -299,13 +378,13 @@ select {lit(version)} as version,
        (select count(*) from {HISTORY}) as versions_enregistrees,
        case when not exists (select 1 from {HISTORY} where version = {lit(version)})
              and (select count(*) from {HISTORY}) = {after - 1}
-            then 'OK — retour arrière {n}/5 effectué'
+            then 'OK — retour arrière {n}/{step_total()} effectué'
             else 'ECHEC — prévenir le QG' end as verdict;
 """
 
 
 def state_file(after: bool) -> str:
-    files = sorted(p.name for p in MIG.glob("*.sql"))
+    files = lot_migration_files()
     pending = {s[0] for s in STEPS}
     rows = []
     for f in files:
@@ -328,7 +407,7 @@ def state_file(after: bool) -> str:
     h = header(title, [
         "Ne modifie RIEN : une seule requête SELECT. Ne lit aucune donnée de",
         "famille : seulement des numéros de version, des comptages et le catalogue.",
-        f"Attendu : uniquement des lignes OK ({'après les 5 étapes' if after else 'avant l étape 1'}).",
+        f"Attendu : uniquement des lignes OK ({f'après les {step_total()} étapes' if after else 'avant l étape 1'}).",
         "Une seule ligne ECHEC : STOP, copier le tableau et prévenir le QG.",
         "",
         *COMMON[:4]])
@@ -360,15 +439,7 @@ select controle, attendu, constate, verdict from (
   union all
   select 'D. info : versions enregistrées sans texte (statements vide)', 'information',
          (select count(*)::text from enregistre where statements is null or cardinality(statements) = 0), 'INFO'
-  union all
-  select 'E. info : offrandes symboliques (nombre)', 'information',
-         (select count(*)::text from public.symbolic_offerings), 'INFO'
-  union all
-  select 'E. info : messages (nombre)', 'information',
-         (select count(*)::text from public.messages), 'INFO'
-  union all
-  select 'E. info : médias (nombre)', 'information',
-         (select count(*)::text from public.media), 'INFO'
+{info_rows()}
   union all
   select 'E. info : avis_snapshot_keys (réglage de l''offre gratuite)', 'information',
          (select coalesce(array_to_string(avis_snapshot_keys, ','), '(vide)') from public.memorial_access_settings limit 1), 'INFO'
@@ -400,6 +471,26 @@ select controle, attendu, constate, verdict from (
 ) t
 order by controle;
 """
+
+
+def info_rows() -> str:
+    """Comptages seulement, aucune donnée de famille."""
+    if LOT == "m8":
+        items = [("offrandes symboliques (nombre)", "select count(*)::text from public.symbolic_offerings"),
+                 ("messages (nombre)", "select count(*)::text from public.messages"),
+                 ("médias (nombre)", "select count(*)::text from public.media")]
+    else:
+        items = [("hommages (nombre)", "select count(*)::text from public.memorials"),
+                 ("hommages publiés en offre complète (nombre)",
+                  "select count(*)::text from public.memorials where status = 'published' and access_level = 'complet'"),
+                 ("copies publiées (nombre)", "select count(*)::text from public.memorial_published_snapshots"),
+                 ("vidéos hébergées (nombre, 0 avant l'étape 1)",
+                  "select case when to_regclass('public.memorial_videos') is null then 'table absente' "
+                  "else (select count(*)::text from public.memorial_videos) end")]
+    return "\n".join(
+        f"""  union all
+  select 'E. info : {label}', 'information',
+         ({query}), 'INFO'""" for label, query in items)
 
 
 def diagnostic_file() -> str:
@@ -505,11 +596,13 @@ def transport_file() -> str:
     for version, name, _a, _p in STEPS:
         text = (MIG / f"{version}_{name}.sql").read_text(encoding="utf-8")
         rows.append(f"  ({lit(version + '_' + name)}, {lit(sha(text))},\n   {b64_literal(text)})")
-    head = header("TEST DE TRANSPORT DES CINQ MIGRATIONS (LECTURE SEULE)", [
+    n = step_total()
+    biggest = " (y compris le plus gros, E1)" if LOT == "m8" else ""
+    head = header(f"TEST DE TRANSPORT DES {WORDS[n]} MIGRATIONS (LECTURE SEULE)", [
         "Ne modifie RIEN : une seule requête SELECT, aucune donnée de famille.",
-        "Vérifie que les cinq textes, encodés comme dans les fichiers 01 à 05,",
-        "arrivent intacts dans PostgreSQL (y compris le plus gros, E1).",
-        "Attendu : 5 lignes OK. Une ligne ECHEC ou une erreur : STOP, prévenir le QG.",
+        f"Vérifie que les {WORDS[n].lower()} textes, encodés comme dans les fichiers 01 à {n:02d},",
+        f"arrivent intacts dans PostgreSQL{biggest}.",
+        f"Attendu : {n} lignes OK. Une ligne ECHEC ou une erreur : STOP, prévenir le QG.",
         "",
         *COMMON[:4]])
     return f"""{head}
@@ -528,30 +621,42 @@ select migration,
 """
 
 
-def main() -> int:
-    check = "--check" in sys.argv
+def lot_files() -> dict[str, str]:
     files = {"00_etat_avant_installation.sql": state_file(False),
-             "00a_diagnostic_copier_coller.sql": diagnostic_file(),
              "00b_test_transport.sql": transport_file(),
              "99_etat_apres_installation.sql": state_file(True)}
-    for n in range(1, 6):
+    if LOT == "m8":
+        files["00a_diagnostic_copier_coller.sql"] = diagnostic_file()
+    for n in range(1, step_total() + 1):
         v, name = STEPS[n - 1][0], STEPS[n - 1][1]
         files[f"{n:02d}_installation_{v}_{name}.sql"] = install_file(n)
         files[f"R{n}_retour_arriere_{v}_{name}.sql"] = rollback_file(n)
+    return files
+
+
+def main() -> int:
+    check = "--check" in sys.argv
+    lots = list(LOTS)
+    if "--lot" in sys.argv:
+        lots = [sys.argv[sys.argv.index("--lot") + 1]]
     stale = []
-    for fname, content in files.items():
-        p = OUT / fname
-        if check:
-            if not p.exists() or p.read_text(encoding="utf-8") != content:
-                stale.append(fname)
-        else:
-            OUT.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
+    written = 0
+    for lot in lots:
+        select_lot(lot)
+        for fname, content in lot_files().items():
+            p = OUT / fname
+            if check:
+                if not p.exists() or p.read_text(encoding="utf-8") != content:
+                    stale.append(f"{OUT.name}/{fname}")
+            else:
+                OUT.mkdir(parents=True, exist_ok=True)
+                p.write_text(content, encoding="utf-8")
+                written += 1
     if check and stale:
         print("Fichiers générés absents ou périmés :", *stale, sep="\n  ")
         return 1
     if not check:
-        print(f"{len(files)} fichiers écrits dans {OUT.relative_to(ROOT)}")
+        print(f"{written} fichiers écrits ({', '.join(lots)})")
     return 0
 
 
