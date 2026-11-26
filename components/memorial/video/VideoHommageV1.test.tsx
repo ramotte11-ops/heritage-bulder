@@ -13,6 +13,7 @@ vi.mock("next/font/google", () => ({
 
 const { VideoHommageV1 } = await import("./VideoHommageV1");
 const { VIDEO_HOMMAGE_PRESENTATION_VARIANT, VIDEO_MASTERS, VIDEO_MASTERS_INSTALLED, videoMasterSrcSet } = await import("./video-masters");
+const { resetStreamSupportForTests } = await import("./use-stream-playback");
 
 const play = vi.fn(() => Promise.resolve());
 const pause = vi.fn();
@@ -173,12 +174,17 @@ describe("« Des instants pour se souvenir »", () => {
   });
 
   it("un flux hébergé n'est pas préchargé ; une vidéo locale charge seulement ses métadonnées", () => {
+    // Navigateur à HLS natif (Safari) : l'adresse est posée sur <video>, sans préchargement.
+    vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockImplementation((type) => (type === "application/vnd.apple.mpegurl" ? "maybe" : ""));
+    resetStreamSupportForTests();
     const stream = video("s", null, 60, { source: { kind: "stream", url: "https://stream.example/s.m3u8", posterUrl: "https://image.example/s.jpg" } });
     const { container, rerender } = render(<VideoHommageV1 items={[stream]} skinVariant="light" language="fr" />);
     expect(container.querySelector("video")!.getAttribute("preload")).toBe("none");
     expect(container.querySelector("video")!.getAttribute("poster")).toBe("https://image.example/s.jpg");
     rerender(<VideoHommageV1 items={[three[0]!]} skinVariant="light" language="fr" />);
     expect(container.querySelector("video")!.getAttribute("preload")).toBe("metadata");
+    vi.restoreAllMocks();
+    resetStreamSupportForTests();
   });
 
   it.each(["light", "dark"] as const)(

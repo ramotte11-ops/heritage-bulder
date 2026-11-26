@@ -84,6 +84,9 @@ describe("guest Builder import graph", () => {
       // d'un visiteur sur la page PUBLIQUE seulement. Dans le Builder (hôte « preview »),
       // la rubrique montre la démonstration et ne rend jamais ce composant.
       "components/memorial/contributions/ContributionsV1Section.tsx -> ./PublicDepositLetter",
+      // VID-08 — hls.js, chargé seulement pour un flux HÉBERGÉ dans un navigateur
+      // sans HLS natif. L'aperçu invité ne lit que des fichiers locaux : jamais atteint.
+      "components/memorial/video/use-stream-playback.ts -> hls.js",
     ]);
   });
 });

@@ -5,6 +5,7 @@ import type { VideoHommageItem } from "@/lib/memorial/video/video-hommage";
 import type { VideoHommageTexts } from "./texts";
 import { useFullscreenOrientation } from "./use-fullscreen-orientation";
 import { usePauseWhenHidden } from "./use-pause-when-hidden";
+import { useStreamPlayback } from "./use-stream-playback";
 import styles from "./VideoHommageV1.module.css";
 
 /**
@@ -25,42 +26,34 @@ import styles from "./VideoHommageV1.module.css";
  *    paysage sur mobile pour une vidéo horizontale quand le système le
  *    permet, ratio d'origine conservé (`use-fullscreen-orientation.ts`).
  *
- * Flux hébergés : l'adresse fournie par le serveur porte déjà le plafond
- * 720p et le jeton. Safari lit le HLS nativement ; les autres navigateurs
- * demanderont un adaptateur HLS au lot de raccordement Mux (dépendance à
- * concerter avec Chef 06, `package-lock.json`).
+ * Flux hébergés (VID-08) : `use-stream-playback.ts` choisit le HLS natif
+ * (Safari) ou hls.js chargé à la demande (Chrome, Firefox, Edge, Android),
+ * et signale un navigateur incompatible ou un jeton expiré. L'adresse
+ * fournie par le serveur porte déjà le plafond 720p et le jeton.
  */
-/**
- * VID-07 — l'adresse que CE navigateur sait lire : le HLS si le lecteur
- * natif le lit (Safari, iOS, Android), sinon le MP4 720p de secours s'il
- * existe, sinon le HLS (le lecteur affichera alors l'erreur prévue).
- */
-function playableUrl(source: NonNullable<VideoHommageItem["source"]>): string {
-  if (source.kind !== "stream" || source.fallbackUrl === undefined) return source.url;
-  const nativeHls = typeof document !== "undefined" && document.createElement("video").canPlayType("application/vnd.apple.mpegurl") !== "";
-  return nativeHls ? source.url : source.fallbackUrl;
-}
-
 export function VideoHommagePlayer({
   item,
   title,
   texts,
   playRequest,
+  onExpired,
 }: {
   item: VideoHommageItem | null;
   title: string | null;
   texts: VideoHommageTexts;
   /** Compteur de demandes de lecture explicites ; 0 = aucune. */
   playRequest: number;
+  /** VID-08 — l'hôte sait renouveler les adresses signées (bouton « Recharger la vidéo »). */
+  onExpired?: () => void;
 }) {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
   const handledRequest = useRef(0);
   usePauseWhenHidden(video);
   useFullscreenOrientation(video);
 
   const source = item?.status === "ready" ? item.source : undefined;
-  const sourceUrl = source === undefined ? undefined : playableUrl(source);
+  const playback = useStreamPlayback(video, source);
+  const sourceUrl = source?.url;
 
   useEffect(() => {
     if (video === null || sourceUrl === undefined) return;
@@ -72,21 +65,31 @@ export function VideoHommagePlayer({
     if (attempt !== undefined) attempt.catch(() => {});
   }, [video, sourceUrl, playRequest]);
 
-  const unreadable = failed !== null && failed === sourceUrl;
   let message: string | null = null;
+  let state: string = item?.status ?? "empty";
   if (item === null) message = texts.empty;
   else if (item.status === "preparing") message = texts.preparing;
   else if (item.status === "local-unavailable") message = texts.localUnavailable;
-  else if (item.status === "error" || source === undefined || unreadable) message = texts.error;
+  else if (item.status === "error" || source === undefined) message = texts.error;
+  else if (playback.state !== "ready") {
+    state = playback.state;
+    message = playback.state === "unsupported" ? texts.unsupported : playback.state === "expired" ? texts.expired : texts.error;
+  }
+  const showVideo = source !== undefined && playback.state === "ready";
 
   return (
-    <div className={styles.playerFrame} data-video-player="" data-state={message === null ? "ready" : item?.status ?? "empty"}>
-      {source !== undefined && !unreadable && (
+    <div
+      className={styles.playerFrame}
+      data-video-player=""
+      data-state={message === null ? "ready" : state}
+      data-stream-support={source?.kind === "stream" ? (playback.support ?? "pending") : undefined}
+    >
+      {showVideo && (
         <video
           ref={setVideo}
           key="player"
           className={styles.video}
-          src={sourceUrl}
+          src={playback.src}
           poster={source.kind === "stream" ? source.posterUrl : undefined}
           preload={source.kind === "local" ? "metadata" : "none"}
           controls
@@ -94,13 +97,18 @@ export function VideoHommagePlayer({
           controlsList="nodownload noremoteplayback"
           disablePictureInPicture
           aria-label={title === null ? undefined : texts.playerLabel(title)}
-          onError={() => setFailed(sourceUrl ?? null)}
+          onError={playback.reportMediaError}
         />
       )}
       {message !== null && (
-        <p className={styles.playerMessage} role="status">
-          {message}
-        </p>
+        <div className={styles.playerMessage} role="status">
+          <p className={styles.playerMessageText}>{message}</p>
+          {state === "expired" && onExpired !== undefined && (
+            <button type="button" className={styles.playerAction} onClick={onExpired}>
+              {texts.reload}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -37,8 +37,14 @@ export type VideoHommageSource =
       /** HLS signé (plafonné à 720p par son jeton). */
       url: string;
       posterUrl?: string;
-      /** VID-07 — MP4 720p signé, pour un navigateur sans HLS natif (s'il existe). */
+      /**
+       * VID-07 — MP4 720p signé, seulement si le serveur en a fait créer un
+       * (option payante, jamais automatique). VID-08 : utilisé uniquement par
+       * un navigateur qui ne lit le HLS ni nativement ni avec hls.js.
+       */
       fallbackUrl?: string;
+      /** VID-08 — expiration du jeton de lecture (ISO 8601) : au-delà, l'hôte renouvelle les adresses. */
+      expiresAt?: string;
     };
 
 /**

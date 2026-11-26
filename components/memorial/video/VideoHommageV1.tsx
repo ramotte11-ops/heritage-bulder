@@ -34,6 +34,8 @@ export interface VideoHommageV1Props {
   language: Language;
   /** `page` : titre de niveau 1 (pilote) ; `section` : niveau 2 (mémorial). */
   headingLevel?: "page" | "section";
+  /** VID-08 — renouvellement des adresses signées expirées, si l'hôte le permet. */
+  onSourcesExpired?: () => void;
 }
 
 /**
@@ -58,7 +60,7 @@ export interface VideoHommageV1Props {
  * Présentation (VID-05B, décision PO) : Master Light, textes et commandes
  * Light dans les deux ambiances du mémorial (`VIDEO_HOMMAGE_PRESENTATION_VARIANT`).
  */
-export function VideoHommageV1({ items, skinVariant, language, headingLevel = "section" }: VideoHommageV1Props) {
+export function VideoHommageV1({ items, skinVariant, language, headingLevel = "section", onSourcesExpired }: VideoHommageV1Props) {
   const texts = VIDEO_HOMMAGE_TEXTS[language];
   const shown = useMemo(() => items.slice(0, 3), [items]);
   const [selectedId, setSelectedId] = useState<string | null>(shown[0]?.id ?? null);
@@ -116,7 +118,7 @@ export function VideoHommageV1({ items, skinVariant, language, headingLevel = "s
             </header>
             <div className={styles.stage} data-layout={shown.length > 1 ? "with-selectors" : "player-only"}>
               <div className={styles.playerSlot}>
-                <VideoHommagePlayer item={current} title={currentTitle} texts={texts} playRequest={playRequest} />
+                <VideoHommagePlayer item={current} title={currentTitle} texts={texts} playRequest={playRequest} onExpired={onSourcesExpired} />
               </div>
               {shown.length > 1 && (
                 <div className={styles.selectorsSlot}>
