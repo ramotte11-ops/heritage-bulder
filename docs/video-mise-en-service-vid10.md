@@ -210,3 +210,62 @@ ouvrir A16 ni la page publique aux familles (qui ne dépendent que de
    par la production → vérification réelle (Mux → Webhooks : livraisons 200).
 3. Build R3 : `HERITAGE_VIDEO_HOSTING` rétabli, `HERITAGE_VIDEO_DEPLOY_ORIGINS`
    retiré ; publication de R3 (GO) : ouverture aux familles.
+
+## 9. VID-12 — Recette R1 : constats et plan arrêté (26 novembre 2026)
+
+### Constats (lecture seule, aucune valeur secrète affichée)
+
+- Les 5 variables `MUX_*` sont présentes, secrètes, avec les portées
+  `builds`, `functions` et `runtime`, dans les contextes Production, Deploy
+  Previews et Branch deploys. Elles sont vides en dev, ce qui est attendu.
+- Les formats sont cohérents d'après les 4 derniers caractères masqués. La clé
+  privée se termine par `=` et par la fin d'un PEM encodé en base64 ; le code
+  la décode et exige `PRIVATE KEY`. Le jeton d'API a la forme d'un UUID. Le
+  secret de notification est employé tel quel comme clé HMAC-SHA256, ce qui
+  correspond au « Signing Secret » de Mux.
+- `NEXT_PUBLIC_SITE_URL` vaut `https://hommages.netlify.app` en Production et
+  `http://localhost:3000` dans les contextes Deploy Previews et Branch deploys.
+  Ces deux contextes ne conviennent donc pas à la recette vidéo : l'origine
+  d'envoi serait `localhost`. De plus, `SUPABASE_SERVICE_ROLE_KEY` est vide en
+  Branch deploys, et aucun Deploy Preview n'est construit pour ce site.
+- **Les builds de `main` sont construits dans le contexte Production**
+  (`context: production`), puis restent non publiés grâce au verrou. La
+  production publiée, `6b03311…` (`3dc435a`, PR #121, `locked: true`), ne
+  contient aucun code d'hébergement vidéo. Netlify fige les variables au
+  moment du déploiement : une variable posée maintenant ne change donc ni ce
+  déploiement ni les builds existants.
+- Le dernier build de `main`, `6b08673…` (`9f7f525`), date de 17 h 07, avant
+  la pose des secrets (17 h 22 à 17 h 40) : il n'a aucune configuration Mux.
+
+### Plan R1
+
+1. Contexte **Production uniquement** : `HERITAGE_VIDEO_HOSTING=enabled` et
+   `HERITAGE_VIDEO_DEPLOY_ORIGINS=enabled`, sans caractère secret.
+   `HERITAGE_VIDEO_NOTIFICATIONS` est inutile pour R1, car l'hébergement
+   activé ouvre déjà la route et Mux ne joint que la production : il est
+   réservé à R2.
+2. Build R1 : fusion de la PR VID-12. Le build est automatique et reste non
+   publié. Vérifier `context: production` et `published_at: null`.
+3. Diagnostic : si la configuration est incomplète ou illisible, les
+   journaux des fonctions contiennent
+   `{"event":"video_hosting_config_incomplete","missing":[…]}`. Seuls les noms
+   figurent dans cette ligne.
+4. Recette : § 4, étapes 1 à 8 seulement, puis étape 11 (nettoyage).
+   **Aucune publication de l'hommage de test** dans cette phase, ni sur R1 ni
+   ailleurs.
+5. Fin de recette : retirer `HERITAGE_VIDEO_HOSTING` et
+   `HERITAGE_VIDEO_DEPLOY_ORIGINS` du contexte Production. Les builds suivants
+   de `main` sont alors de nouveau fermés à la vidéo jusqu'aux phases R2 et R3.
+   **R1 ne doit jamais être publié.**
+
+### Retour arrière
+
+Il n'y a rien à faire côté public, car la production est inchangée. Les
+gestes possibles :
+
+- retirer les deux interrupteurs ;
+- retirer la vidéo dans A16, ce qui la supprime chez Mux ;
+- en dernier recours, supprimer l'asset dans le tableau de bord Mux.
+
+L'hommage et le compte de test restent identifiés « TEST VIDÉO HERITAGE »,
+non publiés, pour la phase de publication.

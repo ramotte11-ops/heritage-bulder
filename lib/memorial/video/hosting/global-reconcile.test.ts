@@ -193,3 +193,26 @@ describe("VID-11 — notifications Mux avant l'ouverture aux familles", () => {
     expect(videoNotificationRuntime({ ...full, HERITAGE_VIDEO_NOTIFICATIONS: "yes" })).toBeNull();
   });
 });
+
+describe("VID-12 — diagnostic de configuration, sans aucune valeur", () => {
+  it("hébergement demandé mais clé illisible : seuls les NOMS sont journalisés, une fois ; désactivé : rien", async () => {
+    const { reportIncompleteVideoHosting, resetVideoHostingReportForTests, videoHostingRuntime } = await import("./hosting-runtime");
+    resetVideoHostingReportForTests();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const secretLike = "valeur-secrete-qui-ne-doit-jamais-sortir";
+    const env = { HERITAGE_VIDEO_HOSTING: "enabled", MUX_TOKEN_ID: secretLike, MUX_TOKEN_SECRET: secretLike, MUX_WEBHOOK_SECRET: secretLike, MUX_SIGNING_KEY_ID: secretLike, MUX_SIGNING_KEY_PRIVATE: Buffer.from("pas une clé").toString("base64"), NEXT_PUBLIC_SITE_URL: "https://hommages.netlify.app" };
+    expect(videoHostingRuntime(env)).toBeNull();
+    expect(videoHostingRuntime(env)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = String(warn.mock.calls[0][0]);
+    expect(JSON.parse(line)).toEqual({ event: "video_hosting_config_incomplete", missing: ["MUX_SIGNING_KEY_PRIVATE"] });
+    expect(line).not.toContain(secretLike);
+    expect(videoHostingRuntime({ ...env, HERITAGE_VIDEO_HOSTING: undefined })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const log = vi.fn();
+    reportIncompleteVideoHosting(["MUX_WEBHOOK_SECRET"], log);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "video_hosting_config_incomplete", missing: ["MUX_WEBHOOK_SECRET"] }));
+    warn.mockRestore();
+    resetVideoHostingReportForTests();
+  });
+});

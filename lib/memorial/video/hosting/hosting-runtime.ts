@@ -18,8 +18,29 @@ export interface VideoHostingRuntime {
   service: HostedVideoService;
 }
 
+/**
+ * VID-12 — diagnostic de recette, sans aucune valeur : quand l'hébergement est
+ * DEMANDÉ (`enabled`) mais que la configuration est incomplète ou illisible,
+ * les NOMS en cause sont journalisés une fois par instance (journaux des
+ * fonctions Netlify). Sans cela, une clé mal collée retomberait en silence sur
+ * la préparation locale, indiscernable d'un hébergement désactivé.
+ */
+let reportedIncomplete: string | null = null;
+
+export function reportIncompleteVideoHosting(missing: readonly string[], log: (line: string) => void = console.warn): void {
+  const key = [...missing].sort().join(",");
+  if (reportedIncomplete === key) return;
+  reportedIncomplete = key;
+  log(JSON.stringify({ event: "video_hosting_config_incomplete", missing: [...missing].sort() }));
+}
+
+export function resetVideoHostingReportForTests(): void {
+  reportedIncomplete = null;
+}
+
 export function videoHostingRuntime(env: Readonly<Record<string, string | undefined>> = process.env): VideoHostingRuntime | null {
   const read = readMuxHostingConfig(env);
+  if (read.status === "incomplete") reportIncompleteVideoHosting(read.missing);
   if (read.status !== "configured") return null;
   const { config } = read;
   const service = createHostedVideoService({
