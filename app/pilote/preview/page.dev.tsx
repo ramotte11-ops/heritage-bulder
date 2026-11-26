@@ -3,7 +3,7 @@ import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
 import { PreviewEntry } from "@/components/builder/preview/PreviewEntry";
-import { loadPreviewPilotAction } from "./preview-pilot-action";
+import { loadPreviewPilotAction, loadVideoHostingPilotAction } from "./preview-pilot-action";
 
 /**
  * Offrandes symboliques V1 — M3 : la VRAIE Preview du Builder
@@ -15,6 +15,12 @@ import { loadPreviewPilotAction } from "./preview-pilot-action";
  * de production. `notFound()` reste une seconde barrière.
  *
  *   /pilote/preview?variant=light|dark&lang=fr|en|es&hidden=symbolicOfferings,story
+ *                  &videos=1&hls=http://localhost:4400/
+ *
+ * `videos=1` (VID-08) : deux souvenirs vidéo décrits ; `hls` : base d'un flux
+ * HLS LOCAL de test (localhost seulement) servi comme leurs versions
+ * « hébergées ». Sans `hls`, l'aperçu montre l'état « à sélectionner de
+ * nouveau » (aucun fichier dans la session).
  *
  * `hidden` : rubriques masquées appliquées au jeu de données (contrôle de la
  * Preview ; ce n'est pas une sauvegarde).
@@ -29,9 +35,16 @@ export default async function PreviewPilotPage({
   const variant: SkinVariant = params.variant === "dark" ? "dark" : "light";
   const language: Language = params.lang === "en" || params.lang === "es" ? params.lang : "fr";
   const hidden = typeof params.hidden === "string" ? params.hidden.split(",").filter(Boolean) : [];
+  const videos = params.videos === "1";
+  const hls = typeof params.hls === "string" ? params.hls : null;
 
   return (
-    <BuilderPreviewHost available language={language} loadPreview={loadPreviewPilotAction.bind(null, variant, language, hidden)}>
+    <BuilderPreviewHost
+      available
+      language={language}
+      loadPreview={loadPreviewPilotAction.bind(null, variant, language, hidden, videos)}
+      videoHosting={videos && hls !== null ? loadVideoHostingPilotAction.bind(null, hls) : undefined}
+    >
       <main style={{ padding: "48px 16px", fontFamily: "system-ui, sans-serif", textAlign: "center" }}>
         <p data-pilot-banner style={{ margin: "0 0 16px", fontWeight: 600 }}>
           Pilote de la Preview du Builder — jeu de données de l’Atelier fondateur, aucune session, aucune écriture.

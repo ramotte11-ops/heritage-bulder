@@ -35,7 +35,9 @@ describe("SECTION_RENDERERS", () => {
     expect(resolveSectionRenderer("gallery", "intemporel")).toBe("GalleryIntemporel");
     // M8-E3 : « Contributions des proches » ; la rubrique héritée `condolences` n'a jamais de renderer (O11).
     expect(resolveSectionRenderer("testimonials", "intemporel")).toBe("ContributionsV1Section");
-    for (const section of ["condolences", "video", "memoryMessage"] as const) {
+    // VID-08 : « Des instants pour se souvenir ».
+    expect(resolveSectionRenderer("video", "intemporel")).toBe("VideoHommageV1Section");
+    for (const section of ["condolences", "memoryMessage"] as const) {
       expect(resolveSectionRenderer(section, "intemporel")).toBeNull();
     }
   });
@@ -62,6 +64,7 @@ describe("SECTION_RENDERERS", () => {
       GalleryIntemporel: "gallery",
       SymbolicOfferingsV1Section: "symbolic-offerings/v1",
       ContributionsV1Section: "contributions",
+      VideoHommageV1Section: "video",
     };
     for (const key of RENDERER_KEYS) {
       expect(existsSync(path.join(root, dirs[key], `${key}.tsx`))).toBe(true);

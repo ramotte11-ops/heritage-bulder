@@ -27,6 +27,7 @@ import { TraditionsStep } from "@/components/builder/TraditionsStep";
 import { PersonSheetStep } from "@/components/builder/PersonSheetStep";
 import { GalleryStep } from "@/components/builder/GalleryStep";
 import { ContributionsStep } from "@/components/builder/ContributionsStep";
+import { VideoStep } from "@/components/builder/VideoStep";
 import { updateContributionCategories } from "@/lib/memorial/contributions/family-contribution-actions";
 import { GuidedFlowPause } from "@/components/builder/GuidedFlowPause";
 import { BuilderPreviewHost } from "@/components/builder/preview/BuilderPreviewHost";
@@ -51,6 +52,7 @@ import { needsA09 } from "@/lib/builder/guided-flow/traditions-step";
 import { needsPersonSheet } from "@/lib/builder/guided-flow/person-sheet-step";
 import { needsA13 } from "@/lib/builder/guided-flow/gallery-step";
 import { needsA15 } from "@/lib/builder/guided-flow/contributions-step";
+import { needsA16 } from "@/lib/builder/guided-flow/video-step";
 import {
   currentJourneyScreen,
   isJourneyScreenId,
@@ -88,6 +90,7 @@ import { composeMemorial } from "@/lib/memorial/composition/compose-memorial";
 import { resolveVisibilityEntries } from "@/lib/memorial/visibility-entries";
 import { loadMemorialPreviewAction } from "./preview-actions";
 import { publishFromPreviewAction } from "./publication-actions";
+import { cancelVideoUploadAction, loadVideoHostingAction, removeHostedVideoAction, requestVideoUploadAction } from "./video-actions";
 import styles from "./page.module.css";
 
 /**
@@ -428,6 +431,8 @@ export default async function BuilderMemorialPage({
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
   const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
+  // VID-08 — the Preview's video rubrique reads the family's hosted videos.
+  const loadVideoHosting = loadVideoHostingAction.bind(null, access.memorialId);
   // QG 008 Lot 3 — « Publier », in the private Preview of this Builder only.
   const publish = publishFromPreviewAction.bind(null, access.memorialId);
   // B03 — the route's own path, built from the AUTHORIZED id only: where
@@ -458,6 +463,9 @@ export default async function BuilderMemorialPage({
         language={memorialLanguage}
         loadPreview={loadPreview}
         publish={publish}
+        // VID-08 — the family's hosted videos for the Preview's video rubrique,
+        // bound to the AUTHORIZED id (same action as A16).
+        videoHosting={loadVideoHosting}
         footer={firstSaveNotice}
         draftRevision={initialDraft.revision ?? 0}
         draftContent={journeyContent ?? initialDraft.content}
@@ -768,6 +776,29 @@ export default async function BuilderMemorialPage({
           ),
           available: previewAvailable(content),
         };
+      case "video":
+        // VID-06 — A16 : titres, durées et ordre enregistrés par la même Server
+        // Action liée que tous les écrans. VID-07 — les actions d'hébergement
+        // sont liées à l'identifiant AUTORISÉ ; chacune rejoue la session et lit
+        // l'offre côté serveur. Hébergement non activé ou offre gratuite : elles
+        // répondent « indisponible » et les fichiers restent dans le navigateur.
+        return {
+          element: (
+            <VideoStep
+              key={key}
+              language={language}
+              content={content}
+              persist={saveDraftAction.bind(null, access.memorialId)}
+              hosting={{
+                load: loadVideoHostingAction.bind(null, access.memorialId),
+                request: requestVideoUploadAction.bind(null, access.memorialId),
+                cancel: cancelVideoUploadAction.bind(null, access.memorialId),
+                remove: removeHostedVideoAction.bind(null, access.memorialId),
+              }}
+            />
+          ),
+          available: previewAvailable(content),
+        };
     }
   };
 
@@ -1073,6 +1104,13 @@ export default async function BuilderMemorialPage({
   // A15 itself has been treated once, whichever way.
   if (needsA15(heroReconciledContent)) {
     return (await showCurrent("contributions", heroReconciledContent))!;
+  }
+
+  // VID-06 — A16 « Vos souvenirs en vidéo ». Shown once A15 is genuinely
+  // behind the family (`needsA16` gates on `isA15Resolved`) and only until
+  // A16 itself has been treated once, whichever way.
+  if (needsA16(heroReconciledContent)) {
+    return (await showCurrent("video", heroReconciledContent))!;
   }
 
   // Builder continuity mission — what a memorial past every BUILT gate

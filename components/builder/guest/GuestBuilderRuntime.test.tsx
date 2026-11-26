@@ -291,7 +291,7 @@ function completedDraft() {
   const flow = localContent(fixture.draft).guidedFlow;
   const updated = updateGuestDraftV3(fixture.draft, {
     now: "2026-10-26T10:12:00.000Z",
-    content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" }, A15: { status: "skipped" } } } as MemorialContent,
+    content: { ...fixture.draft.content, guidedFlow: { ...flow, A13: { status: "skipped" }, A15: { status: "skipped" }, A16: { status: "skipped" } } } as MemorialContent,
   });
   if (!updated.ok) throw new Error(updated.reason);
   return { draft: updated.draft, asset: fixture.asset };
@@ -1444,6 +1444,55 @@ describe("GuestBuilderRuntime", () => {
       expect(resumed.container.querySelector('[data-memorial-preview] [data-contributions-host="preview"]')).not.toBeNull();
       expect(resumed.container.querySelector('[data-contributions-host="public"]')).toBeNull();
       expect((store.value!.content as unknown as Record<string, unknown>).contributions).toEqual({ features: { condolences: true, stories: false, photos: true } });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("VID-06 — A16 « Vos souvenirs en vidéo » in the guest Builder", () => {
+    function draftAtA16(video?: unknown) {
+      const fixture = completedDraft();
+      const flow = { ...localContent(fixture.draft).guidedFlow } as Record<string, unknown>;
+      delete flow.A16;
+      const updated = updateGuestDraftV3(fixture.draft, {
+        now: "2026-11-25T10:13:00.000Z",
+        content: { ...fixture.draft.content, guidedFlow: flow, ...(video === undefined ? {} : { video }) } as MemorialContent,
+      });
+      if (!updated.ok) throw new Error(updated.reason);
+      return { draft: updated.draft, asset: fixture.asset };
+    }
+
+    it("after a reload: shows A16 right after A15 from the local draft — titles, durations and order restored, every file to be selected again — saves locally, never touches the network", async () => {
+      const video = { items: [{ id: "v-a", title: "Son anniversaire", durationSeconds: 268 }, { id: "v-b", title: null, durationSeconds: null }] };
+      const fixture = draftAtA16(video);
+      const store = new MemoryStore(fixture.draft);
+      store.assets.set(fixture.asset.localId, fixture.asset);
+      const before = structuredClone(store.value!.content) as unknown as Record<string, unknown>;
+      vi.stubGlobal("URL", Object.assign(globalThis.URL, { createObjectURL: vi.fn(() => "blob:a16"), revokeObjectURL: vi.fn() }));
+      vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const view = render(<GuestBuilderRuntime createStore={() => store} createId={() => "unused"} />);
+      await screen.findByRole("heading", { name: translate("fr", "videoStep.title") });
+      const rows = [...view.container.querySelectorAll("[data-video-item]")];
+      expect(rows.map((row) => row.getAttribute("data-video-item"))).toEqual(["v-a", "v-b"]);
+      expect(rows.every((row) => row.getAttribute("data-file") === "missing")).toBe(true);
+      expect(screen.getAllByText(translate("fr", "videoStep.fileMissing"))).toHaveLength(2);
+      expect((rows[0]!.querySelector("input[type=text]") as HTMLInputElement).value).toBe("Son anniversaire");
+      expect(view.container.querySelector("[data-video-preview] video")).toBeNull();
+      expect(view.container.querySelector('[data-video-compliance="unverified"]')).not.toBeNull();
+
+      fireEvent.change(rows[1]!.querySelector("input[type=text]")!, { target: { value: "À la plage" } });
+      fireEvent.click(screen.getByRole("button", { name: translate("fr", "common.continue") }));
+      await screen.findByRole("heading", { name: translate("fr", "flowPause.title") });
+
+      const saved = store.value!.content as unknown as Record<string, unknown>;
+      expect(saved.video).toEqual({ items: [{ id: "v-a", title: "Son anniversaire", durationSeconds: 268 }, { id: "v-b", title: "À la plage", durationSeconds: null }] });
+      expect((saved.guidedFlow as Record<string, unknown>).A16).toEqual({ status: "completed" });
+      const without = (o: Record<string, unknown>, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+      expect(without(saved, "video", "guidedFlow")).toEqual(without(before, "video", "guidedFlow"));
+      expect(JSON.stringify(saved)).not.toMatch(/blob:/);
+      expect(store.assets.size).toBe(1);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });

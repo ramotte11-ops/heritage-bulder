@@ -58,8 +58,10 @@ describe("hero.photo absent ↔ null — mutation claim", () => {
   });
 
   it("does not enlarge the target list", () => {
-    // 44 + M8-E3 : contributions.features et guidedFlow.A15.
-    expect(MEMORIAL_CONTENT_EDIT_TARGETS).toHaveLength(46);
+    // 44 + M8-E3 : contributions.features et guidedFlow.A15
+    // + VID-06 : video.items et guidedFlow.A16.
+    expect(MEMORIAL_CONTENT_EDIT_TARGETS).toHaveLength(48);
+    expect(MEMORIAL_CONTENT_EDIT_TARGETS).toEqual(expect.arrayContaining(["video.items", "guidedFlow.A16"]));
     expect(MEMORIAL_CONTENT_EDIT_TARGETS).not.toContain("hero.photo");
     expect(MEMORIAL_CONTENT_EDIT_TARGETS).toContain("hero.photo.mediaId");
   });

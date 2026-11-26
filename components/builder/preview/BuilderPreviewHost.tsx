@@ -20,6 +20,8 @@ import { translate } from "@/lib/i18n/translate";
 import { createPreviewFlushRegistry, PreviewFlushRegistryContext } from "@/lib/builder/preview-flush-registry";
 import { MemorialAssembly } from "@/components/memorial/assembly/MemorialAssembly";
 import { OfferingsPreviewProvider } from "@/components/memorial/symbolic-offerings/v1/offerings-preview";
+import { VideoPreviewProvider } from "@/components/memorial/video/video-preview-host";
+import type { VideoHostingLoad } from "@/lib/memorial/video/hosting/hosted-video-types";
 import type { JourneySnapshot } from "@/lib/builder/guided-flow/journey";
 import { RouteJourneyProvider } from "@/components/builder/journey/journey-context";
 import { ChangeAmbianceLink } from "@/components/builder/journey/JourneyEntry";
@@ -154,6 +156,11 @@ export interface BuilderPreviewHostProps {
    * this host's flush registry. Never part of `children`, whose single
    * element identifies the current screen. */
   footer?: ReactNode;
+  /** VID-08 — the bound `loadVideoHostingAction` (authenticated Builder
+   * only): the family's hosted videos, with owner-only signed playback, for
+   * the video rubrique of the Preview. Absent (guest): the Preview plays
+   * only the files still on this device. */
+  videoHosting?: () => Promise<VideoHostingLoad>;
   /** The current Builder screen. */
   children: ReactNode;
 }
@@ -190,6 +197,7 @@ export function BuilderPreviewHost({
   onClosed,
   localJourney,
   footer = null,
+  videoHosting,
   children,
 }: BuilderPreviewHostProps) {
   const [registry] = useState(createPreviewFlushRegistry);
@@ -386,7 +394,11 @@ export function BuilderPreviewHost({
           {/* M3 — the one place Offrandes symboliques exist: free tries,
               simulated server response, nothing recorded. */}
           <OfferingsPreviewProvider>
-            <MemorialAssembly assembled={assembled} />
+            {/* VID-08 — what the video rubrique can really play here: local
+                files of this session, or the family's hosted videos. */}
+            <VideoPreviewProvider load={videoHosting}>
+              <MemorialAssembly assembled={assembled} />
+            </VideoPreviewProvider>
           </OfferingsPreviewProvider>
         </main>
       )}

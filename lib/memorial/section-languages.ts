@@ -12,9 +12,13 @@ import type { SectionId } from "@/config/sections";
  *   in `components/memorial/symbolic-offerings/v1/texts.ts`. A language
  *   added to `LANGUAGES` later stays without the rubrique until its
  *   wording is validated and listed here.
+ * - video (VID-09): FR, EN and ES, like the rest of the Builder.
  */
 const SECTION_LANGUAGES: Readonly<Partial<Record<SectionId, readonly Language[]>>> = {
   symbolicOfferings: ["fr", "en", "es"],
+  // VID-09 (décision PO) : la rubrique vidéo existe dans les trois langues
+  // de HERITAGE V1 (components/memorial/video/texts.ts).
+  video: ["fr", "en", "es"],
 };
 
 export function isSectionAvailableInLanguage(sectionId: SectionId, language: Language): boolean {

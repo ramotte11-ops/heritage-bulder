@@ -15,6 +15,8 @@ import { inspectPersonWords } from "@/lib/memorial/person-words";
 import { inspectLovedThings } from "@/lib/memorial/loved-things";
 import { inspectLegacy } from "@/lib/memorial/legacy";
 import { readHero } from "@/lib/memorial/hero";
+import { isA16Resolved } from "@/lib/builder/guided-flow/video-step";
+import { inspectVideoContent } from "@/lib/memorial/video/video-content";
 import { hasGalleryMatter } from "@/lib/memorial/gallery-content";
 import { isPageEComplete, resolveHeroFlowState } from "@/lib/builder/guided-flow/hero-step";
 import { isA03Complete } from "@/lib/builder/guided-flow/death-notice-step";
@@ -189,6 +191,8 @@ export const SECTION_READINESS: Readonly<Partial<Record<SectionId, ReadinessRule
   symbolicOfferings: isPageEComplete,
   // M8-E3 : A15 traitée (Continuer ou Passer) — jamais en cours de choix.
   testimonials: isA15Resolved,
+  // VID-08 : A16 traitée (Continuer ou Passer) — jamais en cours de préparation.
+  video: isA16Resolved,
 };
 
 function hasText(value: string | null): boolean {
@@ -239,6 +243,10 @@ export function resolveExplicitContentSectionIds(content: MemorialContent): Sect
   // choix illisibles ne comptent jamais).
   const contributions = inspectContributionsSettings(content);
   if (contributions.status !== "corrupted" && hasOpenContributionFeature(contributions.features)) ids.push("testimonials");
+
+  // VID-08 : au moins une vidéo décrite (lecture sûre : un contenu illisible ne compte jamais).
+  const video = inspectVideoContent(content);
+  if (video.status === "valid" && video.items.length > 0) ids.push("video");
 
   return ids;
 }

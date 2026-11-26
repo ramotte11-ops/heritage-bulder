@@ -64,6 +64,11 @@ export const MEMORIAL_CONTENT_EDIT_TARGETS = [
   // M8-E3 : A15 « Contributions des proches » (O9 : modifiable après publication).
   "contributions.features",
   "guidedFlow.A15",
+  // VID-06 : A16 « Vos souvenirs en vidéo » — titres, durées et ordre des
+  // vidéos préparées (jamais un fichier). Publication : la rubrique `video`
+  // reste premium et sans rendu public (publication-policy.ts).
+  "video.items",
+  "guidedFlow.A16",
 ] as const;
 
 export type MemorialContentEditTarget = (typeof MEMORIAL_CONTENT_EDIT_TARGETS)[number];
@@ -159,7 +164,7 @@ export type MemorialEditDecision =
       mutation?: MemorialMutationClaim;
     };
 
-type ContentDomain = "hero" | "deathNotice" | "deathNoticePresence" | "ceremony" | "story" | "traditions" | "gallery" | "contributions";
+type ContentDomain = "hero" | "deathNotice" | "deathNoticePresence" | "ceremony" | "story" | "traditions" | "gallery" | "contributions" | "video";
 
 const CONTENT_DOMAIN: Readonly<Record<MemorialContentEditTarget, ContentDomain>> = {
   "hero.displayName": "hero",
@@ -208,6 +213,8 @@ const CONTENT_DOMAIN: Readonly<Record<MemorialContentEditTarget, ContentDomain>>
   "guidedFlow.A14": "ceremony",
   "contributions.features": "contributions",
   "guidedFlow.A15": "contributions",
+  "video.items": "video",
+  "guidedFlow.A16": "video",
 };
 
 const contentTargets = new Set<string>(MEMORIAL_CONTENT_EDIT_TARGETS);

@@ -12,20 +12,26 @@ import type { SectionId } from "./sections";
  *   4. story         Récit de vie
  *   5. traditions    Traditions & repères
  *   6. gallery       Galerie photos
- *   7. video         Vidéo — emplacement réservé (inchangé)
- *   8. symbolicOfferings  Offrandes symboliques V1 (Preview du Builder,
+ *   7. symbolicOfferings  Offrandes symboliques V1 (Preview du Builder,
  *                    simulée ; page publique depuis QG 016)
- *   9. testimonials  Contributions des proches
- *  10. condolences   Condoléances (rubrique distincte, jamais fusionnée)
+ *   8. testimonials  Contributions des proches (les condoléances y sont
+ *                    intégrées : catégorie « condolences » d'A15)
+ *   9. video         « Des instants pour se souvenir » (VID-08)
+ *  10. condolences   identifiant historique conservé, sans renderer :
+ *                    jamais dessiné, aucune rubrique autonome
  *  11. Livre de mémoire — futur chantier, aucune réservation technique
  *
+ * VID-08 — ordre définitif retenu par la PO (25 novembre 2026) :
+ * OFFRANDES → CONTRIBUTIONS DES PROCHES → VIDÉO HOMMAGE → pied de page.
+ * La rubrique Condoléances n'est plus une section publique autonome : les
+ * condoléances font partie des Contributions des proches. L'identifiant
+ * `condolences` reste dans le catalogue (contrainte CHECK de
+ * `memorials.enabled_sections`, sélection A00, données existantes) ; sans
+ * renderer, il n'est jamais dessiné. Rien n'est supprimé.
+ *
  * M3 — décision PO du 20 octobre : GALERIE → OFFRANDES SYMBOLIQUES →
- * CONTRIBUTIONS DES PROCHES. La Vidéo ne doit être ni déplacée ni
- * supprimée : elle garde sa place, juste après la Galerie, et les
- * Offrandes s'insèrent entre elle et les Contributions. Tant que la Vidéo
- * n'a pas de renderer, elle n'est jamais dessinée : les Offrandes
- * apparaissent donc directement après la Galerie. Quand la Vidéo sera
- * construite, l'ordre relatif Vidéo / Offrandes reste une décision QG.
+ * CONTRIBUTIONS DES PROCHES. VID-08 : la Vidéo, construite, prend la
+ * place décidée par la PO, après les Contributions (voir ci-dessus).
  *
  * `story` → `traditions` is an artistic authority: their Masters were
  * designed to follow each other. Nothing may be inserted between them.
@@ -55,9 +61,9 @@ export const MEMORIAL_SECTION_ORDER: readonly SectionId[] = [
   "story",
   "traditions",
   "gallery",
-  "video",
   "symbolicOfferings",
   "testimonials",
+  "video",
   "condolences",
 ];
 

@@ -174,6 +174,20 @@ const SERVER_ONLY_MODULES = [
   "lib/memorial/public/read-public-memorial.ts",
   "lib/memorial/public/public-snapshot-media-resolver.ts",
   "lib/memorial/public/load-public-memorial.ts",
+  // VID-07: video hosting (Mux). The configuration holds the Mux API token,
+  // the webhook secret and the signed-playback private key; the runtime
+  // builds the service-role client. None of it may reach a browser bundle:
+  // the browser only ever receives a one-time upload URL or short-lived
+  // signed playback URLs.
+  "lib/memorial/video/hosting/mux-config.ts",
+  "lib/memorial/video/hosting/mux-api.ts",
+  "lib/memorial/video/hosting/mux-webhook.ts",
+  "lib/memorial/video/hosting/mux-playback.ts",
+  "lib/memorial/video/hosting/hosted-video-repository.ts",
+  "lib/memorial/video/hosting/hosted-video-service.ts",
+  "lib/memorial/video/hosting/hosting-runtime.ts",
+  "lib/memorial/video/hosting/public-video-playback.ts",
+  "lib/memorial/video/hosting/global-reconcile.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

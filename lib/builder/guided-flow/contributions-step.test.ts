@@ -19,10 +19,12 @@ describe("M7 — A15 dans le parcours", () => {
   it("A15 suit A13 et précède le tronc final ; l'ordre des étapes existantes est inchangé", () => {
     const ids = [...STEP_IDS];
     expect(ids.indexOf("A15")).toBe(ids.indexOf("A13") + 1);
-    expect(ids.filter((id) => id !== "A15")).toEqual(["T03", "T04", "A00", "T05", "T06", "T07", "T08", "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13", "P01", "P04", "V02", "V03", "V04"]);
+    expect(ids.filter((id) => id !== "A15" && id !== "A16")).toEqual(["T03", "T04", "A00", "T05", "T06", "T07", "T08", "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A14", "A08", "A09", "A10", "A11", "A12", "A13", "P01", "P04", "V02", "V03", "V04"]);
     const screens = JOURNEY_SCREENS.map((s) => s.id);
     expect(screens.indexOf("contributions")).toBe(screens.indexOf("gallery") + 1);
-    expect(screens.at(-1)).toBe("contributions");
+    // VID-06 — A16 « Vos souvenirs en vidéo » suit désormais A15.
+    expect(screens.at(-1)).toBe("video");
+    expect(screens.indexOf("video")).toBe(screens.indexOf("contributions") + 1);
     expect(JOURNEY_SECTION_MEMORIAL_SECTION.contributions).toBe("testimonials");
   });
 

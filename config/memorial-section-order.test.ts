@@ -22,9 +22,9 @@ describe("MEMORIAL_SECTION_ORDER", () => {
       "story",
       "traditions",
       "gallery",
-      "video",
       "symbolicOfferings",
       "testimonials",
+      "video",
       "condolences",
     ]);
   });
@@ -34,11 +34,12 @@ describe("MEMORIAL_SECTION_ORDER", () => {
     expect(MEMORIAL_SECTION_ORDER[story + 1]).toBe("traditions");
   });
 
-  it("keeps testimonials and condolences as two distinct sections, in that order", () => {
+  it("VID-08 — keeps the historical `condolences` id, last, never between the Contributions and the Vidéo", () => {
     const testimonials = MEMORIAL_SECTION_ORDER.indexOf("testimonials");
     const condolences = MEMORIAL_SECTION_ORDER.indexOf("condolences");
     expect(testimonials).toBeGreaterThanOrEqual(0);
-    expect(condolences).toBe(testimonials + 1);
+    expect(condolences).toBe(MEMORIAL_SECTION_ORDER.length - 1);
+    expect(MEMORIAL_SECTION_ORDER[testimonials + 1]).toBe("video");
   });
 });
 
@@ -49,9 +50,10 @@ describe("Offrandes symboliques (M3)", () => {
     expect(MEMORIAL_SECTION_ORDER[offerings + 1]).toBe("testimonials");
   });
 
-  it("leaves the Vidéo where it was: right after the Galerie", () => {
-    const gallery = MEMORIAL_SECTION_ORDER.indexOf("gallery");
-    expect(MEMORIAL_SECTION_ORDER[gallery + 1]).toBe("video");
+  it("VID-08 — PO order: Offrandes → Contributions des proches → Vidéo hommage", () => {
+    const offerings = MEMORIAL_SECTION_ORDER.indexOf("symbolicOfferings");
+    expect(MEMORIAL_SECTION_ORDER.slice(offerings, offerings + 3)).toEqual(["symbolicOfferings", "testimonials", "video"]);
+    expect(MEMORIAL_SECTION_ORDER[MEMORIAL_SECTION_ORDER.indexOf("gallery") + 1]).toBe("symbolicOfferings");
   });
 });
 

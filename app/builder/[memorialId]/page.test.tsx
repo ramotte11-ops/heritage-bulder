@@ -184,6 +184,9 @@ vi.mock("@/components/builder/GalleryStep", () => ({ GalleryStep }));
 // M7 — A15 « Contributions des proches », même convention : ce que la route rend, jamais le DOM de l'écran.
 const { ContributionsStep } = vi.hoisted(() => ({ ContributionsStep: vi.fn(() => null) }));
 vi.mock("@/components/builder/ContributionsStep", () => ({ ContributionsStep }));
+// VID-06 — A16 « Vos souvenirs en vidéo », même convention.
+const { VideoStep } = vi.hoisted(() => ({ VideoStep: vi.fn(() => null) }));
+vi.mock("@/components/builder/VideoStep", () => ({ VideoStep }));
 // M8-E3 : l'application immédiate des catégories (O9), Server Action familiale.
 const { updateContributionCategories } = vi.hoisted(() => ({ updateContributionCategories: vi.fn(async () => ({ status: "ok" })) }));
 vi.mock("@/lib/memorial/contributions/family-contribution-actions", () => ({ updateContributionCategories }));
@@ -279,6 +282,13 @@ const { publishFromPreviewAction } = vi.hoisted(() => ({
   publishFromPreviewAction: vi.fn(() => Promise.resolve("published")),
 }));
 vi.mock("./publication-actions", () => ({ publishFromPreviewAction }));
+const videoActions = vi.hoisted(() => ({
+  loadVideoHostingAction: vi.fn(async () => ({ status: "unavailable" })),
+  requestVideoUploadAction: vi.fn(async () => ({ status: "unavailable" })),
+  cancelVideoUploadAction: vi.fn(async () => ({ status: "ignored" })),
+  removeHostedVideoAction: vi.fn(async () => ({ status: "removed" })),
+}));
+vi.mock("./video-actions", () => videoActions);
 
 // Imported after every mock above is registered.
 const { default: BuilderMemorialPage } = await import("./page");
@@ -398,6 +408,7 @@ const REAL_DRAFT_CONTENT_BASE = {
     A12: { status: "skipped" },
     A13: { status: "skipped" },
     A15: { status: "skipped" },
+    A16: { status: "skipped" },
   },
 };
 
@@ -1481,6 +1492,7 @@ describe("BuilderMemorialPage — granted access", () => {
           A12: { status: "skipped" },
           A13: { status: "skipped" },
           A15: { status: "skipped" },
+          A16: { status: "skipped" },
         },
       };
       const reconciledContent = {
@@ -3059,6 +3071,55 @@ describe("BuilderMemorialPage — granted access", () => {
           resumeBuilderSession.mockResolvedValue({ status: "resumable", memorial, draft });
         }
 
+        describe("VID-06 — A16 « Vos souvenirs en vidéo », right after A15", () => {
+          // La base de ces brouillons a déjà traité A15 et A16 : chaque test pose explicitement les deux.
+          const afterA15 = (extra: Record<string, unknown> = {}) => sheetResolved({ A13: { status: "skipped" }, A15: { status: "skipped" }, A16: undefined, ...extra });
+          const beforeA15 = () => sheetResolved({ A13: { status: "skipped" }, A15: undefined, A16: undefined });
+
+          it("renders VideoStep once A15 is resolved, with the save bound to the AUTHORIZED id — and no other server action", async () => {
+            granted(afterA15(), { ...CONFIGURED_MEMORIAL, slug: null });
+            const result = await callPage();
+            expect(result.type).toBe(VideoStep);
+            expect(Object.keys(result.props).sort()).toEqual(["content", "hosting", "language", "persist"]);
+            await result.props.persist({ guidedFlow: {} }, 2);
+            expect(saveDraftAction).toHaveBeenLastCalledWith(MEMORIAL_ID, { guidedFlow: {} }, 2);
+          });
+
+          it("VID-07 — the four hosting actions are bound to the AUTHORIZED id, never to a value from the browser", async () => {
+            granted(afterA15(), { ...CONFIGURED_MEMORIAL, slug: null });
+            const { hosting } = (await callPage()).props as { hosting: Record<"load" | "request" | "cancel" | "remove", (...args: unknown[]) => Promise<unknown>> };
+            expect(Object.keys(hosting).sort()).toEqual(["cancel", "load", "remove", "request"]);
+            await hosting.load();
+            await hosting.request("v-1", 12);
+            await hosting.cancel("22222222-2222-4222-8222-222222222222");
+            await hosting.remove("v-1");
+            expect(videoActions.loadVideoHostingAction).toHaveBeenLastCalledWith(MEMORIAL_ID);
+            expect(videoActions.requestVideoUploadAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "v-1", 12);
+            expect(videoActions.cancelVideoUploadAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "22222222-2222-4222-8222-222222222222");
+            expect(videoActions.removeHostedVideoAction).toHaveBeenLastCalledWith(MEMORIAL_ID, "v-1");
+          });
+
+          it("never before A15, and never again once A16 is resolved (completed or skipped)", async () => {
+            granted(beforeA15(), { ...CONFIGURED_MEMORIAL, slug: null });
+            expect((await callPage()).type).toBe(ContributionsStep);
+            for (const status of ["completed", "skipped"]) {
+              granted(afterA15({ A16: { status } }), { ...CONFIGURED_MEMORIAL, slug: null });
+              expect((await callPage()).type).toBe(GuidedFlowPause);
+            }
+          });
+
+          it("« Mon parcours » reopens A16 (?etape=video) once resolved, with the stored videos — never before it is reached", async () => {
+            const stored = afterA15({ A16: { status: "completed" } });
+            const videos = { items: [{ id: "v-1", title: "Son anniversaire", durationSeconds: 268 }] };
+            granted({ ...stored, content: { ...stored.content, video: videos } as MemorialVersion["content"] }, { ...CONFIGURED_MEMORIAL, slug: null });
+            const reopened = await callPage(MEMORIAL_ID, { etape: "video" });
+            expect(reopened.type).toBe(VideoStep);
+            expect((reopened.props.content as { video: unknown }).video).toEqual(videos);
+            granted(beforeA15(), { ...CONFIGURED_MEMORIAL, slug: null });
+            expect((await callPage(MEMORIAL_ID, { etape: "video" })).type).toBe(ContributionsStep);
+          });
+        });
+
         describe("M7 — A15 « Contributions des proches », right after A13", () => {
           const withoutA15 = (draft: MemorialVersion): MemorialVersion => {
             const guidedFlow = { ...(draft.content as { guidedFlow: Record<string, unknown> }).guidedFlow };
@@ -3093,7 +3154,7 @@ describe("BuilderMemorialPage — granted access", () => {
             granted(withoutA15(withoutA13(sheetResolved())));
             expect((await callPage()).type).toBe(GalleryStep);
             for (const status of ["completed", "skipped"]) {
-              granted(sheetResolved({ A13: { status: "skipped" }, A15: { status } }), { ...CONFIGURED_MEMORIAL, slug: null });
+              granted(sheetResolved({ A13: { status: "skipped" }, A15: { status }, A16: { status: "skipped" } }), { ...CONFIGURED_MEMORIAL, slug: null });
               expect((await callPage()).type).toBe(GuidedFlowPause);
             }
           });
@@ -3210,6 +3271,7 @@ describe("BuilderMemorialPage — granted access", () => {
       personSheet: PersonSheetStep,
       gallery: GalleryStep,
       contributions: ContributionsStep,
+      video: VideoStep,
     };
 
     it.each([
@@ -3376,7 +3438,7 @@ describe("BuilderMemorialPage — granted access", () => {
         // A04 is current and nothing after it was ever treated: the review
         // reaches A04, and never a screen after it (none is reopenable).
         resumeWith(
-          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }),
+          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined, A16: undefined }),
         );
         const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres: "ceremonyMoment" });
         expect(raw.props.children.type).toBe(CeremonyMomentStep);
@@ -3419,7 +3481,7 @@ describe("BuilderMemorialPage — granted access", () => {
 
       it("never a screen not reached yet: past the current screen, the review stops on it", async () => {
         resumeWith(
-          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }),
+          variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined, A16: undefined }),
         );
         for (const apres of ["ceremonyMoment", "traditions", "gallery"]) {
           const raw = await callPageRaw(MEMORIAL_ID, { parcours: "revue", apres });
@@ -3445,7 +3507,7 @@ describe("BuilderMemorialPage — granted access", () => {
     describe("Chef 03 / O05 — a locked current screen never blocks the family", () => {
       it("published, ceremony never answered (locked): the route shows the next editable screen, not the locked form", async () => {
         // Published right after the notice: the ceremony never answered, nothing after it treated.
-        const unanswered = { A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined };
+        const unanswered = { A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined, A16: undefined };
         resumeWith(variant(unanswered), { ...PAST_EVERYTHING, status: "published" });
         const raw = await callPageRaw(MEMORIAL_ID);
         expect(raw.props.children.type).toBe(TraditionsStep);
@@ -3457,7 +3519,7 @@ describe("BuilderMemorialPage — granted access", () => {
       });
 
       it("the same draft unpublished: the ceremony question is shown, as before", async () => {
-        resumeWith(variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined }));
+        resumeWith(variant({ A04: undefined, A09: undefined, A10: undefined, A11: undefined, A12: undefined, A13: undefined, A15: undefined, A16: undefined }));
         expect((await callPage()).type).toBe(CeremonyMomentStep);
       });
     });

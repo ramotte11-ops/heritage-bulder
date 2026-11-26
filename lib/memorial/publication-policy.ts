@@ -23,6 +23,7 @@ import { resolveSkinRuntime } from "@/lib/memorial/skin-runtime";
 import { inspectTraditions } from "@/lib/memorial/traditions";
 import type { GalleryContent, GalleryItem } from "@/types/gallery";
 import { inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
+import { inspectVideoContent } from "@/lib/memorial/video/video-content";
 import type { MemorialContent } from "@/types/memorial";
 
 /**
@@ -79,9 +80,9 @@ type ValidatedAccessLevel = "avis" | "complet";
  * symbolic offerings renderer is public now (`/hommage/[slug]`, real
  * deposits) — listing it is also what keeps a family's « désactiver »
  * choice in the PUBLISHED copy (`presentation.hiddenSections`), which both
- * the public page and `record_symbolic_offering_v1` read. Video,
- * condolences, testimonials and memoryMessage have no renderer at all and
- * fail closed before this list is consulted.
+ * the public page and `record_symbolic_offering_v1` read. Condolences and
+ * memoryMessage have no renderer at all and fail closed before this list
+ * is consulted. VID-08: the video rubrique is operational, and premium.
  *
  * V1 rollback renderers stay accepted so a renderer-key rollback does not
  * accidentally make a previously operational section commercially absent.
@@ -99,6 +100,8 @@ const PUBLIC_RENDERERS: ReadonlySet<RendererKey> = new Set([
   "SymbolicOfferingsV1Section",
   // M8-E3 : « Contributions des proches », réelles sur la page publique.
   "ContributionsV1Section",
+  // VID-08 : rubrique vidéo, offre complète seulement (PREMIUM_SECTION_IDS).
+  "VideoHommageV1Section",
 ]);
 
 /**
@@ -429,6 +432,21 @@ export function projectMemorialPublication(
     }
     const f = contributions.features;
     content.contributions = { features: { condolences: f.condolences, stories: f.stories, photos: f.photos } };
+  }
+
+  // VID-08 — la rubrique vidéo (offre complète seulement : jamais dans une
+  // copie `avis`, que la base refuse aussi, `video` n'étant pas dans
+  // AVIS_SNAPSHOT_KEYS). Seules les descriptions entrent : identifiant,
+  // titre, durée, ordre. Aucune adresse ni identifiant d'hébergement : la
+  // page publique ne lit que les vidéos que la base déclare prêtes AU
+  // MOMENT de cette publication (read_public_memorial_videos_v1).
+  // Une clé `video` illisible (format antérieur à VID-06) n'est pas publiée,
+  // sans bloquer le reste de l'hommage : aucune vidéo n'en sort.
+  if (sectionMayEnterSnapshot("video", accessLevel, skin, hidden) && hasOwn(input.draft, "video")) {
+    const video = inspectVideoContent(input.draft);
+    if (video.status === "valid" && video.items.length > 0) {
+      content.video = { items: video.items.map((item) => ({ id: item.id, title: item.title, durationSeconds: item.durationSeconds })) };
+    }
   }
 
   addGuidedFlowProjection(input.draft, content);
