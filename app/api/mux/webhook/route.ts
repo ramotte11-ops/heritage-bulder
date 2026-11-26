@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { videoHostingRuntime } from "@/lib/memorial/video/hosting/hosting-runtime";
+import { videoNotificationRuntime } from "@/lib/memorial/video/hosting/hosting-runtime";
 import { parseMuxEvent, verifyMuxSignature } from "@/lib/memorial/video/hosting/mux-webhook";
 
 /**
  * VID-07 — point de notification Mux (POST /api/mux/webhook).
  *
- * NON ACTIVÉ : aucun webhook n'est déclaré chez Mux tant que la PO ne l'a pas
- * autorisé ; sans configuration, la route répond 503 sans rien lire.
+ * NON ACTIVÉ : sans configuration, la route répond 503 sans rien lire.
+ * VID-11 : active quand l'hébergement est activé pour les familles, ou, avant
+ * cela, quand `HERITAGE_VIDEO_NOTIFICATIONS=enabled` (vérification des
+ * notifications signées sans ouvrir A16 ni la page publique).
  *
  *  - Corps BRUT lu une fois, limité à 1 Mo, puis signature vérifiée
  *    (HMAC-SHA256, 5 minutes) AVANT toute interprétation : une requête non
@@ -23,7 +25,7 @@ export const dynamic = "force-dynamic";
 const MAX_BODY_BYTES = 1_000_000;
 
 export async function POST(request: Request): Promise<Response> {
-  const runtime = videoHostingRuntime();
+  const runtime = videoNotificationRuntime();
   if (runtime === null) return NextResponse.json({ ok: false }, { status: 503 });
 
   const declared = Number(request.headers.get("content-length") ?? "0");

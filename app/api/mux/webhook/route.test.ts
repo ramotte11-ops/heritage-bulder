@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** VID-07 — le point de notification Mux : signature d'abord, puis base idempotente. */
 
-const { videoHostingRuntime, handleEvent } = vi.hoisted(() => ({ videoHostingRuntime: vi.fn(), handleEvent: vi.fn() }));
-vi.mock("@/lib/memorial/video/hosting/hosting-runtime", () => ({ videoHostingRuntime }));
+const { videoNotificationRuntime, handleEvent } = vi.hoisted(() => ({ videoNotificationRuntime: vi.fn(), handleEvent: vi.fn() }));
+vi.mock("@/lib/memorial/video/hosting/hosting-runtime", () => ({ videoNotificationRuntime }));
 
 const { POST } = await import("./route");
 
@@ -22,13 +22,13 @@ const post = (body: string, header?: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  videoHostingRuntime.mockReturnValue({ config: { webhookSecret: SECRET }, service: { handleEvent } });
+  videoNotificationRuntime.mockReturnValue({ config: { webhookSecret: SECRET }, service: { handleEvent } });
   handleEvent.mockResolvedValue({ outcome: "accepted" });
 });
 
 describe("VID-07 — POST /api/mux/webhook", () => {
   it("hébergement non configuré : 503, rien n'est lu", async () => {
-    videoHostingRuntime.mockReturnValue(null);
+    videoNotificationRuntime.mockReturnValue(null);
     expect((await post(BODY, signature(BODY))).status).toBe(503);
     expect(handleEvent).not.toHaveBeenCalled();
   });
