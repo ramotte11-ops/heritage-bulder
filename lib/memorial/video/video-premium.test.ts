@@ -91,10 +91,19 @@ describe("VID-06 — enregistrement du brouillon (Security V1)", () => {
 });
 
 describe("VID-06 — aucune publication vidéo, aucun accès distant sans l'offre complète", () => {
-  it.each(["avis", "complet"] as const)("offre %s : la projection publiée ne contient jamais la rubrique vidéo", (accessLevel) => {
-    const projected = projectMemorialPublication({ draft: withVideos(fullAnnouncement()), accessLevel, skin: "intemporel" });
+  it("offre gratuite : la projection publiée ne contient jamais la rubrique vidéo", () => {
+    const projected = projectMemorialPublication({ draft: withVideos(fullAnnouncement()), accessLevel: "avis", skin: "intemporel" });
     expect(projected.ok).toBe(true);
     expect(projected.ok && "video" in projected.projection.content).toBe(false);
+  });
+
+  it("VID-08 — offre complète : seules les descriptions des vidéos sont publiées (jamais un fichier, une adresse ni un jeton)", () => {
+    const projected = projectMemorialPublication({ draft: withVideos(fullAnnouncement()), accessLevel: "complet", skin: "intemporel" });
+    expect(projected.ok).toBe(true);
+    const video = projected.ok ? (projected.projection.content as { video?: { items: Record<string, unknown>[] } }).video : undefined;
+    expect(video?.items.length).toBeGreaterThan(0);
+    for (const item of video!.items) expect(Object.keys(item).sort()).toEqual(["durationSeconds", "id", "title"]);
+    expect(JSON.stringify(video)).not.toMatch(/blob:|https?:|token/);
   });
 
   it("offre gratuite : l'avis existant « réservées à l'hommage complet » est montré avant de publier", () => {

@@ -68,6 +68,8 @@ const { depositSymbolicOffering, signSymbolicOfferingAction } = vi.hoisted(() =>
 }));
 vi.mock("./actions", () => ({ depositSymbolicOffering, signSymbolicOfferingAction }));
 
+const { loadPublicVideoPlayback } = vi.hoisted(() => ({ loadPublicVideoPlayback: vi.fn(async () => ({})) }));
+vi.mock("@/lib/memorial/video/hosting/public-video-playback", () => ({ loadPublicVideoPlayback }));
 const { default: PublicMemorialPage, metadata } = await import("./page");
 
 const ASSEMBLED = { status: "assembled", language: "fr", skinVariant: "dark", sections: [], archivedSections: [], failures: [] };
@@ -101,6 +103,37 @@ describe("/hommage/[slug]", () => {
     const child = contributions.props.children;
     expect(child.type).toBe(MemorialAssembly);
     expect((child.props as { assembled: unknown }).assembled).toBe(ASSEMBLED);
+  });
+
+  describe("VID-08 — « Des instants pour se souvenir » on the public page", () => {
+    const videoSection = { sectionId: "video", rendererKey: "VideoHommageV1Section", props: { skinVariant: "dark", language: "fr", items: [{ id: "v-a", title: "Mariage", durationSeconds: 40 }, { id: "v-b", title: null, durationSeconds: 10 }] } };
+    const withVideo = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }, videoSection] };
+    type Assembled = { sections: { sectionId: string; props: Record<string, unknown> }[] };
+    type Node = ReactElement<{ children: Node; assembled: Assembled }>;
+    // <main> → Offrandes → Contributions → MemorialAssembly
+    const assembledOf = (element: ReactElement) => (element as Node).props.children.props.children.props.children.props.assembled;
+    const signed = { hlsUrl: "https://stream.mux.com/pb.m3u8?token=t", posterUrl: "https://image.mux.com/pb/thumbnail.webp?token=t", mp4Url: null, expiresAt: "2026-11-25T14:00:00.000Z", durationSeconds: 39.9 };
+
+    it("no video rubrique in the published copy: nothing is read", async () => {
+      loadPublicMemorial.mockResolvedValue({ status: "ready", assembled: ASSEMBLED });
+      await call("slug");
+      expect(loadPublicVideoPlayback).not.toHaveBeenCalled();
+    });
+
+    it("the server signs the visit's videos; the rubrique receives only its own, after the Contributions", async () => {
+      loadPublicMemorial.mockResolvedValue({ status: "ready", assembled: withVideo });
+      loadPublicVideoPlayback.mockResolvedValueOnce({ "v-a": signed, "v-other": signed });
+      const assembled = assembledOf(await call("slug"));
+      expect(loadPublicVideoPlayback).toHaveBeenCalledWith({ slug: "slug", client: { fake: "service-role-client" } });
+      expect(assembled.sections.map((s) => s.sectionId)).toEqual(["testimonials", "video"]);
+      expect(assembled.sections[1]!.props.publicPlayback).toEqual({ "v-a": signed });
+    });
+
+    it("free offer, unconfigured hosting, nothing ready or a read error (empty map): the rubrique is not drawn", async () => {
+      loadPublicMemorial.mockResolvedValue({ status: "ready", assembled: withVideo });
+      loadPublicVideoPlayback.mockResolvedValueOnce({});
+      expect(assembledOf(await call("slug")).sections.map((s) => s.sectionId)).toEqual(["testimonials"]);
+    });
   });
 
   it("M8-E3 — a copy carrying the rubrique reads the visit's real contributions for the public host", async () => {

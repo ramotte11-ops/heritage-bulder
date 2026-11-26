@@ -8,6 +8,8 @@ import { loadPublicContributionsInitial } from "@/lib/memorial/contributions/vis
 import { createVisitorContributionDeps } from "@/lib/memorial/contributions/server-contributions";
 import { loadPublicMemorial } from "@/lib/memorial/public/load-public-memorial";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
+import { loadPublicVideoPlayback } from "@/lib/memorial/video/hosting/public-video-playback";
+import { withPublicVideoPlayback } from "@/lib/memorial/video/video-section";
 import { depositSymbolicOffering, signSymbolicOfferingAction } from "./actions";
 import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "@/config/contributions-deposit-readiness";
 import {
@@ -65,8 +67,20 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   await connection();
   const { slug } = await params;
 
-  const view = await loadPublicMemorial(slug, { client: createServiceRoleSupabaseClient() });
+  const client = createServiceRoleSupabaseClient();
+  const view = await loadPublicMemorial(slug, { client });
   if (view.status !== "ready") notFound();
+
+  // VID-08 — « Des instants pour se souvenir » : seulement les vidéos que la
+  // base autorise pour CETTE visite (publié, offre complète, visible, vidéo
+  // de la copie publiée et prête au moment de la publication), chacune en
+  // lecture signée 720p de courte durée. Hébergement non configuré, offre
+  // gratuite, aucune vidéo prête, erreur : la rubrique n'est pas dessinée.
+  // Aucune requête quand la copie publiée ne porte pas la rubrique.
+  const hasVideoSection = view.assembled.sections.some((s) => s.rendererKey === "VideoHommageV1Section");
+  const assembled = hasVideoSection
+    ? { ...view.assembled, sections: withPublicVideoPlayback(view.assembled.sections, await loadPublicVideoPlayback({ slug, client })) }
+    : view.assembled;
 
   // M8-E3 — Contributions des proches : les contributions RÉELLES de cette
   // visite, filtrées par les catégories EN VIGUEUR (O9). Lues seulement si
@@ -94,7 +108,7 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
         {/* M8-E3 — pages suivantes de l'Album et liens photo renouvelés : Server Actions liées
             à CE slug ; le navigateur ne choisit ni l'hommage ni ce qui est lisible. */}
         <PublicContributionsProvider initial={contributions} loadMore={loadContributions.bind(null, slug)} renewPhotos={renewContributionPhotos.bind(null, slug)} deposit={deposit}>
-          <MemorialAssembly assembled={view.assembled} />
+          <MemorialAssembly assembled={assembled} />
         </PublicContributionsProvider>
       </PublicOfferingsProvider>
     </main>

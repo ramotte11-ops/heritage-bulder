@@ -431,6 +431,8 @@ export default async function BuilderMemorialPage({
   const heroRendererExists =
     resolveSectionRenderer("hero", memorialSkin.status === "resolved" ? memorialSkin.skin : null) !== null;
   const loadPreview = loadMemorialPreviewAction.bind(null, access.memorialId);
+  // VID-08 — the Preview's video rubrique reads the family's hosted videos.
+  const loadVideoHosting = loadVideoHostingAction.bind(null, access.memorialId);
   // QG 008 Lot 3 — « Publier », in the private Preview of this Builder only.
   const publish = publishFromPreviewAction.bind(null, access.memorialId);
   // B03 — the route's own path, built from the AUTHORIZED id only: where
@@ -461,6 +463,9 @@ export default async function BuilderMemorialPage({
         language={memorialLanguage}
         loadPreview={loadPreview}
         publish={publish}
+        // VID-08 — the family's hosted videos for the Preview's video rubrique,
+        // bound to the AUTHORIZED id (same action as A16).
+        videoHosting={loadVideoHosting}
         footer={firstSaveNotice}
         draftRevision={initialDraft.revision ?? 0}
         draftContent={journeyContent ?? initialDraft.content}

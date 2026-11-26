@@ -199,7 +199,7 @@ describe("publishMemorial", () => {
       expect(repo.commitPublication).not.toHaveBeenCalled();
     });
 
-    it("keeps the prepared photos for a complete memorial (videos stay unpublished until operational)", async () => {
+    it("keeps the prepared photos for a complete memorial (an unreadable legacy video key is left out, without blocking)", async () => {
       const { result, repo } = await publish("complet", preparedDraft(8));
       expect(result.ok).toBe(true);
       const commit = repo.commitPublication.mock.calls[0][0];

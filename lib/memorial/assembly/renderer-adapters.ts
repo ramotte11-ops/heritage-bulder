@@ -15,6 +15,8 @@ import type { TraditionsV2Props } from "@/components/memorial/traditions/v2/Trad
 import type { GalleryIntemporelProps } from "@/components/memorial/gallery/GalleryIntemporel";
 import type { SymbolicOfferingsV1SectionProps } from "@/components/memorial/symbolic-offerings/v1/SymbolicOfferingsV1Section";
 import type { ContributionsV1SectionProps } from "@/components/memorial/contributions/ContributionsV1Section";
+import type { VideoHommageV1SectionProps } from "@/components/memorial/video/VideoHommageV1Section";
+import { inspectVideoContent } from "@/lib/memorial/video/video-content";
 import { inspectContributionsSettings } from "@/lib/memorial/contributions/contributions-settings";
 import { inspectHero, isHeroContentComplete } from "@/lib/memorial/hero";
 import { inspectDeathNotice } from "@/lib/memorial/death-notice";
@@ -62,6 +64,7 @@ export interface RendererPropsMap {
   GalleryIntemporel: GalleryIntemporelProps;
   SymbolicOfferingsV1Section: SymbolicOfferingsV1SectionProps;
   ContributionsV1Section: ContributionsV1SectionProps;
+  VideoHommageV1Section: VideoHommageV1SectionProps;
 }
 
 /** One assembled section: a renderer key and the props for exactly
@@ -402,6 +405,28 @@ export const adaptContributionsV1Section: RendererAdapter<"ContributionsV1Sectio
   return { ok: true, props: { skinVariant: context.skinVariant, language: context.language, displayName, features: settings.features } };
 };
 
+/**
+ * VID-08 — « Des instants pour se souvenir ». Seules les descriptions des
+ * vidéos (identifiant, titre, durée, ordre) viennent du contenu ; les
+ * lectures réelles ne passent JAMAIS par ici : la page publique ajoute
+ * celles que le serveur a signées pour la visite, l'aperçu les demande à
+ * son hôte. Contenu illisible ou vide : pas de rubrique.
+ */
+export const adaptVideoHommageV1Section: RendererAdapter<"VideoHommageV1Section"> = async (context) => {
+  if (context.skin !== "intemporel") return refuse("skinMismatch");
+  if (!isSectionAvailableInLanguage("video", context.language)) return refuse("textUnavailable");
+  const video = inspectVideoContent(context.content);
+  if (video.status !== "valid" || video.items.length === 0) return refuse("contentUnreadable");
+  return {
+    ok: true,
+    props: {
+      skinVariant: context.skinVariant,
+      language: context.language,
+      items: video.items.map((item) => ({ id: item.id, title: item.title, durationSeconds: item.durationSeconds })),
+    },
+  };
+};
+
 /** Exhaustive over `RendererKey`: a key added to `RENDERER_KEYS` without
  * an adapter fails to typecheck. */
 export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K> } = {
@@ -416,4 +441,5 @@ export const RENDERER_ADAPTERS: { readonly [K in RendererKey]: RendererAdapter<K
   GalleryIntemporel: adaptGalleryIntemporel,
   SymbolicOfferingsV1Section: adaptSymbolicOfferingsV1Section,
   ContributionsV1Section: adaptContributionsV1Section,
+  VideoHommageV1Section: adaptVideoHommageV1Section,
 };

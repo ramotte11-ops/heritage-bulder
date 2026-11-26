@@ -10,6 +10,7 @@ import type {
   VideoUploadRefusalReason,
 } from "@/lib/memorial/video/hosting/hosted-video-types";
 import { isTransferActive, type VideoTransfer, type VideoTransferManager } from "@/lib/memorial/video/hosting/video-transfers";
+import { latestHostedView } from "@/lib/memorial/video/hosting/hosted-video-views";
 
 /**
  * VID-07 — le passage du local à l'hébergement premium, pour l'écran A16.
@@ -38,14 +39,7 @@ export const DEFAULT_HOSTING_POLL_MS = 8000;
 const RETRYABLE_REFUSALS: readonly VideoUploadRefusalReason[] = ["unknown_pending", "in_progress", "other"];
 const FINAL_FAILURES = ["over_total_duration", "too_many_videos", "duration_unavailable", "asset_errored"] as const;
 
-/** La ligne la plus récente d'un emplacement (la liste est triée par création). */
-function latestView(views: readonly HostedVideoView[], draftVideoId: string): HostedVideoView | null {
-  for (let i = views.length - 1; i >= 0; i -= 1) {
-    const view = views[i]!;
-    if (view.draftVideoId === draftVideoId && view.state !== "removing") return view;
-  }
-  return null;
-}
+const latestView = latestHostedView;
 
 function viewStatus(view: HostedVideoView, hasFile: boolean): HostedItemStatus {
   switch (view.state) {

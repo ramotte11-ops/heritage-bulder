@@ -43,8 +43,14 @@ import type { Skin } from "./skins";
  *    only inside an offerings host: the Builder Preview (simulated, nothing
  *    recorded) or, since QG 016, the public page `/hommage/[slug]` (real
  *    deposits, free AND complete offers — V8 §6).
- *  - `testimonials`, `condolences`, `video`, `memoryMessage`: no renderer
- *    exists yet — deliberately absent.
+ *  - `video` → `VideoHommageV1Section` (VID-08): the rubrique « Des instants
+ *    pour se souvenir » (VID-05A/05B). It draws only what its host can
+ *    really play: on the public page, the videos the SERVER signed for this
+ *    visit (published, complete offer, ready at publication); in the
+ *    Builder Preview, the files still on the device and the family's
+ *    hosted videos. No host, no video: nothing is drawn.
+ *  - `condolences`, `memoryMessage`: no renderer — deliberately absent
+ *    (VID-08: condolences live inside the Contributions des proches).
  *
  * Known duplication, not resolved here: `DeathNoticePreviewStep`'s own
  * internal `A03_BUILT_SKINS` (A03 Reveal) states the same fact as the
@@ -64,6 +70,8 @@ export const RENDERER_KEYS = [
   "SymbolicOfferingsV1Section",
   // M8-E3 : « Contributions des proches » (scènes M4–M6, état vide M0).
   "ContributionsV1Section",
+  // VID-08 : « Des instants pour se souvenir » (VID-05A/05B, Master Light universel).
+  "VideoHommageV1Section",
 ] as const;
 
 export type RendererKey = (typeof RENDERER_KEYS)[number];
@@ -79,6 +87,7 @@ export const SECTION_RENDERERS: Readonly<
   gallery: { intemporel: "GalleryIntemporel" },
   symbolicOfferings: { intemporel: "SymbolicOfferingsV1Section" },
   testimonials: { intemporel: "ContributionsV1Section" },
+  video: { intemporel: "VideoHommageV1Section" },
 };
 
 /** The renderer for this section in this skin, or `null` when none

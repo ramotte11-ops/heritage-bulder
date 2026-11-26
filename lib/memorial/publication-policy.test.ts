@@ -195,12 +195,27 @@ describe("M1-B1 publication policy", () => {
     expect(JSON.stringify(projection)).not.toContain("future-video");
   });
 
-  it("does not pretend video is operational for complet", () => {
+  it("VID-08 — an unreadable (pre-VID-06) video key is never published, and never blocks the publication", () => {
     const projection = successfulProjection(
       { video: { mediaId: "future-video", playbackUrl: "secret" } } as MemorialContent,
       "complet",
     );
     expect(projection.content).not.toHaveProperty("video");
+  });
+
+  it("VID-08 — complet publishes only the video descriptions (id, title, duration, order), never an address or an unknown key", () => {
+    const draft = {
+      video: { extra: "x", items: [{ id: "v-b", title: "Mariage", durationSeconds: 40, playbackUrl: "secret" }, { id: "v-a", title: null, durationSeconds: null }] },
+    } as unknown as MemorialContent;
+    expect(successfulProjection(draft, "complet").content).toEqual({
+      video: { items: [{ id: "v-b", title: "Mariage", durationSeconds: 40 }, { id: "v-a", title: null, durationSeconds: null }] },
+    });
+    expect(successfulProjection(draft, "avis").content).not.toHaveProperty("video");
+  });
+
+  it("VID-08 — a video rubrique hidden by the family is not published", () => {
+    const draft = { video: { items: [{ id: "v-a", title: null, durationSeconds: 5 }] }, presentation: { hiddenSections: ["video"] } } as unknown as MemorialContent;
+    expect(successfulProjection(draft, "complet").content).not.toHaveProperty("video");
   });
 
   it("excludes a non-existent memory-book model for both access levels", () => {
