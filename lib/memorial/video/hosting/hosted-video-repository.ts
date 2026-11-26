@@ -13,6 +13,8 @@ export type HostedVideoStatus =
   | "reserved"
   | "uploading"
   | "processing"
+  /** VID-09 — ancienne version gardée pour la page publique jusqu'à la republication. */
+  | "superseded"
   | "ready"
   | "rejected"
   | "errored"
@@ -85,6 +87,8 @@ export interface HostedVideoRepository {
   finishReconcile(input: { holder: string; videoId: string; result: "done" | "retry" }): Promise<void>;
   /** VID-08 — parmi ces assets Mux, ceux que HERITAGE connaît. */
   knownAssets(assetIds: readonly string[]): Promise<Set<string>>;
+  /** VID-09 — anciennes versions devenues inutiles (remplaçante publiée) : passées en suppression demandée. */
+  releaseSuperseded(input: { memorialId: string | null; limit: number }): Promise<RemovalRow[]>;
 }
 
 function rowsOf<T>(data: unknown): T[] {
@@ -214,6 +218,15 @@ export function createSupabaseHostedVideoRepository(client: SupabaseClient): Hos
       if (assetIds.length === 0) return new Set();
       const known = await rpc("memorial_video_known_assets_v1", { p_asset_ids: [...assetIds] });
       return new Set(Array.isArray(known) ? known.filter((id): id is string => typeof id === "string") : []);
+    },
+
+    async releaseSuperseded({ memorialId, limit }) {
+      return rowsOf<Record<string, unknown>>(await rpc("release_superseded_memorial_videos_v1", { p_memorial_id: memorialId, p_limit: limit })).map((r) => ({
+        videoId: String(r.video_id),
+        uploadId: typeof r.upload_id === "string" ? r.upload_id : null,
+        assetId: typeof r.asset_id === "string" ? r.asset_id : null,
+        previousStatus: "superseded" as const,
+      }));
     },
   };
 }

@@ -58,7 +58,7 @@ describe("VID-08 — réconciliation globale", () => {
     const db = fakeDatabase([1, 2, 3, 4, 5].map((n) => row(n)));
     const d = deps(db, async (r) => (r.videoId.endsWith("2") ? "waiting" : "applied"));
     const summary = await runGlobalVideoReconcile(d, { batchSize: 2, muxIntervalMs: 250 });
-    expect(summary).toEqual({ examined: 5, applied: 4, waiting: 1, failed: 0, stoppedBy: "nothing_left" });
+    expect(summary).toEqual({ released: 0, examined: 5, applied: 4, waiting: 1, failed: 0, stoppedBy: "nothing_left" });
     expect(db.repository.claimForReconcile).toHaveBeenCalledTimes(3);
     expect(db.finished.map((f) => f.result)).toEqual(["done", "retry", "done", "done", "done"]);
     expect(d.wait).toHaveBeenCalledWith(250);
@@ -119,6 +119,16 @@ describe("VID-08 — réconciliation globale", () => {
     await expect(runGlobalVideoReconcile({ ...deps(db, async () => "applied"), wait: async () => {} }, { batchSize: 2, maxBatches: 2 })).resolves.toMatchObject({ examined: 4, stoppedBy: "max_batches" });
     const broken = { claimForReconcile: vi.fn(async () => Promise.reject(new Error("db"))), finishReconcile: vi.fn() };
     await expect(runGlobalVideoReconcile({ ...deps(fakeDatabase([]), async () => "applied"), repository: broken })).resolves.toMatchObject({ examined: 0, stoppedBy: "database_unavailable" });
+  });
+
+  it("VID-09 — les anciennes versions devenues inutiles sont libérées d'abord ; un échec est journalisé sans arrêter l'exécution", async () => {
+    const db = fakeDatabase([row(1)]);
+    const released = await runGlobalVideoReconcile({ ...deps(db, async () => "applied"), releaseSuperseded: async () => 2 });
+    expect(released).toMatchObject({ released: 2, examined: 1 });
+    const d = deps(fakeDatabase([row(1)]), async () => "applied");
+    const failing = await runGlobalVideoReconcile({ ...d, releaseSuperseded: async () => Promise.reject(new MuxApiError("delete_asset", 503)) });
+    expect(failing).toMatchObject({ released: 0, examined: 1, stoppedBy: "nothing_left" });
+    expect(d.logs[0]).toEqual({ event: "video_reconcile_row_failed", operation: "delete_asset", httpStatus: 503 });
   });
 
   it("inactive par défaut : sans HERITAGE_VIDEO_RECONCILE=enabled, ou sans configuration Mux, rien ne s'exécute", async () => {

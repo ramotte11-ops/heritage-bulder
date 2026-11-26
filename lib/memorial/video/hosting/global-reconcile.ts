@@ -43,6 +43,8 @@ export interface GlobalReconcileOptions {
 export interface GlobalReconcileDeps {
   repository: Pick<HostedVideoRepository, "claimForReconcile" | "finishReconcile">;
   reconcileOne: (row: ClaimedReconcileRow) => Promise<"applied" | "waiting">;
+  /** VID-09 — libère les anciennes versions devenues inutiles ; renvoie leur nombre. */
+  releaseSuperseded?: () => Promise<number>;
   now: () => number;
   wait: (ms: number) => Promise<void>;
   newHolder: () => string;
@@ -52,6 +54,8 @@ export interface GlobalReconcileDeps {
 export type GlobalReconcileStop = "nothing_left" | "max_batches" | "time_budget" | "rate_limited" | "database_unavailable";
 
 export interface GlobalReconcileSummary {
+  /** VID-09 — anciennes versions libérées (remplaçante publiée). */
+  released: number;
   examined: number;
   applied: number;
   waiting: number;
@@ -82,8 +86,18 @@ export async function runGlobalVideoReconcile(deps: GlobalReconcileDeps, options
   const o = { ...DEFAULTS, ...options };
   const holder = deps.newHolder();
   const startedAt = deps.now();
-  const summary: GlobalReconcileSummary = { examined: 0, applied: 0, waiting: 0, failed: 0, stoppedBy: "nothing_left" };
+  const summary: GlobalReconcileSummary = { released: 0, examined: 0, applied: 0, waiting: 0, failed: 0, stoppedBy: "nothing_left" };
   const outOfTime = () => deps.now() - startedAt >= o.maxDurationMs;
+
+  // VID-09 — d'abord les anciennes versions devenues inutiles depuis une
+  // republication (requête SQL ; une suppression Mux par version libérée).
+  if (deps.releaseSuperseded !== undefined) {
+    try {
+      summary.released = await deps.releaseSuperseded();
+    } catch (error) {
+      deps.log({ event: "video_reconcile_row_failed", ...describeError(error) });
+    }
+  }
 
   run: for (let batch = 0; ; batch += 1) {
     if (batch >= o.maxBatches) {

@@ -10,7 +10,7 @@ import type {
   VideoUploadRefusalReason,
 } from "@/lib/memorial/video/hosting/hosted-video-types";
 import { isTransferActive, type VideoTransfer, type VideoTransferManager } from "@/lib/memorial/video/hosting/video-transfers";
-import { latestHostedView } from "@/lib/memorial/video/hosting/hosted-video-views";
+import { hasPublishedPreviousVersion, latestHostedView } from "@/lib/memorial/video/hosting/hosted-video-views";
 
 /**
  * VID-07 — le passage du local à l'hébergement premium, pour l'écran A16.
@@ -198,7 +198,11 @@ export function useVideoHosting({ hosting, items, registry, transfers, pollMs = 
       const latest = latestView(views, draftVideoId);
       return latest?.state === "ready" ? latest.playback : null;
     },
+    /** VID-09 — la version que la famille prépare (hébergement actif seulement). */
+    viewOf: (draftVideoId: string): HostedVideoView | null => (mode === "hosted" ? latestView(views, draftVideoId) : null),
     isActive: (draftVideoId: string) => isTransferActive(transferState.get(draftVideoId)),
+    /** VID-09 — l'ancienne version de cette vidéo est encore celle de la page publique. */
+    previousStillPublic: (draftVideoId: string) => mode === "hosted" && hasPublishedPreviousVersion(views, draftVideoId),
     /** Après un ajout ou un remplacement local réussi. */
     send,
     /** Nouvel envoi après une interruption (l'envoi précédent est annulé côté serveur). */

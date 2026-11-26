@@ -56,6 +56,7 @@ export async function scheduledVideoReconcile(
   const summary = await runGlobalVideoReconcile({
     repository,
     reconcileOne: runtime.service.reconcileOne,
+    releaseSuperseded: () => runtime.service.releaseSuperseded(null, 50),
     now: Date.now,
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     newHolder: () => crypto.randomUUID(),

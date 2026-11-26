@@ -45,6 +45,7 @@ import { PendingActionLabel } from "./PendingActionLabel";
 import screenStyles from "./BuilderScreen.module.css";
 import styles from "./VideoStep.module.css";
 import { useVideoHosting, type HostedItemStatus } from "./useVideoHosting";
+import { previewVideoItem } from "@/lib/memorial/video/video-section";
 
 export interface VideoStepProps {
   language: Language;
@@ -273,6 +274,9 @@ export function VideoStep({
 
   const previewItems: VideoHommageItem[] = items.map((item) => {
     const entry = registry.get(item.id);
+    // VID-09 — premium : la même règle que l'aperçu complet (une vidéo refusée
+    // après mesure n'est jamais montrée comme si elle allait être publiée).
+    if (hosted.mode === "hosted") return previewVideoItem(item, entry, hosted.viewOf(item.id));
     const base = { id: item.id, title: item.title, durationSeconds: item.durationSeconds };
     if (entry !== null) return { ...base, status: "ready", source: { kind: "local", url: entry.url } };
     // Premium : plus de fichier sur l'appareil, mais une version prête chez l'hébergeur (lecture signée, 720p).
@@ -344,7 +348,9 @@ export function VideoStep({
               const inputId = `video-title-${item.id}`;
               const hostStatus = hosted.statusOf(item.id);
               const keptRemotely = hosted.playbackOf(item.id) !== null || hostStatus?.kind === "processing";
-              const fileState = entry !== null ? "present" : keptRemotely ? "hosted" : "missing";
+              // VID-09 — refusée après mesure : seule la raison est affichée, avec « Remplacer ».
+              const refused = hostStatus?.kind === "failed";
+              const fileState = entry !== null ? "present" : keptRemotely ? "hosted" : refused ? "refused" : "missing";
               const sending = hosted.isActive(item.id);
               return (
                 <li key={item.id} className={styles.item} data-video-item={item.id} data-file={fileState}>
@@ -387,6 +393,11 @@ export function VideoStep({
                         onCancel={() => void hosted.cancel(item.id)}
                         onResume={() => hosted.resume(item.id, item.durationSeconds)}
                       />
+                    )}
+                    {hosted.previousStillPublic(item.id) && (
+                      <p className={styles.hint} data-video-previous-public="">
+                        {translate(language, "videoStep.replacedPublished")}
+                      </p>
                     )}
 
                     <div className={styles.actions}>

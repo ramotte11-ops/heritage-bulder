@@ -28,6 +28,7 @@ function repo(overrides: Partial<HostedVideoRepository> = {}): HostedVideoReposi
     claimForReconcile: vi.fn(async () => []),
     finishReconcile: vi.fn(async () => {}),
     knownAssets: vi.fn(async () => new Set<string>()),
+    releaseSuperseded: vi.fn(async () => []),
     ...overrides,
   };
 }
@@ -234,5 +235,44 @@ describe("VID-07 — réconciliation (notification manquée)", () => {
     const { s } = service(repo({ listForOwner: vi.fn(async () => rows) }), mux({ getAsset }));
     await s.refreshForOwner({ ownerId: "o", memorialId: "m" });
     expect(getAsset).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("VID-09 — remplacement d'une vidéo publiée", () => {
+  it("remplaçante acceptée alors que l'ancienne est publiée : la base la garde (aucun asset rendu), rien n'est supprimé chez Mux", async () => {
+    const { m, s } = service(repo({ applyEvent: vi.fn(async () => ({ outcome: "accepted" as const, videoId: "new", assetToDelete: null, supersededAsset: null })) }));
+    await s.handleEvent({ eventId: "e", type: "asset_ready", videoId: "new", uploadId: null, assetId: "as-new", playbackId: "pb", durationMs: 1000 });
+    expect(m.deleteAsset).not.toHaveBeenCalled();
+  });
+
+  it("la famille voit l'ancienne version comme « remplacée » (encore publique), sans lecture, et la nouvelle comme sa version", async () => {
+    const rows = [row({ videoId: "old", status: "superseded" }), row({ videoId: "new" })];
+    const { s } = service(repo({ listForOwner: vi.fn(async () => rows) }));
+    const views = await s.listForOwner({ ownerId: "o", memorialId: "m" });
+    expect(views.map((v) => [v.videoId, v.state])).toEqual([["old", "replaced"], ["new", "ready"]]);
+    expect(views[0]!.playback).toBeNull();
+    expect(views[1]!.playback).not.toBeNull();
+  });
+
+  it("libération après republication : asset supprimé chez Mux, puis suppression confirmée ; un échec Mux laisse la ligne à la réconciliation", async () => {
+    const releaseSuperseded = vi.fn(async () => [
+      { videoId: "old-1", uploadId: null, assetId: "as-1", previousStatus: "superseded" as const },
+      { videoId: "old-2", uploadId: null, assetId: "as-2", previousStatus: "superseded" as const },
+    ]);
+    const deleteAsset = vi.fn(async (id: string) => {
+      if (id === "as-2") throw new Error("Mux down");
+    });
+    const { r, s } = service(repo({ releaseSuperseded }), mux({ deleteAsset }));
+    await expect(s.releaseSuperseded("m")).resolves.toBe(2);
+    expect(releaseSuperseded).toHaveBeenCalledWith({ memorialId: "m", limit: 50 });
+    expect(r.confirmDeleted).toHaveBeenCalledTimes(1);
+    expect(r.confirmDeleted).toHaveBeenCalledWith("old-1");
+  });
+
+  it("à l'ouverture de A16 : les anciennes versions inutiles de CET hommage sont libérées d'abord ; un échec ne bloque pas la famille", async () => {
+    const releaseSuperseded = vi.fn(async () => Promise.reject(new Error("db")));
+    const { s } = service(repo({ releaseSuperseded }));
+    await expect(s.refreshForOwner({ ownerId: "o", memorialId: "m" })).resolves.toBe(0);
+    expect(releaseSuperseded).toHaveBeenCalledWith({ memorialId: "m", limit: 50 });
   });
 });

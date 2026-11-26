@@ -470,3 +470,36 @@ describe("VID-07 — A16 premium : reconnexion et changement d'écran", () => {
     expect(uploads.calls).toHaveLength(1);
   });
 });
+
+describe("VID-09 — remplacement d'une vidéo déjà publiée", () => {
+  it("la nouvelle version est prévisualisée par la famille ; A16 précise que l'ancienne reste publique jusqu'à la prochaine publication", async () => {
+    const server = fakeServer();
+    server.rows().push(server.view("v-7", { state: "replaced", durationSeconds: 40, durationVerified: true, playback: null }));
+    server.rows().push(server.view("v-7", { state: "ready", durationSeconds: 52, durationVerified: true, playback: { hlsUrl: "https://stream.example/new.m3u8", posterUrl: "https://image.example/new.webp", mp4Url: null, expiresAt: "x" } }));
+    setup({ server, content: withVideos([{ id: "v-7", title: "Mariage", durationSeconds: 52 }]) });
+    await waitFor(() => expect(hostingState()).toBe("ready"));
+    expect(within(row()).getByText(t("videoStep.replacedPublished"))).toBeTruthy();
+    expect(row().getAttribute("data-file")).toBe("hosted");
+  });
+
+  it("sans ancienne version publique : aucune mention", async () => {
+    const server = fakeServer();
+    server.rows().push(server.view("v-7", { state: "ready", durationSeconds: 52, durationVerified: true, playback: null }));
+    setup({ server, content: withVideos([{ id: "v-7", title: "Mariage", durationSeconds: 52 }]) });
+    await waitFor(() => expect(hostingState()).toBe("ready"));
+    expect(document.querySelector("[data-video-previous-public]")).toBeNull();
+  });
+});
+
+describe("VID-09 — vidéo refusée après mesure, fichier plus sur l'appareil", () => {
+  it("seule la raison est affichée, avec « Remplacer » ; l'aperçu ne la montre jamais comme lisible", async () => {
+    const server = fakeServer();
+    server.rows().push(server.view("v-7", { state: "failed", failure: "over_total_duration", durationSeconds: 590, durationVerified: true }));
+    setup({ server, content: withVideos([{ id: "v-7", title: "Vacances", durationSeconds: 590 }]) });
+    await waitFor(() => expect(hostingState()).toBe("failed"));
+    expect(row().getAttribute("data-file")).toBe("refused");
+    expect(within(row()).queryByText(t("videoStep.fileMissing"))).toBeNull();
+    expect(within(row()).getByText(t("videoStep.replace"))).toBeTruthy();
+    expect(document.querySelector("[data-video-player]")!.getAttribute("data-state")).toBe("error");
+  });
+});

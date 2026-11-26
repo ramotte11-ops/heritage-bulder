@@ -5914,11 +5914,13 @@ $DB -c "update memorial_published_snapshots set published_at = now() where memor
 check "VID-08: after the next publication -> that version is served" "1|pb-$V8_P1" \
   "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid08-pub');")"
 V8_P2=$(v7_ready "$V8_PUB" "v-p" 12000)
-check "VID-08: replaced after publication -> old version withdrawn (ready_at cleared), the new one NOT public yet" "deletion_requested|true|0" \
-  "$($DB -t -A -c "select status || '|' || (ready_at is null) from memorial_videos where id='$V8_P1';")|$(svc "select count(*) from read_public_memorial_videos_v1('vid08-pub');")"
+# VID-09 : une version publiée remplacée reste servie jusqu'à la republication.
+check "VID-08/09: replaced after publication -> old version kept public (superseded, ready_at kept), the new one NOT public yet" "superseded|false|1|pb-$V8_P1" \
+  "$($DB -t -A -c "select status || '|' || (ready_at is null) from memorial_videos where id='$V8_P1';")|$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid08-pub');")"
 $DB -c "update memorial_published_snapshots set published_at = now() where memorial_id='$V8_PUB';" >/dev/null
 check "VID-08: republished -> the new version, and only it" "1|pb-$V8_P2" \
   "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid08-pub');")"
+svc "select count(*) from release_superseded_memorial_videos_v1('$V8_PUB', 50);" >/dev/null
 check "VID-08: the same published memorial in the free offer serves nothing" "0" \
   "$($DB -t -A -c "begin;" -c "set local session_replication_role = replica;" -c "update memorials set access_level='avis', free_public_until = now() + interval '30 days', free_private_until = now() + interval '60 days' where id='$V8_PUB';" -c "set local session_replication_role = origin;" -c "set role service_role;" -c "select count(*) from read_public_memorial_videos_v1('vid08-pub');" -c "rollback;" 2>/dev/null | tail -1)"
 
@@ -5963,9 +5965,93 @@ check "VID-08: orphan sweep — only the asset ids HERITAGE still knows are retu
 # --- V8-4. Rollback ----------------------------------------------------------
 $PSQL -d postgres -c "create database vid08_down template $STANDINS_DB;" >/dev/null
 for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid08_down -f "$f" >/dev/null 2>&1; done
+# Rollbacks run newest first: VID-09, then VID-08.
+$PSQL -d vid08_down -f "$REPO_ROOT/supabase/rollbacks/20261126090000_vid09_published_replacement.down.sql" >/dev/null 2>&1
 check "VID-08 rollback: columns and RPCs removed, VID-07 public read kept, then the migration re-applies" "0|0|t|0|1" \
   "$($PSQL -d vid08_down -f "$V8_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid08_down -t -A -c "select count(*) from information_schema.columns where table_name='memorial_videos' and column_name in ('ready_at','reconcile_claimed_by','reconcile_claimed_until','reconcile_attempts','reconcile_next_at');")|$($PSQL -d vid08_down -t -A -c "select to_regprocedure('public.claim_memorial_videos_for_reconcile_v1(uuid,timestamptz,integer,integer)') is null and to_regprocedure('public.read_public_memorial_videos_v1(text)') is not null;")|$($PSQL -d vid08_down -v ON_ERROR_STOP=1 -f "$V8_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid08_down -t -A -c "select count(*) from pg_trigger where tgname='memorial_videos_stamp_ready';")"
 $PSQL -d postgres -c "drop database vid08_down;" >/dev/null
+
+echo "== VID-09: replacing a PUBLISHED video keeps the old one public until republication (20261126090000, NOT applied) =="
+V9_MIG="$MIGRATIONS_DIR/20261126090000_vid09_published_replacement.sql"
+V9_DOWN="$REPO_ROOT/supabase/rollbacks/20261126090000_vid09_published_replacement.down.sql"
+
+# --- V9-1. Privileges, graded on a migrations-only clone --------------------
+$PSQL -d postgres -c "create database v9_fresh template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d v9_fresh -f "$f" >/dev/null 2>&1; done
+V9F="$PSQL -d v9_fresh -t -A"
+for fn in "public.release_superseded_memorial_videos_v1(uuid,integer)" "public.memorial_video_superseded_stats_v1()" "public.reserve_memorial_video_upload_v1(uuid,uuid,text,integer)" "public.apply_memorial_video_event_v1(text,text,uuid,text,text,text,integer)" "public.request_memorial_video_removal_v1(uuid,uuid,text)" "public.read_public_memorial_videos_v1(text)"; do
+  check "VID-09: $fn executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+    "$($V9F -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$fn'::regprocedure;")"
+done
+check "VID-09: the internal version check is executable by no role" "false|false|false" \
+  "$($V9F -c "select has_function_privilege('anon','public.memorial_video_version_published_v1(uuid,text,timestamptz)','EXECUTE') || '|' || has_function_privilege('authenticated','public.memorial_video_version_published_v1(uuid,text,timestamptz)','EXECUTE') || '|' || has_function_privilege('service_role','public.memorial_video_version_published_v1(uuid,text,timestamptz)','EXECUTE');")"
+$PSQL -d postgres -c "drop database v9_fresh;" >/dev/null
+
+# --- V9-2. A published memorial with three souvenirs (3 x 200 s) -------------
+V9_PUB=$(e1_complet "$V7_OWNER" vid09-pub "" '"video":{"items":[{"id":"v-a","title":null,"durationSeconds":200},{"id":"v-b","title":null,"durationSeconds":200},{"id":"v-c","title":null,"durationSeconds":200}]}')
+V9_A1=$(v7_ready "$V9_PUB" "v-a" 200000)
+v7_ready "$V9_PUB" "v-b" 200000 >/dev/null
+v7_ready "$V9_PUB" "v-c" 200000 >/dev/null
+$DB -c "update memorial_published_snapshots set published_at = now() where memorial_id='$V9_PUB';" >/dev/null
+check "VID-09: published -> the three souvenirs are public" "3|pb-$V9_A1" \
+  "$(svc "select count(*) || '|' || max(playback_id) filter (where draft_video_id='v-a') from read_public_memorial_videos_v1('vid09-pub');")"
+
+check "VID-09: a replacement over 10 min in total is refused before any upload; the published version stays ready and public" "refused_duration|-|ready|3" \
+  "$(v7_reserve "$V7_OWNER" "$V9_PUB" "v-a" 250000)|$($DB -t -A -c "select status from memorial_videos where id='$V9_A1';")|$(svc "select count(*) from read_public_memorial_videos_v1('vid09-pub');")"
+
+V9_A2=$(v7_ready "$V9_PUB" "v-a" 150000)
+check "VID-09: replacement accepted -> old version kept (superseded), no asset handed for deletion, still the public one" "ready|superseded|3|pb-$V9_A1" \
+  "$($DB -t -A -c "select status from memorial_videos where id='$V9_A2';")|$($DB -t -A -c "select status from memorial_videos where id='$V9_A1';")|$(svc "select count(*) || '|' || max(playback_id) filter (where draft_video_id='v-a') from read_public_memorial_videos_v1('vid09-pub');")"
+check "VID-09: the family sees both: the new version ready, the old one superseded" "superseded,ready" \
+  "$(svc "select string_agg(status, ',' order by status desc) from list_memorial_videos_v1('$V7_OWNER','$V9_PUB') where draft_video_id='v-a' and status in ('ready','superseded');")"
+check "VID-09: the kept old version never opens a 4th place (reservation refused_too_many)" "refused_too_many|-" \
+  "$(v7_reserve "$V7_OWNER" "$V9_PUB" "v-d" 1000)"
+check "VID-09: a late webhook for the old version is ignored; it never comes back to life" "ignored|-|-|superseded" \
+  "$(v7_event "ev-v9-late" asset_ready "'$V9_A1'" null "'as-$V9_A1'" "'pb-$V9_A1'" 200000)|$($DB -t -A -c "select status from memorial_videos where id='$V9_A1';")"
+check "VID-09: the same replacement webhook delivered twice -> duplicate" "duplicate|-|-" \
+  "$(v7_event "ev-ready-$V9_A2" asset_ready "'$V9_A2'" null "'as-$V9_A2'" "'pb-$V9_A2'" 150000)"
+check "VID-09: before republication, nothing is released (no premature deletion)" "0|superseded" \
+  "$(svc "select count(*) from release_superseded_memorial_videos_v1(null, 200);")|$($DB -t -A -c "select status from memorial_videos where id='$V9_A1';")"
+
+# Two releases at the same moment after the republication: the old version is released once.
+$DB -c "update memorial_published_snapshots set published_at = now() where memorial_id='$V9_PUB';" >/dev/null
+( svc "select count(*) from release_superseded_memorial_videos_v1('$V9_PUB', 50);" > "$PGDATA_DIR/v9_r1.txt" ) &
+( svc "select count(*) from release_superseded_memorial_videos_v1('$V9_PUB', 50);" > "$PGDATA_DIR/v9_r2.txt" ) &
+wait
+check "VID-09: republished -> the new version is public; two simultaneous releases free the old one exactly once" "3|pb-$V9_A2|1|deletion_requested|as-$V9_A1" \
+  "$(svc "select count(*) || '|' || max(playback_id) filter (where draft_video_id='v-a') from read_public_memorial_videos_v1('vid09-pub');")|$(( $(cat "$PGDATA_DIR/v9_r1.txt") + $(cat "$PGDATA_DIR/v9_r2.txt") ))|$($DB -t -A -c "select status || '|' || mux_asset_id from memorial_videos where id='$V9_A1';")"
+check "VID-09: the released old version is offered to the global reconciliation (asset deletion pending)" "1" \
+  "$(svc "select count(*) from list_memorial_videos_to_reconcile_v1(now() + interval '1 day', 200) where video_id='$V9_A1';")"
+
+# --- V9-3. The kept old version still counts while its slot has no ready version
+V9_B2=$(v7_ready "$V9_PUB" "v-b" 100000)
+V9_B1=$($DB -t -A -c "select id from memorial_videos where memorial_id='$V9_PUB' and draft_video_id='v-b' and status='superseded';")
+v7_event "ev-v9-b2-del" asset_deleted null null "'as-$V9_B2'" >/dev/null
+check "VID-09: the new version deleted at Mux -> the old one is still public, and still holds its place" "deleted|superseded|3|refused_too_many|-" \
+  "$($DB -t -A -c "select status from memorial_videos where id='$V9_B2';")|$($DB -t -A -c "select status from memorial_videos where id='$V9_B1';")|$(svc "select count(*) from read_public_memorial_videos_v1('vid09-pub');")|$(v7_reserve "$V7_OWNER" "$V9_PUB" "v-d" 1000)"
+V9_CX=$(v7_id "$(v7_reserve "$V7_OWNER" "$V9_PUB" "v-c" 100000)")
+svc "select attach_memorial_video_upload_v1('$V9_CX','up-$V9_CX', now() + interval '1 hour');" >/dev/null
+check "VID-09: ... and its duration still counts at final acceptance (declared 100 s, measured 300 s: 150+200+300 > 600 -> rejected)" "rejected|as-$V9_CX|-|rejected|over_total_duration" \
+  "$(v7_event "ev-v9-cx" asset_ready "'$V9_CX'" null "'as-$V9_CX'" "'pb-$V9_CX'" 300000)|$(v7_status "$V9_CX")"
+
+# --- V9-4. Republication without the slot, removal by the family -------------
+$DB -c "update memorial_published_snapshots set content = jsonb_set(content, '{video,items}', '[{\"id\":\"v-a\",\"title\":null,\"durationSeconds\":150},{\"id\":\"v-c\",\"title\":null,\"durationSeconds\":200}]'::jsonb), published_at = now() where memorial_id='$V9_PUB';" >/dev/null
+check "VID-09: republished WITHOUT the slot -> its kept old version is released; the public page has 2 souvenirs" "1|deletion_requested|2" \
+  "$(svc "select count(*) from release_superseded_memorial_videos_v1('$V9_PUB', 50);")|$($DB -t -A -c "select status from memorial_videos where id='$V9_B1';")|$(svc "select count(*) from read_public_memorial_videos_v1('vid09-pub');")"
+V9_C2=$(v7_ready "$V9_PUB" "v-c" 100000)
+check "VID-09: the family removes a replaced slot -> all its versions leave at once (old, new, refused; removal is immediate, as in VID-07)" "3|1" \
+  "$(svc "select count(*) from request_memorial_video_removal_v1('$V7_OWNER','$V9_PUB','v-c');")|$(svc "select count(*) from read_public_memorial_videos_v1('vid09-pub');")"
+check "VID-09: an unpublished memorial's replacement still deletes the old version at once (no needless storage)" "deletion_requested" \
+  "$(V9_DR=$(v7_complet_draft "$V7_OWNER"); V9_D1=$(v7_ready "$V9_DR" "v-z" 1000); v7_ready "$V9_DR" "v-z" 2000 >/dev/null; $DB -t -A -c "select status from memorial_videos where id='$V9_D1';")"
+check "VID-09: monitoring — kept old versions are counted, without any personal data" "t" \
+  "$(svc "select kept >= 0 and memorials >= 0 from memorial_video_superseded_stats_v1();")"
+
+# --- V9-5. Rollback ----------------------------------------------------------
+$PSQL -d postgres -c "create database vid09_down template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid09_down -f "$f" >/dev/null 2>&1; done
+check "VID-09 rollback: release RPC removed, constraint back without superseded, then the migration re-applies" "0|t|f|0|t" \
+  "$($PSQL -d vid09_down -v ON_ERROR_STOP=1 -f "$V9_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid09_down -t -A -c "select to_regprocedure('public.release_superseded_memorial_videos_v1(uuid,integer)') is null;")|$($PSQL -d vid09_down -t -A -c "select pg_get_constraintdef(oid) like '%superseded%' from pg_constraint where conname='memorial_videos_status_check';")|$($PSQL -d vid09_down -v ON_ERROR_STOP=1 -f "$V9_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid09_down -t -A -c "select pg_get_constraintdef(oid) like '%superseded%' from pg_constraint where conname='memorial_videos_status_check';")"
+$PSQL -d postgres -c "drop database vid09_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

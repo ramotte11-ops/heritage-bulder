@@ -38,6 +38,7 @@ const STATE: Record<HostedVideoRow["status"], HostedVideoState> = {
   uploading: "uploading",
   processing: "processing",
   ready: "ready",
+  superseded: "replaced",
   rejected: "failed",
   errored: "failed",
   cancelled: "failed",
@@ -139,9 +140,26 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
     return false;
   }
 
+  /**
+   * VID-09 — libère les anciennes versions gardées pour la page publique
+   * dès qu'elles sont devenues inutiles (remplaçante publiée, ou créneau
+   * retiré de la copie publiée) : la base décide sous verrou, puis l'asset
+   * est supprimé chez Mux. Un échec de suppression est repris par la
+   * réconciliation (la ligne est en suppression demandée). Renvoie le
+   * nombre de versions libérées.
+   */
+  async function releaseSuperseded(memorialId: string | null, limit = 50): Promise<number> {
+    const rows = await deps.repository.releaseSuperseded({ memorialId, limit });
+    for (const row of rows) {
+      if (await deleteAssetQuietly(row.assetId)) await deps.repository.confirmDeleted(row.videoId);
+    }
+    return rows.length;
+  }
+
   return {
     /** VID-08 — une ligne, résultat détaillé, erreurs propagées (réconciliation globale). */
     reconcileOne: reconcileDetailed,
+    releaseSuperseded,
 
     /** Réservation sous verrou, puis adresse d'envoi direct Mux, puis rattachement. */
     async requestUpload(input: { ownerId: string; memorialId: string; draftVideoId: string; declaredDurationSeconds: number | null }): Promise<UploadRequestResult> {
@@ -236,6 +254,8 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
      * la famille.
      */
     async refreshForOwner(input: { ownerId: string; memorialId: string; staleMs?: number }): Promise<number> {
+      // VID-09 — d'abord les anciennes versions devenues inutiles depuis une republication.
+      await releaseSuperseded(input.memorialId).catch(() => 0);
       const rows = await deps.repository.listForOwner(input);
       const limit = deps.now() - (input.staleMs ?? 120_000);
       let applied = 0;

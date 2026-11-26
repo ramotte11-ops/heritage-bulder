@@ -13,7 +13,12 @@ export interface SignedVideoPlaybackView {
 }
 
 /** Ce que voit la famille d'une vidéo hébergée (sans détail technique Mux). */
-export type HostedVideoState = "pending" | "uploading" | "processing" | "ready" | "failed" | "removing";
+/**
+ * `replaced` (VID-09) : ancienne version d'une vidéo publiée, encore servie
+ * aux visiteurs jusqu'à la prochaine publication ; la famille voit et
+ * prévisualise la nouvelle.
+ */
+export type HostedVideoState = "pending" | "uploading" | "processing" | "ready" | "replaced" | "failed" | "removing";
 
 export interface HostedVideoView {
   videoId: string;
