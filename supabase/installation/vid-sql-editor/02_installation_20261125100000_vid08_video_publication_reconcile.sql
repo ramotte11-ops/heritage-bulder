@@ -1,0 +1,263 @@
+-- =====================================================================
+-- HERITAGE HOMMAGE — INSTALLATION 2/3 — 20261125100000_vid08_video_publication_reconcile
+-- =====================================================================
+-- Source : supabase/migrations/20261125100000_vid08_video_publication_reconcile.sql
+-- SHA-256 du fichier : 7b5d177743c6cab100dce01bd0c64e1dee7574fa65c3d16356b7b0daf5d8c1ef
+--
+-- Cible UNIQUE : nudqzbdfnjzlnyffllgs (HERITAGE HOMMAGE - PRODUCTION).
+-- INTERDIT : pbgzyyqdbdrhgnkzmxyn (projet historique « heritage hommage »).
+-- AVANT de coller : l'adresse du navigateur doit contenir
+--   supabase.com/dashboard/project/nudqzbdfnjzlnyffllgs/ . La référence prévaut sur le nom.
+-- Coller TOUT le fichier dans une requête vide du SQL Editor, sans rien
+-- sélectionner, puis « Run ». Une fenêtre peut avertir d'opérations
+-- destructives (drop, revoke) : c'est attendu pour ce fichier.
+-- Fichier généré par scripts/db/build-sql-editor-installation.py :
+-- NE PAS MODIFIER À LA MAIN.
+--
+-- Résultat attendu : une ligne « OK » (verdict). Toute erreur commençant
+-- par « STOP » ou toute autre erreur : RIEN n'a été modifié ; ne pas
+-- relancer, copier le message et prévenir le QG.
+-- =====================================================================
+
+do $heritage_install$
+declare
+  c_version  constant text := '20261125100000';
+  c_name     constant text := 'vid08_video_publication_reconcile';
+  c_previous constant text := '20261125090000';
+  c_count    constant integer := 50;
+  c_sha256   constant text := '7b5d177743c6cab100dce01bd0c64e1dee7574fa65c3d16356b7b0daf5d8c1ef';
+  c_txn      constant integer := 0;
+  -- Texte exact de supabase/migrations/20261125100000_vid08_video_publication_reconcile.sql, encodé en base64.
+  c_payload  constant text := '
+LS0gSEVSSVRBR0UgSE9NTUFHRSDigJQgVklELTA4IDogcnVicmlxdWUgdmlkw6lvIHB1YmxpcXVl
+IGV0IHLDqWNvbmNpbGlhdGlvbgotLSBnbG9iYWxlIGRlcyB2aWTDqW9zIGjDqWJlcmfDqWVzIChN
+dXgpLgotLQotLSDDiWNyaXRlIGV0IHRlc3TDqWUgZW4gbG9jYWwgKG5wbSBydW4gZGI6dGVzdCkg
+OyBOT04gYXBwbGlxdcOpZS4gU29uCi0tIGFwcGxpY2F0aW9uIHN1ciBsZSBwcm9qZXQgcsOpZWwg
+cmVsw6h2ZSBkJ3VuIEdPIGRpc3RpbmN0IGRlIGxhIFBPLCBBUFLDiFMKLS0gY2VsbGUgZGUgMjAy
+NjExMjUwOTAwMDBfdmlkMDdfbWVtb3JpYWxfdmlkZW9zLnNxbCwgZG9udCBlbGxlIGTDqXBlbmQu
+Ci0tIFJldG91ciBhcnJpw6hyZSA6IHN1cGFiYXNlL3JvbGxiYWNrcy8yMDI2MTEyNTEwMDAwMF92
+aWQwOF92aWRlb19wdWJsaWNhdGlvbl9yZWNvbmNpbGUuZG93bi5zcWwuCi0tCi0tIEFkZGl0aXZl
+IHBvdXIgbGVzIGRvbm7DqWVzIDogZGV1eCBncm91cGVzIGRlIGNvbG9ubmVzIE5VTExhYmxlcyBv
+dSDDoAotLSB2YWxldXIgcGFyIGTDqWZhdXQsIHVuZSBmb25jdGlvbiBkZSBkw6ljbGVuY2hldXIs
+IHRyb2lzIFJQQyBzZXJ2aWNlX3JvbGUuCi0tIFVuZSBzZXVsZSBmb25jdGlvbiBleGlzdGFudGUg
+ZXN0IHJlZMOpZmluaWUsIMOgIHNpZ25hdHVyZSBpZGVudGlxdWUgOgotLSByZWFkX3B1YmxpY19t
+ZW1vcmlhbF92aWRlb3NfdjEgKHLDqGdsZSBkZSBwdWJsaWNhdGlvbiBjaS1kZXNzb3VzKS4KLS0K
+LS0gMS4gUHVibGljYXRpb24gOiB1bmUgdmlkw6lvIHRlY2huaXF1ZW1lbnQgcHLDqnRlIG4nZXN0
+IGphbWFpcyBwdWJsacOpZQotLSAgICBkJ2VsbGUtbcOqbWUuIExhIHBhZ2UgcHVibGlxdWUgbmUg
+bGl0IHVuZSB2aWTDqW8gcXVlIHNpIFNBIFZFUlNJT04gw6l0YWl0Ci0tICAgIGTDqWrDoCBwcsOq
+dGUgYXUgbW9tZW50IGRlIGxhIGRlcm5pw6hyZSBwdWJsaWNhdGlvbiBkZSBsJ2hvbW1hZ2UKLS0g
+ICAgKGByZWFkeV9hdCA8PSBtZW1vcmlhbF9wdWJsaXNoZWRfc25hcHNob3RzLnB1Ymxpc2hlZF9h
+dGApLiBVbmUgdmlkw6lvCi0tICAgIGFqb3V0w6llLCBvdSByZW1wbGFjw6llLCBhcHLDqHMgbGEg
+cHVibGljYXRpb24gcmVzdGUgcHJpdsOpZSBqdXNxdSfDoCBsYQotLSAgICBwdWJsaWNhdGlvbiBz
+dWl2YW50ZS4gKFVuIHJlbXBsYWNlbWVudCByZXRpcmUgbCdhbmNpZW5uZSB2ZXJzaW9uIGTDqHMK
+LS0gICAgcXVlIGxhIG5vdXZlbGxlIGVzdCBhY2NlcHTDqWUgOiBqdXNxdSfDoCBsYSByZXB1Ymxp
+Y2F0aW9uLCBsYSBwYWdlCi0tICAgIHB1YmxpcXVlIGVzdCBhbG9ycyBzYW5zIGNldHRlIHZpZMOp
+by4gRMOpY2lzaW9uIFBPIEQ0LikKLS0KLS0gMi4gUsOpY29uY2lsaWF0aW9uIGdsb2JhbGUgKHTD
+omNoZSBwbGFuaWZpw6llIHByw6lwYXLDqWUsIE5PTiBhY3RpdsOpZSkgOgotLSAgICBjaGFxdWUg
+ZXjDqWN1dGlvbiBSw4lTRVJWRSB1biBsb3QgZGUgbGlnbmVzIHBvdXIgdW4gdGVtcHMgbGltaXTD
+qQotLSAgICAoYGZvciB1cGRhdGUgc2tpcCBsb2NrZWRgKSA6IGRldXggZXjDqWN1dGlvbnMgc2lt
+dWx0YW7DqWVzIG5lIHRyYWl0ZW50Ci0tICAgIGphbWFpcyBsYSBtw6ptZSBsaWduZS4gVW5lIGxp
+Z25lIGVuIMOpY2hlYyB0ZW1wb3JhaXJlIGVzdCByZW1pc2Ugw6AgcGx1cwotLSAgICB0YXJkLCBh
+dmVjIHVuIGTDqWxhaSBjcm9pc3NhbnQgKHBhcyBkJ2FwcGVsIGludXRpbGUgw6AgTXV4KS4KCi0t
+ID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PQotLSAxLiBIZXVyZSDDoCBsYXF1ZWxsZSB1bmUgdmVyc2lvbiBlc3QgZGV2
+ZW51ZSBwcsOqdGUKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09CgphbHRlciB0YWJsZSBwdWJsaWMubWVtb3JpYWxf
+dmlkZW9zCiAgYWRkIGNvbHVtbiByZWFkeV9hdCB0aW1lc3RhbXB0eiwKICBhZGQgY29sdW1uIHJl
+Y29uY2lsZV9jbGFpbWVkX2J5IHV1aWQsCiAgYWRkIGNvbHVtbiByZWNvbmNpbGVfY2xhaW1lZF91
+bnRpbCB0aW1lc3RhbXB0eiwKICBhZGQgY29sdW1uIHJlY29uY2lsZV9hdHRlbXB0cyBpbnRlZ2Vy
+IG5vdCBudWxsIGRlZmF1bHQgMCBjaGVjayAocmVjb25jaWxlX2F0dGVtcHRzID49IDApLAogIGFk
+ZCBjb2x1bW4gcmVjb25jaWxlX25leHRfYXQgdGltZXN0YW1wdHo7Cgpjb21tZW50IG9uIGNvbHVt
+biBwdWJsaWMubWVtb3JpYWxfdmlkZW9zLnJlYWR5X2F0IGlzCiAgJ1ZJRC0wOCDigJQgaGV1cmUg
+ZGUgcGFzc2FnZSDDoCByZWFkeSAoZMOpY2xlbmNoZXVyKS4gUHVibGlxdWUgc2V1bGVtZW50IHNp
+IDw9IGhldXJlIGRlIGxhIGRlcm5pw6hyZSBwdWJsaWNhdGlvbi4nOwpjb21tZW50IG9uIGNvbHVt
+biBwdWJsaWMubWVtb3JpYWxfdmlkZW9zLnJlY29uY2lsZV9jbGFpbWVkX3VudGlsIGlzCiAgJ1ZJ
+RC0wOCDigJQgcsOpc2VydmF0aW9uIHBhciB1bmUgZXjDqWN1dGlvbiBkZSBsYSByw6ljb25jaWxp
+YXRpb24gZ2xvYmFsZSAoYW50aS1jb25jdXJyZW5jZSkuJzsKY29tbWVudCBvbiBjb2x1bW4gcHVi
+bGljLm1lbW9yaWFsX3ZpZGVvcy5yZWNvbmNpbGVfbmV4dF9hdCBpcwogICdWSUQtMDgg4oCUIHBy
+b2NoYWluZSB0ZW50YXRpdmUgYXByw6hzIHVuZSBlcnJldXIgdGVtcG9yYWlyZSAoZMOpbGFpIGNy
+b2lzc2FudCkuJzsKCi0tIExpZ25lcyBkw6lqw6AgcHLDqnRlcyAoYXVjdW5lIHN1ciBsZSBwcm9q
+ZXQgcsOpZWwgdGFudCBxdWUgVklELTA3IG4nZXN0IHBhcwotLSBlbiBzZXJ2aWNlKSA6IGxldXIg
+ZGVybmnDqHJlIG1pc2Ugw6Agam91ciBmYWl0IGZvaS4KdXBkYXRlIHB1YmxpYy5tZW1vcmlhbF92
+aWRlb3Mgc2V0IHJlYWR5X2F0ID0gdXBkYXRlZF9hdCB3aGVyZSBzdGF0dXMgPSAncmVhZHknIGFu
+ZCByZWFkeV9hdCBpcyBudWxsOwoKY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLm1l
+bW9yaWFsX3ZpZGVvc19zdGFtcF9yZWFkeV92MSgpCnJldHVybnMgdHJpZ2dlcgpsYW5ndWFnZSBw
+bHBnc3FsCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmJlZ2luCiAgaWYgbmV3LnN0YXR1cyA9
+ICdyZWFkeScgYW5kICh0Z19vcCA9ICdJTlNFUlQnIG9yIG9sZC5zdGF0dXMgaXMgZGlzdGluY3Qg
+ZnJvbSAncmVhZHknKSB0aGVuCiAgICBuZXcucmVhZHlfYXQgOj0gbm93KCk7CiAgZWxzaWYgbmV3
+LnN0YXR1cyA8PiAncmVhZHknIHRoZW4KICAgIG5ldy5yZWFkeV9hdCA6PSBudWxsOwogIGVuZCBp
+ZjsKICByZXR1cm4gbmV3OwplbmQ7CiQkOwoKcmV2b2tlIGFsbCBvbiBmdW5jdGlvbiBwdWJsaWMu
+bWVtb3JpYWxfdmlkZW9zX3N0YW1wX3JlYWR5X3YxKCkgZnJvbSBwdWJsaWMsIGFub24sIGF1dGhl
+bnRpY2F0ZWQsIHNlcnZpY2Vfcm9sZTsKCmNyZWF0ZSB0cmlnZ2VyIG1lbW9yaWFsX3ZpZGVvc19z
+dGFtcF9yZWFkeQogIGJlZm9yZSBpbnNlcnQgb3IgdXBkYXRlIG9mIHN0YXR1cyBvbiBwdWJsaWMu
+bWVtb3JpYWxfdmlkZW9zCiAgZm9yIGVhY2ggcm93IGV4ZWN1dGUgZnVuY3Rpb24gcHVibGljLm1l
+bW9yaWFsX3ZpZGVvc19zdGFtcF9yZWFkeV92MSgpOwoKLS0gPT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDIuIExl
+Y3R1cmUgcHVibGlxdWUgOiBsYSB2ZXJzaW9uIHB1Ymxpw6llLCBldCBlbGxlIHNldWxlCi0tID09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PQoKY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGlj
+X21lbW9yaWFsX3ZpZGVvc192MShwX3NsdWcgdGV4dCkKcmV0dXJucyB0YWJsZSAoZHJhZnRfdmlk
+ZW9faWQgdGV4dCwgcGxheWJhY2tfaWQgdGV4dCwgdmVyaWZpZWRfZHVyYXRpb25fbXMgaW50ZWdl
+cikKbGFuZ3VhZ2Ugc3FsCnN0YWJsZQpzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9
+ICcnCmFzICQkCiAgc2VsZWN0IHYuZHJhZnRfdmlkZW9faWQsIHYubXV4X3BsYXliYWNrX2lkLCB2
+LnZlcmlmaWVkX2R1cmF0aW9uX21zCiAgICBmcm9tIHB1YmxpYy5tZW1vcmlhbHMgbQogICAgam9p
+biBwdWJsaWMubWVtb3JpYWxfcHVibGlzaGVkX3NuYXBzaG90cyBzIG9uIHMubWVtb3JpYWxfaWQg
+PSBtLmlkCiAgICBqb2luIHB1YmxpYy5tZW1vcmlhbF92aWRlb3MgdiBvbiB2Lm1lbW9yaWFsX2lk
+ID0gbS5pZCBhbmQgdi5zdGF0dXMgPSAncmVhZHknCiAgIHdoZXJlIHBfc2x1ZyBpcyBub3QgbnVs
+bAogICAgIGFuZCBtLnNsdWcgPSBwX3NsdWcKICAgICBhbmQgbS5zdGF0dXMgPSAncHVibGlzaGVk
+JwogICAgIGFuZCBtLmFjY2Vzc19sZXZlbCA9ICdjb21wbGV0JwogICAgIGFuZCBwdWJsaWMubWVt
+b3JpYWxfcHVibGljbHlfdmlzaWJsZV92MShtLmlkLCBub3coKSkKICAgICBhbmQgdi5yZWFkeV9h
+dCBpcyBub3QgbnVsbAogICAgIGFuZCB2LnJlYWR5X2F0IDw9IHMucHVibGlzaGVkX2F0CiAgICAg
+YW5kIGpzb25iX3R5cGVvZihzLmNvbnRlbnQgLT4gJ3ZpZGVvJyAtPiAnaXRlbXMnKSA9ICdhcnJh
+eScKICAgICBhbmQgZXhpc3RzIChzZWxlY3QgMSBmcm9tIGpzb25iX2FycmF5X2VsZW1lbnRzKHMu
+Y29udGVudCAtPiAndmlkZW8nIC0+ICdpdGVtcycpIGl0ZW0KICAgICAgICAgICAgICAgICAgd2hl
+cmUgaXRlbSAtPj4gJ2lkJyA9IHYuZHJhZnRfdmlkZW9faWQpOwokJDsKCnJldm9rZSBhbGwgb24g
+ZnVuY3Rpb24gcHVibGljLnJlYWRfcHVibGljX21lbW9yaWFsX3ZpZGVvc192MSh0ZXh0KSBmcm9t
+IHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZCwgc2VydmljZV9yb2xlOwpncmFudCBleGVjdXRl
+IG9uIGZ1bmN0aW9uIHB1YmxpYy5yZWFkX3B1YmxpY19tZW1vcmlhbF92aWRlb3NfdjEodGV4dCkg
+dG8gc2VydmljZV9yb2xlOwoKLS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci0tIDMuIFLDqWNvbmNpbGlhdGlvbiBn
+bG9iYWxlIDogcsOpc2VydmF0aW9uLCBmaW4sIGFzc2V0cyBjb25udXMKLS0gPT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+CgotLSBSw6lzZXJ2ZSBhdSBwbHVzIHBfbGltaXQgbGlnbmVzIMOgIHLDqWNvbmNpbGllciwgamFt
+YWlzIHLDqXNlcnbDqWVzIHBhciB1bmUKLS0gYXV0cmUgZXjDqWN1dGlvbiBlbiBjb3VycywgZG9u
+dCBsYSBwcm9jaGFpbmUgdGVudGF0aXZlIGVzdCBkdWUsIGV0IHJlc3TDqWVzCi0tIHNhbnMgbm91
+dmVsbGUgZGVwdWlzIHBfc3RhbGVfYmVmb3JlLiBNw6ptZXMgY2FzIHF1ZQotLSBsaXN0X21lbW9y
+aWFsX3ZpZGVvc190b19yZWNvbmNpbGVfdjEgKFZJRC0wNykuIExlcyBsaWduZXMgcsOpc2VydsOp
+ZXMgbmUKLS0gc29udCBwbHVzIHByb3Bvc8OpZXMgdGFudCBxdWUgbGEgcsOpc2VydmF0aW9uIGNv
+dXJ0IDogYXBwZWxlciBkZSBub3V2ZWF1Ci0tIGRvbm5lIGxlIGxvdCBzdWl2YW50IChwYWdpbmF0
+aW9uIHPDu3JlLCBzYW5zIGN1cnNldXIpLgpjcmVhdGUgb3IgcmVwbGFjZSBmdW5jdGlvbiBwdWJs
+aWMuY2xhaW1fbWVtb3JpYWxfdmlkZW9zX2Zvcl9yZWNvbmNpbGVfdjEoCiAgcF9ob2xkZXIgdXVp
+ZCwKICBwX3N0YWxlX2JlZm9yZSB0aW1lc3RhbXB0eiwKICBwX2xpbWl0IGludGVnZXIsCiAgcF9j
+bGFpbV9zZWNvbmRzIGludGVnZXIgZGVmYXVsdCA2MDAKKQpyZXR1cm5zIHRhYmxlICh2aWRlb19p
+ZCB1dWlkLCBtZW1vcmlhbF9pZCB1dWlkLCBzdGF0dXMgdGV4dCwgdXBsb2FkX2lkIHRleHQsIGFz
+c2V0X2lkIHRleHQsIHVwbG9hZF9leHBpcmVzX2F0IHRpbWVzdGFtcHR6LCBhdHRlbXB0cyBpbnRl
+Z2VyKQpsYW5ndWFnZSBwbHBnc3FsCnNlY3VyaXR5IGRlZmluZXIKc2V0IHNlYXJjaF9wYXRoID0g
+JycKYXMgJCQKI3ZhcmlhYmxlX2NvbmZsaWN0IHVzZV9jb2x1bW4KYmVnaW4KICBpZiBwX2hvbGRl
+ciBpcyBudWxsIG9yIHBfc3RhbGVfYmVmb3JlIGlzIG51bGwgdGhlbgogICAgcmV0dXJuOwogIGVu
+ZCBpZjsKICByZXR1cm4gcXVlcnkKICAgIHdpdGggY2FuZGlkYXRlcyBhcyAoCiAgICAgIHNlbGVj
+dCB2LmlkCiAgICAgICAgZnJvbSBwdWJsaWMubWVtb3JpYWxfdmlkZW9zIHYKICAgICAgIHdoZXJl
+ICh2LnN0YXR1cyBpbiAoJ3Jlc2VydmVkJywgJ3VwbG9hZGluZycsICdwcm9jZXNzaW5nJywgJ2Rl
+bGV0aW9uX3JlcXVlc3RlZCcpCiAgICAgICAgICAgICAgb3IgKHYuc3RhdHVzIGluICgncmVqZWN0
+ZWQnLCAnZXJyb3JlZCcsICdjYW5jZWxsZWQnKSBhbmQgdi5tdXhfYXNzZXRfaWQgaXMgbm90IG51
+bGwgYW5kIHYuZGVsZXRlZF9hdCBpcyBudWxsKSkKICAgICAgICAgYW5kIHYudXBkYXRlZF9hdCA8
+IHBfc3RhbGVfYmVmb3JlCiAgICAgICAgIGFuZCAodi5yZWNvbmNpbGVfY2xhaW1lZF91bnRpbCBp
+cyBudWxsIG9yIHYucmVjb25jaWxlX2NsYWltZWRfdW50aWwgPCBub3coKSkKICAgICAgICAgYW5k
+ICh2LnJlY29uY2lsZV9uZXh0X2F0IGlzIG51bGwgb3Igdi5yZWNvbmNpbGVfbmV4dF9hdCA8PSBu
+b3coKSkKICAgICAgIG9yZGVyIGJ5IHYudXBkYXRlZF9hdCwgdi5pZAogICAgICAgbGltaXQgbGVh
+c3QoZ3JlYXRlc3QoY29hbGVzY2UocF9saW1pdCwgMjUpLCAxKSwgMTAwKQogICAgICAgZm9yIHVw
+ZGF0ZSBza2lwIGxvY2tlZAogICAgKQogICAgdXBkYXRlIHB1YmxpYy5tZW1vcmlhbF92aWRlb3Mg
+dgogICAgICAgc2V0IHJlY29uY2lsZV9jbGFpbWVkX2J5ID0gcF9ob2xkZXIsCiAgICAgICAgICAg
+cmVjb25jaWxlX2NsYWltZWRfdW50aWwgPSBub3coKSArIG1ha2VfaW50ZXJ2YWwoc2VjcyA9PiBs
+ZWFzdChncmVhdGVzdChjb2FsZXNjZShwX2NsYWltX3NlY29uZHMsIDYwMCksIDMwKSwgMzYwMCkp
+CiAgICAgIGZyb20gY2FuZGlkYXRlcyBjCiAgICAgd2hlcmUgdi5pZCA9IGMuaWQKICAgIHJldHVy
+bmluZyB2LmlkLCB2Lm1lbW9yaWFsX2lkLCB2LnN0YXR1cywgdi5tdXhfdXBsb2FkX2lkLCB2Lm11
+eF9hc3NldF9pZCwgdi51cGxvYWRfZXhwaXJlc19hdCwgdi5yZWNvbmNpbGVfYXR0ZW1wdHM7CmVu
+ZDsKJCQ7CgotLSBGaW4gZHUgdHJhaXRlbWVudCBkJ3VuZSBsaWduZSBwYXIgQ0VUVEUgZXjDqWN1
+dGlvbi4gJ2RvbmUnIDogcmllbiBkZSBwbHVzIMOgCi0tIGZhaXJlIHBvdXIgbCdpbnN0YW50IChj
+b21wdGV1ciByZW1pcyDDoCB6w6lybykgOyAncmV0cnknIDogZXJyZXVyIHRlbXBvcmFpcmUsCi0t
+IHByb2NoYWluZSB0ZW50YXRpdmUgYXByw6hzIDJebiBtaW51dGVzIChwbGFmb25kIDYgaCkuIFVu
+ZSByw6lzZXJ2YXRpb24KLS0gcmVwcmlzZSBlbnRyZS10ZW1wcyBwYXIgdW5lIGF1dHJlIGV4w6lj
+dXRpb24gbidlc3QgamFtYWlzIG1vZGlmacOpZS4KY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24g
+cHVibGljLmZpbmlzaF9tZW1vcmlhbF92aWRlb19yZWNvbmNpbGVfdjEocF9ob2xkZXIgdXVpZCwg
+cF92aWRlb19pZCB1dWlkLCBwX3Jlc3VsdCB0ZXh0KQpyZXR1cm5zIHRleHQKbGFuZ3VhZ2UgcGxw
+Z3NxbApzZWN1cml0eSBkZWZpbmVyCnNldCBzZWFyY2hfcGF0aCA9ICcnCmFzICQkCmRlY2xhcmUK
+ICB2X2F0dGVtcHRzIGludGVnZXI7CmJlZ2luCiAgaWYgcF9yZXN1bHQgbm90IGluICgnZG9uZScs
+ICdyZXRyeScpIHRoZW4KICAgIHJldHVybiAnaW52YWxpZCc7CiAgZW5kIGlmOwogIHVwZGF0ZSBw
+dWJsaWMubWVtb3JpYWxfdmlkZW9zIHYKICAgICBzZXQgcmVjb25jaWxlX2NsYWltZWRfYnkgPSBu
+dWxsLAogICAgICAgICByZWNvbmNpbGVfY2xhaW1lZF91bnRpbCA9IG51bGwsCiAgICAgICAgIHJl
+Y29uY2lsZV9hdHRlbXB0cyA9IGNhc2Ugd2hlbiBwX3Jlc3VsdCA9ICdyZXRyeScgdGhlbiB2LnJl
+Y29uY2lsZV9hdHRlbXB0cyArIDEgZWxzZSAwIGVuZCwKICAgICAgICAgcmVjb25jaWxlX25leHRf
+YXQgPSBjYXNlIHdoZW4gcF9yZXN1bHQgPSAncmV0cnknCiAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICB0aGVuIG5vdygpICsgbGVhc3QobWFrZV9pbnRlcnZhbChtaW5zID0+IHBvd2Vy
+KDIsIGxlYXN0KHYucmVjb25jaWxlX2F0dGVtcHRzLCA5KSk6OmludGVnZXIpLCBpbnRlcnZhbCAn
+NiBob3VycycpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBlbHNlIG51bGwgZW5k
+CiAgIHdoZXJlIHYuaWQgPSBwX3ZpZGVvX2lkCiAgICAgYW5kIHYucmVjb25jaWxlX2NsYWltZWRf
+YnkgPSBwX2hvbGRlcgogIHJldHVybmluZyB2LnJlY29uY2lsZV9hdHRlbXB0cyBpbnRvIHZfYXR0
+ZW1wdHM7CiAgaWYgbm90IGZvdW5kIHRoZW4KICAgIHJldHVybiAnbm90X2NsYWltZWQnOwogIGVu
+ZCBpZjsKICByZXR1cm4gJ2ZpbmlzaGVkJzsKZW5kOwokJDsKCi0tIE5ldHRveWFnZSBkZXMgYXNz
+ZXRzIG9ycGhlbGlucyAob3B0aW9uLCBqYW1haXMgYXV0b21hdGlxdWUpIDogcGFybWkgZGVzCi0t
+IGlkZW50aWZpYW50cyBkJ2Fzc2V0cyBsdXMgY2hleiBNdXgsIGNldXggcXVlIEhFUklUQUdFIGNv
+bm5hw650IGVuY29yZS4KY3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHVibGljLm1lbW9yaWFs
+X3ZpZGVvX2tub3duX2Fzc2V0c192MShwX2Fzc2V0X2lkcyB0ZXh0W10pCnJldHVybnMgdGV4dFtd
+Cmxhbmd1YWdlIHNxbApzdGFibGUKc2VjdXJpdHkgZGVmaW5lcgpzZXQgc2VhcmNoX3BhdGggPSAn
+JwphcyAkJAogIHNlbGVjdCBjb2FsZXNjZShhcnJheV9hZ2coZGlzdGluY3Qgdi5tdXhfYXNzZXRf
+aWQpLCBhcnJheVtdOjp0ZXh0W10pCiAgICBmcm9tIHB1YmxpYy5tZW1vcmlhbF92aWRlb3Mgdgog
+ICB3aGVyZSB2Lm11eF9hc3NldF9pZCA9IGFueSAoY29hbGVzY2UocF9hc3NldF9pZHMsIGFycmF5
+W106OnRleHRbXSkpOwokJDsKCnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLmNsYWltX21l
+bW9yaWFsX3ZpZGVvc19mb3JfcmVjb25jaWxlX3YxKHV1aWQsIHRpbWVzdGFtcHR6LCBpbnRlZ2Vy
+LCBpbnRlZ2VyKSBmcm9tIHB1YmxpYywgYW5vbiwgYXV0aGVudGljYXRlZCwgc2VydmljZV9yb2xl
+OwpyZXZva2UgYWxsIG9uIGZ1bmN0aW9uIHB1YmxpYy5maW5pc2hfbWVtb3JpYWxfdmlkZW9fcmVj
+b25jaWxlX3YxKHV1aWQsIHV1aWQsIHRleHQpIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50aWNh
+dGVkLCBzZXJ2aWNlX3JvbGU7CnJldm9rZSBhbGwgb24gZnVuY3Rpb24gcHVibGljLm1lbW9yaWFs
+X3ZpZGVvX2tub3duX2Fzc2V0c192MSh0ZXh0W10pIGZyb20gcHVibGljLCBhbm9uLCBhdXRoZW50
+aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CgpncmFudCBleGVjdXRlIG9uIGZ1bmN0aW9uIHB1YmxpYy5j
+bGFpbV9tZW1vcmlhbF92aWRlb3NfZm9yX3JlY29uY2lsZV92MSh1dWlkLCB0aW1lc3RhbXB0eiwg
+aW50ZWdlciwgaW50ZWdlcikgdG8gc2VydmljZV9yb2xlOwpncmFudCBleGVjdXRlIG9uIGZ1bmN0
+aW9uIHB1YmxpYy5maW5pc2hfbWVtb3JpYWxfdmlkZW9fcmVjb25jaWxlX3YxKHV1aWQsIHV1aWQs
+IHRleHQpIHRvIHNlcnZpY2Vfcm9sZTsKZ3JhbnQgZXhlY3V0ZSBvbiBmdW5jdGlvbiBwdWJsaWMu
+bWVtb3JpYWxfdmlkZW9fa25vd25fYXNzZXRzX3YxKHRleHRbXSkgdG8gc2VydmljZV9yb2xlOwoK
+bm90aWZ5IHBncnN0LCAncmVsb2FkIHNjaGVtYSc7Cg==
+';
+  c_source   text;
+  v_lines    integer;
+begin
+  -- 1. Décodage du texte (base64, ASCII pur), puis contrôle de son empreinte.
+  begin
+    c_source := convert_from(decode(c_payload, 'base64'), 'UTF8');
+  exception when others then
+    raise exception 'STOP [20261125100000] : texte de la migration illisible (copier-coller incomplet ou altéré). Rien n''a été modifié.';
+  end;
+  -- Le texte décodé est exactement le fichier de GitHub.
+  if encode(sha256(convert_to(c_source, 'UTF8')), 'hex') <> c_sha256 then
+    raise exception 'STOP [%] : texte de la migration altéré au copier-coller (empreinte différente). Rien n''a été modifié.', c_version;
+  end if;
+  select count(*) into v_lines from regexp_matches(c_source, '^(begin|commit);[ \t]*$', 'gn');
+  if v_lines <> c_txn then
+    raise exception 'STOP [%] : structure inattendue (lignes begin/commit). Rien n''a été modifié.', c_version;
+  end if;
+
+  -- 2. Historique : présent, à jour, dans l'ordre, sans double application.
+  if to_regclass('supabase_migrations.schema_migrations') is null then
+    raise exception 'STOP [%] : table supabase_migrations.schema_migrations absente. Rien n''a été modifié.', c_version;
+  end if;
+  if exists (select 1 from supabase_migrations.schema_migrations where version = c_version) then
+    raise exception 'STOP [%] : migration DÉJÀ INSTALLÉE (version présente dans l''historique). Rien n''a été modifié.', c_version;
+  end if;
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from c_previous
+     or (select count(*) from supabase_migrations.schema_migrations) <> c_count then
+    raise exception 'STOP [%] : ordre non respecté (attendu : dernière version %, % versions ; constaté : %, %). Rien n''a été modifié.',
+      c_version, c_previous, c_count,
+      (select max(version) from supabase_migrations.schema_migrations), (select count(*) from supabase_migrations.schema_migrations);
+  end if;
+
+  -- 3. Prérequis présents, objets de cette migration absents.
+  if not (to_regclass('public.memorial_videos') is not null) then
+    raise exception 'STOP [20261125100000] : prérequis absent (table VID-07 public.memorial_videos). Rien n''a été modifié.';
+  end if;
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'memorial_videos' and column_name = 'ready_at') then
+    raise exception 'STOP [20261125100000] : colonne public.memorial_videos.ready_at existe déjà alors que la version n''est pas enregistrée. Rien n''a été modifié ; prévenir le QG.';
+  end if;
+  if to_regprocedure('public.claim_memorial_videos_for_reconcile_v1(uuid,timestamp with time zone,integer,integer)') is not null then
+    raise exception 'STOP [20261125100000] : fonction public.claim_memorial_videos_for_reconcile_v1(uuid,timestamptz,integer,integer) existe déjà alors que la version n''est pas enregistrée. Rien n''a été modifié ; prévenir le QG.';
+  end if;
+
+  -- 4. Application : le fichier lui-même, sans ses lignes begin; / commit;
+  --    (la transaction est celle de ce DO : tout ou rien).
+  execute regexp_replace(c_source, '^(begin|commit);[ \t]*$', '', 'gn');
+
+  -- 5. Inscription dans l'historique, dans la même transaction.
+  insert into supabase_migrations.schema_migrations (version, name, statements)
+  values (c_version, c_name, array[c_source]);
+end
+$heritage_install$;
+
+select '20261125100000' as version,
+       'vid08_video_publication_reconcile' as migration,
+       (select count(*) from supabase_migrations.schema_migrations) as versions_enregistrees,
+       case when exists (select 1 from supabase_migrations.schema_migrations h
+                          where h.version = '20261125100000'
+                            and encode(sha256(convert_to(h.statements[1], 'UTF8')), 'hex') = '7b5d177743c6cab100dce01bd0c64e1dee7574fa65c3d16356b7b0daf5d8c1ef')
+             and (select count(*) from supabase_migrations.schema_migrations) = 51
+            then 'OK — étape 2/3 installée et enregistrée'
+            else 'ECHEC — prévenir le QG' end as verdict;

@@ -4,7 +4,9 @@ import { authorizeMemorialForRequest } from "@/lib/auth/heritage-session";
 import { createSupabaseMemorialPublicationRepository } from "@/lib/adapters/supabase/memorial-publication-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { decideVideoUpload } from "@/lib/memorial/video/video-upload-contract";
+import { headers } from "next/headers";
 import { videoHostingRuntime } from "@/lib/memorial/video/hosting/hosting-runtime";
+import { resolveUploadOrigin } from "@/lib/memorial/video/hosting/mux-config";
 import type { VideoHostingLoad, VideoUploadRequestResult } from "@/lib/memorial/video/hosting/hosted-video-types";
 
 const DRAFT_VIDEO_ID = /^v-[A-Za-z0-9-]{1,64}$/;
@@ -70,11 +72,14 @@ export async function requestVideoUploadAction(
   const runtime = videoHostingRuntime();
   if (runtime === null) return { status: "unavailable" };
   if ((await premiumState(access.memorialId)) !== "complete") return { status: "refused", reason: "offer" };
+  // VID-10 — l'origine de la page qui envoie (site, ou déploiement du même site si permis).
+  const corsOrigin = resolveUploadOrigin(runtime.config, (await headers()).get("origin"));
   const result = await runtime.service.requestUpload({
     ownerId: access.ownerId,
     memorialId: access.memorialId,
     draftVideoId,
     declaredDurationSeconds,
+    corsOrigin,
   });
   if (result.status !== "refused") return result;
   const reason = {

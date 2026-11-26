@@ -162,7 +162,14 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
     releaseSuperseded,
 
     /** Réservation sous verrou, puis adresse d'envoi direct Mux, puis rattachement. */
-    async requestUpload(input: { ownerId: string; memorialId: string; draftVideoId: string; declaredDurationSeconds: number | null }): Promise<UploadRequestResult> {
+    async requestUpload(input: {
+      ownerId: string;
+      memorialId: string;
+      draftVideoId: string;
+      declaredDurationSeconds: number | null;
+      /** VID-10 — origine déjà validée par resolveUploadOrigin ; à défaut, celle du site. */
+      corsOrigin?: string;
+    }): Promise<UploadRequestResult> {
       const declared =
         input.declaredDurationSeconds === null || !Number.isFinite(input.declaredDurationSeconds) || input.declaredDurationSeconds <= 0
           ? null
@@ -174,7 +181,7 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
       const videoId = reservation.videoId;
       let upload;
       try {
-        upload = await deps.mux.createDirectUpload({ videoId, corsOrigin: deps.corsOrigin, mp4Fallback: deps.mp4Fallback });
+        upload = await deps.mux.createDirectUpload({ videoId, corsOrigin: input.corsOrigin ?? deps.corsOrigin, mp4Fallback: deps.mp4Fallback });
       } catch {
         await deps.repository.failUpload({ videoId, reason: "hosting_unavailable" });
         return { status: "unavailable" };

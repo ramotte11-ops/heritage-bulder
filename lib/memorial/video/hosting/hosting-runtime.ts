@@ -48,19 +48,27 @@ export async function scheduledVideoReconcile(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<{ status: "disabled" } | { status: "ran"; summary: GlobalReconcileSummary }> {
   if (env.HERITAGE_VIDEO_RECONCILE !== "enabled") return { status: "disabled" };
-  const read = readMuxHostingConfig(env);
+  // VID-10 — jeton Mux dédié, de basse priorité (recommandé) : la réconciliation
+  // ne peut alors jamais consommer le débit des familles. Rythme d'un appel par
+  // 1,1 s, sous la limite de 1 requête/s de ce type de jeton.
+  const dedicated = Boolean(env.MUX_RECONCILE_TOKEN_ID && env.MUX_RECONCILE_TOKEN_SECRET);
+  const effective = dedicated ? { ...env, MUX_TOKEN_ID: env.MUX_RECONCILE_TOKEN_ID, MUX_TOKEN_SECRET: env.MUX_RECONCILE_TOKEN_SECRET } : env;
+  const read = readMuxHostingConfig(effective);
   if (read.status !== "configured") return { status: "disabled" };
-  const repository = createSupabaseHostedVideoRepository(createServiceRoleSupabaseClient());
-  const runtime = videoHostingRuntime(env);
+  const runtime = videoHostingRuntime(effective);
   if (runtime === null) return { status: "disabled" };
-  const summary = await runGlobalVideoReconcile({
-    repository,
-    reconcileOne: runtime.service.reconcileOne,
-    releaseSuperseded: () => runtime.service.releaseSuperseded(null, 50),
-    now: Date.now,
-    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    newHolder: () => crypto.randomUUID(),
-    log: (event) => console.info(JSON.stringify(event)),
-  });
+  const repository = createSupabaseHostedVideoRepository(createServiceRoleSupabaseClient());
+  const summary = await runGlobalVideoReconcile(
+    {
+      repository,
+      reconcileOne: runtime.service.reconcileOne,
+      releaseSuperseded: () => runtime.service.releaseSuperseded(null, 50),
+      now: Date.now,
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      newHolder: () => crypto.randomUUID(),
+      log: (event) => console.info(JSON.stringify(event)),
+    },
+    dedicated ? { muxIntervalMs: 1100 } : {},
+  );
   return { status: "ran", summary };
 }
