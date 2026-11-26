@@ -31,8 +31,8 @@ console.log(`Clé d'activation de test (à transmettre, affichée une seule fois
 
 Instruction SQL — À N'EXÉCUTER QU'AVEC UNE AUTORISATION QG EXPLICITE :
 
-  insert into entitlements (offer_id, source, external_order_id, activation_key_hash)
-  values ('intemporel', 'direct', '${externalOrderId}', '${hash}');
+  insert into entitlements (offer_id, source, external_order_id, activation_key_hash, access_level)
+  values ('intemporel', 'direct', '${externalOrderId}', '${hash}', 'complet');
 
-Elle crée un droit « disponible » repérable (external_order_id = ${externalOrderId}).
+Elle crée un droit « disponible », en offre complète, repérable (external_order_id = ${externalOrderId}).
 Elle ne touche à aucun mémorial ni brouillon existant.`);
