@@ -187,6 +187,7 @@ const SERVER_ONLY_MODULES = [
   "lib/memorial/video/hosting/hosted-video-service.ts",
   "lib/memorial/video/hosting/hosting-runtime.ts",
   "lib/memorial/video/hosting/public-video-playback.ts",
+  "lib/memorial/video/hosting/global-reconcile.ts",
 ];
 
 const SOURCE_DIRECTORIES = ["app", "components", "lib", "types", "config"];

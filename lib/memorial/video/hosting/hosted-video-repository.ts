@@ -57,6 +57,11 @@ export interface ReconcileRow {
   uploadExpiresAt: string | null;
 }
 
+/** VID-08 — ligne réservée par une exécution de la réconciliation globale. */
+export interface ClaimedReconcileRow extends ReconcileRow {
+  attempts: number;
+}
+
 export interface RemovalRow {
   videoId: string;
   uploadId: string | null;
@@ -74,6 +79,12 @@ export interface HostedVideoRepository {
   listToReconcile(input: { staleBefore: string; limit: number }): Promise<ReconcileRow[]>;
   requestRemoval(input: { ownerId: string; memorialId: string; draftVideoId: string }): Promise<{ refused: boolean; rows: RemovalRow[] }>;
   confirmDeleted(videoId: string): Promise<void>;
+  /** VID-08 — réserve un lot (aucune autre exécution ne le traite pendant `claimSeconds`). */
+  claimForReconcile(input: { holder: string; staleBefore: string; limit: number; claimSeconds: number }): Promise<ClaimedReconcileRow[]>;
+  /** VID-08 — fin du traitement : `done`, ou `retry` (prochaine tentative différée). */
+  finishReconcile(input: { holder: string; videoId: string; result: "done" | "retry" }): Promise<void>;
+  /** VID-08 — parmi ces assets Mux, ceux que HERITAGE connaît. */
+  knownAssets(assetIds: readonly string[]): Promise<Set<string>>;
 }
 
 function rowsOf<T>(data: unknown): T[] {
@@ -179,6 +190,30 @@ export function createSupabaseHostedVideoRepository(client: SupabaseClient): Hos
     },
     async confirmDeleted(videoId) {
       await rpc("confirm_memorial_video_deleted_v1", { p_video_id: videoId });
+    },
+
+    async claimForReconcile({ holder, staleBefore, limit, claimSeconds }) {
+      return rowsOf<Record<string, unknown>>(
+        await rpc("claim_memorial_videos_for_reconcile_v1", { p_holder: holder, p_stale_before: staleBefore, p_limit: limit, p_claim_seconds: claimSeconds }),
+      ).map((r) => ({
+        videoId: String(r.video_id),
+        memorialId: String(r.memorial_id),
+        status: r.status as HostedVideoStatus,
+        uploadId: typeof r.upload_id === "string" ? r.upload_id : null,
+        assetId: typeof r.asset_id === "string" ? r.asset_id : null,
+        uploadExpiresAt: typeof r.upload_expires_at === "string" ? r.upload_expires_at : null,
+        attempts: Number(r.attempts ?? 0),
+      }));
+    },
+
+    async finishReconcile({ holder, videoId, result }) {
+      await rpc("finish_memorial_video_reconcile_v1", { p_holder: holder, p_video_id: videoId, p_result: result });
+    },
+
+    async knownAssets(assetIds) {
+      if (assetIds.length === 0) return new Set();
+      const known = await rpc("memorial_video_known_assets_v1", { p_asset_ids: [...assetIds] });
+      return new Set(Array.isArray(known) ? known.filter((id): id is string => typeof id === "string") : []);
     },
   };
 }

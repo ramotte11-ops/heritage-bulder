@@ -5867,6 +5867,9 @@ V7_PUB=$(e1_complet "$V7_OWNER" vid07-pub "" '"video":{"items":[{"id":"v-pub","t
 V7_PUB_NO=$(e1_complet "$V7_OWNER" vid07-pub-no "")
 V7_PV=$(v7_ready "$V7_PUB" "v-pub" 10000)
 v7_ready "$V7_PUB_NO" "v-pub" 10000 >/dev/null
+# VID-08 — a version is public only if it was ready at the latest publication:
+# these videos became ready after the copy was published, so republish it.
+$DB -c "update memorial_published_snapshots set published_at = now() where memorial_id in ('$V7_PUB','$V7_PUB_NO');" >/dev/null
 check "VID-07: public read — complete offer, published, video in the published copy -> 1 playback id" "1|pb-$V7_PV" \
   "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid07-pub');")"
 check "VID-07: public read — a ready video absent from the published copy is never served" "0" \
@@ -5880,6 +5883,89 @@ for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid07_down -f "$f" >/dev/null 2>&1
 check "VID-07 rollback removes both tables, then the migration re-applies" "0|absent|0|present" \
   "$($PSQL -d vid07_down -f "$V7_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid07_down -t -A -c "select case when to_regclass('public.memorial_videos') is null and to_regclass('public.memorial_video_events') is null then 'absent' else 'present' end;")|$($PSQL -d vid07_down -f "$V7_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid07_down -t -A -c "select case when to_regclass('public.memorial_videos') is null then 'absent' else 'present' end;")"
 $PSQL -d postgres -c "drop database vid07_down;" >/dev/null
+
+echo "== VID-08: public video publication rule and global reconciliation (20261125100000, NOT applied to any project) =="
+V8_MIG="$MIGRATIONS_DIR/20261125100000_vid08_video_publication_reconcile.sql"
+V8_DOWN="$REPO_ROOT/supabase/rollbacks/20261125100000_vid08_video_publication_reconcile.down.sql"
+V8_FNS="public.claim_memorial_videos_for_reconcile_v1(uuid,timestamptz,integer,integer) public.finish_memorial_video_reconcile_v1(uuid,uuid,text) public.memorial_video_known_assets_v1(text[]) public.read_public_memorial_videos_v1(text)"
+
+# --- V8-1. Privileges, graded on a migrations-only clone --------------------
+$PSQL -d postgres -c "create database v8_fresh template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d v8_fresh -f "$f" >/dev/null 2>&1; done
+V8F="$PSQL -d v8_fresh -t -A"
+for fn in $V8_FNS; do
+  check "VID-08: $fn executable by service_role only, SECURITY DEFINER, empty search_path" "false|false|true|true|true" \
+    "$($V8F -c "select has_function_privilege('anon','$fn','EXECUTE') || '|' || has_function_privilege('authenticated','$fn','EXECUTE') || '|' || has_function_privilege('service_role','$fn','EXECUTE') || '|' || p.prosecdef || '|' || (p.proconfig @> array['search_path=\"\"']) from pg_proc p where p.oid = '$fn'::regprocedure;")"
+done
+check "VID-08: the ready-stamp trigger function is executable by no role, and the trigger exists" "false|false|false|1" \
+  "$($V8F -c "select has_function_privilege('anon','public.memorial_videos_stamp_ready_v1()','EXECUTE') || '|' || has_function_privilege('authenticated','public.memorial_videos_stamp_ready_v1()','EXECUTE') || '|' || has_function_privilege('service_role','public.memorial_videos_stamp_ready_v1()','EXECUTE') || '|' || (select count(*) from pg_trigger where tgname='memorial_videos_stamp_ready');")"
+check "VID-08: the new columns give clients nothing more (authenticated still SELECT only)" "false|false" \
+  "$($V8F -c "select has_column_privilege('authenticated','public.memorial_videos','reconcile_claimed_by','UPDATE') || '|' || has_column_privilege('anon','public.memorial_videos','ready_at','SELECT');")"
+$PSQL -d postgres -c "drop database v8_fresh;" >/dev/null
+
+# --- V8-2. A ready video is never published by itself -------------------------
+V8_PUB=$(e1_complet "$V7_OWNER" vid08-pub "" '"video":{"items":[{"id":"v-p","title":null,"durationSeconds":10}]}')
+V8_P1=$(v7_ready "$V8_PUB" "v-p" 10000)
+check "VID-08: ready_at is stamped when a version becomes ready" "t" \
+  "$($DB -t -A -c "select ready_at is not null from memorial_videos where id='$V8_P1';")"
+check "VID-08: published BEFORE the video was ready -> the public page serves nothing" "0" \
+  "$(svc "select count(*) from read_public_memorial_videos_v1('vid08-pub');")"
+$DB -c "update memorial_published_snapshots set published_at = now() where memorial_id='$V8_PUB';" >/dev/null
+check "VID-08: after the next publication -> that version is served" "1|pb-$V8_P1" \
+  "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid08-pub');")"
+V8_P2=$(v7_ready "$V8_PUB" "v-p" 12000)
+check "VID-08: replaced after publication -> old version withdrawn (ready_at cleared), the new one NOT public yet" "deletion_requested|true|0" \
+  "$($DB -t -A -c "select status || '|' || (ready_at is null) from memorial_videos where id='$V8_P1';")|$(svc "select count(*) from read_public_memorial_videos_v1('vid08-pub');")"
+$DB -c "update memorial_published_snapshots set published_at = now() where memorial_id='$V8_PUB';" >/dev/null
+check "VID-08: republished -> the new version, and only it" "1|pb-$V8_P2" \
+  "$(svc "select count(*) || '|' || max(playback_id) from read_public_memorial_videos_v1('vid08-pub');")"
+check "VID-08: the same published memorial in the free offer serves nothing" "0" \
+  "$($DB -t -A -c "begin;" -c "set local session_replication_role = replica;" -c "update memorials set access_level='avis', free_public_until = now() + interval '30 days', free_private_until = now() + interval '60 days' where id='$V8_PUB';" -c "set local session_replication_role = origin;" -c "set role service_role;" -c "select count(*) from read_public_memorial_videos_v1('vid08-pub');" -c "rollback;" 2>/dev/null | tail -1)"
+
+# --- V8-3. Global reconciliation: claims, concurrency, backoff ---------------
+V8_MEM=$(v7_complet_draft "$V7_OWNER")
+V8_X=$(v7_id "$(v7_reserve "$V7_OWNER" "$V8_MEM" "v-x" 1000)")
+V8_HA=$($DB -t -A -c "select gen_random_uuid();")
+V8_HB=$($DB -t -A -c "select gen_random_uuid();")
+V8_STALE="now() + interval '1 day'"
+V8_TOTAL=$(svc "select count(*) from list_memorial_videos_to_reconcile_v1($V8_STALE, 200);")
+# Two runs at the very same moment, each asking for everything.
+( svc "select video_id from claim_memorial_videos_for_reconcile_v1('$V8_HA', $V8_STALE, 100);" > "$PGDATA_DIR/v8_a.txt" ) &
+( svc "select video_id from claim_memorial_videos_for_reconcile_v1('$V8_HB', $V8_STALE, 100);" > "$PGDATA_DIR/v8_b.txt" ) &
+wait
+check "VID-08: two simultaneous runs share the rows, never the same row twice" "$V8_TOTAL|0" \
+  "$(( $(grep -c . "$PGDATA_DIR/v8_a.txt") + $(grep -c . "$PGDATA_DIR/v8_b.txt") ))|$(sort "$PGDATA_DIR/v8_a.txt" "$PGDATA_DIR/v8_b.txt" | uniq -d | grep -c .)"
+check "VID-08: while claimed, nothing is offered again (safe pagination by claim)" "0" \
+  "$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1(gen_random_uuid(), $V8_STALE, 100);")"
+V8_XH=$($DB -t -A -c "select reconcile_claimed_by from memorial_videos where id='$V8_X';")
+V8_XO=$([ "$V8_XH" = "$V8_HA" ] && echo "$V8_HB" || echo "$V8_HA")
+check "VID-08: another run cannot finish a row it does not hold; the holder can (retry -> attempts 1, next try later)" "not_claimed|finished|1|true" \
+  "$(svc "select finish_memorial_video_reconcile_v1('$V8_XO','$V8_X','retry');")|$(svc "select finish_memorial_video_reconcile_v1('$V8_XH','$V8_X','retry');")|$($DB -t -A -c "select reconcile_attempts || '|' || (reconcile_next_at > now()) from memorial_videos where id='$V8_X';")"
+$DB -c "select finish_memorial_video_reconcile_v1(v.reconcile_claimed_by, v.id, 'done') from memorial_videos v where v.reconcile_claimed_by is not null;" >/dev/null
+check "VID-08: a row waiting for its next try is not offered (no useless Mux call)" "0" \
+  "$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1(gen_random_uuid(), $V8_STALE, 100) where video_id='$V8_X';")"
+$DB -c "select finish_memorial_video_reconcile_v1(v.reconcile_claimed_by, v.id, 'done') from memorial_videos v where v.reconcile_claimed_by is not null;" >/dev/null
+$DB -c "update memorial_videos set reconcile_next_at = now() - interval '1 second' where id='$V8_X';" >/dev/null
+check "VID-08: once due, it is offered again; limit respected" "1|1" \
+  "$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1('$V8_HA', $V8_STALE, 100) where video_id='$V8_X';")|$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1('$V8_HB', $V8_STALE, 1);" | awk '{print ($1<=1)?1:0}')"
+$DB -c "update memorial_videos set reconcile_claimed_until = now() - interval '1 second' where id='$V8_X';" >/dev/null
+check "VID-08: an abandoned claim (crashed run) expires and is taken over; the old holder can no longer finish it" "1|not_claimed" \
+  "$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1('$V8_HB', $V8_STALE, 100) where video_id='$V8_X';")|$(svc "select finish_memorial_video_reconcile_v1('$V8_HA','$V8_X','done');")"
+check "VID-08: done resets the counter; an unknown result is refused" "finished|0|invalid" \
+  "$(svc "select finish_memorial_video_reconcile_v1('$V8_HB','$V8_X','done');")|$($DB -t -A -c "select reconcile_attempts from memorial_videos where id='$V8_X';")|$(svc "select finish_memorial_video_reconcile_v1('$V8_HB','$V8_X','oops');")"
+$DB -c "select finish_memorial_video_reconcile_v1(v.reconcile_claimed_by, v.id, 'done') from memorial_videos v where v.reconcile_claimed_by is not null;" >/dev/null
+check "VID-08: a ready video is never a reconciliation candidate" "0" \
+  "$(svc "select count(*) from claim_memorial_videos_for_reconcile_v1(gen_random_uuid(), $V8_STALE, 100) where video_id='$V8_P2';")"
+$DB -c "select finish_memorial_video_reconcile_v1(v.reconcile_claimed_by, v.id, 'done') from memorial_videos v where v.reconcile_claimed_by is not null;" >/dev/null
+check "VID-08: orphan sweep — only the asset ids HERITAGE still knows are returned" "{as-$V8_P2}" \
+  "$(svc "select memorial_video_known_assets_v1(array['as-$V8_P2','as-never-seen']);")"
+
+# --- V8-4. Rollback ----------------------------------------------------------
+$PSQL -d postgres -c "create database vid08_down template $STANDINS_DB;" >/dev/null
+for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid08_down -f "$f" >/dev/null 2>&1; done
+check "VID-08 rollback: columns and RPCs removed, VID-07 public read kept, then the migration re-applies" "0|0|t|0|1" \
+  "$($PSQL -d vid08_down -f "$V8_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid08_down -t -A -c "select count(*) from information_schema.columns where table_name='memorial_videos' and column_name in ('ready_at','reconcile_claimed_by','reconcile_claimed_until','reconcile_attempts','reconcile_next_at');")|$($PSQL -d vid08_down -t -A -c "select to_regprocedure('public.claim_memorial_videos_for_reconcile_v1(uuid,timestamptz,integer,integer)') is null and to_regprocedure('public.read_public_memorial_videos_v1(text)') is not null;")|$($PSQL -d vid08_down -v ON_ERROR_STOP=1 -f "$V8_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid08_down -t -A -c "select count(*) from pg_trigger where tgname='memorial_videos_stamp_ready';")"
+$PSQL -d postgres -c "drop database vid08_down;" >/dev/null
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

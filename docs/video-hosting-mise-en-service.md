@@ -1,4 +1,4 @@
-# VID-07 — Hébergement vidéo premium (Mux) : mise en service
+# VID-07 / VID-08 — Hébergement vidéo premium (Mux) : mise en service
 
 **État : préparé, NON activé.** Rien de ce document n'a été exécuté. Chaque
 étape ci-dessous attend une autorisation PO/QG **explicite et nominative**.
@@ -16,12 +16,17 @@ de VID-06 (préparation locale, aucun envoi) : le code est inerte.
 | Client Mux, signature, lecture signée 720p, réconciliation | `lib/memorial/video/hosting/` | testés contre des doubles, **jamais contre Mux** |
 | Envoi direct navigateur → Mux, reprenable | `lib/memorial/video/hosting/direct-upload.ts`, `video-transfers.ts` | testés contre un faux point d'envoi |
 | États dans A16 (transfert, progression, traitement, disponibilité, erreur, reprise) | `components/builder/VideoStep.tsx`, `useVideoHosting.ts` | testés avec doubles |
-| Lecture publique (après publication premium) | `lib/memorial/video/hosting/public-video-playback.ts` | préparée, **non branchée** à la page publique |
+| Lecture publique (après publication premium) | `lib/memorial/video/hosting/public-video-playback.ts`, `app/hommage/[slug]/page.tsx` | **VID-08 : branchée**, inerte sans configuration |
+| Règle « version prête au moment de la publication », réservations de réconciliation | `supabase/migrations/20261125100000_vid08_video_publication_reconcile.sql` | écrite, testée sur PostgreSQL jetable, **non appliquée** |
+| Lecture HLS universelle (Safari natif, hls.js ailleurs) | `components/memorial/video/use-stream-playback.ts` | testée avec un double de hls.js, **pas sur navigateurs réels** |
+| Rubrique dans l'aperçu et sur la page publique | `components/memorial/video/VideoHommageV1Section.tsx`, `video-preview-host.tsx` | ordre PO : Offrandes → Contributions → Vidéo |
+| Réconciliation globale | `lib/memorial/video/hosting/global-reconcile.ts`, `scheduledVideoReconcile` | préparée, **non planifiée** |
 
 ## Ordre de mise en service
 
-1. **Appliquer la migration** sur le projet Supabase réel
-   (`20261125090000_vid07_memorial_videos.sql`), après revue SQL.
+1. **Appliquer les migrations** sur le projet Supabase réel, dans l'ordre
+   (`20261125090000_vid07_memorial_videos.sql` puis
+   `20261125100000_vid08_video_publication_reconcile.sql`), après revue SQL.
    Vérification : `select to_regclass('public.memorial_videos')` non nul ;
    les RPC ne sont exécutables que par `service_role`.
 2. **Créer un jeton d'API Mux** (environnement Mux dédié à HERITAGE,
@@ -46,24 +51,82 @@ de VID-06 (préparation locale, aucun envoi) : le code est inerte.
    - annulation ; remplacement ; retrait (l'asset disparaît chez Mux) ;
    - dépassement mesuré (vidéo annoncée plus courte qu'en réalité) : refus
      expliqué, asset supprimé chez Mux, vidéo toujours visible avec sa raison ;
-   - lecture de l'aperçu sur iPhone (HLS natif) et sur Chrome Android/ordinateur
-     (voir décision D1).
-8. **Réconciliation planifiée** (facultative, décision D2) : la réconciliation
-   ciblée s'exécute déjà à chaque ouverture de A16 ; une tâche globale
-   (`service.reconcile`) n'est pas planifiée — aucune fonction Netlify n'est
-   créée sans GO.
+   - lecture sur iPhone et Mac Safari (HLS natif), Chrome ordinateur et
+     Android, Firefox et Edge (hls.js) : non exécutée à ce jour ;
+   - publication en offre complète, puis lecture sur la page publique ;
+     vérifier qu'une vidéo ajoutée après la publication n'y apparaît pas
+     avant la publication suivante.
+8. **Réconciliation globale planifiée** (VID-08, sur GO) : voir ci-dessous.
 
-## Décisions PO en attente
+## Réconciliation globale (VID-08) : préparée, non planifiée
 
-- **D1 — lecture hors Safari.** Sans HLS natif (Chrome, Firefox, Android),
-  l'aperçu d'une vidéo hébergée ne se lit que si un MP4 720p existe :
-  soit `HERITAGE_VIDEO_MP4_FALLBACK=enabled` (stockage Mux supplémentaire),
-  soit l'ajout de la bibliothèque `hls.js` (dépendance et `package-lock.json`
-  partagés : coordination Chef 06). Tant que la décision n'est pas prise,
-  l'aperçu local (fichier encore sur l'appareil) fonctionne partout.
-- **D2 — réconciliation globale planifiée** (fonction programmée Netlify).
-- **D3 — rubrique publique** : branchement de `readPublicMemorialVideos` à
-  la page publique, avec l'ordre des rubriques (décision QG).
+Rôle : rattraper les notifications Mux perdues (vidéo restée « en mise en
+forme »), les envois abandonnés, et les suppressions d'assets restées en
+attente (vidéo retirée, remplacée ou refusée). La réconciliation ciblée de
+VID-07 continue de s'exécuter à chaque ouverture de A16.
+
+Fonctionnement (`runGlobalVideoReconcile`) :
+- réservation d'un lot en base (`claim_memorial_videos_for_reconcile_v1`,
+  `for update skip locked`, réservation de 10 min) : deux exécutions
+  simultanées ne traitent jamais la même ligne ; une exécution interrompue
+  libère ses lignes à l'expiration de la réservation ;
+- seules les lignes sans nouvelle depuis 15 min sont examinées ;
+- une ligne sans changement chez Mux, ou en erreur temporaire, est différée
+  de 2, 4, 8… minutes (plafond 6 h) ;
+- 25 lignes par lot, 8 lots au plus, 20 s au plus par exécution, un appel
+  Mux au plus toutes les 250 ms ; une réponse 429 arrête l'exécution ;
+- journal : compteurs et codes d'erreur uniquement.
+
+Fréquence recommandée : **toutes les 30 minutes**. Les notifications
+fonctionnant normalement, presque toutes les exécutions ne trouvent aucune
+ligne : une requête SQL, aucun appel Mux.
+
+Coût estimé (à confirmer sur les grilles en vigueur au moment du GO) :
+- Netlify : 48 exécutions par jour, soit environ 1 440 par mois, de moins de
+  20 s chacune, en général de moins d'une seconde ;
+- Mux : les appels de l'API de gestion ne sont pas facturés en tant que tels
+  (la facturation porte sur l'encodage, le stockage et la diffusion), mais
+  ils sont soumis à des limites de débit ; au plus 200 lignes examinées par
+  exécution ;
+- Supabase : une à quelques requêtes par exécution.
+
+Nettoyage des assets orphelins (`sweepOrphanVideoAssets`) : option distincte,
+**comptage seul par défaut**, à lancer à la main ou une fois par semaine
+(chaque page de 100 assets coûte un appel Mux). Jamais un asset de moins de
+24 h. Suppose un environnement Mux **dédié** à HERITAGE.
+
+Modèle de fonction planifiée, à créer seulement sur GO
+(`netlify/functions/video-reconcile.mts`, non présent dans le dépôt) :
+
+```ts
+import type { Config } from "@netlify/functions";
+import { scheduledVideoReconcile } from "../../lib/memorial/video/hosting/hosting-runtime";
+
+export default async () => {
+  await scheduledVideoReconcile();
+};
+
+export const config: Config = { schedule: "*/30 * * * *" };
+```
+
+Activation : `HERITAGE_VIDEO_RECONCILE=enabled` en plus de la configuration
+d'hébergement ; sans elle, la fonction ne fait rien.
+
+## Décisions PO
+
+- **D1, lecture hors Safari — décidée (VID-08)** : hls.js 1.7.4 (Apache-2.0),
+  chargé à la demande. `HERITAGE_VIDEO_MP4_FALLBACK` reste non défini (aucun
+  MP4 payant).
+- **D2, réconciliation globale** — préparée ; cadence à valider au GO.
+- **D3, rubrique publique — décidée (VID-08)** : Offrandes → Contributions
+  des proches → Vidéo hommage → pied de page.
+- **D4, remplacement après publication** (en attente) : une vidéo remplacée
+  après publication disparaît de la page publique dès que la nouvelle
+  version est prête, et la nouvelle n'apparaît qu'à la publication
+  suivante. Alternative possible : garder l'ancienne version jusqu'à la
+  republication (coût : deux assets stockés pendant ce temps).
+- **D5, langues** (en attente) : la rubrique n'est assemblée qu'en français
+  tant que les traductions EN/ES ne sont pas validées.
 
 ## Garanties vérifiées localement
 

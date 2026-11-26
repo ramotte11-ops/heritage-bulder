@@ -60,6 +60,14 @@ export interface MuxApi {
   getAsset(assetId: string): Promise<MuxAssetState | null>;
   /** Supprime l'asset ; un asset déjà absent (404) est un succès. */
   deleteAsset(assetId: string): Promise<void>;
+  /** VID-08 — une page de la liste des assets (nettoyage des orphelins, option). */
+  listAssets(input: { page: number; limit: number }): Promise<MuxAssetSummary[]>;
+}
+
+export interface MuxAssetSummary {
+  id: string;
+  /** Création chez Mux, en millisecondes ; `null` si illisible. */
+  createdAtMs: number | null;
 }
 
 /** Durée d'un asset Mux (objet `data` de l'API ou d'un webhook) → millisecondes retenues. */
@@ -164,6 +172,22 @@ export function createMuxApi(options: { tokenId: string; tokenSecret: string; fe
     async deleteAsset(assetId) {
       const response = await call("delete_asset", "DELETE", `/video/v1/assets/${encodeURIComponent(assetId)}`);
       if (!response.ok && response.status !== 404) throw new MuxApiError("delete_asset", response.status);
+    },
+
+    async listAssets({ page, limit }) {
+      const safePage = Math.max(1, Math.floor(page));
+      const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+      const response = await call("list_assets", "GET", `/video/v1/assets?limit=${safeLimit}&page=${safePage}`);
+      if (!response.ok) throw new MuxApiError("list_assets", response.status);
+      const json = (await response.json().catch(() => null)) as { data?: unknown } | null;
+      if (json === null || !Array.isArray(json.data)) throw new MuxApiError("list_assets", response.status);
+      return json.data.flatMap((entry: unknown) => {
+        if (typeof entry !== "object" || entry === null) return [];
+        const { id, created_at: createdAt } = entry as { id?: unknown; created_at?: unknown };
+        if (typeof id !== "string") return [];
+        const seconds = typeof createdAt === "string" ? Number(createdAt) : typeof createdAt === "number" ? createdAt : Number.NaN;
+        return [{ id, createdAtMs: Number.isFinite(seconds) ? seconds * 1000 : null }];
+      });
     },
   };
 }

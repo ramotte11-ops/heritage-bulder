@@ -25,6 +25,9 @@ function repo(overrides: Partial<HostedVideoRepository> = {}): HostedVideoReposi
     listToReconcile: vi.fn(async () => []),
     requestRemoval: vi.fn(async () => ({ refused: false, rows: [] })),
     confirmDeleted: vi.fn(async () => {}),
+    claimForReconcile: vi.fn(async () => []),
+    finishReconcile: vi.fn(async () => {}),
+    knownAssets: vi.fn(async () => new Set<string>()),
     ...overrides,
   };
 }
@@ -36,6 +39,7 @@ function mux(overrides: Partial<MuxApi> = {}): MuxApi {
     cancelUpload: vi.fn(async () => {}),
     getAsset: vi.fn(async () => null),
     deleteAsset: vi.fn(async () => {}),
+    listAssets: vi.fn(async () => []),
     ...overrides,
   };
 }

@@ -69,16 +69,34 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
   }
 
   /** Une ligne restée sans nouvelle : interroger Mux et rejouer la transition (identifiant d'événement stable). */
+  /**
+   * VID-08 — réconciliation d'UNE ligne, au résultat détaillé : `applied`
+   * (une transition a été rejouée), `waiting` (rien de nouveau chez Mux). Les
+   * erreurs (Mux, base) remontent : la réconciliation globale distingue une
+   * limite de débit d'une panne passagère.
+   */
+  async function reconcileDetailed(row: ReconcileRow): Promise<"applied" | "waiting"> {
+    const outcome = (applied: boolean) => (applied ? "applied" : "waiting");
+    return outcome(await reconcileRowStrict(row));
+  }
+
   async function reconcileRow(row: ReconcileRow): Promise<boolean> {
-    const base = { videoId: row.videoId, uploadId: row.uploadId, assetId: row.assetId, playbackId: null, durationMs: null };
     try {
+      return await reconcileRowStrict(row);
+    } catch {
+      // Mux indisponible : la ligne reste à réconcilier au prochain passage.
+      return false;
+    }
+  }
+
+  async function reconcileRowStrict(row: ReconcileRow): Promise<boolean> {
+    const base = { videoId: row.videoId, uploadId: row.uploadId, assetId: row.assetId, playbackId: null, durationMs: null };
+    {
       if (row.status === "deletion_requested" || row.status === "rejected" || row.status === "errored" || row.status === "cancelled") {
         if (row.uploadId !== null && row.assetId === null) await deps.mux.cancelUpload(row.uploadId).catch(() => {});
-        if (await deleteAssetQuietly(row.assetId)) {
-          await deps.repository.confirmDeleted(row.videoId);
-          return true;
-        }
-        return false;
+        if (row.assetId !== null) await deps.mux.deleteAsset(row.assetId);
+        await deps.repository.confirmDeleted(row.videoId);
+        return true;
       }
       if (row.status === "processing" && row.assetId !== null) {
         const asset = await deps.mux.getAsset(row.assetId);
@@ -117,13 +135,14 @@ export function createHostedVideoService(deps: HostedVideoServiceDeps) {
         await deps.repository.failUpload({ videoId: row.videoId, reason: "hosting_unavailable" });
         return true;
       }
-    } catch {
-      // Mux indisponible : la ligne reste à réconcilier au prochain passage.
     }
     return false;
   }
 
   return {
+    /** VID-08 — une ligne, résultat détaillé, erreurs propagées (réconciliation globale). */
+    reconcileOne: reconcileDetailed,
+
     /** Réservation sous verrou, puis adresse d'envoi direct Mux, puis rattachement. */
     async requestUpload(input: { ownerId: string; memorialId: string; draftVideoId: string; declaredDurationSeconds: number | null }): Promise<UploadRequestResult> {
       const declared =
