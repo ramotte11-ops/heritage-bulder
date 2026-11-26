@@ -91,8 +91,8 @@ select controle, attendu, constate, verdict from (
   select 'E. info : copies publiées (nombre)', 'information',
          (select count(*)::text from public.memorial_published_snapshots), 'INFO'
   union all
-  select 'E. info : vidéos hébergées (nombre, 0 avant l'étape 1)', 'information',
-         (select case when to_regclass('public.memorial_videos') is null then 'table absente' else (select count(*)::text from public.memorial_videos) end), 'INFO'
+  select 'E. info : vidéos hébergées (nombre, 0 avant l''étape 1)', 'information',
+         (select case when to_regclass('public.memorial_videos') is null then 'table absente' else (xpath('/row/n/text()', query_to_xml('select count(*) as n from public.memorial_videos', false, true, '')))[1]::text end), 'INFO'
   union all
   select 'E. info : avis_snapshot_keys (réglage de l''offre gratuite)', 'information',
          (select coalesce(array_to_string(avis_snapshot_keys, ','), '(vide)') from public.memorial_access_settings limit 1), 'INFO'

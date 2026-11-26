@@ -485,11 +485,13 @@ def info_rows() -> str:
                   "select count(*)::text from public.memorials where status = 'published' and access_level = 'complet'"),
                  ("copies publiées (nombre)", "select count(*)::text from public.memorial_published_snapshots"),
                  ("vidéos hébergées (nombre, 0 avant l'étape 1)",
+                  # Lecture différée (query_to_xml) : la table n'existe pas encore avant
+                  # l'étape 1, et une référence directe ferait échouer toute la requête.
                   "select case when to_regclass('public.memorial_videos') is null then 'table absente' "
-                  "else (select count(*)::text from public.memorial_videos) end")]
+                  "else (xpath('/row/n/text()', query_to_xml('select count(*) as n from public.memorial_videos', false, true, '')))[1]::text end")]
     return "\n".join(
         f"""  union all
-  select 'E. info : {label}', 'information',
+  select 'E. info : {label.replace("'", "''")}', 'information',
          ({query}), 'INFO'""" for label, query in items)
 
 

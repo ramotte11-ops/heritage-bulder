@@ -80,6 +80,9 @@ run()   { $P -d "$1" -c "$(cat "$2")" 2>&1 || true; }
 rows()  { $P -d "$1" -t -A -F'|' -c "$(cat "$2")" 2>&1; }
 okc()   { rows "$1" "$2" | grep -c '|OK$' || true; }
 koc()   { rows "$1" "$2" | grep -c -E 'ECHEC|\|STOP' || true; }
+# VID-10 (correctif) : une erreur SQL (ex. apostrophe non échappée) ne produit
+# aucune ligne ECHEC ; elle doit faire échouer le banc à elle seule.
+sqlerr(){ rows "$1" "$2" | grep -c -E '^(psql:|ERROR|ERREUR)|syntax error' || true; }
 hist()  { $P -d "$1" -t -A -c "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"; }
 schema(){ "$PGB/pg_dump" -h "$SOCK" -U postgres -s --exclude-schema=supabase_migrations "$1" | grep -v -E '^\\(un)?restrict ' ; }
 F() { ls "$INST"/$1; }
@@ -97,8 +100,10 @@ PY
 echo "== 1. État avant installation et préflight"
 clone ed base49
 check "historique de départ : 49 versions, dernière 20261122090000" "49|20261122090000" "$(hist ed)"
+check "00_etat_avant : s'exécute sans erreur SQL" "0" "$(sqlerr ed "$(F '00_*')")"
 check "00_etat_avant : aucun ECHEC" "0" "$(koc ed "$(F '00_*')")"
 check "00b_test_transport : 3 migrations OK" "3" "$(rows ed "$(F '00b_*')" | grep -c '|OK$' || true)"
+check "préflight vidéo : s'exécute sans erreur SQL" "0" "$(sqlerr ed "$VER/vid_preflight.sql")"
 check "préflight vidéo : aucun ECHEC" "0" "$(koc ed "$VER/vid_preflight.sql")"
 check "préflight vidéo : 16 OK" "16" "$(okc ed "$VER/vid_preflight.sql")"
 
@@ -126,9 +131,12 @@ check "étape 1 relancée : STOP déjà installée" "1" "$(run ed "$(F '01_*')" 
 check "étape 2 (VID-08) : verdict OK" "1" "$(run ed "$(F '02_*')" | grep -c 'OK — étape 2/3' || true)"
 check "étape 3 (VID-09) : verdict OK" "1" "$(run ed "$(F '03_*')" | grep -c 'OK — étape 3/3' || true)"
 check "historique final : 52 versions, dernière 20261126090000" "52|20261126090000" "$(hist ed)"
+check "postflight vidéo : s'exécute sans erreur SQL" "0" "$(sqlerr ed "$VER/vid_postflight.sql")"
 check "postflight vidéo : aucun ECHEC" "0" "$(koc ed "$VER/vid_postflight.sql")"
 check "postflight vidéo : 31 OK" "31" "$(okc ed "$VER/vid_postflight.sql")"
+check "99_etat_apres : s'exécute sans erreur SQL" "0" "$(sqlerr ed "$(F '99_*')")"
 check "99_etat_apres : aucun ECHEC" "0" "$(koc ed "$(F '99_*')")"
+check "99_etat_apres : 64 OK et 7 INFO (comme constaté en production par le Chef 05)" "64|7" "$(okc ed "$(F '99_*')")|$(rows ed "$(F '99_*')" | grep -c '|INFO$' || true)"
 check "hommages et copies publiées intacts (nombre et contenu)" "$D0" "$($P -d ed -t -A -c "$DATA")"
 
 echo "== 4. Équivalence avec une application classique des fichiers"

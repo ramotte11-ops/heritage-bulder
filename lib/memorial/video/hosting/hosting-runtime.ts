@@ -33,6 +33,24 @@ export function videoHostingRuntime(env: Readonly<Record<string, string | undefi
   return { config, service };
 }
 
+/**
+ * VID-11 — la chaîne de NOTIFICATIONS Mux seule (route /api/mux/webhook).
+ *
+ * Identique à `videoHostingRuntime` quand l'hébergement est activé pour les
+ * familles. Sinon, un interrupteur distinct et explicite,
+ * `HERITAGE_VIDEO_NOTIFICATIONS=enabled`, permet de vérifier et de traiter
+ * les notifications signées (avec la même configuration complète) AVANT de
+ * mettre la vidéo à la disposition des familles : A16 et la page publique
+ * restent fermés, car eux ne lisent que `videoHostingRuntime`.
+ * Sans l'un ni l'autre interrupteur : `null` (la route répond 503).
+ */
+export function videoNotificationRuntime(env: Readonly<Record<string, string | undefined>> = process.env): VideoHostingRuntime | null {
+  const hosting = videoHostingRuntime(env);
+  if (hosting !== null) return hosting;
+  if (env.HERITAGE_VIDEO_NOTIFICATIONS !== "enabled") return null;
+  return videoHostingRuntime({ ...env, HERITAGE_VIDEO_HOSTING: "enabled" });
+}
+
 /** L'hébergement est-il configuré et activé ? (aucune valeur n'est lue au-delà des noms) */
 export function isVideoHostingConfigured(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   return readMuxHostingConfig(env).status === "configured";

@@ -174,3 +174,39 @@ Noter ✓ ou ✗ et faire une capture d'écran en cas de ✗.
    `memorial_video_superseded_stats_v1()`.
 4. Retour arrière : retirer `HERITAGE_VIDEO_RECONCILE` (la fonction ne fait
    plus rien), ou retirer la fonction par une PR.
+
+## 8. VID-11 — Méthode retenue (accès réels constatés le 26 novembre 2026)
+
+Accès de la session d'ingénierie : Netlify en lecture et écriture des
+variables (valeurs secrètes masquées) et liste des déploiements ; Mux en
+**lecture seule** ; Supabase : aucun. Conséquences :
+
+- Les identifiants Mux (jeton serveur, clé de lecture signée, notification)
+  ne se créent que dans le tableau de bord Mux, et leurs valeurs secrètes ne
+  doivent passer par aucune conversation : la PO les crée et les colle
+  elle-même dans Netlify (5 valeurs). La session pose ensuite les
+  interrupteurs non secrets et vérifie la présence des variables (noms et
+  caractère secret seulement).
+- Le build de recette se fait par la fusion d'une PR dans `main` (build
+  automatique, non publié grâce au verrou) APRÈS la pose des variables.
+- Le navigateur de recette est celui de la PO (adresse permanente protégée
+  par la connexion d'équipe) ; la session suit chaque étape côté Mux
+  (lecture) et dans les journaux Netlify.
+
+### Notifications signées, sans lever aucune protection
+
+Mux ne peut joindre que l'adresse publique `https://hommages.netlify.app`.
+Nouvel interrupteur `HERITAGE_VIDEO_NOTIFICATIONS=enabled` : la route
+`/api/mux/webhook` vérifie et traite alors les notifications signées, **sans**
+ouvrir A16 ni la page publique aux familles (qui ne dépendent que de
+`HERITAGE_VIDEO_HOSTING`). Enchaînement :
+
+1. Build R1 (recette) : `HERITAGE_VIDEO_HOSTING`, `HERITAGE_VIDEO_DEPLOY_ORIGINS`
+   et `HERITAGE_VIDEO_NOTIFICATIONS` activés ; essai complet sur son adresse
+   permanente (réconciliation ciblée à la place des notifications).
+2. Build R2 : `HERITAGE_VIDEO_HOSTING` retiré, `HERITAGE_VIDEO_NOTIFICATIONS`
+   gardé ; publication de R2 (GO) : les familles ne voient aucune vidéo,
+   mais un envoi fait depuis R1 produit des notifications signées traitées
+   par la production → vérification réelle (Mux → Webhooks : livraisons 200).
+3. Build R3 : `HERITAGE_VIDEO_HOSTING` rétabli, `HERITAGE_VIDEO_DEPLOY_ORIGINS`
+   retiré ; publication de R3 (GO) : ouverture aux familles.

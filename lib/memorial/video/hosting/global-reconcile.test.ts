@@ -4,6 +4,9 @@ import type { ClaimedReconcileRow } from "./hosted-video-repository";
 import { MuxApiError } from "./mux-api";
 import { scheduledVideoReconcile } from "./hosting-runtime";
 
+// La base n'est jamais contactée ici : client service_role factice.
+vi.mock("@/lib/supabase/service-role-client", () => ({ createServiceRoleSupabaseClient: () => ({ rpc: vi.fn() }) }));
+
 /**
  * VID-08 — réconciliation globale, contre une fausse base qui applique les
  * mêmes règles de réservation que claim_memorial_videos_for_reconcile_v1
@@ -162,5 +165,31 @@ describe("VID-08 — assets orphelins (option)", () => {
     expect(summary).toEqual({ listed: 3, orphans: 2, deleted: 2, failed: 0, dryRun: false });
     expect(mux.deleteAsset.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["o1", "o2"]);
     expect(mux.listAssets).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("VID-11 — notifications Mux avant l'ouverture aux familles", () => {
+  const full = {
+    MUX_TOKEN_ID: "id",
+    MUX_TOKEN_SECRET: "secret",
+    MUX_WEBHOOK_SECRET: "wh",
+    MUX_SIGNING_KEY_ID: "kid",
+    MUX_SIGNING_KEY_PRIVATE: Buffer.from("-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----").toString("base64"),
+    NEXT_PUBLIC_SITE_URL: "https://hommages.netlify.app",
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "service",
+  };
+
+  it("sans interrupteur : aucune chaîne (la route répond 503) ; familles fermées dans tous les cas sans HERITAGE_VIDEO_HOSTING", async () => {
+    const { videoNotificationRuntime, videoHostingRuntime } = await import("./hosting-runtime");
+    expect(videoNotificationRuntime(full)).toBeNull();
+    expect(videoHostingRuntime({ ...full, HERITAGE_VIDEO_NOTIFICATIONS: "enabled" })).toBeNull();
+  });
+
+  it("HERITAGE_VIDEO_NOTIFICATIONS=enabled avec la configuration complète : la route peut vérifier et traiter ; configuration incomplète : rien", async () => {
+    const { videoNotificationRuntime } = await import("./hosting-runtime");
+    expect(videoNotificationRuntime({ ...full, HERITAGE_VIDEO_NOTIFICATIONS: "enabled" })).not.toBeNull();
+    expect(videoNotificationRuntime({ ...full, HERITAGE_VIDEO_NOTIFICATIONS: "enabled", MUX_WEBHOOK_SECRET: "" })).toBeNull();
+    expect(videoNotificationRuntime({ ...full, HERITAGE_VIDEO_NOTIFICATIONS: "yes" })).toBeNull();
   });
 });
