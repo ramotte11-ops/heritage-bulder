@@ -68,10 +68,15 @@ describe("VID-08 — la rubrique dans le mémorial assemblé", () => {
     expect((await assemble(corrupted)).sections.map((s) => s.sectionId)).not.toContain("video");
   });
 
-  it("textes validés en français seulement : pas de rubrique dans un hommage en anglais", async () => {
-    const assembled = await assemble(withContributionsAndVideos(), "en");
-    expect(assembled.sections.map((s) => s.sectionId)).not.toContain("video");
-    expect(assembled.failures).toContainEqual({ sectionId: "video", rendererKey: "VideoHommageV1Section", reason: "textUnavailable" });
+  it.each(["en", "es"] as const)("VID-09 — hommage en %s : la rubrique existe, dans le même ordre, et les titres de la famille sont gardés tels quels", async (language) => {
+    const assembled = await assembleMemorial(
+      { skin: "intemporel", skinVariant: "light", content: withContributionsAndVideos(), language },
+      { resolveMedia: recordingResolver().resolve },
+    );
+    const ids = assembled.sections.map((s) => s.sectionId);
+    expect(ids.slice(-3)).toEqual(["symbolicOfferings", "testimonials", "video"]);
+    const video = assembled.sections.find((s) => s.sectionId === "video")!;
+    expect(video.props).toMatchObject({ language, items: ITEMS });
   });
 
   it("aperçu de publication : offre complète avec la rubrique, offre gratuite sans (et signalée premium)", () => {

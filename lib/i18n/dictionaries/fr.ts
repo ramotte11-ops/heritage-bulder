@@ -438,6 +438,7 @@ export const fr: Partial<Record<TranslationKey, string>> = {
   "videoStep.refusedOffer": "L'envoi des vidéos est réservé à l'hommage complet.",
   "videoStep.refusedOther": "L'envoi n'a pas pu commencer. Réessayez dans quelques instants.",
   "videoStep.removeFailed": "La vidéo n'a pas pu être retirée. Réessayez.",
+  "videoStep.replacedPublished": "L'ancienne version reste visible sur la page de l'hommage jusqu'à votre prochaine publication.",
   "contributionsScene.title": "Contributions des proches",
   "contributionsScene.subtitle": "Souvenirs, pensées et mots d’amour partagés par la famille et les amis en mémoire {ofName}.",
   "contributionsScene.subtitleNoName": "Souvenirs, pensées et mots d’amour partagés par la famille et les amis en sa mémoire.",

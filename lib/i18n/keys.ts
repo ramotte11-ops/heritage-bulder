@@ -674,6 +674,7 @@ export const TRANSLATION_KEYS = [
   "videoStep.refusedOffer",
   "videoStep.refusedOther",
   "videoStep.removeFailed",
+  "videoStep.replacedPublished",
   "contributionsScene.title",
   "contributionsScene.subtitle",
   "contributionsScene.subtitleNoName",

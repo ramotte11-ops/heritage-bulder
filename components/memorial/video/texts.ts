@@ -5,8 +5,11 @@ import type { Language } from "@/config/languages";
  *
  * Français : titre et sous-titre OFFICIELS (décision PO, VID-02 V1.1),
  * universels, identiques quels que soient le genre de la personne et le
- * nombre de vidéos. Anglais et espagnol : traductions proposées, à valider
- * par la PO avant toute publication.
+ * nombre de vidéos. VID-09 (décision PO) : HERITAGE V1 est trilingue ;
+ * l'anglais et l'espagnol suivent la convention du Builder (traduits avec
+ * le développement, sans validation manuelle séparée), même terminologie
+ * que lib/i18n/dictionaries (« tribute », « homenaje », vouvoiement).
+ * Les titres saisis par les familles ne sont jamais traduits.
  */
 export interface VideoHommageTexts {
   title: string;
@@ -31,7 +34,8 @@ export interface VideoHommageTexts {
 function spokenDuration(duration: string | null, minutes: string, seconds: string): string {
   if (duration === null) return "";
   const [m, s] = duration.split(":");
-  return `, ${Number(m)} ${minutes} ${Number(s)} ${seconds}`;
+  // VID-09 : « 12 s » plutôt que « 0 min 12 s ».
+  return Number(m) === 0 ? `, ${Number(s)} ${seconds}` : `, ${Number(m)} ${minutes} ${Number(s)} ${seconds}`;
 }
 
 export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
@@ -52,7 +56,7 @@ export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
   },
   en: {
     title: "Moments to remember",
-    subtitle: "A few precious moments to relive and to share.",
+    subtitle: "A few precious moments to relive and share.",
     defaultTitle: (position) => `Memory ${position}`,
     selectLabel: (title, duration) => `Play ${title}${spokenDuration(duration, "min", "s")}`,
     playerLabel: (title) => `Video: ${title}`,
@@ -67,7 +71,7 @@ export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
   },
   es: {
     title: "Momentos para recordar",
-    subtitle: "Algunos momentos preciosos para revivir y compartir.",
+    subtitle: "Unos instantes preciosos para revivir y compartir.",
     defaultTitle: (position) => `Recuerdo ${position}`,
     selectLabel: (title, duration) => `Reproducir ${title}${spokenDuration(duration, "min", "s")}`,
     playerLabel: (title) => `Vídeo: ${title}`,
