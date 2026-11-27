@@ -10,6 +10,7 @@ import { readGuidedFlowState } from "@/lib/builder/guided-flow/flow-state";
 import { inspectHero, readHero } from "@/lib/memorial/hero";
 import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
 import { assembleMemorial } from "@/lib/memorial/assembly/assemble-memorial";
+import { builderPreviewContent, markPreviewOnlySections } from "@/lib/memorial/builder-preview-content";
 import type { MediaResolver } from "@/lib/memorial/assembly/media-resolver";
 import { createOwnerDraftMediaResolver } from "@/lib/memorial/assembly/owner-draft-media-resolver";
 import {
@@ -88,15 +89,21 @@ export async function loadMemorialPreviewAction(
   if (!preview.ok) return { status: "unavailable" };
 
   const resolveMedia = createOwnerDraftMediaResolver(createServerMediaEngineDeps(), actor, access.memorialId);
-  const assembled = await assembleMemorial(
+  // VID-15 — l'aperçu assemble une projection DISTINCTE de celle publiée :
+  // en offre gratuite, la rubrique vidéo préparée y est montrée, marquée
+  // « aperçu seulement ». La projection de publication (`preview`), son
+  // empreinte et la publication elle-même restent inchangées.
+  const shown = builderPreviewContent({ draft: content, projection: preview.projection.content, accessLevel: snapshot.accessLevel });
+  const assembledForPreview = await assembleMemorial(
     {
       skin: snapshot.skin,
       skinVariant: variant.variant,
       language: snapshot.language,
-      content: preview.projection.content,
+      content: shown.content,
     },
     { resolveMedia },
   );
+  const assembled = markPreviewOnlySections(assembledForPreview, shown.previewOnlySections);
   if (assembled.status !== "assembled") {
     // QG 008 Lot 3 (E1): the Hero requires its main photo, resolved READY
     // for this owner. When that is what failed, say so — never a vague

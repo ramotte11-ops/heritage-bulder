@@ -147,3 +147,66 @@ describe("VID-08 — aperçu du Builder", () => {
     expect(document.querySelector("video")!.getAttribute("src")).toBe("blob:local/b");
   });
 });
+
+describe("VID-15 — aperçu d'un hommage gratuit : rubrique montrée, « aperçu seulement »", () => {
+  it.each([
+    ["fr", "Aperçu : cette rubrique sera publiée avec l'hommage complet."],
+    ["en", "Preview: this section is published with the full tribute."],
+    ["es", "Vista previa: esta sección se publica con el homenaje completo."],
+  ] as const)("%s : mention discrète HORS du Master, puis la rubrique ; la vidéo locale est lue", (language, note) => {
+    const registry = createLocalVideoRegistry();
+    registry.set("v-a", { url: "blob:local/a", metadata: { durationSeconds: 40, width: 1, height: 1, playable: true }, release: vi.fn() });
+    const { container } = render(
+      <VideoPreviewProvider registry={registry}>
+        <VideoHommageV1Section skinVariant="light" language={language} items={ITEMS} requiresCompleteOffer />
+      </VideoPreviewProvider>,
+    );
+    const mention = container.querySelector("[data-video-preview-only]")!;
+    expect(mention.textContent).toBe(note);
+    // La mention précède la rubrique et n'est pas dedans (le Master reste intact).
+    const rubrique = mention.nextElementSibling!;
+    expect(rubrique.contains(mention)).toBe(false);
+    expect(document.querySelector("video")!.getAttribute("src")).toBe("blob:local/a");
+  });
+
+  it("fichier plus disponible sur l'appareil : l'état est dit honnêtement, la rubrique reste présente", () => {
+    render(
+      <VideoPreviewProvider registry={createLocalVideoRegistry()}>
+        <VideoHommageV1Section skinVariant="light" language="fr" items={ITEMS} requiresCompleteOffer />
+      </VideoPreviewProvider>,
+    );
+    expect(player()!.getAttribute("data-state")).toBe("local-unavailable");
+    expect(screen.getByText(texts.localUnavailable)).toBeTruthy();
+    expect(document.querySelector("[data-video-preview-only]")).not.toBeNull();
+  });
+
+  it("sans le marquage (offre complète, page publique) : aucune mention", () => {
+    const registry = createLocalVideoRegistry();
+    registry.set("v-a", { url: "blob:local/a", metadata: { durationSeconds: 40, width: 1, height: 1, playable: true }, release: vi.fn() });
+    render(
+      <VideoPreviewProvider registry={registry}>
+        <VideoHommageV1Section skinVariant="light" language="fr" items={ITEMS} />
+      </VideoPreviewProvider>,
+    );
+    expect(document.querySelector("[data-video-preview-only]")).toBeNull();
+    render(<VideoHommageV1Section skinVariant="light" language="fr" items={ITEMS} publicPlayback={{ "v-a": signed }} />);
+    expect(document.querySelector("[data-video-preview-only]")).toBeNull();
+  });
+
+  it("l'aperçu ne déclenche aucun envoi : sa seule action serveur est la LECTURE des vidéos hébergées", async () => {
+    const load = vi.fn(async (): Promise<VideoHostingLoad> => ({ status: "unavailable" }));
+    render(
+      <VideoPreviewProvider load={load} registry={createLocalVideoRegistry()}>
+        <VideoHommageV1Section skinVariant="light" language="fr" items={ITEMS} requiresCompleteOffer />
+      </VideoPreviewProvider>,
+    );
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(1);
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const file of ["video-preview-host.tsx", "VideoHommageV1Section.tsx"]) {
+      const source = readFileSync(path.resolve(import.meta.dirname, file), "utf8");
+      expect(source).not.toMatch(/requestVideoUpload|video-transfers|direct-upload|createUpload/);
+    }
+  });
+});

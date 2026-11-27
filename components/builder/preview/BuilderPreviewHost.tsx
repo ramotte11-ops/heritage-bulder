@@ -381,6 +381,18 @@ export function BuilderPreviewHost({
             </button>
             <ChangeAmbianceLink className={styles.back} />
           </div>
+          {/* M3 — the one place Offrandes symboliques exist: free tries,
+              simulated server response, nothing recorded. */}
+          <OfferingsPreviewProvider>
+            {/* VID-08 — what the video rubrique can really play here: local
+                files of this session, or the family's hosted videos. */}
+            <VideoPreviewProvider load={videoHosting}>
+              <MemorialAssembly assembled={assembled} />
+            </VideoPreviewProvider>
+          </OfferingsPreviewProvider>
+          {/* VID-15 — décision PO : l'aperçu commence par le Hero. « Publier »
+              vient APRÈS l'hommage ; le choix des six photos d'un hommage
+              gratuit se fait dans sa confirmation, jamais au-dessus du Hero. */}
           {publish !== undefined && publication !== null && (
             <PreviewPublicationPanel
               language={language}
@@ -391,15 +403,6 @@ export function BuilderPreviewHost({
               onBackToCreation={close}
             />
           )}
-          {/* M3 — the one place Offrandes symboliques exist: free tries,
-              simulated server response, nothing recorded. */}
-          <OfferingsPreviewProvider>
-            {/* VID-08 — what the video rubrique can really play here: local
-                files of this session, or the family's hosted videos. */}
-            <VideoPreviewProvider load={videoHosting}>
-              <MemorialAssembly assembled={assembled} />
-            </VideoPreviewProvider>
-          </OfferingsPreviewProvider>
         </main>
       )}
     </>

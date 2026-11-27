@@ -4,7 +4,8 @@
   display: grid;
   gap: 0.75rem;
   max-width: 44rem;
-  margin: 0.75rem auto;
+  /* VID-15 — fin de l'aperçu, après l'hommage : jamais au-dessus du Hero. */
+  margin: 1.5rem auto 2rem;
   padding: 1rem;
   background: var(--heritage-surface-card);
   border: 1px solid var(--heritage-border-soft);
@@ -125,6 +126,10 @@
   gap: 0.75rem;
   max-width: 28rem;
   width: 100%;
+  /* VID-15 — le choix des six photos se fait ici : la boîte défile, jamais la page. */
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 1.25rem;
   background: var(--heritage-surface-card);
   border: 1px solid var(--heritage-border-soft);

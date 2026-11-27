@@ -21,15 +21,19 @@ const EmailVerificationStep = lazy(() =>
  * Builder (BuilderPreviewHost renders this only when the page hands it a
  * `publish` action; the guest Builder and the pilots never do).
  *
- * What the family sees above is exactly what would be published: the
- * server assembled the publication projection. This panel:
- * - offers the gallery choice for an `avis` with more than six photos (the
- *   six first are proposed; each change reloads the Preview, so the
- *   Preview always shows the selection that would be published);
+ * VID-15 (décision PO) — this panel comes AFTER the memorial: the Preview
+ * opens on the Hero, never on a form. What is published is the server's
+ * publication projection (its fingerprint is what « Publier » sends); the
+ * Preview above may additionally show, marked « aperçu seulement », a
+ * prepared video of an `avis`. This panel:
  * - signals, discreetly, sections reserved to the complete tribute;
- * - asks for an explicit confirmation, then sends ONLY the revision, the
- *   fingerprint and the selection of the Preview currently shown — one
- *   call at a time (double clicks are ignored) — and shows the outcome.
+ * - « Publier » opens an explicit confirmation; for an `avis` with more than
+ *   six photos, the gallery choice is made THERE, in the publication step
+ *   (the six first are proposed; each change reloads the Preview and its
+ *   fingerprint), never above the Hero;
+ * - « Confirmer » sends ONLY the revision, the fingerprint and the
+ *   selection currently shown — one call at a time (double clicks are
+ *   ignored) — and shows the outcome.
  */
 
 export interface PreviewPublicationPanelProps {
@@ -164,53 +168,6 @@ export function PreviewPublicationPanel({
         </p>
       )}
 
-      {selection !== undefined && (
-        <>
-          <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
-            <legend className={styles.text}>
-              {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
-              {translate(language, "publish.galleryLimit")}
-            </legend>
-            {gallery.choices.map((choice, index) => {
-              const selected = selection.includes(choice.mediaId);
-              const full = gallery.limit !== null && selection.length >= gallery.limit;
-              const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
-              return (
-                <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
-                  {choice.readUrl !== null ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
-                    <img src={choice.readUrl} alt="" />
-                  ) : (
-                    <span className={styles.thumbMissing} aria-hidden="true" />
-                  )}
-                  <span>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={!selected && full}
-                      onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
-                    />{" "}
-                    {label}
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
-          {reloading && (
-            <p className={styles.notice} data-publication-gallery-loading="">
-              <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
-                {null}
-              </PendingActionLabel>
-            </p>
-          )}
-          {reloadFailed && (
-            <p role="alert" className={styles.alert} data-publication-gallery-error="">
-              {translate(language, "preview.unavailable")}
-            </p>
-          )}
-        </>
-      )}
-
       {outcome === "preview_outdated" && (
         <p role="status" className={styles.notice}>
           {translate(language, "publish.outdated")}
@@ -298,6 +255,52 @@ export function PreviewPublicationPanel({
             <h2 id="publication-confirm-title" className={styles.dialogTitle}>
               {translate(language, "publish.confirmTitle")}
             </h2>
+            {selection !== undefined && (
+              <>
+                <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
+                  <legend className={styles.text}>
+                    {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
+                    {translate(language, "publish.galleryLimit")}
+                  </legend>
+                  {gallery.choices.map((choice, index) => {
+                    const selected = selection.includes(choice.mediaId);
+                    const full = gallery.limit !== null && selection.length >= gallery.limit;
+                    const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
+                    return (
+                      <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
+                        {choice.readUrl !== null ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
+                          <img src={choice.readUrl} alt="" />
+                        ) : (
+                          <span className={styles.thumbMissing} aria-hidden="true" />
+                        )}
+                        <span>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={!selected && full}
+                            onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
+                          />{" "}
+                          {label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+                {reloading && (
+                  <p className={styles.notice} data-publication-gallery-loading="">
+                    <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
+                      {null}
+                    </PendingActionLabel>
+                  </p>
+                )}
+                {reloadFailed && (
+                  <p role="alert" className={styles.alert} data-publication-gallery-error="">
+                    {translate(language, "preview.unavailable")}
+                  </p>
+                )}
+              </>
+            )}
             <p id="publication-confirm-body" className={styles.text}>
               {translate(language, "publish.confirmBody")}
             </p>
@@ -311,7 +314,7 @@ export function PreviewPublicationPanel({
                 ref={confirmButton}
                 type="button"
                 className={styles.primary}
-                disabled={pending}
+                disabled={busy}
                 aria-busy={pending}
                 onClick={() => void confirm()}
                 data-publication-confirm=""

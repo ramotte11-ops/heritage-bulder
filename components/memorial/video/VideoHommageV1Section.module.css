@@ -1,0 +1,15 @@
+/* VID-15 — mention « aperçu seulement » d'un hommage en offre gratuite :
+   discrète, posée sur la pile de cartes AU-DESSUS de la rubrique, jamais dans
+   le Master. Aperçu du Builder seulement. */
+.previewOnlyNote {
+  margin: 0 auto;
+  padding: 10px 16px;
+  max-width: 1672px;
+  box-sizing: border-box;
+  font-family: var(--heritage-font-family-sans, system-ui, sans-serif);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+  color: #efe6d6;
+  background: rgb(13 11 9 / 0.92);
+}
