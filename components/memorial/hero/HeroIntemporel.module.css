@@ -244,6 +244,16 @@
     height: 100%;
   }
 
+  /* Correctif cadre Polaroid : l'overlay V2 a des pixels totalement
+     transparents dans le bord usé du cadre, hors de la fenêtre photo.
+     Sans fond propre, ils laissaient voir le fond sombre de la pile de
+     cartes (#0d0b09, aperçu et page publique) en taches noires. Fond
+     ivoire de la page, visible seulement à travers ces usures. Aucun
+     asset, aucune transparence ni le Hero Dark ne sont modifiés. */
+  [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .hero {
+    background-color: var(--heritage-surface-page, #f6f1e7);
+  }
+
   [data-heritage-skin="intemporel"][data-heritage-skin-variant="light"] .desktopLightPhotoRuntime {
     z-index: 0;
     overflow: hidden;
