@@ -32,7 +32,9 @@ Le script affiche :
   et n'est stockée nulle part) ;
 - une instruction SQL `insert into entitlements …` qui ne contient que
   l'empreinte sha256 de la clé, avec un `external_order_id` repérable
-  (`qg-test-po-AAAAMMJJHHMMSS-xxxx`).
+  (`qg-test-po-AAAAMMJJHHMMSS-xxxx`) et `access_level = 'complet'`. Ce niveau
+  est obligatoire depuis HERITAGE Direct : sans lui, l'insertion est refusée.
+  Correctif VID-12, vérifié sur une base locale jetable.
 
 Le script n'exécute rien : pas de SQL, pas d'appel réseau, pas de fichier écrit.
 
