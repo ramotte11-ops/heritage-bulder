@@ -29,6 +29,8 @@ export interface VideoHommageTexts {
   expired: string;
   /** VID-08 — renouveler les adresses de lecture (proposé seulement si l'hôte le permet). */
   reload: string;
+  /** VID-15 — aperçu d'un hommage gratuit : mention discrète, hors du Master. */
+  requiresComplete: string;
 }
 
 function spokenDuration(duration: string | null, minutes: string, seconds: string): string {
@@ -53,6 +55,7 @@ export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
     unsupported: "Ce navigateur ne permet pas de lire cette vidéo. Ouvrez cette page avec un navigateur récent (Safari, Chrome, Edge ou Firefox).",
     expired: "Le lien de lecture de cette vidéo a expiré.",
     reload: "Recharger la vidéo",
+    requiresComplete: "Aperçu : cette rubrique sera publiée avec l'hommage complet.",
   },
   en: {
     title: "Moments to remember",
@@ -68,6 +71,7 @@ export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
     unsupported: "This browser cannot play this video. Open this page in a recent browser (Safari, Chrome, Edge or Firefox).",
     expired: "The playback link for this video has expired.",
     reload: "Reload the video",
+    requiresComplete: "Preview: this section is published with the full tribute.",
   },
   es: {
     title: "Momentos para recordar",
@@ -83,5 +87,6 @@ export const VIDEO_HOMMAGE_TEXTS: Record<Language, VideoHommageTexts> = {
     unsupported: "Este navegador no puede reproducir este vídeo. Abra esta página con un navegador reciente (Safari, Chrome, Edge o Firefox).",
     expired: "El enlace de reproducción de este vídeo ha caducado.",
     reload: "Volver a cargar el vídeo",
+    requiresComplete: "Vista previa: esta sección se publica con el homenaje completo.",
   },
 };

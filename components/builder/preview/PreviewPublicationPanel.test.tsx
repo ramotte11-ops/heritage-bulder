@@ -39,6 +39,13 @@ function sevenPhotos(selection = [1, 2, 3, 4, 5, 6].map(id)): PreviewPublication
   };
 }
 
+/** VID-15 — the gallery choice lives in the publication step, opened by « Publier ». */
+function openPublication() {
+  const cta = document.querySelector<HTMLButtonElement>("[data-publication-cta]");
+  if (cta === null) throw new Error("no « Publier »");
+  fireEvent.click(cta);
+}
+
 function renderPanel(options: { publication?: PreviewPublication; outcome?: PublishFromPreviewOutcome } = {}) {
   const publish = vi.fn(async () => options.outcome ?? ("published" as PublishFromPreviewOutcome));
   const reload = vi.fn(async () => true);
@@ -207,13 +214,44 @@ describe("PreviewPublicationPanel — outcomes", () => {
 });
 
 describe("PreviewPublicationPanel — avis gallery choice", () => {
-  it("6 photos or fewer: no choice is offered", () => {
+  it("6 photos or fewer: no choice is offered, even in the publication step", () => {
     renderPanel();
+    openPublication();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("VID-15 — no photo choice and no form above the memorial: the choice appears only once « Publier » is clicked", () => {
+    const { container } = render(
+      <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={vi.fn()} builderPath={null} onBackToCreation={vi.fn()} />,
+    );
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(container.querySelector("[data-publication-gallery]")).toBeNull();
+    openPublication();
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage ?" });
+    expect(dialog.querySelector("[data-publication-gallery]")).not.toBeNull();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+  });
+
+  it("VID-15 — « Confirmer » is held while the chosen selection is being reloaded (never a stale fingerprint)", async () => {
+    let finish!: (value: boolean) => void;
+    const reload = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    const publish = vi.fn(async () => "published" as PublishFromPreviewOutcome);
+    render(
+      <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={publish} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
+    );
+    openPublication();
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    const confirm = screen.getByRole("button", { name: "Confirmer la publication" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(publish).not.toHaveBeenCalled();
+    await act(async () => finish(true));
+    await waitFor(() => expect(confirm.disabled).toBe(false));
   });
 
   it("7 photos: the six first are checked, the 7th cannot be added while six are chosen", () => {
     renderPanel({ publication: publication({ gallery: sevenPhotos() }) });
+    openPublication();
     expect(screen.getByText(/6 photos sur 7 seront publiées/)).toBeTruthy();
     const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
     expect(boxes.map((box) => box.checked)).toEqual([true, true, true, true, true, true, false]);
@@ -225,6 +263,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     const { rerender } = render(
       <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
     );
+    openPublication();
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     await waitFor(() => expect(reload).toHaveBeenLastCalledWith([1, 3, 4, 5, 6].map(id)));
     rerender(
@@ -251,6 +290,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
         onBackToCreation={vi.fn()}
       />,
     );
+    openPublication();
 
     const checkbox = screen.getAllByRole("checkbox")[1];
     fireEvent.click(checkbox);
@@ -280,6 +320,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
         onBackToCreation={vi.fn()}
       />,
     );
+    openPublication();
 
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     expect((await screen.findByRole("alert")).textContent).toBe("L’aperçu n’est pas disponible pour le moment. Réessayez dans un instant.");
@@ -292,6 +333,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
 
   it("the last photo cannot be unchecked (an empty gallery choice is not a choice)", () => {
     const { reload } = renderPanel({ publication: publication({ gallery: sevenPhotos([id(3)]) }) });
+    openPublication();
     fireEvent.click(screen.getAllByRole("checkbox")[2]);
     expect(reload).not.toHaveBeenCalled();
   });

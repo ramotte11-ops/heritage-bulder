@@ -561,10 +561,38 @@ describe("QG 008 Lot 3 — « Publier » exists only where the page asks for it"
       </BuilderPreviewHost>,
     );
     fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    // VID-15 — the choice is made in the publication step, opened by « Publier ».
+    fireEvent.click(await screen.findByRole("button", { name: "Publier" }));
     const boxes = await screen.findAllByRole("checkbox");
     expect(boxes).toHaveLength(7);
     fireEvent.click(boxes[0]);
     await waitFor(() => expect(load).toHaveBeenLastCalledWith([2, 3, 4, 5, 6].map(id)));
+  });
+
+  it("VID-15 — the Preview opens on the memorial (Hero first); « Publier » and no photo form come only AFTER it", async () => {
+    const id = (n: number) => `5e0c2a4b-1f3d-4e6a-8b7c-${String(n).padStart(12, "0")}`;
+    const choices = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ mediaId: id(n), readUrl: FIXTURE_READ_URL }));
+    const load = vi.fn(async () => {
+      const ready = await readyResult();
+      return {
+        ...(ready as Extract<HostResult, { status: "ready" }>),
+        publication: { ...PUBLICATION, gallery: { total: 7, limit: 6, selection: [1, 2, 3, 4, 5, 6].map(id), proposed: true, choices } },
+      };
+    });
+    const { container } = render(
+      <BuilderPreviewHost available language="fr" loadPreview={load} publish={vi.fn()}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    const cta = await screen.findByRole("button", { name: "Publier" });
+    const preview = container.querySelector("[data-memorial-preview]")!;
+    const firstSection = preview.querySelector("[data-memorial-section]")!;
+    expect(firstSection.getAttribute("data-memorial-section")).toBe("hero");
+    // The memorial precedes the publication panel in the document order.
+    expect(firstSection.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(preview.querySelector("[data-publication-gallery]")).toBeNull();
   });
 });
 
