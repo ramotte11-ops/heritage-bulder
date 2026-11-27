@@ -1148,3 +1148,54 @@ describe("HeroIntemporel — photo alignment below 960px (Light and Dark)", () =
     expect(HERO_INTEMPOREL_DESKTOP_DARK_PHOTO_RUNTIME.overlaySha256).toBe("9e8419e9446838367210893897f1f02434e30a34e61f1231f04634d95a2d2f8b");
   });
 });
+
+/**
+ * Correctif cadre Polaroid Desktop Light : les usures du cadre de l'overlay
+ * V2 sont des pixels totalement transparents hors de la fenêtre photo. Le
+ * Hero Light Desktop doit donc porter son propre fond ivoire, sinon la pile
+ * de cartes sombre (#0d0b09) apparaît en taches noires dans l'aperçu et sur
+ * la page publique. Le Hero Dark, le Mobile et les assets restent inchangés.
+ */
+describe("HeroIntemporel — fond ivoire sous le cadre Polaroid Desktop Light", () => {
+  const CSS_RULES_ONLY = readFileSync(path.resolve(import.meta.dirname, "HeroIntemporel.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const LIGHT_HERO_BG = /\[data-heritage-skin="intemporel"\]\[data-heritage-skin-variant="light"\] \.hero \{\s*background-color: var\(--heritage-surface-page, #f6f1e7\);\s*\}/;
+
+  function mediaBlocks(source: string): { query: string; body: string }[] {
+    const blocks: { query: string; body: string }[] = [];
+    const re = /@media\s*([^{]+)\{/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(source)) !== null) {
+      let depth = 1;
+      let index = re.lastIndex;
+      while (depth > 0 && index < source.length) {
+        if (source[index] === "{") depth += 1;
+        if (source[index] === "}") depth -= 1;
+        index += 1;
+      }
+      blocks.push({ query: match[1].trim(), body: source.slice(re.lastIndex, index - 1) });
+    }
+    return blocks;
+  }
+
+  it("le fond ivoire existe exactement une fois, dans le seul bloc Desktop (min-width: 960px)", () => {
+    expect(CSS_RULES_ONLY.match(new RegExp(LIGHT_HERO_BG.source, "g"))).toHaveLength(1);
+    const owners = mediaBlocks(CSS_RULES_ONLY).filter((block) => LIGHT_HERO_BG.test(block.body));
+    expect(owners).toHaveLength(1);
+    expect(owners[0].query).toBe("(min-width: 960px)");
+  });
+
+  it("aucun fond n'est ajouté au Hero Dark", () => {
+    expect(CSS_RULES_ONLY).not.toMatch(/\[data-heritage-skin-variant="dark"\] \.hero \{[^}]*background/);
+  });
+
+  it("le jeton --heritage-surface-page vaut bien l'ivoire de repli #f6f1e7", () => {
+    const primitives = readFileSync(path.resolve(import.meta.dirname, "../../../styles/tokens/primitives.css"), "utf8");
+    const semantic = readFileSync(path.resolve(import.meta.dirname, "../../../styles/tokens/semantic.css"), "utf8");
+    expect(primitives).toMatch(/--heritage-color-cream-100:\s*#f6f1e7;/);
+    expect(semantic).toMatch(/--heritage-surface-page:\s*var\(--heritage-color-cream-100\);/);
+  });
+
+  it("l'overlay Desktop Light reste l'asset Studio d'origine, octet pour octet", () => {
+    expect(HERO_INTEMPOREL_DESKTOP_LIGHT_PHOTO_RUNTIME.overlaySha256).toBe("6a614a9db6367eb7a9ad11a353df167504140b3d16455bd31615315382b86651");
+  });
+});
