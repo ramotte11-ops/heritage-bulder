@@ -540,3 +540,43 @@ describe("PreviewPublicationPanel — 05-R1 recap in English and Spanish", () =>
     expect(complete.textContent).not.toMatch(/publish\.|visibility\.|\{\w+\}/);
   });
 });
+
+describe("PreviewPublicationPanel — 05-R1-C sharing block", () => {
+  it("free tribute: link, QR code, the 45 days and the cemetery caution — no image", () => {
+    renderPanel();
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.querySelector("h3")!.textContent).toBe("Partager et transmettre cet hommage");
+    expect(share.textContent).toContain("Après publication, vous pourrez partager cet hommage grâce à son lien.");
+    expect(share.textContent).toContain("HERITAGE proposera également un QR code menant à l'hommage.");
+    expect(share.textContent).toContain("plaque commémorative, une carte souvenir");
+    expect(share.textContent).toContain("Le lien et le QR code ne prolongent pas l'accès. L'hommage gratuit reste visible publiquement pendant 45 jours après sa publication");
+    expect(share.textContent).toContain("renseignez-vous auprès du cimetière ou de la mairie");
+    expect(share.querySelectorAll("img, svg, canvas")).toHaveLength(0);
+  });
+
+  it("complete tribute: the same block, access tied to the offer, no premium duration", () => {
+    renderPanel({
+      publication: publication({ accessLevel: "complet", gallery: { total: 3, limit: null, selection: undefined, proposed: false, choices: [] } }),
+      recap: recap({ offer: "complete", galleryCount: 3 }),
+    });
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.textContent).toContain("QR code");
+    expect(share.textContent).toContain("tant qu'il est visible publiquement, selon les conditions de votre offre");
+    expect(share.textContent).not.toMatch(/45 jours|dix ans|trois mois|douze mois|archiv/);
+    expect(share.querySelectorAll("img, svg, canvas")).toHaveLength(0);
+  });
+
+  it.each([
+    ["en", "Sharing and passing on this tribute", "for 45 days"],
+    ["es", "Compartir y transmitir este homenaje", "durante 45 días"],
+  ] as const)("%s — translated", (language, title, days) => {
+    renderPanel({ language });
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.querySelector("h3")!.textContent).toBe(title);
+    expect(share.textContent).toContain(days);
+    expect(share.textContent).not.toMatch(/publish\.|\{\w+\}/);
+  });
+});

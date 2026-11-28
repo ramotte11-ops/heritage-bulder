@@ -135,6 +135,20 @@ export function PublicationRecap({ language, recap, gallerySlot }: PublicationRe
         </section>
       )}
 
+      {/* 05-R1-C — partage : le lien existe dès la publication ; le QR code
+          est annoncé sans promesse de disponibilité immédiate (aucun
+          générateur n'existe encore). Ni l'un ni l'autre n'ouvre un accès
+          au-delà de la visibilité de l'offre ; aucune durée premium avant 05-R2. */}
+      <section className={styles.recapBlock} aria-labelledby="publication-recap-share" data-publication-recap-share="">
+        <h3 id="publication-recap-share" className={styles.recapHeading}>
+          {t("publish.shareTitle")}
+        </h3>
+        <p className={styles.recapDetail}>{t("publish.shareLink")}</p>
+        <p className={styles.recapDetail}>{t("publish.shareQr")}</p>
+        <p className={styles.recapDetail}>{t(free ? "publish.shareFreeAccess" : "publish.shareCompleteAccess")}</p>
+        <p className={styles.recapDetail}>{t("publish.shareCemetery")}</p>
+      </section>
+
       <section className={styles.recapBlock} aria-labelledby="publication-recap-after" data-publication-recap-locks="">
         <h3 id="publication-recap-after" className={styles.recapHeading}>
           {t("publish.recapAfter")}

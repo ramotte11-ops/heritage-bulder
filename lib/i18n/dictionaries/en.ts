@@ -815,5 +815,11 @@ export const en: Record<TranslationKey, string> = {
   "publish.recapAfter": "After publication",
   "publish.recapLocked": "At present, once the tribute is published, your loved one's portrait (name, dates, phrase, main photo and framing), the ambiance, the announcement choice and the ceremony details can no longer be changed online.",
   "publish.freeConfirmBody": "Only what is listed under “What will be publicly visible” will be published.",
+  "publish.shareTitle": "Sharing and passing on this tribute",
+  "publish.shareLink": "After publication, you will be able to share this tribute through its link.",
+  "publish.shareQr": "HERITAGE will also offer a QR code leading to the tribute. It could, for example, be reproduced on a memorial plaque, a remembrance card or a medium suited to a place of remembrance.",
+  "publish.shareFreeAccess": "The link and the QR code do not extend access. The free tribute remains publicly visible for 45 days after its publication, after which they will no longer display it.",
+  "publish.shareCompleteAccess": "The link and the QR code grant no additional access. They lead to the tribute for as long as it is publicly visible, under the terms of your offer.",
+  "publish.shareCemetery": "Before placing anything on a grave, check the applicable rules with the cemetery or the local authority.",
   "flowPause.openPreview": "See the preview of my tribute",
 };

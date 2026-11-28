@@ -157,9 +157,40 @@ describe("05-R1 — the recap's sentences match the implemented rules", () => {
       "publish.completeVideos",
       "publish.confirmBody",
       "publish.recapLocked",
+      "publish.shareTitle",
+      "publish.shareLink",
+      "publish.shareQr",
+      "publish.shareCompleteAccess",
+      "publish.shareCemetery",
     ] as const;
     for (const key of keys) {
       expect(translate(language, key)).not.toMatch(/\b10\b|\bdix\b|\bten\b|\bdiez\b|archiv|récupér|recover|recuper/i);
     }
+  });
+});
+
+describe("05-R1-C — sharing: link and QR code, never a promise of permanent access", () => {
+  const SHARE_KEYS = [
+    "publish.shareTitle",
+    "publish.shareLink",
+    "publish.shareQr",
+    "publish.shareFreeAccess",
+    "publish.shareCompleteAccess",
+    "publish.shareCemetery",
+  ] as const;
+
+  it.each(["fr", "en", "es"] as const)("%s — no « permanent », « forever » or « always » wording", (language) => {
+    for (const key of SHARE_KEYS) {
+      expect(translate(language, key)).not.toMatch(/permanent|permanencia|toujours|à vie|définiti|forever|always|for life|siempre|para toda|indefinid/i);
+    }
+  });
+
+  it.each(["fr", "en", "es"] as const)("%s — the free tribute's link and QR code follow its 45 days", (language) => {
+    expect(translate(language, "publish.shareFreeAccess")).toMatch(/\b45\b/);
+  });
+
+  it.each(["fr", "en", "es"] as const)("%s — the QR code is announced, not described as already available", (language) => {
+    // No generator exists yet (05-R1-C audit): future tense, never « disponible » / « available now ».
+    expect(translate(language, "publish.shareQr")).not.toMatch(/disponible|available|téléchar|download|descarg/i);
   });
 });

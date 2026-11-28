@@ -805,5 +805,11 @@ export const es: Partial<Record<TranslationKey, string>> = {
   "publish.recapAfter": "Después de la publicación",
   "publish.recapLocked": "Por ahora, una vez publicado el homenaje, el retrato de su ser querido (nombre, fechas, frase, foto principal y encuadre), el ambiente, la elección del anuncio y la información de la ceremonia ya no pueden modificarse en línea.",
   "publish.freeConfirmBody": "Solo se publicará lo que figura en «Lo que será visible públicamente».",
+  "publish.shareTitle": "Compartir y transmitir este homenaje",
+  "publish.shareLink": "Tras la publicación, podrá compartir este homenaje mediante su enlace.",
+  "publish.shareQr": "HERITAGE también ofrecerá un código QR que lleve al homenaje. Podrá reproducirse, por ejemplo, en una placa conmemorativa, una tarjeta de recuerdo o un soporte adecuado para un lugar de recogimiento.",
+  "publish.shareFreeAccess": "El enlace y el código QR no prolongan el acceso. El homenaje gratuito permanece visible públicamente durante 45 días tras su publicación; después, dejarán de mostrarlo.",
+  "publish.shareCompleteAccess": "El enlace y el código QR no otorgan ningún acceso adicional. Llevan al homenaje mientras sea visible públicamente, según las condiciones de su oferta.",
+  "publish.shareCemetery": "Antes de colocar cualquier elemento en una sepultura, consulte las normas aplicables con el cementerio o el ayuntamiento.",
   "flowPause.openPreview": "Ver la vista previa de mi homenaje",
 };

@@ -1045,6 +1045,12 @@ export const TRANSLATION_KEYS = [
   "publish.recapAfter",
   "publish.recapLocked",
   "publish.freeConfirmBody",
+  "publish.shareTitle",
+  "publish.shareLink",
+  "publish.shareQr",
+  "publish.shareFreeAccess",
+  "publish.shareCompleteAccess",
+  "publish.shareCemetery",
   "flowPause.openPreview",
 ] as const;
 
