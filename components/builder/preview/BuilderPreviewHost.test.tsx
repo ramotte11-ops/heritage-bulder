@@ -545,6 +545,21 @@ describe("QG 008 Lot 3 — « Publier » exists only where the page asks for it"
     await waitFor(() => expect(screen.queryByRole("button", { name: "Publier" })).toBeNull());
   });
 
+  it("05-R1 — the confirmation recaps the Preview the server assembled (free variant)", async () => {
+    render(
+      <BuilderPreviewHost available language="fr" loadPreview={withPublication} publish={vi.fn()}>
+        <Step persist={okPersist} />
+      </BuilderPreviewHost>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: OPEN }));
+    fireEvent.click(await screen.findByRole("button", { name: "Publier" }));
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage gratuit ?" });
+    const visible = dialog.querySelector("[data-publication-recap-visible]")!;
+    expect(visible.querySelector('[data-section="hero"]')!.textContent).toBe("Le portrait de votre proche");
+    expect(dialog.textContent).toContain("pendant 45 jours");
+    expect(dialog.textContent).not.toContain("tel que vous le voyez");
+  });
+
   it("a gallery choice reloads the Preview through the same server read, with the selection", async () => {
     const id = (n: number) => `5e0c2a4b-1f3d-4e6a-8b7c-${String(n).padStart(12, "0")}`;
     const choices = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ mediaId: id(n), readUrl: FIXTURE_READ_URL }));

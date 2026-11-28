@@ -5,7 +5,9 @@ import type { Language } from "@/config/languages";
 import { translate, translateWith } from "@/lib/i18n/translate";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
 import { PendingActionLabel } from "../PendingActionLabel";
+import type { PublicationRecap as PublicationRecapData } from "@/lib/memorial/publication-recap";
 import { heroPhotoPath } from "./hero-photo-path";
+import { PublicationRecap } from "./PublicationRecap";
 import styles from "./PreviewPublicationPanel.module.css";
 
 // QG 004-B — loaded only when an authenticated publication is refused for an
@@ -34,11 +36,19 @@ const EmailVerificationStep = lazy(() =>
  * - « Confirmer » sends ONLY the revision, the fingerprint and the
  *   selection currently shown — one call at a time (double clicks are
  *   ignored) — and shows the outcome.
+ *
+ * 05-R1 — the confirmation is ONE recap, in two variants (free / complete):
+ * what will be public, what stays private, the free tribute's 45 days and
+ * account rule, and what can no longer be changed. Display only: `recap` is
+ * derived by the host from the Preview the server assembled; nothing it
+ * holds is sent, and the request « Confirmer » sends is unchanged.
  */
 
 export interface PreviewPublicationPanelProps {
   language: Language;
   publication: PreviewPublication;
+  /** 05-R1 — what the confirmation says (lib/memorial/publication-recap.ts). */
+  recap: PublicationRecapData;
   publish: (revision: number, digest: string, gallerySelection?: string[]) => Promise<PublishFromPreviewOutcome>;
   /** Re-reads the Preview for this selection; `false` when it could not. */
   reload: (gallerySelection?: string[]) => Promise<boolean>;
@@ -59,6 +69,7 @@ const ERROR_KEYS = {
 export function PreviewPublicationPanel({
   language,
   publication,
+  recap,
   publish,
   reload,
   builderPath,
@@ -158,6 +169,54 @@ export function PreviewPublicationPanel({
     }
   }
 
+  const gallerySlot =
+    selection === undefined ? undefined : (
+      <>
+        <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
+          <legend className={styles.text}>
+            {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
+            {translate(language, "publish.galleryLimit")}
+          </legend>
+          {gallery.choices.map((choice, index) => {
+            const selected = selection.includes(choice.mediaId);
+            const full = gallery.limit !== null && selection.length >= gallery.limit;
+            const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
+            return (
+              <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
+                {choice.readUrl !== null ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
+                  <img src={choice.readUrl} alt="" />
+                ) : (
+                  <span className={styles.thumbMissing} aria-hidden="true" />
+                )}
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={!selected && full}
+                    onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
+                  />{" "}
+                  {label}
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+        {reloading && (
+          <p className={styles.notice} data-publication-gallery-loading="">
+            <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
+              {null}
+            </PendingActionLabel>
+          </p>
+        )}
+        {reloadFailed && (
+          <p role="alert" className={styles.alert} data-publication-gallery-error="">
+            {translate(language, "preview.unavailable")}
+          </p>
+        )}
+      </>
+    );
+
   const errorKey = outcome !== null && outcome in ERROR_KEYS ? ERROR_KEYS[outcome as keyof typeof ERROR_KEYS] : null;
 
   return (
@@ -253,63 +312,20 @@ export function PreviewPublicationPanel({
             className={styles.dialog}
           >
             <h2 id="publication-confirm-title" className={styles.dialogTitle}>
-              {translate(language, "publish.confirmTitle")}
+              {translate(language, recap.offer === "free" ? "publish.freeTitle" : "publish.completeTitle")}
             </h2>
-            {selection !== undefined && (
-              <>
-                <fieldset className={styles.choices} disabled={busy} data-publication-gallery="">
-                  <legend className={styles.text}>
-                    {translateWith(language, "publish.gallerySelection", { selected: selection.length, total: gallery.total })}{" "}
-                    {translate(language, "publish.galleryLimit")}
-                  </legend>
-                  {gallery.choices.map((choice, index) => {
-                    const selected = selection.includes(choice.mediaId);
-                    const full = gallery.limit !== null && selection.length >= gallery.limit;
-                    const label = translateWith(language, "publish.galleryPhoto", { index: index + 1 });
-                    return (
-                      <label key={choice.mediaId} className={styles.choice} data-selected={selected}>
-                        {choice.readUrl !== null ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- owner-only signed URL, never optimized
-                          <img src={choice.readUrl} alt="" />
-                        ) : (
-                          <span className={styles.thumbMissing} aria-hidden="true" />
-                        )}
-                        <span>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            disabled={!selected && full}
-                            onChange={(event) => void changeSelection(choice.mediaId, event.currentTarget.checked)}
-                          />{" "}
-                          {label}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </fieldset>
-                {reloading && (
-                  <p className={styles.notice} data-publication-gallery-loading="">
-                    <PendingActionLabel pending pendingLabel={translate(language, "common.pleaseWait")}>
-                      {null}
-                    </PendingActionLabel>
-                  </p>
-                )}
-                {reloadFailed && (
-                  <p role="alert" className={styles.alert} data-publication-gallery-error="">
-                    {translate(language, "preview.unavailable")}
-                  </p>
-                )}
-              </>
-            )}
-            <p id="publication-confirm-body" className={styles.text}>
-              {translate(language, "publish.confirmBody")}
-            </p>
+            <div id="publication-confirm-body" className={styles.dialogBody}>
+              <PublicationRecap language={language} recap={recap} gallerySlot={gallerySlot} />
+              <p className={styles.text} data-publication-confirm-body="">
+                {translate(language, recap.offer === "free" ? "publish.freeConfirmBody" : "publish.confirmBody")}
+              </p>
+            </div>
             {publication.accessLevel === "avis" && publication.otherActiveFreeDrafts > 0 ? (
               <p className={styles.notice} data-free-publication-warning="">
                 {translate(language, "publish.freeAccountWarning")}
               </p>
             ) : null}
-            <div className={styles.actions}>
+            <div className={`${styles.actions} ${styles.dialogActions}`}>
               <button
                 ref={confirmButton}
                 type="button"

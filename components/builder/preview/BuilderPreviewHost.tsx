@@ -14,6 +14,7 @@ import type { Language } from "@/config/languages";
 import type { SkinVariant } from "@/config/skins";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
 import { PreviewPublicationPanel } from "./PreviewPublicationPanel";
+import { describePublicationRecap } from "@/lib/memorial/publication-recap";
 import { heroPhotoPath } from "./hero-photo-path";
 import type { AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import { translate } from "@/lib/i18n/translate";
@@ -364,6 +365,17 @@ export function BuilderPreviewHost({
 
   const isOpen = phase === "open" && assembled !== null && language !== null;
 
+  // 05-R1 — what the publication confirmation says, derived from the Preview
+  // the server assembled (display only; nothing here is sent on « Confirmer »).
+  const visibilitySections = journey?.visibility?.sections ?? null;
+  const recap = useMemo(
+    () =>
+      assembled !== null && publication !== null
+        ? describePublicationRecap({ assembled, publication, visibility: visibilitySections })
+        : null,
+    [assembled, publication, visibilitySections],
+  );
+
   const content = (
     <>
       {/* Always this same wrapper — the Builder is hidden, never unmounted. */}
@@ -393,10 +405,11 @@ export function BuilderPreviewHost({
           {/* VID-15 — décision PO : l'aperçu commence par le Hero. « Publier »
               vient APRÈS l'hommage ; le choix des six photos d'un hommage
               gratuit se fait dans sa confirmation, jamais au-dessus du Hero. */}
-          {publish !== undefined && publication !== null && (
+          {publish !== undefined && publication !== null && recap !== null && (
             <PreviewPublicationPanel
               language={language}
               publication={publication}
+              recap={recap}
               publish={publish}
               reload={reload}
               builderPath={journey?.builderPath ?? null}

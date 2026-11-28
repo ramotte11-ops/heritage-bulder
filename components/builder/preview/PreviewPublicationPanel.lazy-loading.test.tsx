@@ -36,6 +36,7 @@ describe("PreviewPublicationPanel — lazy e-mail verification", () => {
       <PreviewPublicationPanel
         language="fr"
         publication={publication}
+        recap={{ offer: "free", visible: [{ sectionId: "hero", archived: false }], galleryCount: null, videoCount: null, previewOnlyVideoCount: 0, contributions: null, hiddenSections: [] }}
         publish={vi.fn(async () => "email_unverified" as const)}
         reload={vi.fn(async () => true)}
         builderPath="/builder/memorial-a"

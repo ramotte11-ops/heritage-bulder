@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Language } from "@/config/languages";
 import type { PreviewPublication, PublishFromPreviewOutcome } from "@/lib/memorial/publication-preview-types";
+import type { PublicationRecap } from "@/lib/memorial/publication-recap";
 import { PreviewPublicationPanel } from "./PreviewPublicationPanel";
 
 /**
@@ -29,6 +30,25 @@ function publication(overrides: Partial<PreviewPublication> = {}): PreviewPublic
   };
 }
 
+/** 05-R1 — a free recap as the host derives it (lib/memorial/publication-recap.ts). */
+function recap(overrides: Partial<PublicationRecap> = {}): PublicationRecap {
+  return {
+    offer: "free",
+    visible: [
+      { sectionId: "hero", archived: false },
+      { sectionId: "deathNotice", archived: false },
+      { sectionId: "gallery", archived: false },
+    ],
+    galleryCount: 2,
+    videoCount: null,
+    previewOnlyVideoCount: 0,
+    contributions: null,
+    hiddenSections: [],
+    ...overrides,
+  };
+}
+const FREE_RECAP = recap();
+
 function sevenPhotos(selection = [1, 2, 3, 4, 5, 6].map(id)): PreviewPublication["gallery"] {
   return {
     total: 7,
@@ -46,14 +66,15 @@ function openPublication() {
   fireEvent.click(cta);
 }
 
-function renderPanel(options: { publication?: PreviewPublication; outcome?: PublishFromPreviewOutcome } = {}) {
+function renderPanel(options: { publication?: PreviewPublication; outcome?: PublishFromPreviewOutcome; recap?: PublicationRecap; language?: Language } = {}) {
   const publish = vi.fn(async () => options.outcome ?? ("published" as PublishFromPreviewOutcome));
   const reload = vi.fn(async () => true);
   const onBackToCreation = vi.fn();
   render(
     <PreviewPublicationPanel
-      language="fr"
+      language={options.language ?? "fr"}
       publication={options.publication ?? publication()}
+      recap={options.recap ?? FREE_RECAP}
       publish={publish}
       reload={reload}
       builderPath="/builder/memorial-a"
@@ -67,8 +88,10 @@ describe("PreviewPublicationPanel — confirmation", () => {
   it("« Publier » opens an explicit confirmation; nothing is sent before « Confirmer »", async () => {
     const { publish } = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Publier" }));
-    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage ?" });
-    expect(dialog.textContent).toContain("tel que vous le voyez dans cet aperçu");
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage gratuit ?" });
+    // 05-R1 — the free tribute is not published « tel que vous le voyez » any more.
+    expect(dialog.textContent).toContain("Seul ce qui figure dans « Ce qui sera visible publiquement » sera publié.");
+    expect(dialog.textContent).not.toContain("tel que vous le voyez");
     expect(publish).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Confirmer la publication" })));
   });
@@ -104,6 +127,7 @@ describe("PreviewPublicationPanel — confirmation", () => {
     render(
       <PreviewPublicationPanel
         language="fr"
+        recap={FREE_RECAP}
         publication={publication({ gallery: sevenPhotos() })}
         publish={publish}
         reload={vi.fn(async () => true)}
@@ -202,6 +226,7 @@ describe("PreviewPublicationPanel — outcomes", () => {
     const { container } = render(
       <PreviewPublicationPanel
         language="fr"
+        recap={FREE_RECAP}
         publication={publication({ readiness: "unavailable" })}
         publish={vi.fn()}
         reload={vi.fn()}
@@ -222,12 +247,12 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
 
   it("VID-15 — no photo choice and no form above the memorial: the choice appears only once « Publier » is clicked", () => {
     const { container } = render(
-      <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={vi.fn()} builderPath={null} onBackToCreation={vi.fn()} />,
+      <PreviewPublicationPanel language="fr" recap={FREE_RECAP} publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={vi.fn()} builderPath={null} onBackToCreation={vi.fn()} />,
     );
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(container.querySelector("[data-publication-gallery]")).toBeNull();
     openPublication();
-    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage ?" });
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage gratuit ?" });
     expect(dialog.querySelector("[data-publication-gallery]")).not.toBeNull();
     expect(screen.getAllByRole("checkbox")).toHaveLength(7);
   });
@@ -237,7 +262,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     const reload = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
     const publish = vi.fn(async () => "published" as PublishFromPreviewOutcome);
     render(
-      <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={publish} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
+      <PreviewPublicationPanel language="fr" recap={FREE_RECAP} publication={publication({ gallery: sevenPhotos() })} publish={publish} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
     );
     openPublication();
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
@@ -261,13 +286,13 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
   it("unchecking then checking reloads the Preview with the selection in the Builder's order", async () => {
     const reload = vi.fn(async () => true);
     const { rerender } = render(
-      <PreviewPublicationPanel language="fr" publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
+      <PreviewPublicationPanel language="fr" recap={FREE_RECAP} publication={publication({ gallery: sevenPhotos() })} publish={vi.fn()} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
     );
     openPublication();
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     await waitFor(() => expect(reload).toHaveBeenLastCalledWith([1, 3, 4, 5, 6].map(id)));
     rerender(
-      <PreviewPublicationPanel language="fr" publication={publication({ gallery: { ...sevenPhotos([1, 3, 4, 5, 6].map(id)), proposed: false } })} publish={vi.fn()} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
+      <PreviewPublicationPanel language="fr" recap={FREE_RECAP} publication={publication({ gallery: { ...sevenPhotos([1, 3, 4, 5, 6].map(id)), proposed: false } })} publish={vi.fn()} reload={reload} builderPath={null} onBackToCreation={vi.fn()} />,
     );
     fireEvent.click(screen.getAllByRole("checkbox")[6]);
     await waitFor(() => expect(reload).toHaveBeenLastCalledWith([1, 3, 4, 5, 6, 7].map(id)));
@@ -283,6 +308,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     const { container } = render(
       <PreviewPublicationPanel
         language={language as Language}
+        recap={FREE_RECAP}
         publication={publication({ gallery: sevenPhotos() })}
         publish={vi.fn()}
         reload={reload}
@@ -313,6 +339,7 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     const { container } = render(
       <PreviewPublicationPanel
         language="fr"
+        recap={FREE_RECAP}
         publication={publication({ gallery: sevenPhotos() })}
         publish={vi.fn()}
         reload={reload}
@@ -352,5 +379,204 @@ describe("PreviewPublicationPanel — avis gallery choice", () => {
     expect(await screen.findByText("Confirmez votre adresse e-mail.", {}, { timeout: 3_000 })).toBeTruthy();
     expect(document.querySelector("[data-email-verification=\"start\"]")).not.toBeNull();
     expect(document.querySelector("[data-publication=\"done\"]")).toBeNull();
+  });
+});
+
+describe("PreviewPublicationPanel — 05-R1 recap, free tribute", () => {
+  it("says what will be public, what stays private, the 45 days, the 12-month rule and the current locks", () => {
+    renderPanel({
+      recap: recap({
+        previewOnlyVideoCount: 2,
+        hiddenSections: ["story"],
+        contributions: { condolences: true, stories: true, photos: true },
+        visible: [
+          { sectionId: "hero", archived: false },
+          { sectionId: "gallery", archived: false },
+          { sectionId: "testimonials", archived: false },
+          { sectionId: "ceremony", archived: true },
+        ],
+      }),
+    });
+    openPublication();
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage gratuit ?" });
+    const visible = dialog.querySelector("[data-publication-recap-visible]")!;
+    expect(visible.textContent).toContain("Le portrait de votre proche");
+    expect(visible.textContent).toContain("La galerie de souvenirs");
+    expect(visible.textContent).toContain("Dans l'hommage gratuit, la galerie publique compte au plus six photographies.");
+    expect(visible.textContent).toContain("Les condoléances de vos proches sont publiées aussitôt.");
+    expect(visible.textContent).toContain("Leurs récits et leurs photographies ne sont publiés qu'avec votre accord.");
+    expect(visible.textContent).toContain("La cérémonie, consultable par un lien discret en bas de l'hommage");
+    expect(visible.textContent).not.toContain("vidéo");
+
+    const privateBlock = dialog.querySelector("[data-publication-recap-private]")!;
+    expect(privateBlock.textContent).toContain("Vos vidéos ne seront pas publiées : elles sont réservées à l'hommage complet.");
+    expect(privateBlock.textContent).toContain("L'aperçu montre aussi ce que vous avez préparé pour l'hommage complet.");
+    expect(privateBlock.textContent).toContain("Le récit de vie (rubrique masquée)");
+
+    const duration = dialog.querySelector("[data-publication-recap-duration]")!;
+    expect(duration.textContent).toContain("pendant 45 jours à compter de sa publication");
+    expect(duration.textContent).toContain("une publication gratuite par période de 12 mois");
+
+    expect(dialog.querySelector("[data-publication-recap-locks]")!.textContent).toContain(
+      "l'ambiance, le choix de l'annonce et les informations de la cérémonie ne peuvent plus être modifiés en ligne",
+    );
+    // No republication promise, no complete term.
+    expect(dialog.textContent).not.toMatch(/republi|dix ans|archiv/i);
+  });
+
+  it("no prepared video: no video line and no « aperçu » note", () => {
+    renderPanel();
+    openPublication();
+    const privateBlock = screen.getByRole("dialog").querySelector("[data-publication-recap-private]")!;
+    expect(privateBlock.querySelector("[data-publication-recap-private-videos]")).toBeNull();
+    expect(privateBlock.textContent).not.toContain("L'aperçu montre aussi");
+    expect(privateBlock.textContent).toContain("D'autres possibilités, comme la vidéo, sont réservées à l'hommage complet.");
+  });
+
+  it("empty gallery: no gallery line at all", () => {
+    renderPanel({ recap: recap({ galleryCount: null, visible: [{ sectionId: "hero", archived: false }] }) });
+    openPublication();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).not.toContain("galerie");
+    expect(dialog.querySelector("[data-publication-gallery]")).toBeNull();
+  });
+
+  it("more than six photos: the existing choice sits in the « visible » block, the limit is said once", () => {
+    renderPanel({ publication: publication({ gallery: sevenPhotos() }) });
+    openPublication();
+    const dialog = screen.getByRole("dialog");
+    const recapBlock = dialog.querySelector("[data-publication-recap]")!;
+    expect(recapBlock.querySelector("[data-publication-gallery]")).not.toBeNull();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+    expect(dialog.textContent).toContain("6 photos sur 7 seront publiées. Les autres restent dans votre brouillon.");
+    expect(dialog.textContent).not.toContain("Dans l'hommage gratuit, la galerie publique compte au plus six photographies.");
+  });
+
+  it("the buttons stay in a bar pinned to the bottom of the dialog", () => {
+    renderPanel();
+    openPublication();
+    const confirm = screen.getByRole("button", { name: "Confirmer la publication" });
+    const back = screen.getByRole("button", { name: "Revenir à l'aperçu" });
+    expect(confirm.parentElement).toBe(back.parentElement);
+    expect(confirm.parentElement!.className).toMatch(/dialogActions/);
+    expect(screen.getByRole("dialog").getAttribute("aria-describedby")).toBe("publication-confirm-body");
+    expect(document.getElementById("publication-confirm-body")!.querySelector("[data-publication-recap]")).not.toBeNull();
+  });
+});
+
+describe("PreviewPublicationPanel — 05-R1 recap, complete tribute", () => {
+  const COMPLETE = recap({
+    offer: "complete",
+    visible: [
+      { sectionId: "hero", archived: false },
+      { sectionId: "gallery", archived: false },
+      { sectionId: "video", archived: false },
+    ],
+    galleryCount: 24,
+    videoCount: 2,
+  });
+  const complete = () =>
+    publication({ accessLevel: "complet", gallery: { total: 24, limit: null, selection: undefined, proposed: false, choices: [] } });
+
+  it("is short and textual: the photo count, no thumbnail, no checkbox, no free-tribute rules", () => {
+    renderPanel({ publication: complete(), recap: COMPLETE });
+    openPublication();
+    const dialog = screen.getByRole("dialog", { name: "Publier votre hommage complet ?" });
+    expect(dialog.textContent).toContain("Vos 24 photographies seront incluses dans votre hommage complet.");
+    expect(dialog.textContent).toContain("Seules les vidéos dont la préparation est terminée au moment de la publication y figureront.");
+    expect(dialog.querySelectorAll("img")).toHaveLength(0);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(dialog.querySelector("[data-publication-recap-duration]")).toBeNull();
+    expect(dialog.querySelector("[data-publication-recap-private]")).toBeNull();
+    expect(dialog.textContent).not.toMatch(/45 jours|six photographies|12 mois|dix ans|trois mois|douze mois|archiv/);
+    expect(dialog.textContent).toContain("tel que vous le voyez dans cet aperçu");
+    expect(dialog.querySelector("[data-publication-recap-locks]")).not.toBeNull();
+  });
+
+  it("empty gallery: no photo sentence", () => {
+    renderPanel({ publication: complete(), recap: recap({ offer: "complete", galleryCount: null, visible: [{ sectionId: "hero", archived: false }] }) });
+    openPublication();
+    expect(screen.getByRole("dialog").querySelector("[data-publication-recap-gallery]")).toBeNull();
+  });
+
+  it("a hidden section is said as private, without the free-tribute lines", () => {
+    renderPanel({ publication: complete(), recap: { ...COMPLETE, hiddenSections: ["traditions"] } });
+    openPublication();
+    const privateBlock = screen.getByRole("dialog").querySelector("[data-publication-recap-private]")!;
+    expect(privateBlock.textContent).toContain("Traditions & repères (rubrique masquée)");
+    expect(privateBlock.textContent).not.toContain("réservées à l'hommage complet");
+  });
+
+  it("« Confirmer » still sends only the revision, the fingerprint and no selection", async () => {
+    const { publish } = renderPanel({ publication: complete(), recap: COMPLETE });
+    openPublication();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmer la publication" }));
+    });
+    expect(publish).toHaveBeenCalledExactlyOnceWith(5, DIGEST, undefined);
+  });
+});
+
+describe("PreviewPublicationPanel — 05-R1 recap in English and Spanish", () => {
+  it.each([
+    ["en", "Publish your free tribute?", "Publish your complete tribute?", "Your 24 photographs will be included in your complete tribute.", "45 days"],
+    ["es", "¿Publicar su homenaje gratuito?", "¿Publicar su homenaje completo?", "Sus 24 fotografías se incluirán en su homenaje completo.", "45 días"],
+  ] as const)("%s — both variants are translated, no raw key", (language, freeTitle, completeTitle, photos, days) => {
+    renderPanel({ language, recap: recap({ previewOnlyVideoCount: 1, hiddenSections: ["story"], contributions: { condolences: true, stories: false, photos: true } }) });
+    openPublication();
+    const free = screen.getByRole("dialog", { name: freeTitle });
+    expect(free.textContent).toContain(days);
+    expect(free.textContent).not.toMatch(/publish\.|visibility\.|\{\w+\}/);
+    cleanup();
+
+    renderPanel({
+      language,
+      publication: publication({ accessLevel: "complet", gallery: { total: 24, limit: null, selection: undefined, proposed: false, choices: [] } }),
+      recap: recap({ offer: "complete", galleryCount: 24, videoCount: 1, visible: [{ sectionId: "hero", archived: false }, { sectionId: "gallery", archived: false }, { sectionId: "video", archived: false }] }),
+    });
+    openPublication();
+    const complete = screen.getByRole("dialog", { name: completeTitle });
+    expect(complete.textContent).toContain(photos);
+    expect(complete.textContent).not.toMatch(/publish\.|visibility\.|\{\w+\}/);
+  });
+});
+
+describe("PreviewPublicationPanel — 05-R1-C sharing block", () => {
+  it("free tribute: link, QR code, the 45 days and the cemetery caution — no image", () => {
+    renderPanel();
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.querySelector("h3")!.textContent).toBe("Partager et transmettre cet hommage");
+    expect(share.textContent).toContain("Après publication, vous pourrez partager cet hommage grâce à son lien.");
+    expect(share.textContent).toContain("HERITAGE proposera également un QR code menant à l'hommage.");
+    expect(share.textContent).toContain("plaque commémorative, une carte souvenir");
+    expect(share.textContent).toContain("Le lien et le QR code ne prolongent pas l'accès. L'hommage gratuit reste visible publiquement pendant 45 jours après sa publication");
+    expect(share.textContent).toContain("renseignez-vous auprès du cimetière ou de la mairie");
+    expect(share.querySelectorAll("img, svg, canvas")).toHaveLength(0);
+  });
+
+  it("complete tribute: the same block, access tied to the offer, no premium duration", () => {
+    renderPanel({
+      publication: publication({ accessLevel: "complet", gallery: { total: 3, limit: null, selection: undefined, proposed: false, choices: [] } }),
+      recap: recap({ offer: "complete", galleryCount: 3 }),
+    });
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.textContent).toContain("QR code");
+    expect(share.textContent).toContain("tant qu'il est visible publiquement, selon les conditions de votre offre");
+    expect(share.textContent).not.toMatch(/45 jours|dix ans|trois mois|douze mois|archiv/);
+    expect(share.querySelectorAll("img, svg, canvas")).toHaveLength(0);
+  });
+
+  it.each([
+    ["en", "Sharing and passing on this tribute", "for 45 days"],
+    ["es", "Compartir y transmitir este homenaje", "durante 45 días"],
+  ] as const)("%s — translated", (language, title, days) => {
+    renderPanel({ language });
+    openPublication();
+    const share = screen.getByRole("dialog").querySelector("[data-publication-recap-share]")!;
+    expect(share.querySelector("h3")!.textContent).toBe(title);
+    expect(share.textContent).toContain(days);
+    expect(share.textContent).not.toMatch(/publish\.|\{\w+\}/);
   });
 });

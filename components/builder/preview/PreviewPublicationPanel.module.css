@@ -143,6 +143,57 @@
   font-size: 1.125rem;
 }
 
+/* 05-R1 — the recap: short titled blocks, text only, no table. */
+.dialogBody {
+  display: grid;
+  gap: 1rem;
+}
+
+.recap {
+  display: grid;
+  gap: 1rem;
+}
+
+.recapBlock {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.recapHeading {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--heritage-text-primary);
+}
+
+.recapList {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-inline-start: 1.1rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.recapDetail {
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/* 05-R1 — « Confirmer » / « Revenir » stay reachable while the box scrolls
+   (mobile, long galleries): pinned to the bottom of the dialog. */
+.dialogActions {
+  position: sticky;
+  bottom: -1.25rem;
+  margin: 0 -1.25rem -1.25rem;
+  padding: 0.75rem 1.25rem 1.25rem;
+  background: var(--heritage-surface-card);
+  border-top: 1px solid var(--heritage-border-soft);
+}
+
 /* QG 004-B — the one-time address check before the first publication.
    Functional fields in the panel's own grammar; to be reviewed by the PO. */
 .verifyField {
