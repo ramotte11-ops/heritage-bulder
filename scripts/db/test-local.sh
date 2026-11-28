@@ -6130,6 +6130,49 @@ check "F1: rollback preserves the memorial, all contract dates, draft and snapsh
 check "F1: rollback gate refuses a missing protection" "1" \
   "$($DB -c 'begin;' -c 'alter table memorials disable trigger memorials_set_complete_term;' -f "$F1_DOWN" 2>&1 | grep -c '06-F1 rollback refused: a premium contract guard is missing' || true)"
 
+echo "== 06-F1-R2: media signing and family contributions =="
+check "R2: fresh media authorization exposes only public terms, including unchanged free access" "0|1|1" \
+  "$(svc "select count(*) from read_public_media_term_v1('$F1_SLUG');")|$(svc "select count(*) from read_public_media_term_v1('$F1_FREE_SLUG') where complete_until is not null;")|$(svc "select count(*) from read_public_media_term_v1('$F1_ACTIVE_FREE_SLUG') where complete_until is null;")"
+check "R2: media authorization refuses the exact public deadline" "0" \
+  "$($DB -t -A -c "begin; set local session_replication_role=replica; update memorials set complete_until=statement_timestamp() where id='$F1_FREE'; select count(*) from read_public_media_term_v1('$F1_FREE_SLUG'); rollback;")"
+check "R2: only the server role can execute the media and family RPCs" "t" \
+  "$($DB -t -A -c "select bool_and(not has_function_privilege('anon', f, 'EXECUTE') and not has_function_privilege('authenticated', f, 'EXECUTE') and has_function_privilege('service_role', f, 'EXECUTE')) from unnest(array['public.read_public_media_term_v1(text)','public.count_pending_contributions_v1(uuid,uuid)','public.moderate_contribution_v1(uuid,uuid,text)','public.remove_contribution_v1(uuid,uuid)']) as f;")"
+
+F2_PENDING=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_DRAFT','testimonial','Famille','Souvenir','pending',false) returning id;")
+F2_ACTIVE=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_FREE','testimonial','Famille','Souvenir','pending',false) returning id;")
+F2_FREE=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_ACTIVE_FREE','condolence','Famille','Souvenir','pending',false) returning id;")
+F2_COUNT="select pending_total from count_pending_contributions_v1('$F1_OWNER','$F1_DRAFT');"
+F2_MOD="select outcome from moderate_contribution_v1('$F1_OWNER','$F2_PENDING','approve');"
+F2_REMOVE="select outcome from remove_contribution_v1('$F1_OWNER','$F2_PENDING');"
+check "R2: during recovery the owner retains count, moderation and explicit removal permissions" "1|updated|removed" \
+  "$($DB -t -A -c 'begin;' -c "set local session_replication_role=replica; update memorials set complete_recovery_until=now()+interval '1 minute' where id='$F1_DRAFT'; set local session_replication_role=origin;" -c "set local role service_role; $F2_COUNT $F2_MOD $F2_REMOVE" -c 'rollback;' | paste -sd'|')"
+check "R2: at recovery deadline both scoped and account counts omit the memorial and mutations are refused" "0|0|refused|refused" \
+  "$($DB -t -A -c "begin; set local session_replication_role=replica; update memorials set complete_recovery_until=statement_timestamp() where id='$F1_DRAFT'; set local session_replication_role=origin; set local role service_role; select count(*) from count_pending_contributions_v1('$F1_OWNER','$F1_DRAFT'); select count(*) from count_pending_contributions_v1('$F1_OWNER') where memorial_id='$F1_DRAFT'; $F2_MOD $F2_REMOVE rollback;" | paste -sd'|')"
+check "R2: archived contribution remains unchanged and another owner cannot moderate or remove" "pending|refused|refused" \
+  "$($DB -t -A -c "select status from messages where id='$F2_PENDING';")|$(svc "select outcome from moderate_contribution_v1('$F1_SECOND_OWNER','$F2_ACTIVE','approve');")|$(svc "select outcome from remove_contribution_v1('$F1_SECOND_OWNER','$F2_ACTIVE');")"
+check "R2: active premium and free operations retain their prior outcomes" "1|updated|removed|1|updated|removed" \
+  "$($DB -t -A -c 'begin;' -c "set local role service_role; select pending_total from count_pending_contributions_v1('$F1_OWNER','$F1_FREE'); select outcome from moderate_contribution_v1('$F1_OWNER','$F2_ACTIVE','approve'); select outcome from remove_contribution_v1('$F1_OWNER','$F2_ACTIVE'); select pending_total from count_pending_contributions_v1('$F1_ACTIVE_FREE_OWNER','$F1_ACTIVE_FREE'); select outcome from moderate_contribution_v1('$F1_ACTIVE_FREE_OWNER','$F2_FREE','approve'); select outcome from remove_contribution_v1('$F1_ACTIVE_FREE_OWNER','$F2_FREE');" -c 'rollback;' | paste -sd'|')"
+check "R2: all synthetic contributions survive the rolled-back test mutations" "3" \
+  "$($DB -t -A -c "select count(*) from messages where id in ('$F2_PENDING','$F2_ACTIVE','$F2_FREE') and status='pending';")"
+F2_PREMIUM_PHOTO=$(svc "select gen_random_uuid();")
+F2_FREE_PHOTO=$(svc "select gen_random_uuid();")
+check "R2: album pages and photo renewals carry the premium marker and preserve free signatures" "true|false|true|false" \
+  "$($DB -t -A -c 'begin;' -c "
+    insert into memorial_contribution_categories (memorial_id, condolences, stories, photos)
+      values ('$F1_FREE',true,true,true), ('$F1_ACTIVE_FREE',true,true,true)
+      on conflict (memorial_id) do update set photos=true;
+    insert into media (id,memorial_id,owner_id,storage_path,media_type,purpose,status,mime_type,size_bytes) values
+      ('$F2_PREMIUM_PHOTO','$F1_FREE','$F1_OWNER','$F1_FREE/$F2_PREMIUM_PHOTO/original.webp','photo','contribution','ready','image/webp',100),
+      ('$F2_FREE_PHOTO','$F1_ACTIVE_FREE','$F1_ACTIVE_FREE_OWNER','$F1_ACTIVE_FREE/$F2_FREE_PHOTO/original.webp','photo','contribution','ready','image/webp',100);
+    insert into messages (id,memorial_id,message_type,author_name,media_id,status,visible,published_at) values
+      ('$F2_PREMIUM_PHOTO','$F1_FREE','photo','Famille','$F2_PREMIUM_PHOTO','published',true,now()),
+      ('$F2_FREE_PHOTO','$F1_ACTIVE_FREE','photo','Famille','$F2_FREE_PHOTO','published',true,now());" -c "
+    set local role service_role;
+    select media->>'requires_term_recheck' from read_public_contributions_v2('$F1_FREE_SLUG',24,null,null,array['photo']);
+    select media->>'requires_term_recheck' from read_public_contributions_v2('$F1_ACTIVE_FREE_SLUG',24,null,null,array['photo']);
+    select media->>'requires_term_recheck' from read_public_contributions_by_ids_v1('$F1_FREE_SLUG',array['$F2_PREMIUM_PHOTO'::uuid]);
+    select media->>'requires_term_recheck' from read_public_contributions_by_ids_v1('$F1_ACTIVE_FREE_SLUG',array['$F2_FREE_PHOTO'::uuid]);" -c 'rollback;' | paste -sd'|')"
+
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1

@@ -60,9 +60,11 @@ export function signedVideoPlayback(input: {
   durationMs: number;
   nowMs: number;
   mp4Available: boolean;
+  expiresAtSeconds?: number;
 }): SignedVideoPlayback {
   const lifetimeSeconds = Math.max(2 * 3600, Math.ceil(input.durationMs / 1000) + 3600);
-  const exp = Math.floor(input.nowMs / 1000) + lifetimeSeconds;
+  const normalExpiration = Math.floor(input.nowMs / 1000) + lifetimeSeconds;
+  const exp = Math.min(normalExpiration, input.expiresAtSeconds ?? normalExpiration);
   const video = signMuxPlaybackToken({
     key: input.key,
     playbackId: input.playbackId,

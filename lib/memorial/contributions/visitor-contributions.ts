@@ -8,7 +8,6 @@ import {
   type ContributionTextType,
   type ContributionType,
 } from "@/config/contributions";
-import { MEDIA_READ_URL_TTL_SECONDS } from "@/config/media";
 import type { ContributionPhotoStore } from "@/lib/adapters/contribution-photo-store";
 import type { ContributionCursor, ContributionRepository, DepositResult, PublicContributionRow } from "@/lib/adapters/contribution-repository";
 import type { MediaObjectStore } from "@/lib/adapters/media-object-store";
@@ -49,6 +48,7 @@ export type { PublicContribution, PublicContributionsInitial, PublicContribution
  */
 
 export interface VisitorContributionDeps extends ContributionMediaCleanupDeps {
+  signPublicPhoto: (slug: string, path: string, requiresTermRecheck: boolean) => Promise<string | null>;
   repository: ContributionRepository;
   objectStore: Pick<MediaObjectStore, "createUploadPermission" | "createReadUrl" | "statObject" | "removeByPrefix">;
   mediaRepository: Pick<MediaRepository, "findById">;
@@ -275,13 +275,14 @@ export function decodeCursor(value: unknown): ContributionCursor | null | "inval
  */
 /** Rows → contributions publiques ; liens signés en parallèle (une page n'attend pas ses photos une à une). */
 async function toPublicContributions(
-  deps: Pick<VisitorContributionDeps, "objectStore">,
+  deps: Pick<VisitorContributionDeps, "signPublicPhoto">,
+  slug: string,
   rows: PublicContributionRow[],
 ): Promise<PublicContribution[]> {
   const signed = await Promise.all(
     rows.map((row) =>
       row.type === "photo" && row.media
-        ? deps.objectStore.createReadUrl({ path: row.media.storagePath, expiresInSeconds: MEDIA_READ_URL_TTL_SECONDS })
+        ? deps.signPublicPhoto(slug, row.media.storagePath, row.media.requiresTermRecheck !== false)
         : Promise.resolve(null),
     ),
   );
@@ -295,7 +296,7 @@ async function toPublicContributions(
 }
 
 export async function readPublicContributions(
-  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  deps: Pick<VisitorContributionDeps, "repository" | "signPublicPhoto">,
   input: { slug: unknown; limit?: unknown; cursor?: unknown; types?: readonly ContributionType[] },
 ): Promise<PublicContributionsPage | { status: "refused" | "unavailable" }> {
   if (!isPublicSlugShape(input.slug)) return REFUSED;
@@ -304,7 +305,7 @@ export async function readPublicContributions(
   const limit = typeof input.limit === "number" && Number.isInteger(input.limit) ? Math.min(Math.max(input.limit, 1), CONTRIBUTION_PAGE_SIZE_MAX) : CONTRIBUTION_PAGE_SIZE;
   try {
     const rows = await deps.repository.readPublic({ slug: input.slug, limit, before, ...(input.types ? { types: input.types } : {}) });
-    const items = await toPublicContributions(deps, rows);
+    const items = await toPublicContributions(deps, input.slug, rows);
     const last = rows[rows.length - 1];
     return { items, nextCursor: rows.length === limit && last ? encodeCursor({ publishedAt: last.publishedAt, id: last.id }) : null };
   } catch {
@@ -328,7 +329,7 @@ const TYPE_OF_CATEGORY = { condolences: "condolence", stories: "testimonial", ph
  * `null` : rubrique non publique ou indisponible — pas de rubrique.
  */
 export async function loadPublicContributionsInitial(
-  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  deps: Pick<VisitorContributionDeps, "repository" | "signPublicPhoto">,
   slug: unknown,
 ): Promise<PublicContributionsInitial | null> {
   if (!isPublicSlugShape(slug)) return null;
@@ -370,7 +371,7 @@ export const RENEW_PHOTOS_MAX_IDS = 100;
  * l'hôte la retire de l'affichage. Aucun chemin de stockage ne quitte le serveur.
  */
 export async function renewPublicContributionPhotos(
-  deps: Pick<VisitorContributionDeps, "repository" | "objectStore">,
+  deps: Pick<VisitorContributionDeps, "repository" | "signPublicPhoto">,
   input: { slug: unknown; ids: unknown },
 ): Promise<RenewPhotosResult> {
   if (!isPublicSlugShape(input.slug)) return REFUSED;
@@ -378,7 +379,7 @@ export async function renewPublicContributionPhotos(
   const wanted = [...new Set((input.ids as string[]).map((id) => id.toLowerCase()))];
   try {
     const rows = await deps.repository.readPublicByIds({ slug: input.slug, ids: wanted });
-    const items = await toPublicContributions(deps, rows.filter((r) => r.type === "photo"));
+    const items = await toPublicContributions(deps, input.slug, rows.filter((r) => r.type === "photo"));
     const renewed: Record<string, string> = {};
     for (const item of items) if (item.photo) renewed[item.id] = item.photo.url;
     return { status: "ok", renewed, gone: wanted.filter((id) => !(id in renewed)) };

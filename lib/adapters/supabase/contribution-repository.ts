@@ -77,6 +77,7 @@ function toPublicRows(data: unknown): PublicContributionRow[] {
               storagePath: media.storage_path as string,
               width: typeof media.width === "number" ? media.width : null,
               height: typeof media.height === "number" ? media.height : null,
+              requiresTermRecheck: media.requires_term_recheck !== false,
             }
           : null,
     });

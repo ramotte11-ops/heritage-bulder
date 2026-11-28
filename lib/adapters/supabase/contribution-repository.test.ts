@@ -55,7 +55,7 @@ describe("M8-E2 — SupabaseContributionRepository", () => {
     });
     const b = fakeRpc({
       data: [
-        { contribution_id: "1", message_type: "photo", author_name: "A", content: null, caption: "c", published_at: "2026-11-01T00:00:00Z", media: { media_id: "m", storage_path: "x/m/original.webp", width: 2, height: 3 } },
+        { contribution_id: "1", message_type: "photo", author_name: "A", content: null, caption: "c", published_at: "2026-11-01T00:00:00Z", media: { media_id: "m", storage_path: "x/m/original.webp", width: 2, height: 3, requires_term_recheck: false } },
         { contribution_id: "2", message_type: "photo", author_name: "B", content: null, caption: null, published_at: "2026-11-01T00:00:00Z", media: null },
         { contribution_id: "3", message_type: "memory_message", author_name: "C", content: "t", caption: null, published_at: "2026-11-01T00:00:00Z", media: null },
         { contribution_id: "4", message_type: "testimonial", author_name: "D", content: "t", caption: null, published_at: "2026-11-01T00:00:00Z", media: null },
@@ -64,6 +64,7 @@ describe("M8-E2 — SupabaseContributionRepository", () => {
     });
     const rows = await new SupabaseContributionRepository(b.client).readPublic({ slug: "s", limit: 24, before: { publishedAt: "2026-11-02T00:00:00Z", id: "z" } });
     expect(rows.map((r) => r.id)).toEqual(["1", "4"]);
+    expect(rows[0].media?.requiresTermRecheck).toBe(false);
     expect(b.rpc).toHaveBeenCalledWith("read_public_contributions_v2", { p_slug: "s", p_limit: 24, p_before_published_at: "2026-11-02T00:00:00Z", p_before_id: "z", p_types: null });
   });
 
