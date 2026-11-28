@@ -28,6 +28,17 @@ function mobile() {
   return within(screen.getByTestId("offerings-v1-mobile"));
 }
 
+/**
+ * `onStateChange` est un rappel d'effet (`useEffect`) : il est appelé APRÈS
+ * l'affichage de l'état qu'il décrit. Un bouton trouvé par `findByRole`
+ * peut donc précéder, d'une tâche, l'état signalé ; sous forte charge, la
+ * dernière valeur lue tout de suite était encore « pending » (05-R1-B).
+ * L'état signalé s'attend comme tout ce qui suit un rendu.
+ */
+async function expectLastState(states: readonly string[], expected: string) {
+  await waitFor(() => expect(states.at(-1)).toBe(expected));
+}
+
 function renderPilot(transmit: (k: string) => Promise<boolean>, extra: Record<string, unknown> = {}) {
   const states: string[] = [];
   render(
@@ -70,8 +81,8 @@ describe("Offrandes V1 — un geste", () => {
     expect(confirmation.textContent!.replace(/\s+/g, " ").trim()).toBe("Une lumière brille désormais en sa mémoire.");
     expect(transmit).toHaveBeenCalledTimes(1);
     expect(transmit).toHaveBeenCalledWith("bougie");
+    await expectLastState(states, "scene/confirmed");
     expect(states).toContain("scene/pending");
-    expect(states.at(-1)).toBe("scene/confirmed");
     expect(screen.getByText("Une lumière brille désormais en sa mémoire.", { selector: "[aria-live]" })).toBeTruthy();
     // Pendant la scène, les cartes ne sont plus atteignables.
     expect(mobile().queryByRole("button", { name: /Déposer une fleur/ })).toBeNull();
@@ -101,7 +112,7 @@ describe("Offrandes V1 — un geste", () => {
     fireEvent.click(retry);
     await mobile().findByRole("button", { name: "Poursuivre la visite" });
     expect(transmit).toHaveBeenCalledTimes(2);
-    expect(states.at(-1)).toBe("scene/confirmed");
+    await expectLastState(states, "scene/confirmed");
   });
 
   it("une transmission qui échoue par exception est traitée comme un échec", async () => {
@@ -120,7 +131,7 @@ describe("Offrandes V1 — essais libres", () => {
     fireEvent.click(mobile().getByRole("button", { name: /Déposer une fleur/ }));
     fireEvent.click(await mobile().findByRole("button", { name: "Poursuivre la visite" }));
     const lys = await mobile().findByRole("button", { name: /Déposer une fleur/ });
-    expect(states.at(-1)).toBe("cards");
+    await expectLastState(states, "cards");
     expect(document.activeElement).toBe(lys);
     fireEvent.click(mobile().getByRole("button", { name: /Offrir un cœur/ }));
     await mobile().findByRole("button", { name: "Poursuivre la visite" });
