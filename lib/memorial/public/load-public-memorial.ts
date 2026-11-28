@@ -7,6 +7,7 @@ import { resolveSkinVariantRuntime } from "@/lib/memorial/skin-runtime";
 import { assembleMemorial, type AssembledMemorial } from "@/lib/memorial/assembly/assemble-memorial";
 import type { MemorialContent } from "@/types/memorial";
 import { readPublicMemorial } from "./read-public-memorial";
+import { signPublicStorageRead } from "./public-media-term";
 import { createPublicSnapshotMediaResolver, createStorageSigner, type SignStoragePath } from "./public-snapshot-media-resolver";
 
 /**
@@ -64,7 +65,17 @@ export async function loadPublicMemorial(slug: unknown, deps: LoadPublicMemorial
   const content = publicContentFor(memorial.content, memorial.accessLevel);
   if (content === null) return { status: "unavailable" };
 
-  const resolveMedia = createPublicSnapshotMediaResolver(memorial.media, deps.sign ?? createStorageSigner(deps.client));
+  const sign = deps.sign ?? createStorageSigner(deps.client);
+  const resolveMedia = createPublicSnapshotMediaResolver(
+    memorial.media,
+    memorial.accessLevel === "complet"
+      ? (path) => signPublicStorageRead({
+        client: deps.client,
+        slug: memorial.slug,
+        sign: (ttl) => ttl === undefined ? sign(path) : sign(path, ttl),
+      })
+      : sign,
+  );
   const assembled = await assembleMemorial(
     { skin: memorial.skin, skinVariant: variant.variant, language: memorial.language, content },
     { resolveMedia },

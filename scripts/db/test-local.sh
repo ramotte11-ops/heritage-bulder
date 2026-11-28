@@ -814,7 +814,7 @@ check "owner A cannot read owner B's draft at all (0 rows, not an error)" "0" "$
 
 # The legacy RLS write checks above model prepublication. Restore the fixture's
 # published status before exercising public snapshots and visitor messages.
-$DB -c "update memorials set status = 'published' where id = '$MEM_A';" >/dev/null
+$DB -c "update memorials set status = 'published', first_published_at = now() where id = '$MEM_A';" >/dev/null
 
 RESULT=$(as_anon "select count(*) from memorial_published_snapshots;")
 check "anonymous visitor sees the 1 published snapshot (memorial A)" "1" "$RESULT"
@@ -4234,7 +4234,7 @@ check "M1: avis past free_public_until (expired) -> 0 rows" "0" \
 check "M1: avis one minute before free_public_until -> still 1 row" "1" \
   "$(m1_in_tx "update memorials set first_published_at = now() - interval '44 days', free_public_until = now() + interval '1 minute', free_private_until = now() + interval '30 days' where id = '$M1_MEM';" "'$M1_SLUG'")"
 check "M1: complet, published -> 1 row (no public time limit here)" "1" \
-  "$(m1_in_tx "update memorials set access_level = 'complet', free_public_until = null, free_private_until = null, free_corrections_until = null where id = '$M1_MEM';" "'$M1_SLUG'")"
+  "$(m1_in_tx "update memorials set access_level = 'complet', access_level_changed_at = now(), free_public_until = null, free_private_until = null, free_corrections_until = null where id = '$M1_MEM';" "'$M1_SLUG'")"
 check "M1: published but snapshot missing -> 0 rows" "0" \
   "$(m1_in_tx "delete from memorial_published_snapshots where memorial_id = '$M1_MEM';" "'$M1_SLUG'")"
 
@@ -6052,6 +6052,126 @@ for f in "$MIGRATIONS_DIR"/*.sql; do $PSQL -d vid09_down -f "$f" >/dev/null 2>&1
 check "VID-09 rollback: release RPC removed, constraint back without superseded, then the migration re-applies" "0|t|f|0|t" \
   "$($PSQL -d vid09_down -v ON_ERROR_STOP=1 -f "$V9_DOWN" >/dev/null 2>&1; echo $?)|$($PSQL -d vid09_down -t -A -c "select to_regprocedure('public.release_superseded_memorial_videos_v1(uuid,integer)') is null;")|$($PSQL -d vid09_down -t -A -c "select pg_get_constraintdef(oid) like '%superseded%' from pg_constraint where conname='memorial_videos_status_check';")|$($PSQL -d vid09_down -v ON_ERROR_STOP=1 -f "$V9_MIG" >/dev/null 2>&1; echo $?)|$($PSQL -d vid09_down -t -A -c "select pg_get_constraintdef(oid) like '%superseded%' from pg_constraint where conname='memorial_videos_status_check';")"
 $PSQL -d postgres -c "drop database vid09_down;" >/dev/null
+
+echo "== 06-F1: premium publication and recovery =="
+F1_OWNER=$(q8_owner f1-owner)
+F1_AUTH=$($DB -t -A -c "select auth_user_id from owners where id='$F1_OWNER';")
+F1_DRAFT=$(v7_complet_draft "$F1_OWNER")
+F1_SLUG=06f100000001
+check "F1: initial complete draft carries no term" "t" \
+  "$($DB -t -A -c "select complete_until is null from memorials where id='$F1_DRAFT';")"
+q8_ready "$F1_DRAFT" "$F1_SLUG" '{}'
+svc "$(q8_v2_sql "$F1_DRAFT" "$F1_OWNER" "$F1_SLUG" complet '{}')" >/dev/null
+check "F1: publication anchors ten UTC calendar years and the next two periods" "t|t|t|t" \
+  "$($DB -t -A -c "set time zone 'UTC'; select (complete_started_at=first_published_at)::text || '|' || (complete_until=complete_started_at+interval '10 years')::text || '|' || (complete_recovery_until=complete_until+interval '3 months')::text || '|' || (complete_archive_until=complete_recovery_until+interval '12 months')::text from memorials where id='$F1_DRAFT';" | sed 's/true/t/g;s/false/f/g')"
+F1_TERM=$($DB -t -A -c "select complete_started_at || '|' || complete_until from memorials where id='$F1_DRAFT';")
+$DB -c "update memorials set status='editing' where id='$F1_DRAFT';" >/dev/null
+F1_FIRST=$($DB -t -A -c "select first_published_at from memorials where id='$F1_DRAFT';")
+F1_REV=$($DB -t -A -c "select revision from memorial_drafts where memorial_id='$F1_DRAFT';")
+svc "select * from commit_memorial_publication_v2('$F1_DRAFT','$F1_OWNER',$F1_REV,'editing','$F1_FIRST','fr','intemporel','light','$F1_SLUG','complet','{}','{}');" >/dev/null
+check "F1: republication preserves the contract" "$F1_TERM" \
+  "$($DB -t -A -c "select complete_started_at || '|' || complete_until from memorials where id='$F1_DRAFT';")"
+
+F1_FREE=$(q8_draft "$F1_OWNER")
+F1_FREE_SLUG=06f100000002
+# Install an old, expired free publication using fixture-only trigger bypass.
+$DB -c "insert into memorial_published_snapshots (memorial_id,content,published_at) values ('$F1_FREE','{}',now()-interval '50 days'); set session_replication_role=replica; update memorials set slug='$F1_FREE_SLUG', language='fr', status='published', first_published_at=now()-interval '50 days', free_public_until=now()-interval '5 days',free_private_until=now()+interval '2 days' where id='$F1_FREE';" >/dev/null
+check "F1: expired free publication is hidden" "0" "$(svc "select count(*) from read_public_memorial_v1('$F1_FREE_SLUG');")"
+check "F1: upgrading restores visibility without republication" "upgraded|1" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$F1_FREE','$F1_OWNER','direct_payment','test-06f1-published');")|$(svc "select count(*) from read_public_memorial_v1('$F1_FREE_SLUG');")"
+check "F1: upgrade replay keeps both historical and contract clocks" "already_complete|t" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$F1_FREE','$F1_OWNER','direct_payment','test-06f1-published');")|$($DB -t -A -c "select first_published_at < complete_started_at and complete_started_at=access_level_changed_at from memorials where id='$F1_FREE';")"
+F1_SECOND_OWNER=$(q8_owner f1-second-owner)
+F1_UNPUBLISHED=$(q8_draft "$F1_SECOND_OWNER")
+check "F1: upgrading an unpublished draft waits for publication" "upgraded|t" \
+  "$(svc "select outcome from upgrade_memorial_access_v1('$F1_UNPUBLISHED','$F1_SECOND_OWNER','admin','test-06f1-draft');")|$($DB -t -A -c "select complete_until is null and complete_pending_publication from memorials where id='$F1_UNPUBLISHED';")"
+$DB -c "set time zone 'Pacific/Auckland'; update memorials set status='published', first_published_at='2016-02-29 13:00:00+00' where id='$F1_UNPUBLISHED';" >/dev/null
+check "F1: February 29 clamps in UTC and the cutoff is exclusive to the microsecond" "t|t|f" \
+  "$($DB -t -A -c "select (complete_until='2026-02-28 13:00:00+00')::text || '|' || public.memorial_publicly_visible_v1(id,complete_until-interval '1 microsecond')::text || '|' || public.memorial_publicly_visible_v1(id,complete_until)::text from memorials where id='$F1_UNPUBLISHED';" | sed 's/true/t/g;s/false/f/g')"
+
+# Move a synthetic published tribute into its recovery period, retaining all content.
+F1_GESTURE=$(svc "select gen_random_uuid();")
+check "F1: a public tribute accepts an offering before the deadline" "recorded" \
+  "$(svc "select outcome from record_symbolic_offering_v1('$F1_SLUG','lys','$F1_GESTURE');")"
+$DB -c "set session_replication_role=replica; update memorials set first_published_at=now()-interval '12 years',complete_started_at=now()-interval '10 years 1 month',complete_until=now()-interval '1 month',complete_recovery_until=now()+interval '2 months', complete_archive_until=now()+interval '14 months' where id='$F1_DRAFT';" >/dev/null
+check "F1: expired public readers and writers cannot use the published tribute" "0|0|0|refused|refused" \
+  "$(svc "select (select count(*) from read_public_memorial_v1('$F1_SLUG')) || '|' || (select count(*) from read_public_memorial_videos_v1('$F1_SLUG')) || '|' || (select count(*) from read_public_contributions_v2('$F1_SLUG',24,null,null,null)) || '|' || (select outcome from record_symbolic_offering_v1('$F1_SLUG','lys',gen_random_uuid())) || '|' || (select outcome from sign_symbolic_offering_v1('$F1_SLUG','$F1_GESTURE','Test'));")"
+check "F1: authenticated owner alone can read the recoverable draft" "1|0" \
+  "$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='$F1_AUTH'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='00000000-0000-0000-0000-000000000001'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")"
+expect_refused "F1: expired snapshot cannot be republished" \
+  "update memorial_published_snapshots set published_at=now() where memorial_id='$F1_DRAFT';" "premium publication expired"
+expect_refused "F1: premium end cannot be reset by an update" \
+  "update memorials set complete_until=null where id='$F1_DRAFT';" "premium term is server managed"
+check "F1: public client roles cannot execute the privileged RPCs" "false|false|false" \
+  "$($DB -t -A -c "select has_function_privilege('anon','public.read_public_memorial_v1(text)','EXECUTE') || '|' || has_function_privilege('authenticated','public.upgrade_memorial_access_v1(uuid,uuid,text,text)','EXECUTE') || '|' || has_function_privilege('authenticated','public.set_memorial_complete_term_v1()','EXECUTE');")"
+expect_refused "F1: direct anon call cannot bypass the public server boundary" \
+  "set role anon; select * from public.read_public_memorial_v1('$F1_SLUG');" "permission denied"
+$DB -c "set session_replication_role=replica; update memorials set complete_recovery_until=now(),complete_archive_until=now()+interval '12 months' where id='$F1_DRAFT';" >/dev/null
+check "F1: archive boundary closes family access and keeps the rows" "0|1|1" \
+  "$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='$F1_AUTH'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$($DB -t -A -c "select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$F1_DRAFT';")"
+F1_DOWN="$REPO_ROOT/supabase/rollbacks/20261127214203_premium_term_foundation.down.sql"
+F1_RETENTION="select md5(jsonb_build_array(to_jsonb(m), to_jsonb(d), to_jsonb(s))::text)
+  from memorials m join memorial_drafts d on d.memorial_id=m.id
+  join memorial_published_snapshots s on s.memorial_id=m.id where m.id='$F1_DRAFT';"
+F1_BEFORE=$($DB -t -A -c "$F1_RETENTION")
+F1_ACTIVE_FREE_OWNER=$(q8_owner f1-free-rollback)
+F1_ACTIVE_FREE=$(q8_draft "$F1_ACTIVE_FREE_OWNER")
+F1_ACTIVE_FREE_SLUG=06f100000003
+F1_ACTIVE_FREE_CONTENT='{"hero":{"displayName":"Avis test","photo":null}}'
+svc "select outcome from anchor_free_memorial_v1('$F1_ACTIVE_FREE','$F1_ACTIVE_FREE_OWNER');" >/dev/null
+q8_ready "$F1_ACTIVE_FREE" "$F1_ACTIVE_FREE_SLUG" "$F1_ACTIVE_FREE_CONTENT"
+svc "$(q8_v2_sql "$F1_ACTIVE_FREE" "$F1_ACTIVE_FREE_OWNER" "$F1_ACTIVE_FREE_SLUG" avis "$F1_ACTIVE_FREE_CONTENT")" >/dev/null
+check "F1: rollback gate accepts intact guards" "ok" \
+  "$($DB -f "$F1_DOWN" >/dev/null && echo ok)"
+check "F1: rollback keeps the expired tribute and the family archive closed and active premium and free tributes visible" "0|0|1|1" \
+  "$(svc "select count(*) from read_public_memorial_v1('$F1_SLUG');")|$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='$F1_AUTH'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$(svc "select count(*) from read_public_memorial_v1('$F1_FREE_SLUG');")|$(svc "select count(*) from read_public_memorial_v1('$F1_ACTIVE_FREE_SLUG');")"
+check "F1: rollback preserves the memorial, all contract dates, draft and snapshot" "$F1_BEFORE" \
+  "$($DB -t -A -c "$F1_RETENTION")"
+check "F1: rollback gate refuses a missing protection" "1" \
+  "$($DB -c 'begin;' -c 'alter table memorials disable trigger memorials_set_complete_term;' -f "$F1_DOWN" 2>&1 | grep -c '06-F1 rollback refused: a premium contract guard is missing' || true)"
+
+echo "== 06-F1-R2: media signing and family contributions =="
+check "R2: fresh media authorization exposes only public terms, including unchanged free access" "0|1|1" \
+  "$(svc "select count(*) from read_public_media_term_v1('$F1_SLUG');")|$(svc "select count(*) from read_public_media_term_v1('$F1_FREE_SLUG') where complete_until is not null;")|$(svc "select count(*) from read_public_media_term_v1('$F1_ACTIVE_FREE_SLUG') where complete_until is null;")"
+check "R2: media authorization refuses the exact public deadline" "0" \
+  "$($DB -t -A -c "begin; set local session_replication_role=replica; update memorials set complete_until=statement_timestamp() where id='$F1_FREE'; select count(*) from read_public_media_term_v1('$F1_FREE_SLUG'); rollback;")"
+check "R2: only the server role can execute the media and family RPCs" "t" \
+  "$($DB -t -A -c "select bool_and(not has_function_privilege('anon', f, 'EXECUTE') and not has_function_privilege('authenticated', f, 'EXECUTE') and has_function_privilege('service_role', f, 'EXECUTE')) from unnest(array['public.read_public_media_term_v1(text)','public.count_pending_contributions_v1(uuid,uuid)','public.moderate_contribution_v1(uuid,uuid,text)','public.remove_contribution_v1(uuid,uuid)']) as f;")"
+
+F2_PENDING=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_DRAFT','testimonial','Famille','Souvenir','pending',false) returning id;")
+F2_ACTIVE=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_FREE','testimonial','Famille','Souvenir','pending',false) returning id;")
+F2_FREE=$($DB -t -A -c "insert into messages (memorial_id,message_type,author_name,content,status,visible) values ('$F1_ACTIVE_FREE','condolence','Famille','Souvenir','pending',false) returning id;")
+F2_COUNT="select pending_total from count_pending_contributions_v1('$F1_OWNER','$F1_DRAFT');"
+F2_MOD="select outcome from moderate_contribution_v1('$F1_OWNER','$F2_PENDING','approve');"
+F2_REMOVE="select outcome from remove_contribution_v1('$F1_OWNER','$F2_PENDING');"
+check "R2: during recovery the owner retains count, moderation and explicit removal permissions" "1|updated|removed" \
+  "$($DB -t -A -c 'begin;' -c "set local session_replication_role=replica; update memorials set complete_recovery_until=now()+interval '1 minute' where id='$F1_DRAFT'; set local session_replication_role=origin;" -c "set local role service_role; $F2_COUNT $F2_MOD $F2_REMOVE" -c 'rollback;' | paste -sd'|')"
+check "R2: at recovery deadline both scoped and account counts omit the memorial and mutations are refused" "0|0|refused|refused" \
+  "$($DB -t -A -c "begin; set local session_replication_role=replica; update memorials set complete_recovery_until=statement_timestamp() where id='$F1_DRAFT'; set local session_replication_role=origin; set local role service_role; select count(*) from count_pending_contributions_v1('$F1_OWNER','$F1_DRAFT'); select count(*) from count_pending_contributions_v1('$F1_OWNER') where memorial_id='$F1_DRAFT'; $F2_MOD $F2_REMOVE rollback;" | paste -sd'|')"
+check "R2: archived contribution remains unchanged and another owner cannot moderate or remove" "pending|refused|refused" \
+  "$($DB -t -A -c "select status from messages where id='$F2_PENDING';")|$(svc "select outcome from moderate_contribution_v1('$F1_SECOND_OWNER','$F2_ACTIVE','approve');")|$(svc "select outcome from remove_contribution_v1('$F1_SECOND_OWNER','$F2_ACTIVE');")"
+check "R2: active premium and free operations retain their prior outcomes" "1|updated|removed|1|updated|removed" \
+  "$($DB -t -A -c 'begin;' -c "set local role service_role; select pending_total from count_pending_contributions_v1('$F1_OWNER','$F1_FREE'); select outcome from moderate_contribution_v1('$F1_OWNER','$F2_ACTIVE','approve'); select outcome from remove_contribution_v1('$F1_OWNER','$F2_ACTIVE'); select pending_total from count_pending_contributions_v1('$F1_ACTIVE_FREE_OWNER','$F1_ACTIVE_FREE'); select outcome from moderate_contribution_v1('$F1_ACTIVE_FREE_OWNER','$F2_FREE','approve'); select outcome from remove_contribution_v1('$F1_ACTIVE_FREE_OWNER','$F2_FREE');" -c 'rollback;' | paste -sd'|')"
+check "R2: all synthetic contributions survive the rolled-back test mutations" "3" \
+  "$($DB -t -A -c "select count(*) from messages where id in ('$F2_PENDING','$F2_ACTIVE','$F2_FREE') and status='pending';")"
+F2_PREMIUM_PHOTO=$(svc "select gen_random_uuid();")
+F2_FREE_PHOTO=$(svc "select gen_random_uuid();")
+check "R2: album pages and photo renewals carry the premium marker and preserve free signatures" "true|false|true|false" \
+  "$($DB -t -A -c 'begin;' -c "
+    insert into memorial_contribution_categories (memorial_id, condolences, stories, photos)
+      values ('$F1_FREE',true,true,true), ('$F1_ACTIVE_FREE',true,true,true)
+      on conflict (memorial_id) do update set photos=true;
+    insert into media (id,memorial_id,owner_id,storage_path,media_type,purpose,status,mime_type,size_bytes) values
+      ('$F2_PREMIUM_PHOTO','$F1_FREE','$F1_OWNER','$F1_FREE/$F2_PREMIUM_PHOTO/original.webp','photo','contribution','ready','image/webp',100),
+      ('$F2_FREE_PHOTO','$F1_ACTIVE_FREE','$F1_ACTIVE_FREE_OWNER','$F1_ACTIVE_FREE/$F2_FREE_PHOTO/original.webp','photo','contribution','ready','image/webp',100);
+    insert into messages (id,memorial_id,message_type,author_name,media_id,status,visible,published_at) values
+      ('$F2_PREMIUM_PHOTO','$F1_FREE','photo','Famille','$F2_PREMIUM_PHOTO','published',true,now()),
+      ('$F2_FREE_PHOTO','$F1_ACTIVE_FREE','photo','Famille','$F2_FREE_PHOTO','published',true,now());" -c "
+    set local role service_role;
+    select media->>'requires_term_recheck' from read_public_contributions_v2('$F1_FREE_SLUG',24,null,null,array['photo']);
+    select media->>'requires_term_recheck' from read_public_contributions_v2('$F1_ACTIVE_FREE_SLUG',24,null,null,array['photo']);
+    select media->>'requires_term_recheck' from read_public_contributions_by_ids_v1('$F1_FREE_SLUG',array['$F2_PREMIUM_PHOTO'::uuid]);
+    select media->>'requires_term_recheck' from read_public_contributions_by_ids_v1('$F1_ACTIVE_FREE_SLUG',array['$F2_FREE_PHOTO'::uuid]);" -c 'rollback;' | paste -sd'|')"
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then

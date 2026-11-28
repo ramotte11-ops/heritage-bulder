@@ -41,10 +41,12 @@ export class SupabaseMemorialOwnershipRepository implements MemorialOwnershipRep
     // `.maybeSingle()` because "no such memorial" is a normal answer
     // here, not an error — the caller collapses it into the same opaque
     // refusal as "somebody else's memorial".
+    // PostgreSQL evaluates the recovery deadline against its own clock.
     const { data, error } = await this.client
       .from("memorials")
       .select("owner_id")
       .eq("id", memorialId)
+      .or("complete_recovery_until.is.null,complete_recovery_until.gt.now")
       .maybeSingle<MemorialOwnerRow>();
 
     // Rethrown rather than turned into `null`: an authorization check

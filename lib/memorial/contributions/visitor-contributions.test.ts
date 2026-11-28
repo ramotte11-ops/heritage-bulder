@@ -68,6 +68,7 @@ function setup(over: { repo?: Partial<ContributionRepository>; media?: Media | n
   } as unknown as ContributionRepository & Record<string, ReturnType<typeof vi.fn>>;
   const deps: VisitorContributionDeps = {
     repository,
+    signPublicPhoto: vi.fn(async (_slug, path) => `https://storage.test/signed/${path}?ttl=300`),
     objectStore: {
       createUploadPermission: vi.fn(async ({ path }: { path: string }) => ({ url: `https://storage.test/upload/${path}?token=t`, token: "t" })),
       createReadUrl: vi.fn(async ({ path, expiresInSeconds }: { path: string; expiresInSeconds: number }) => `https://storage.test/signed/${path}?ttl=${expiresInSeconds}`),
@@ -342,6 +343,17 @@ describe("M8-E2 — lecture publique et Album (P1)", () => {
       nextCursor: null,
     });
     expect(JSON.stringify(page)).not.toContain('"storagePath"');
+    expect(deps.signPublicPhoto).toHaveBeenCalledWith(SLUG, PATH, true);
+  });
+
+  it("keeps the free photo signing path and withholds a premium photo denied at signing", async () => {
+    const freePhoto = { ...rows[0], media: { ...rows[0].media!, requiresTermRecheck: false } };
+    const { deps } = setup({ repo: { readPublic: vi.fn(async () => [freePhoto, rows[0]]) } });
+    vi.mocked(deps.signPublicPhoto).mockResolvedValueOnce("https://storage.test/free").mockResolvedValueOnce(null);
+    const page = await readPublicContributions(deps, { slug: SLUG });
+    expect(deps.signPublicPhoto).toHaveBeenCalledWith(SLUG, PATH, false);
+    expect(deps.signPublicPhoto).toHaveBeenCalledWith(SLUG, PATH, true);
+    expect(page).toMatchObject({ items: [{ photo: { url: "https://storage.test/free" } }] });
   });
 
   it("page pleine → curseur (published_at, id) du dernier élément ; la page suivante le transmet", async () => {
@@ -384,6 +396,13 @@ describe("M8-E3 — renouvellement des liens photo expirés", () => {
     expect(r).toEqual({ status: "ok", renewed: { [ID_A]: `https://storage.test/signed/${MEM}/${ID_A}/original.webp?ttl=300` }, gone: [ID_GONE] });
     // Relecture exacte des contributions demandées, où qu'elles soient dans l'Album (aucun parcours plafonné).
     expect(readPublicByIds).toHaveBeenCalledWith({ slug: SLUG, ids: [ID_A, ID_GONE] });
+  });
+
+  it("marks an expired premium photo gone when authorization fails at renewal", async () => {
+    const { deps } = setup({ repo: { readPublicByIds: vi.fn(async () => [photoRow(ID_A, 3)]) } });
+    vi.mocked(deps.signPublicPhoto).mockResolvedValueOnce(null);
+    expect(await renewPublicContributionPhotos(deps, { slug: SLUG, ids: [ID_A] })).toEqual({ status: "ok", renewed: {}, gone: [ID_A] });
+    expect(deps.signPublicPhoto).toHaveBeenCalledWith(SLUG, `${MEM}/${ID_A}/original.webp`, true);
   });
 
   it("une contribution relue qui n'est plus une photo ne reçoit aucun lien", async () => {

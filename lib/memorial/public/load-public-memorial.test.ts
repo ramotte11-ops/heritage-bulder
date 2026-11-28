@@ -56,8 +56,11 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function deps(data: unknown) {
-  const rpc = vi.fn().mockResolvedValue({ data, error: null });
+function deps(data: unknown, term: unknown = [{ complete_until: null }]) {
+  const rpc = vi.fn(async (name: string) => ({
+    data: name === "read_public_media_term_v1" ? term : data,
+    error: null,
+  }));
   const from = vi.fn(() => {
     throw new Error("the public loader must not read any table");
   });
@@ -83,6 +86,13 @@ describe("loadPublicMemorial", () => {
   it("unknown / unpublished / withdrawn / expired (zero rows) is unavailable, without signing anything", async () => {
     const fake = deps([]);
     expect(await loadPublicMemorial(SLUG, fake.deps)).toEqual({ status: "unavailable" });
+    expect(fake.sign).not.toHaveBeenCalled();
+  });
+
+  it("withholds premium snapshot photos when authorization closes between the read and signing", async () => {
+    const fake = deps([row({ access_level: "complet" })], []);
+    expect(await loadPublicMemorial(SLUG, fake.deps)).toEqual({ status: "unavailable" });
+    expect(fake.rpc).toHaveBeenCalledWith("read_public_media_term_v1", { p_slug: SLUG });
     expect(fake.sign).not.toHaveBeenCalled();
   });
 

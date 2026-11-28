@@ -15,6 +15,7 @@ interface MemorialListRow {
   slug: unknown;
   access_level: unknown;
   free_public_until: unknown;
+  complete_until?: unknown;
   first_published_at?: unknown;
   free_publish_until?: unknown;
   free_draft_until?: unknown;
@@ -26,7 +27,7 @@ interface MemorialListRow {
  * under `memorials_select_own`: no new grant, policy or function.
  * QG 004-B adds the free deadlines (same table, same rows). */
 const MEMORIAL_LIST_COLUMNS =
-  "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until";
+  "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until, complete_until";
 
 function storedInstant(value: unknown): string | null {
   return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : null;
@@ -62,7 +63,12 @@ function toLabel(value: unknown): string | null {
  */
 function publicSlugOf(row: MemorialListRow, now: Date): string | null {
   const visible = isMemorialPubliclyVisible(
-    { status: row.status, accessLevel: row.access_level, freePublicUntil: row.free_public_until },
+    {
+      status: row.status,
+      accessLevel: row.access_level,
+      freePublicUntil: row.free_public_until,
+      completeUntil: row.complete_until,
+    },
     now,
   );
   return visible && isPublicSlugShape(row.slug) ? row.slug : null;

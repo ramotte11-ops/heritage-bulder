@@ -14,9 +14,8 @@ import type { PublicMemorialMedia } from "./read-public-memorial";
  * returned for this memorial — the `ready` media its published snapshot
  * references, each with its exact purpose. Any other request (an id the
  * snapshot does not cite, the right id with the wrong purpose) is `null`
- * and nothing is signed. There is no database read here, no actor and no
- * ownership: the allow-list IS the authorization, and it was computed by
- * the database under the public-visibility rule.
+ * and nothing is signed. The allow-list is computed by the database.
+ * The supplied public signer can recheck the term before issuing a link.
  *
  * Only `{ mediaId, readUrl, width, height }` leaves this function — never
  * `storagePath`. The read URL is a short-lived signed URL
@@ -27,7 +26,7 @@ import type { PublicMemorialMedia } from "./read-public-memorial";
  */
 
 /** Signs one private storage path into a short-lived read URL. */
-export type SignStoragePath = (storagePath: string) => Promise<string>;
+export type SignStoragePath = (storagePath: string, expiresInSeconds?: number) => Promise<string | null>;
 
 export function createPublicSnapshotMediaResolver(
   allowed: readonly PublicMemorialMedia[],
@@ -35,7 +34,7 @@ export function createPublicSnapshotMediaResolver(
 ): MediaResolver {
   const byId = new Map(allowed.map((media) => [media.mediaId, media] as const));
   // One signature per media per render, even when several renderers ask.
-  const signed = new Map<string, Promise<string>>();
+  const signed = new Map<string, Promise<string | null>>();
 
   return async (request): Promise<ResolvedMedia | null> => {
     const media = byId.get(request.mediaId);
@@ -57,10 +56,10 @@ export function createPublicSnapshotMediaResolver(
 
 /** The production signer: the private `memorial-media` bucket, through the service-role client. */
 export function createStorageSigner(client: Pick<SupabaseClient, "storage">): SignStoragePath {
-  return async (storagePath) => {
+  return async (storagePath, expiresInSeconds = MEDIA_READ_URL_TTL_SECONDS) => {
     const { data, error } = await client.storage
       .from(MEDIA_BUCKET)
-      .createSignedUrl(storagePath, MEDIA_READ_URL_TTL_SECONDS);
+      .createSignedUrl(storagePath, expiresInSeconds);
     if (error || !data?.signedUrl) throw new Error("Public media signature failed.");
     return data.signedUrl;
   };

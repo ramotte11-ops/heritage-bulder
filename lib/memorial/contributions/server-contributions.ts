@@ -10,6 +10,8 @@ import { requireOwner } from "@/lib/auth/heritage-actor";
 import { authorizeMemorialForRequest, getHeritageActor } from "@/lib/auth/heritage-session";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-client";
+import { signPublicStorageRead } from "@/lib/memorial/public/public-media-term";
+import { createStorageSigner } from "@/lib/memorial/public/public-snapshot-media-resolver";
 import type { FamilyContributionDeps } from "./family-contributions";
 import { readFormTokenSecrets } from "./form-token";
 import { processContributionPhoto } from "./photo-processing";
@@ -26,9 +28,13 @@ import type { VisitorContributionDeps } from "./visitor-contributions";
 
 export function createVisitorContributionDeps(): VisitorContributionDeps {
   const client = createServiceRoleSupabaseClient();
+  const signStorage = createStorageSigner(client);
   return {
     repository: new SupabaseContributionRepository(client),
     objectStore: new SupabaseMediaObjectStore(client),
+    signPublicPhoto: (slug, path, requiresTermRecheck) => requiresTermRecheck
+      ? signPublicStorageRead({ client, slug, sign: (ttl) => signStorage(path, ttl) })
+      : signStorage(path),
     mediaRepository: new SupabaseMediaRepository(client),
     mediaSecurityRepository: new SupabaseMediaSecurityRepository(client),
     photoStore: new SupabaseContributionPhotoStore(client),

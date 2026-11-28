@@ -36,7 +36,13 @@ export interface PublicContributionRow {
   content: string | null;
   caption: string | null;
   publishedAt: string;
-  media: { mediaId: string; storagePath: string; width: number | null; height: number | null } | null;
+  media: {
+    mediaId: string;
+    storagePath: string;
+    width: number | null;
+    height: number | null;
+    requiresTermRecheck?: boolean;
+  } | null;
 }
 
 export interface ContributionCursor {
