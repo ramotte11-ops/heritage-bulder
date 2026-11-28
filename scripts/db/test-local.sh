@@ -6109,8 +6109,26 @@ expect_refused "F1: direct anon call cannot bypass the public server boundary" \
 $DB -c "set session_replication_role=replica; update memorials set complete_recovery_until=now(),complete_archive_until=now()+interval '12 months' where id='$F1_DRAFT';" >/dev/null
 check "F1: archive boundary closes family access and keeps the rows" "0|1|1" \
   "$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='$F1_AUTH'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$($DB -t -A -c "select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$($DB -t -A -c "select count(*) from memorial_published_snapshots where memorial_id='$F1_DRAFT';")"
-check "F1: rollback restores visibility and preserves the contract dates" "1|true" \
-  "$($DB -t -A -c 'begin;' -f "$REPO_ROOT/supabase/rollbacks/20261127214203_premium_term_foundation.down.sql" -c "select (select count(*) from public.read_public_memorial_v1('$F1_SLUG')) || '|' || (complete_until is not null) from memorials where id='$F1_DRAFT';" -c 'rollback;')"
+F1_DOWN="$REPO_ROOT/supabase/rollbacks/20261127214203_premium_term_foundation.down.sql"
+F1_RETENTION="select md5(jsonb_build_array(to_jsonb(m), to_jsonb(d), to_jsonb(s))::text)
+  from memorials m join memorial_drafts d on d.memorial_id=m.id
+  join memorial_published_snapshots s on s.memorial_id=m.id where m.id='$F1_DRAFT';"
+F1_BEFORE=$($DB -t -A -c "$F1_RETENTION")
+F1_ACTIVE_FREE_OWNER=$(q8_owner f1-free-rollback)
+F1_ACTIVE_FREE=$(q8_draft "$F1_ACTIVE_FREE_OWNER")
+F1_ACTIVE_FREE_SLUG=06f100000003
+F1_ACTIVE_FREE_CONTENT='{"hero":{"displayName":"Avis test","photo":null}}'
+svc "select outcome from anchor_free_memorial_v1('$F1_ACTIVE_FREE','$F1_ACTIVE_FREE_OWNER');" >/dev/null
+q8_ready "$F1_ACTIVE_FREE" "$F1_ACTIVE_FREE_SLUG" "$F1_ACTIVE_FREE_CONTENT"
+svc "$(q8_v2_sql "$F1_ACTIVE_FREE" "$F1_ACTIVE_FREE_OWNER" "$F1_ACTIVE_FREE_SLUG" avis "$F1_ACTIVE_FREE_CONTENT")" >/dev/null
+check "F1: rollback gate accepts intact guards" "ok" \
+  "$($DB -f "$F1_DOWN" >/dev/null && echo ok)"
+check "F1: rollback keeps the expired tribute and the family archive closed and active premium and free tributes visible" "0|0|1|1" \
+  "$(svc "select count(*) from read_public_memorial_v1('$F1_SLUG');")|$($DB -t -A -c "set role authenticated; set request.jwt.claim.sub='$F1_AUTH'; select count(*) from memorial_drafts where memorial_id='$F1_DRAFT';")|$(svc "select count(*) from read_public_memorial_v1('$F1_FREE_SLUG');")|$(svc "select count(*) from read_public_memorial_v1('$F1_ACTIVE_FREE_SLUG');")"
+check "F1: rollback preserves the memorial, all contract dates, draft and snapshot" "$F1_BEFORE" \
+  "$($DB -t -A -c "$F1_RETENTION")"
+check "F1: rollback gate refuses a missing protection" "1" \
+  "$($DB -c 'begin;' -c 'alter table memorials disable trigger memorials_set_complete_term;' -f "$F1_DOWN" 2>&1 | grep -c '06-F1 rollback refused: a premium contract guard is missing' || true)"
 
 echo "== Results: $PASS passed, $FAIL failed =="
 if [ "$FAIL" -ne 0 ]; then
