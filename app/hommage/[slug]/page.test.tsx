@@ -60,7 +60,15 @@ const { loadContributions, renewContributionPhotos, openContributionWindow, depo
 }));
 vi.mock("./contribution-actions", () => ({ loadContributions, renewContributionPhotos, openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto }));
 // M8-E6-F — le verrou de publication : fermé en réalité ; chaque test choisit son état.
-const readiness = vi.hoisted(() => ({ CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: false }));
+// A15-R (branche de recette) : `recetteSlugs` simule CONTRIBUTIONS_RECETTE_SLUGS.
+const readiness = vi.hoisted(() => {
+  const r = {
+    CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: false,
+    recetteSlugs: ["95bd2601eac8"] as string[],
+    contributionsDepositOpenFor: (slug: unknown) => r.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && typeof slug === "string" && r.recetteSlugs.includes(slug),
+  };
+  return r;
+});
 vi.mock("@/config/contributions-deposit-readiness", () => readiness);
 const { depositSymbolicOffering, signSymbolicOfferingAction } = vi.hoisted(() => ({
   depositSymbolicOffering: vi.fn(),
@@ -81,6 +89,7 @@ function call(slug: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true;
+  readiness.recetteSlugs = ["95bd2601eac8"];
 });
 
 describe("/hommage/[slug]", () => {
@@ -159,6 +168,25 @@ describe("/hommage/[slug]", () => {
     const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown; deposit: unknown }> }> }>;
     expect(loadPublicContributionsInitial).not.toHaveBeenCalled();
     expect(element.props.children.props.children.props.initial).toBeNull();
+    expect(element.props.children.props.children.props.deposit).toBeUndefined();
+  });
+
+  it("A15-R — verrou ouvert, hommage HORS de la liste de recette : servi exactement comme verrou fermé", async () => {
+    readiness.recetteSlugs = ["aaaaaaaaaaaa"];
+    const assembled = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown; deposit: unknown }> }> }>;
+    expect(loadPublicContributionsInitial).not.toHaveBeenCalled();
+    expect(element.props.children.props.children.props.initial).toBeNull();
+    expect(element.props.children.props.children.props.deposit).toBeUndefined();
+  });
+
+  it("A15-R — liste de recette vide (variable absente) : aucun hommage n'est ouvert", async () => {
+    readiness.recetteSlugs = [];
+    const assembled = { ...ASSEMBLED, sections: [{ sectionId: "testimonials", rendererKey: "ContributionsV1Section", props: {} }] };
+    loadPublicMemorial.mockResolvedValue({ status: "ready", assembled });
+    const element = (await call("95bd2601eac8")) as ReactElement<{ children: ReactElement<{ children: ReactElement<{ initial: unknown; deposit: unknown }> }> }>;
+    expect(loadPublicContributionsInitial).not.toHaveBeenCalled();
     expect(element.props.children.props.children.props.deposit).toBeUndefined();
   });
 

@@ -8,7 +8,17 @@ const { createVisitorContributionDeps, createFamilyContributionDeps } = vi.hoist
 }));
 vi.mock("@/lib/memorial/contributions/server-contributions", () => ({ createVisitorContributionDeps, createFamilyContributionDeps }));
 // Le verrou de publication est fermé en production ; les tests du moteur l'ouvrent explicitement.
-const readiness = vi.hoisted(() => ({ CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: true }));
+// A15-R (branche de recette) : `recetteSlugs` simule CONTRIBUTIONS_RECETTE_SLUGS ;
+// `null` = tous les slugs de ces tests du moteur (forgés compris) sont dans la liste.
+const readiness = vi.hoisted(() => {
+  const r = {
+    CONTRIBUTIONS_DEPOSIT_PUBLIC_READY: true,
+    recetteSlugs: null as string[] | null,
+    contributionsDepositOpenFor: (slug: unknown) =>
+      r.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && (r.recetteSlugs === null || (typeof slug === "string" && r.recetteSlugs.includes(slug))),
+  };
+  return r;
+});
 vi.mock("@/config/contributions-deposit-readiness", () => readiness);
 
 const visitor = await import("./contribution-actions");
@@ -40,6 +50,22 @@ describe("M8-E6-P — verrou serveur du dépôt", () => {
       expect(submit).not.toHaveBeenCalled();
     } finally {
       readiness.CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true;
+    }
+  });
+
+  it("A15-R — verrou ouvert, hommage HORS de la liste de recette : les quatre actions répondent unavailable sans rien construire", async () => {
+    readiness.recetteSlugs = ["bbbbbbbbbbbb"];
+    try {
+      const submit = vi.fn();
+      createVisitorContributionDeps.mockReturnValue({ secrets: { current: "s".repeat(40), previous: null }, now: () => new Date(), repository: { submit } });
+      expect(await visitor.openContributionWindow("a1b2c3d4e5f6")).toEqual({ status: "unavailable" });
+      expect(await visitor.depositContributionText({ slug: "a1b2c3d4e5f6", type: "condolence", authorName: "A", text: "B", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(await visitor.beginContributionPhoto({ slug: "a1b2c3d4e5f6", declaredMimeType: "image/jpeg", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(await visitor.completeContributionPhoto({ slug: "a1b2c3d4e5f6", mediaId: "m", photoTicket: "t", authorName: "A", formToken: "x" })).toEqual({ status: "unavailable" });
+      expect(createVisitorContributionDeps).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      readiness.recetteSlugs = null;
     }
   });
 

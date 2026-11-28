@@ -17,7 +17,48 @@
  * Le verrou ne peut pas s'ouvrir tant que `privacyPublicationBlockers()`
  * n'est pas vide (test).
  */
-export const CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = false as const;
+export const CONTRIBUTIONS_DEPOSIT_PUBLIC_READY = true as const;
+
+/**
+ * A15-R — BRANCHE DE RECETTE `recette/a15-contributions` UNIQUEMENT.
+ * Ne jamais fusionner dans `main` (ordre de mission QG A15-R).
+ *
+ * Le verrou ci-dessus est ouvert pour une recette technique ISOLÉE, pas pour
+ * le public : les textes Q6 restent des propositions non validées
+ * juridiquement (`privacyPublicationBlockers()` n'est pas vide, et la lettre
+ * l'affiche). Une seconde barrière, propre à cette branche, limite
+ * l'ouverture aux seuls hommages FICTIFS de la recette :
+ *
+ *  - `CONTRIBUTIONS_RECETTE_SLUGS` (variable serveur, non secrète) : liste
+ *    des slugs autorisés, séparés par des virgules ;
+ *  - absente, vide ou mal formée : AUCUN hommage n'est ouvert (échec fermé),
+ *    la page et les quatre actions de dépôt se comportent comme sur `main`.
+ *
+ * Tout le reste (jeton anti-robots, plafonds R2/R3/R5, catégories O9,
+ * offre gratuite, droits de la famille, base) est inchangé.
+ */
+export const CONTRIBUTIONS_DEPOSIT_RECETTE = true as const;
+
+/** Un slug d'hommage public : même forme que PUBLIC_SLUG_PATTERN (lib/memorial/public/read-public-memorial.ts). */
+const RECETTE_SLUG = /^[0-9a-f]{12,64}$/;
+/** Une recette porte sur quelques hommages fictifs, jamais davantage. */
+const RECETTE_MAX_SLUGS = 4;
+
+/** Les slugs ouverts à la recette ; vide = aucun (échec fermé). */
+export function contributionsRecetteSlugs(env: Record<string, string | undefined> = process.env): readonly string[] {
+  const raw = env.CONTRIBUTIONS_RECETTE_SLUGS;
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  const slugs = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
+  if (slugs.length === 0 || slugs.length > RECETTE_MAX_SLUGS || !slugs.every((s) => RECETTE_SLUG.test(s))) return [];
+  return slugs;
+}
+
+/** Le dépôt est-il ouvert pour CET hommage ? Verrou d'abord, puis liste de recette. */
+export function contributionsDepositOpenFor(slug: unknown, env: Record<string, string | undefined> = process.env): boolean {
+  if (!CONTRIBUTIONS_DEPOSIT_PUBLIC_READY) return false;
+  if (typeof slug !== "string") return false;
+  return contributionsRecetteSlugs(env).includes(slug);
+}
 
 export const CONTRIBUTIONS_DEPOSIT_BLOCKERS = [
   { id: "Q6-legal", authority: "Juridique / PO", detail: "Validation juridique de la mention de confidentialité (FR/EN/ES)." },

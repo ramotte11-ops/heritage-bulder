@@ -11,7 +11,7 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role-cli
 import { loadPublicVideoPlayback } from "@/lib/memorial/video/hosting/public-video-playback";
 import { withPublicVideoPlayback } from "@/lib/memorial/video/video-section";
 import { depositSymbolicOffering, signSymbolicOfferingAction } from "./actions";
-import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "@/config/contributions-deposit-readiness";
+import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY, contributionsDepositOpenFor } from "@/config/contributions-deposit-readiness";
 import {
   beginContributionPhoto,
   completeContributionPhoto,
@@ -91,11 +91,16 @@ export default async function PublicMemorialPage({ params }: { params: Promise<{
   // familiale, E6), la rubrique n'est ni lue ni dessinée en public : elle
   // inviterait à « laisser un message » sans le permettre. Aucune requête
   // n'est faite. Ouvert : la lecture, puis le dépôt (Server Actions E2).
+  //
+  // A15-R (branche de recette, jamais fusionnée) : verrou ouvert, mais pour
+  // les seuls hommages fictifs listés dans CONTRIBUTIONS_RECETTE_SLUGS ;
+  // tout autre hommage est servi exactement comme sur `main`.
+  const contributionsOpen = CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && contributionsDepositOpenFor(slug);
   const contributions =
-    CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
+    contributionsOpen && view.assembled.sections.some((s) => s.rendererKey === "ContributionsV1Section")
       ? await loadContributionsForVisit(slug)
       : null;
-  const deposit = CONTRIBUTIONS_DEPOSIT_PUBLIC_READY
+  const deposit = contributionsOpen
     ? { slug, actions: { openContributionWindow, depositContributionText, beginContributionPhoto, completeContributionPhoto } }
     : undefined;
 

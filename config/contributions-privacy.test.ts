@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DICTIONARIES } from "@/lib/i18n/translate";
-import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY } from "./contributions-deposit-readiness";
+import { CONTRIBUTIONS_DEPOSIT_PUBLIC_READY, CONTRIBUTIONS_DEPOSIT_RECETTE } from "./contributions-deposit-readiness";
 import {
   CONTRIBUTIONS_PRIVACY_LEGAL_STATUS,
   CONTRIBUTIONS_WITHDRAWAL_CONTACT,
@@ -94,6 +94,13 @@ describe("M8-Q6 — textes de confidentialité (PROPOSITION)", () => {
   });
 
   it("VERROU : le dépôt public ne peut s'ouvrir que si plus rien ne bloque la publication des textes Q6", () => {
-    expect(CONTRIBUTIONS_DEPOSIT_PUBLIC_READY ? privacyPublicationBlockers() : []).toEqual([]);
+    // A15-R : seule exception, la recette technique isolée (branche jamais fusionnée).
+    expect(CONTRIBUTIONS_DEPOSIT_PUBLIC_READY && !CONTRIBUTIONS_DEPOSIT_RECETTE ? privacyPublicationBlockers() : []).toEqual([]);
+  });
+
+  it("A15-R — une recette qui fonctionne ne valide PAS les textes : ils restent des propositions, affichées comme telles", () => {
+    if (!CONTRIBUTIONS_DEPOSIT_RECETTE) return;
+    expect(CONTRIBUTIONS_PRIVACY_LEGAL_STATUS).toBe("proposal");
+    expect(privacyPublicationBlockers()).toContain("legal: textes non validés juridiquement");
   });
 });
