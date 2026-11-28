@@ -11,10 +11,11 @@ interface QueryLog {
   from: string[];
   select: string[];
   eq: [string, unknown][];
+  or: string[];
 }
 
 function client(result: { data: unknown; error: unknown }) {
-  const log: QueryLog = { from: [], select: [], eq: [] };
+  const log: QueryLog = { from: [], select: [], eq: [], or: [] };
 
   const builder = {
     select(columns: string) {
@@ -23,6 +24,10 @@ function client(result: { data: unknown; error: unknown }) {
     },
     eq(column: string, value: unknown) {
       log.eq.push([column, value]);
+      return builder;
+    },
+    or(filters: string) {
+      log.or.push(filters);
       return builder;
     },
     maybeSingle: vi.fn(async () => result),
@@ -65,6 +70,7 @@ describe("SupabaseMemorialOwnershipRepository", () => {
     // One column. An authorization read must not be able to return
     // content it has not established a right to.
     expect(log.select).toEqual(["owner_id"]);
+    expect(log.or).toEqual(["complete_recovery_until.is.null,complete_recovery_until.gt.now"]);
   });
 
   it("filters by exact id equality — never a pattern operator", async () => {

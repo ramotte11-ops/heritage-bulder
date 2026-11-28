@@ -80,6 +80,16 @@ describe("isMemorialPubliclyVisible — the avis deadline, exactly as SQL `now <
 });
 
 describe("isMemorialPubliclyVisible — fails closed", () => {
+  it("applies the premium deadline at the exact cutoff", () => {
+    const columns = {
+      status: "published", accessLevel: "complet", freePublicUntil: null,
+      completeUntil: "2026-11-05T12:00:00.000Z",
+    };
+    expect(isMemorialPubliclyVisible(columns, new Date(NOW.getTime() - 1))).toBe(true);
+    expect(isMemorialPubliclyVisible(columns, NOW)).toBe(false);
+    expect(isMemorialPubliclyVisible({ ...columns, completeUntil: "invalid" }, NOW)).toBe(false);
+  });
+
   it("refuses an unreadable or loosely written deadline", () => {
     for (const bad of ["", "   ", "not a date", "2026-11-12", "2026-11-12T20:10:25", "2026", "2026-13-45T99:99:99Z", 1789000000000, {}, true]) {
       expect(visible("published", "avis", bad), String(bad)).toBe(false);

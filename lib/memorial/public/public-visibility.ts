@@ -3,11 +3,11 @@
  * right now, as the public page `/hommage/[slug]` would answer?
  *
  * A strict TypeScript MIRROR of the SQL rule `memorial_publicly_visible_v1`
- * (supabase/migrations/20261031120000_qg008_free_offer_v8_alignment.sql),
+ * (supabase/migrations/20261127214203_premium_term_foundation.sql),
  * the very rule `read_public_memorial_v1` (QG 016 / M1) applies:
  *
  *   status = 'published'
- *   AND (access_level = 'complet'
+ *   AND ((access_level = 'complet' AND (legacy OR now < complete_until))
  *        OR (access_level = 'avis'
  *            AND free_public_until IS NOT NULL
  *            AND now < free_public_until))
@@ -32,6 +32,7 @@ export interface PublicVisibilityColumns {
   status: unknown;
   accessLevel: unknown;
   freePublicUntil: unknown;
+  completeUntil?: unknown;
 }
 
 /**
@@ -55,7 +56,11 @@ function instant(value: unknown): number | null {
 
 export function isMemorialPubliclyVisible(columns: PublicVisibilityColumns, now: Date): boolean {
   if (columns.status !== "published") return false;
-  if (columns.accessLevel === "complet") return true;
+  if (columns.accessLevel === "complet") {
+    if (columns.completeUntil == null) return true;
+    const until = instant(columns.completeUntil);
+    return until !== null && now.getTime() < until;
+  }
   if (columns.accessLevel !== "avis") return false;
   const until = instant(columns.freePublicUntil);
   const at = now.getTime();

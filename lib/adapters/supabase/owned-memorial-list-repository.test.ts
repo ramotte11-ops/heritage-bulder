@@ -48,7 +48,7 @@ describe("SupabaseOwnedMemorialListRepository.listOwnedMemorials", () => {
     await new SupabaseOwnedMemorialListRepository(client).listOwnedMemorials("owner-1");
 
     expect(memorialsQuery.select).toHaveBeenCalledWith(
-      "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until",
+      "id, created_at, language, status, slug, access_level, free_public_until, first_published_at, free_publish_until, free_draft_until, complete_until",
     );
     expect(memorialsQuery.eq).toHaveBeenCalledWith("owner_id", "owner-1");
     expect(memorialsQuery.order).toHaveBeenCalledWith("created_at", { ascending: true });
